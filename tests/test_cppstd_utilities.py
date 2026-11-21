@@ -60,3 +60,15 @@ def test_calendar_time_is_brokendown_as_c_struct_tm_holds_it() -> None:
     buffer = bytearray(8)
     assert strftime(buffer, 8, "%H:%M", utc) == 5
     assert bytes(buffer).split(b"\0")[0] == b"00:00"
+
+
+def test_a_time_that_points_nowhere_is_the_clock_s_own_now(monkeypatch) -> None:
+    """``localtime(NULL)`` and ``gmtime(NULL)`` are the clock's now, as C's are: a macro
+    writes ``strftime(buf, 64, "%H:%M:%S", localtime(0))`` for 1970 and nothing at all for
+    the minute it is running in."""
+    from xrdroot.cppstd import chrono
+
+    monkeypatch.setattr(chrono.time, "time", lambda: 86400.0)
+    assert chrono.formatted_time("%Y-%m-%d %H:%M", chrono.gmtime()) == "1970-01-02 00:00"
+    assert chrono.formatted_time("%Y", chrono.localtime(None))[:2] == "19"
+    assert chrono._when(None) == 86400.0
