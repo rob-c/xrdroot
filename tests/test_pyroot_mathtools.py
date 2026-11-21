@@ -385,3 +385,22 @@ def test_a_fit_handed_its_function_starts_where_that_functions_parameters_stand(
 def test_a_fit_with_neither_a_model_nor_a_function_says_which_it_wants():
     with pytest.raises(ValueError, match="fits the model SetFunction gave it"):
         ROOT.Fit.Fitter().Fit(ROOT.Fit.BinData())
+
+
+def test_the_genetic_minimizers_seed_and_its_cycles_are_the_search_it_makes():
+    """``GeneticMinimizer(seed)`` and ``SetRandomSeed``: the same populations, drawn again."""
+    seeded = ROOT.Math.GeneticMinimizer(111)
+    assert seeded.Parameters().fSeed == 111
+    seeded.SetRandomSeed(7)
+    assert seeded.Parameters().fSeed == 7
+    # Two searches from the same seed and the same starting point are the same search.
+    runs = []
+    for _ in range(2):
+        minimizer = ROOT.Math.GeneticMinimizer(3)
+        minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 1.0) ** 2 + v[1] ** 2, 2))
+        minimizer.SetLimitedVariable(0, "a", 0.0, 0.1, -5.0, 5.0)
+        minimizer.SetLimitedVariable(1, "b", 0.0, 0.1, -5.0, 5.0)
+        assert minimizer.Minimize()
+        runs.append((list(minimizer.X()), minimizer.MinValue()))
+    assert runs[0] == runs[1]
+    assert runs[0][0] == pytest.approx([1.0, 0.0], abs=0.2)

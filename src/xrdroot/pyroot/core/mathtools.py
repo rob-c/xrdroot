@@ -654,11 +654,17 @@ class GeneticMinimizer(Minimizer):
     starting point is far from the minimum, as ``GAMinTutorial`` does.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, seed: int = 0) -> None:
         super().__init__("Genetic", "GA")
         self._parameters = GeneticMinimizerParameters()
+        self._parameters.fSeed = int(seed)
         self._best: Any = None
         self._calls = 0
+
+    def SetRandomSeed(self, seed: int) -> None:
+        """``SetRandomSeed``: the seed of the generator the populations are drawn from, so
+        that the same search is made again - ROOT's ``GeneticMinimizer(seed)`` too."""
+        self._parameters.fSeed = int(seed)
 
     def SetParameters(self, parameters: GeneticMinimizerParameters) -> None:
         """``SetParameters(params)``: the population's size, its steps, its seed and rate."""
@@ -683,8 +689,10 @@ class GeneticMinimizer(Minimizer):
         selected[0] = np.clip([self._variables[at][1] for at in order], low, high)
         values = np.array([self._evaluate(point) for point in selected])
         rate = float(self._parameters.fMutationRate)
-        for _ in range(int(self._parameters.fNsteps)):
-            selected = _ga_next(selected, values, low, high, rng, rate)
+        steps = max(1, int(self._parameters.fNsteps) * int(self._parameters.fCycles))
+        for generation in range(steps):
+            shrink = 1.0 - 0.9 * generation / max(steps, 1)
+            selected = _ga_next(selected, values, low, high, rng, rate, shrink)
             values = np.array([self._evaluate(point) for point in selected])
         best = int(np.argmin(values))
         self._best = (selected[best], float(values[best]))
@@ -738,16 +746,29 @@ def _ga_population(parameters: GeneticMinimizerParameters, rng: Any,
     return low + rng.random((size, len(low))) * (high - low)
 
 
+def _ga_parents(selected: np.ndarray[Any, Any], values: np.ndarray[Any, Any], rng: Any,
+                count: int) -> np.ndarray[Any, Any]:  # fmt: skip
+    """The pairs each child is bred from: of two drawn from the whole population, the better -
+    a tournament, which keeps the weaker points in the running long enough for a valley to be
+    followed round its bend, as Rosenbrock's has to be."""
+    drawn = rng.integers(0, len(selected), size=(count, 2))
+    better = (values[drawn[:, 0]] <= values[drawn[:, 1]])[:, None]
+    return np.where(better, selected[drawn[:, 0]], selected[drawn[:, 1]])
+
+
 def _ga_next(selected: np.ndarray[Any, Any], values: np.ndarray[Any, Any],
              low: np.ndarray[Any, Any], high: np.ndarray[Any, Any], rng: Any, rate: float,
-             ) -> np.ndarray[Any, Any]:  # fmt: skip
+             shrink: float) -> np.ndarray[Any, Any]:  # fmt: skip
     """One generation: the better half kept as they stand and bred from, each child a blend
     of two of them, and a gene of it mutated now and then - which is what lets it leave the
-    box the first population happened to cover."""
+    box the first population happened to cover. The mutation shrinks towards the end of the
+    search, so that the last generations settle on the minimum the first ones found."""
     keeper = selected[np.argsort(values)][: max(2, len(selected) // 2)]
-    parents = keeper[rng.integers(0, len(keeper), size=(len(selected) - len(keeper), 2))]
-    blend = rng.random((len(parents), 1))
-    children = parents[:, 0] + blend * (parents[:, 1] - parents[:, 0])
+    count = len(selected) - len(keeper)
+    first = _ga_parents(selected, values, rng, count)
+    second = _ga_parents(selected, values, rng, count)
+    blend = rng.random((count, len(low)))
+    children = first + blend * (second - first)
     mutated = rng.random(children.shape) < rate
-    step = rng.normal(0.0, 0.1, children.shape) * (high - low)
+    step = rng.normal(0.0, 0.1 * shrink, children.shape) * (high - low)
     return np.vstack([keeper, np.clip(np.where(mutated, children + step, children), low, high)])
