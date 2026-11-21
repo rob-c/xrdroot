@@ -29,7 +29,7 @@ from .streamers import Member
 from .wdeclared import MAPS, STL_KINDS, Catalogue, Spelled, pair_name, parse_type
 from .winfo import INFOS, Element
 
-__all__ = ["DescribedSource", "flat_reader_for", "reader_for"]
+__all__ = ["DescribedSource", "Members", "flat_reader_for", "reader_for"]
 
 #: The streamer type a file gives a container member, which its reader goes by.
 STREAMER = 500
@@ -38,6 +38,12 @@ STREAMER = 500
 #: ``vector<TObject> *fVectorTobject``: the container written where the pointer stands, with
 #: no tag in front of it to say a pointer was there at all.
 STL_POINTER = 71
+
+#: The two streamer types of a member that is one object written where it stands - ROOT's
+#: ``kObject`` and ``kObjectAny``. The record goes where the member is with no class name in
+#: front of it, so the description the class is laid out by is the only place that says what
+#: class the object is. A pointer to one is ``kObjectPtr``, which names its class itself.
+HELD_OBJECTS = (61, 62)
 
 #: How many catalogues' layouts are kept at once. A program declares a bounded number of
 #: classes, so it reads a bounded number of catalogues - one per class declared again - and a
@@ -170,22 +176,61 @@ def _array_members(source: Any, classname: str) -> tuple[str, ...]:
     )  # fmt: skip
 
 
+def _class_of(source: Any, classname: str) -> tuple[tuple[str, str], ...]:
+    """Which of a class's members hold an object of one of ROOT's own classes by value, and the
+    class each of them is: the ``fP`` of a ``TLorentzVector`` is a ``TVector3``.
+
+    ROOT writes that object's record where the member stands, with nothing in the bytes saying
+    which class it is, so what the reader hands back for it is a dictionary of members and no
+    name of a class - which is not something a macro's ``fLorentz.Px()`` can be read off. Only
+    a class the description lays out here is named: one the program declared is not, since
+    what it is was already known from the declaration that made it.
+    """
+    layout = source.streamers().get(classname) or {}
+    return tuple(
+        (name, parse_type(member.typename).name)
+        for name, member in layout.items()
+        if member.stype in HELD_OBJECTS and parse_type(member.typename).name in INFOS
+    )  # fmt: skip
+
+
+class Members(dict[str, Any]):
+    """The members of one of ROOT's own classes, read from a record that held it by value.
+
+    A dictionary of the members the class is described with, and the name of the class, which
+    the bytes did not carry: ``TLorentzVector::fP`` is a ``TVector3``, and the three numbers it
+    holds are that class's ``fX``, ``fY`` and ``fZ`` - what the namespace's ``TVector3`` is
+    made from, and what a macro reaches ``Px()`` on.
+    """
+
+    def __init__(self, members: dict[str, Any], classname: str) -> None:
+        super().__init__(members)
+        #: The class of ROOT's the members are of, as the description named the member's type.
+        self.classname = classname
+
+
 def _array_read(
     source: Any, classname: str, read: Callable[[Buffer], Any]
 ) -> Callable[[Buffer], Any]:
     """A class's record read, with each member that is one of ROOT's arrays handed back as the
-    members that class is described with - or ``read`` itself, for a class holding none, which
-    is every class but the ones that keep a ROOT array in them."""
+    members that class is described with, and each that is one of ROOT's own objects handed
+    back as those members and the name of their class - or ``read`` itself, for a class holding
+    neither, which is every class but the ones that keep a ROOT array or object in them."""
     names = _array_members(source, classname)
-    if not names:
+    held = _class_of(source, classname)
+    if not names and not held:
         return read
 
     def value(buf: Buffer) -> dict[str, Any]:
         row: dict[str, Any] = read(buf)
         for name in names:
-            held = row.get(name)
-            if held is not None:  # a pointer to one that was never made is still null
-                row[name] = {"TArray": {"fN": len(held)}, "fArray": held}
+            values = row.get(name)
+            if values is not None:  # a pointer to one that was never made is still null
+                row[name] = {"TArray": {"fN": len(values)}, "fArray": values}
+        for name, of_class in held:
+            members = row.get(name)
+            if isinstance(members, dict):  # a member that streams itself is no dict - a TDatime
+                row[name] = Members(members, of_class)
         return row
 
     return value
