@@ -111,7 +111,9 @@ def _whole(stype: int, values: Any) -> bytes | None:
         return None
     try:
         return _packer(stype).pack(values[0])
-    except (struct.error, TypeError):
+    except (struct.error, OverflowError, TypeError):
+        # Python 3.14 raises OverflowError where 3.13 raised struct.error, and
+        # both mean the same thing here: this number does not fit that member.
         return None
 
 

@@ -8,6 +8,10 @@ import pytest
 
 from xrdroot.random import libm
 
+#: The name C gives each function and the one NumPy gives the same function: ``atan`` is
+#: NumPy's ``arctan`` (and ``np.atan`` only from NumPy 2.0 on).
+NUMPY_NAME = {'atan': 'arctan'}
+
 
 @pytest.mark.parametrize('name,values', [
     ('exp', [-746., -745., -30., -0., 0., .5, 1., 20., 700.]),
@@ -16,7 +20,7 @@ from xrdroot.random import libm
     ('atan', [-math.inf, -1e100, -1., -0., 0., .1, 1., 1e100, math.inf]),
 ])
 def test_exact_unary_batches_match_each_c_library_call_bit_for_bit(name, values):
-    exact, fast = getattr(math, name), getattr(np, name)
+    exact, fast = getattr(math, name), getattr(np, NUMPY_NAME.get(name, name))
     values = np.asarray(values).reshape(3, 3).T
     expected = np.asarray([[exact(x) for x in row] for row in values.tolist()])
     actual = libm._each(exact, fast, values)
@@ -39,7 +43,7 @@ def test_exact_power_batches_broadcast_with_the_c_librarys_rounding():
     ('sin', [0., math.inf, -math.inf, math.nan, math.pi]),
 ])
 def test_domain_errors_in_a_batch_keep_the_original_ieee_fallback(name, values):
-    exact, fast = getattr(math, name), getattr(np, name)
+    exact, fast = getattr(math, name), getattr(np, NUMPY_NAME.get(name, name))
     # A one-element call takes the original path, including its NaN sign and payload.
     expected = np.asarray([libm._each(exact, fast, np.asarray([x]))[0] for x in values])
     actual = libm._each(exact, fast, np.asarray(values))
