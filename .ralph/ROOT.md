@@ -1297,6 +1297,13 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   for every `other` test), a DIFF wherever a `test/` or `other` test has an `OUTREF`.
 - ruff, mypy (1019 files) clean; the gate was run at the round's final commit - see "Final verification".
 
+## Round 43's result of the gate (recorded in its Final verification)
+
+- At `a57e2d05` (the docs commit on top of `4e473e1e`), the two-command decomposition is **`TOTAL 119167 0 29918
+  0 100%`**: 12 954 passed then 44 passed, at a load average of 11-20. ruff clean, mypy 1019 files,
+  maintainability 31 089 functions in 1729 files, components 1018 modules and 0 undeclared imports,
+  `mkdocs build --strict` built.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1534,6 +1541,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 40 | `17c9a7fa` | **two commits**: a class ROOT has a dictionary for is no warning, by name as well as by layout (`82001fb0`, `W0-102` closed after three rounds); the declared-class accessors' fall-backs (`de1e9cac`) | **roottest +1: `io/tree/read` PASSES** - `roottest/root/io/tree/*` is **18 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED** (`/tmp/r40/tree`) | 2: `W0-108` (**`mathcore-stdsort` is a benchmark** - 10^7 comparator calls, 4 min without finishing the first size: a decision, not a fix), `W0-109` (**the gate needs a load under ~20 again** - 99.5% at 34-54 with every test passing); `W0-102` closed |
 | 41 | `54ff9563` | **two commits**: a qualified static call fills the local handed to it by reference (`9acf40db`, half of `W0-99`); `std::generate`/`shuffle`/`next_permutation`, the ostream formatting state and `ROOT::Math::Random<T>`'s engine kinds (`e008ab0b`, worker 02's uncommitted work taken from its tree) | **no harness PASS measured** - the load average reached **144**, so `io/json` and `other/math` were not measured and `roottest/root/math/*`'s 0/4/TIMEOUT is unproven (`W0-103`) | 3: `W0-99` sharpened (**`FromJSON` reading a `TArrayI`** is the next gap), `W0-110` (w02's work landed, w03's patch not taken - UNSUPPORTED → TIMEOUT), `W0-111` (**check the worktrees at the halfway point**) |
 | 42 | `4dad0dad` | **no fan-out** (the load average opened at 76 and never went under 14): the cell's class for an object pointer (`4e5436ff`, `W0-99` closed), ROOT's iterator family and a `TIter` that owns one (`a2ef7d77`), `RootFinder::Name`/`Iterations` plus the two tests round 41's unmeasurable gate hid (`938d9faf`) | **roottest +1**: `io/json/ArrayCompress` PASSES, `io/json` **11 PASS / 0 FAIL / 0 DIFF / 1 UNSUPPORTED** (`/tmp/r42/json`); gtest `coreconttestUnit`'s two `TIter` cases pass | 6: `W0-112` (a branch shipped with no test while the gate was unmeasurable), `W0-113` (`TRangeStaticCast` and ROOT's static `Class()`), `W0-114` (`RootClasses` needs a `TH1I`'s JSON), `W0-115` (`RActionImpl`, `TQObject`), `W0-116` (`Roots::Newton`/`Brent` for `testGSLRootFinder`), `W0-117` (the `ResourceWarning` flake only a run without `--cov` sees) |
+| 43 | `0cbe14e9` | **two commits**: ROOT::Math's GSL solvers - `Roots::*`, `GSLRootFinder`, `GSLRootFinderDeriv`, `IRootFinderMethod` (`0be3733b`, `W0-116` closed); the class constants ROOT's tests name - `TTree`/`TAxis`/`TH1`/`TInterpreter` status words and `RootFinder::kMODAB` (`4e473e1e`) | **`other` +1**: `other/math/mathmore-testGSLRootFinder` PASSES, `other/math` 22 -> 23 (`/tmp/r43/gsl`); **the gtest kind measured whole for the first time since round 13**: 53 PASS / 219 FAIL / 76 UNSUPPORTED / 2 TIMEOUT (`/tmp/r43/gtest`) | 5: `W0-118` (the gtest ranking's 219 first failures), `W0-119` (the Clad derivator family is a scope decision), `W0-120` (`std::vector::resize`), `W0-121` (a `.cxx` with `main()` runs its namesake), `W0-122` (`TH1::SetStatOverflows`) |
 
 ## Notes
 
