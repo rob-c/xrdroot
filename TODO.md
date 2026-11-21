@@ -20,12 +20,12 @@ is where each kind stands after them.
 
 | kind | at `10e0e58` | now |
 |---|---|---|
-| roottest | 1038 / 2173 (47.8 %) | **1239 / 2173** (round 16's 1233 plus the six areas measured this round) |
+| roottest | 1038 / 2173 (47.8 %) | **1240 / 2173** (round 17's 1239 plus `io/bigevent/write`, round 23) |
 | gtest | 52 / 350 (14.9 %; 507 / 2020 cases) | 52 / 350 (**512** cases) |
 | pyunittest | 78 / 129 (60.5 %; 439 / 515 cases) | **81 / 129 (470 / 515 cases)** |
 | `test/` | 4 / 59 | **6 / 59** |
 | module tests (`other`) | 14 / 109 | **21 / 109** at `--jobs 5` (22 alone) |
-| **all non-tutorial** | **1185 / 2820 (42 %)** | **1406 / 2820 (49.9 %)** |
+| **all non-tutorial** | **1185 / 2820 (42 %)** | **1407 / 2820 (49.9 %)** |
 | tutorials | 558 / 1189 committed baseline (47 %) | unchanged (not re-run); a `hist/` smoke run (93 tutorials, 75 PASS) lost no baseline PASS |
 
 The "now" column is two runs at `2ef9c80`: `/tmp/r9/final2b` (roottest, 1141) and
@@ -1054,6 +1054,10 @@ cheap to maintain and impossible to reconstruct.
 | **Round 22: the next feature, same shape** - `TArrayF`/`TArrayI` as a *member* (`W0-57`), which served two groups | `d0e3a132` (winfo), `de5f7ef3` (wdobjects), `79c574f3` (rdobjects) | 0 PASS, and **the wall is gone**: `io/bigevent` still measures **2 PASS / 0 FAIL / 2 UNSUPPORTED** (`/tmp/r22/ev`) and its refusal moved from `a TArrayI is not something this writer puts in a ROOT file` to `a TVector3 here is a float rather than the dict of ...`; `io/double32` measures **3 PASS / 1 FAIL** (`/tmp/r22/d32`) with `template32` still at its `'NoneType'` wall |
 | W0-58 | todo | | 16 | `io/bigevent`'s next wall, named: `a TVector3 here is a float rather than the dict of …` - a `TVector3` member arrives where the writer expected its members, which is `wdobjects.py`'s member dispatch (a class-typed member of a ROOT class whose layout this writer carries). The next feature, and the third in the same group |
 | W0-59 | todo | | 0 | **three of four workers in round 22 left untracked `docs/README.md` / `docs/gotchas/` / `docs/discoveries/` in their worktrees** - a worker writing documentation outside its scope, or another process doing it. They were not cherry-picked; a brief should say plainly that `docs/` is not theirs, and a round should look for stray `docs/` before copying a worktree's files |
+
+| **Round 23: the third wall of `io/bigevent`, and the first PASS since round 17** - a ROOT class's member that is itself one of ROOT's classes (`TLorentzVector::fP` is a `TVector3`) | `4913f410` (declared.py), `2c123241` (wdobjects), `9da8ee08` (rdobjects) | **roottest +1**: `io/bigevent/write` **PASSES** (`3 PASS / 0 FAIL / 1 UNSUPPORTED`, `/tmp/r23/ev`). The `read` side's next wall is named: `'event' holds Event, which holds 'fVectorTobject', which is of a kind that this reader does not decode inside an entry` |
+| W0-60 | todo | | 1 | `io/bigevent/read`'s wall, named: a `vector<TObject> *` member (`fVectorTobject`) is a kind `rdobjects.py` does not decode inside an entry. That is the reader's own feature, and the group's last one - the *writer* already lays it out |
+| W0-61 | todo | | 0 | **three rounds of stray files in the main worktree from other sessions** (`dot.C`, `h.h`, `mkroot.py`, `test.root` this round; `interp.py`/`buffers.py`/`rdobjects.py` in rounds 19-20). `git status` before every gate run caught them all, but the loop is sharing a worktree with another writer: the round should `git clean -n` its own files before the gate |
 
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
