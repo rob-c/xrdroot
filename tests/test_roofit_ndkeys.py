@@ -80,3 +80,17 @@ def test_an_estimate_with_no_observables_says_so(cloud):
     _, _, data = cloud
     with pytest.raises(ValueError, match="at least one observable"):
         ROOT.RooNDKeysPdf("k", "k", [], data)
+
+
+def test_a_kernel_estimate_is_a_density_already_and_announces_no_integral(cloud, capsys):
+    """ROOT makes no ``RooRealIntegral`` for a kernel estimate - the normalisation is part of
+    the estimate - so neither a plot's copy of it nor a histogram of one says a word, where a
+    Gaussian whose mean is a function does say one."""
+    from xrdroot.roofit import integration
+
+    x, y, data = cloud
+    estimate = ROOT.RooNDKeysPdf("k", "k", [x, y], data)
+    capsys.readouterr()
+    integration.announce(estimate, frozenset({"x", "y"}))
+    integration.announce(estimate, frozenset({"x", "y"}), normalising=True)
+    assert capsys.readouterr().out == ""

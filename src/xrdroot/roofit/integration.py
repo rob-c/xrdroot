@@ -223,7 +223,7 @@ def numeric_names(func: Any, names: frozenset[str], rng: Any = None) -> list[str
 
 
 def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | None = None,
-             normalising: bool = False) -> None:  # fmt: skip
+             normalising: bool = False, inner: bool = True) -> None:  # fmt: skip
     """``RooRealIntegral::init``'s line for a numerical integral, as RooFit prints it on making one.
 
     RooFit makes - and so announces - its integral objects at moments of its
@@ -231,13 +231,19 @@ def announce(func: Any, names: frozenset[str], rng: Any = None, label: str | Non
     when a fit first evaluates its likelihood. The callers here say when;
     this says what. A density that normalises itself through a cache of its
     own (``normalised_by_cache``) makes no integral to normalise a copy for
-    generating or plotting - ``normalising`` - and says nothing then.
+    generating or plotting - ``normalising`` - and says nothing then; one whose
+    value is already a density (``announces_no_integral``) makes none at all.
+    ``inner`` is for a caller that knows the integrals the copy is made of are
+    announced elsewhere: a product's generation context announces each
+    factor's own.
     """
     if normalising and getattr(func, "normalised_by_cache", False):
         return
-    inner = getattr(func, "announce_inner", None)
-    if inner is not None:  # integrals a closed form is made of, which may themselves be numeric
-        inner(frozenset(names), rng)
+    if getattr(func, "announces_no_integral", False):
+        return
+    told = getattr(func, "announce_inner", None)
+    if told is not None and inner:  # integrals a closed form is made of, said with it
+        told(frozenset(names), rng)
     numeric = numeric_names(func, names, rng)
     if not numeric:
         return

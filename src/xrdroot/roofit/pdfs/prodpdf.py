@@ -56,6 +56,11 @@ def _ordered(args: tuple[Any, ...]) -> dict[str, tuple[str, ...]]:
 class RooProdPdf(RooAbsPdf):
     """A product of densities."""
 
+    #: A product generates each factor in a context of its own, which announces the integral it
+    #: normalises that factor through - so the copy a generator makes of the product itself has
+    #: none to announce, as RooFit's own product is silent while it sets up to generate.
+    factors_announce_themselves = True
+
     def __init__(self, name: Any, title: Any = "", *args: Any, **kwargs: Any) -> None:
         from ..cmdargs import make
 

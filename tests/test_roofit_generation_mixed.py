@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from xrdroot.roofit.functions import RooPolyVar
+from typing import Any
+
+from xrdroot.roofit.collections import RooArgSet
+from xrdroot.roofit.functions import RooFormulaVar, RooPolyVar
 from xrdroot.roofit.pdfs.basic import RooGaussian
+from xrdroot.roofit.pdfs.prodpdf import RooProdPdf
 from xrdroot.roofit.rng import RooRandom
 from xrdroot.roofit.variables import RooRealVar
 
@@ -36,3 +40,25 @@ def test_observables_the_density_cannot_draw_itself_are_all_sampled_numerically(
     model = RooGaussian("model", "model", x, fy, s)
     chosen = (context_for(model, frozenset(["s", "y"])), context_for(model, frozenset(["x", "y"])))
     assert (type(chosen[0]), type(chosen[1])) == (NumericContext, MixedContext)
+
+
+def test_a_products_generation_announces_each_factors_integral_and_not_its_own(
+    capsys: Any,
+) -> None:
+    """rf309's model in a product, as ROOT 6.40 prints it: three lines for the factor whose
+    normalisation is numeric - one at each of the generator's two copies, and one for its own
+    context - and none for the product, whose integral is its factors'."""
+    x, y, z = (RooRealVar(n, n, -5, 5) for n in "xyz")
+    a0, a1 = RooRealVar("a0", "a0", -3.5, -5, 5), RooRealVar("a1", "a1", -1.5, -1, 1)
+    fy = RooFormulaVar("fy", "a0-a1*sqrt(10*abs(y))", RooArgSet(y, a0, a1))
+    model = RooGaussian("model", "model", x, fy, RooRealVar("sigma", "sigma", 1.5))
+    gz = RooGaussian("gz", "gz", z, RooRealVar("m", "m", 0.0), RooRealVar("w", "w", 2.0))
+    together = RooProdPdf("model3", "model3", RooArgSet(model, gz))
+    capsys.readouterr()
+    RooRandom.randomGenerator().SetSeed(7)
+    together.generate([x, y, z], 5)
+    said = capsys.readouterr().out.splitlines()
+    assert len(said) == 3
+    assert {line.split("RooRealIntegral::init(")[1].split(")")[0] for line in said} == {
+        "model_Int[x,y]"
+    }
