@@ -60,6 +60,10 @@ class Reopener:
         return open_url(url, "rb", config=self.config)
 
 
+#: How many read-ahead windows one source keeps: 16 MB of a file at a time.
+WINDOWS_KEPT = 4
+
+
 class Source:
     """Random access to the bytes of a file, wherever they are.
 
@@ -81,6 +85,8 @@ class Source:
         "_pid",
         "_reopen",
         "_inherited",
+        "_windows",
+        "_window_order",
     )
 
     def __init__(
@@ -91,6 +97,9 @@ class Source:
         self.owned = owned
         #: Where the file keeps the description of its own classes.
         self.info: tuple[int, int] = (0, 0)
+        #: Windows of the file kept for the branches that share this source, oldest first.
+        self._windows: dict[int, bytes] = {}
+        self._window_order: list[int] = []
         #: Other files opened on this one's behalf - the files its trees'
         #: friends are in - which close when it does.
         self.companions: list[Any] = []
@@ -147,6 +156,39 @@ class Source:
         reopen = state["reopen"]
         self.__init__(reopen(), state["name"], owned=True, reopen=reopen)  # type: ignore[misc]
         self.info = state["info"]
+
+    def window(self, offset: int, size: int, span: int) -> bytes:
+        """``size`` bytes from ``offset``, out of an aligned window of ``span`` bytes kept here.
+
+        Every branch of a tree reads a window of its own today, and a tree's flushes interleave
+        the branches' baskets - so forty branches read the same megabytes forty times: 41 MB out
+        of a 3 MB file, measured. One window, aligned so that every branch's request falls inside
+        it, turns that into one read of the file's neighbourhood per window.
+        """
+        start = (offset // span) * span
+        stop = min(start + span, self._length())
+        if offset + size > stop:  # it straddles two windows: read the bytes it asks for
+            return self.read(offset, size)
+        kept = self._windows.get(start)
+        if kept is None:
+            kept = self.read(start, stop - start)
+            self._keep(start, kept)
+        return kept[offset - start : offset - start + size]
+
+    def _length(self) -> int:
+        """How many bytes the file holds, as its own end says."""
+        here = self.handle.tell()
+        self.handle.seek(0, 2)
+        total = self.handle.tell()
+        self.handle.seek(here)
+        return int(total)
+
+    def _keep(self, start: int, data: bytes) -> None:
+        """Keep one window, forgetting the oldest once a few are held."""
+        self._windows[start] = data
+        self._window_order.append(start)
+        while len(self._window_order) > WINDOWS_KEPT:
+            self._windows.pop(self._window_order.pop(0), None)
 
     def read(self, offset: int, size: int) -> bytes:
         if self._pid != os.getpid():

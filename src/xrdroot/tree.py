@@ -39,6 +39,10 @@ DEFAULT_STEP = 10_000
 #: How many bytes of one branch's baskets are read in a single request.
 AHEAD = 1 << 20
 
+#: How wide the read-ahead window a network read is served from is: four times the run it
+#: brings back, so a request never straddles two windows and every branch of a tree shares one.
+WINDOW = 4 * AHEAD
+
 #: How many entries of whole objects one branch decodes for a formula and keeps: a draw
 #: asks for a tree's entries once per expression, at most this many at a time.
 REMEMBERED = 100_000
@@ -319,7 +323,7 @@ class Branch:
         if len(run) == 1:
             return Basket.keyed(source, seeks[index], sizes[index], has_offsets)
         start, end = seeks[index], seeks[run[-1]] + sizes[run[-1]]
-        raw = source.read(start, end - start)
+        raw = source.window(start, end - start, WINDOW)
         self._ahead = {
             other: Basket.parsed(raw[seeks[other] - start : seeks[other] - start + sizes[other]],
                                  has_offsets)
