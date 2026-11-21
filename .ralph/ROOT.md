@@ -962,6 +962,31 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Gates: `12888 passed`, `TOTAL 118142 0 29650 0 100%`, ruff/mypy/maintainability/components/`mkdocs --strict` clean,
   `XRDROOT_TEST_OTHER_MACHINE=1` the same; the coverage gate ran after each cherry-pick (`W0-74`).
 
+## Round 33's close (recorded here for the next iteration)
+
+- Base `91bf694c`, closed at `cc6125b7`. **Two commits, +1 PASS** - and one worker produced a diagnosis worth more than
+  the commits.
+- **`other/math` is 19 PASS / 0 FAIL / 45 UNSUPPORTED / 1 TIMEOUT** (`/tmp/r33/other`): `mathcore-testMinim` passes because
+  `pyroot/core/mathtools.py`'s `Minimizer` can now be cleared and asked for its MINOS errors (`88fa5527`).
+- **`roottest/root/math/*` now runs**: ROOT::Math's `SVector`/`SMatrix` exist (`e3838fad`, a new
+  `pyroot/linalg/smatrix.py`) and all five tests reach their next wall, each named in `W0-90` (`ROOT.Transpose` is
+  missing, `testLoadLibMathMore`, `SMatrix<d…` typing, `ValueError: invalid l…` at `testOperations.cxx:95`).
+- **`W0-91` is the round's prize: `W0-79`'s root cause, measured byte for byte.** Worker 02 shipped no commit but found it
+  (its note is `/tmp/r33/w02/W02-tref-note.md`): ROOT numbers a clone into a **new `ProcessID` record** when `addref`'s
+  `TRef` constructor calls `TProcessID::AssignID`, and writes that index into the reference **and** into each cloned
+  object's identifier top byte (`r1.fUniqueID = 0x02000009`, `r1.fBits = 50331672`; we write `0` and `50331648`). Two
+  edits, both named: `wbranch.py`'s `tref_record` writes the process's **session** index where `TRef::Streamer` writes its
+  **file** index (`file.WriteProcessID(ref._pid)` - `pyroot/trees/objects.py::_named_processes` already calls it and
+  discards the result), and `copying.py`'s `ClonedSlot` must read a clone's `fUniqueID`/`fBits` from the live objects in
+  `tree._addresses[leaf.branch]` rather than from the decoded columns. **With the second alone, stage 1 would break** -
+  both are needed before any of the six DIFFs move.
+- **`W0-92`**: a file xrdroot writes carries no `TRefTable` (`pyroot/trees/tree.py:251` never writes a `fBranchRef`;
+  `wtree.py:1499` writes `0`), so `read_referenced()` reads every split collection of the entry in branch order.
+- Worker 01 of this round died with nothing at all; worker 02 died with the note. **Read `<worktree>/*.md` too, not only
+  `docs/discoveries/`** (`W0-88`'s rule, extended).
+- Gates: `12907 passed`, `TOTAL 118409 0 29722 0 100%`, ruff/mypy (1019 files)/maintainability/components/`mkdocs
+  --strict` clean, `XRDROOT_TEST_OTHER_MACHINE=1` the same; the coverage gate ran after each cherry-pick (`W0-74`).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1000,6 +1025,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 33's result of it, at `cc6125b7`: `TOTAL 118409 0 29722 0 100%`, `12907 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1019 files,
+  maintainability 30 820 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 32's result of it, at `f359f0be`: `TOTAL 118142 0 29650 0 100%`, `12888 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
   maintainability 30 734 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -1141,6 +1169,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 30 | `4cdb3649` | **three commits**: a `char[N][M]` is one buffer of its rows (`71dba22d`), a `std::pair` written on its own is `$pair` (`8e797bcb`), the identifier and its process (`ae646b4e`) | **roottest +2: `io/json/BasicTypes` and `io/json/Objects` PASS** (`/tmp/r30/json` -> `/tmp/r30/json2`); `io/json` is **7 PASS / 0 FAIL / 0 DIFF / 5 UNSUPPORTED**, `io/tree` unchanged at 10 / 8 / 2 (`/tmp/r30/tree`) | 3: `W0-82` (`FromJSON` filling an existing object's containers), `W0-83` (`W0-78` with its mechanism measured), `W0-84` (two workers died, `W0-77`/`W0-79` open); `W0-81` closed |
 | 31 | `c862d06a` | **five commits, one feature in two halves**: a `TObject` reads back with `fBits`' heap bits (`a65836dd`) and `fUniqueID`'s process byte (`ca510e97`); `FromJSON` fills a container a constructor left empty (`46dbd65c`); a value in full where a pointer is a `$ref` (`6b3e0928`); a `Double32_t` template spelling (`d07a00cd`) | **roottest +3**: `io/tree/test-rc` PASSES (`/tmp/r31/tree2`: `io/tree` 10 -> **11** PASS), and `io/json/STL1` + `StreamerLoop` PASS while `STL` moved UNSUPPORTED -> DIFF (`/tmp/r31/json`: `io/json` 7 -> **9** PASS, 1 DIFF, 2 UNSUPPORTED); `io/double32` unchanged at 3 PASS / 1 FAIL (`/tmp/r31/d32`) | 2: `W0-85` (the same two values for a **cloned** file's split collection - five tests, two lines each), `W0-86` (`STL`'s `set1` is 2 343 bytes where ROOT's is 5 144); `W0-82` and `W0-83` closed |
 | 32 | `3372a1eb` | **two commits**: a `std::set`/`std::map` keeps a copy of what it is given, as C++ does (`8c150a28`); ROOT::Math's integration kinds, function interfaces and Util (`62afe7fe`) | **roottest +1**: `io/json/STL` PASSES - `io/json` **10 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED** (`/tmp/r32/json`); **`other` +2**: `other/math/*` **16 -> 18 PASS**, no PASS lost (`/tmp/r32/other`) | 5: `W0-87` (`other/math`'s next six: `Minimizer.Clear()`/`GetMinosError()`, `Minuit2Minimizer`, `BinData.GetErrorType`, `Chi2FCN`), `W0-88` (**read a dead worker's `docs/discoveries/` - that is where `W0-87` came from**), `W0-89` (`roottest/root/math/*`, 5 tests, 0 PASS); `W0-86` closed; `W0-85`/`W0-79` re-queued |
+| 33 | `91bf694c` | **two commits**: a `Minimizer` that can be cleared and asked for its MINOS errors (`88fa5527`); ROOT::Math's `SVector`/`SMatrix`, subscripted as the macro writes them (`e3838fad`) | **`other` +1**: `other/math/mathcore-testMinim` PASSES - `other/math` **19 PASS / 0 FAIL / 45 UNSUPPORTED / 1 TIMEOUT** (`/tmp/r33/other`); `roottest/root/math/*` still **0 PASS / 4 FAIL / 1 UNSUPPORTED** (`/tmp/r33/rmath`) but all five now *run* | 4: `W0-90` (`roottest/root/math`'s five named walls), `W0-91` (**`W0-79`'s root cause, measured byte for byte** - a clone's new `ProcessID` record and the file index in both the reference and the identifier), `W0-92` (no `TRefTable` is written, so a collision resolves by branch order); `W0-87`/`W0-89` partly taken |
 
 ## Notes
 
