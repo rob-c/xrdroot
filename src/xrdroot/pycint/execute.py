@@ -315,8 +315,9 @@ def _library(name: str) -> dict[str, Any]:
     return libraries.LOADED[str(found.resolve())].module if found is not None else {}
 
 
-def process_line(line: str, *, root: Any = None) -> Any:
-    """``gROOT->ProcessLine(line)``: a ``.x``/``.L`` command, or C++ statements run at once."""
+def process_line(line: str, *, root: Any = None, echo: bool = True) -> Any:
+    """``gROOT->ProcessLine(line)``: a ``.x``/``.L`` command, or C++ statements run at once,
+    a statement's value printed as cling's prompt prints it unless ``echo`` says otherwise."""
     text = line.strip()
     if text.startswith((".x", ".X")):
         return _executed(text[2:], root)
@@ -336,7 +337,16 @@ def process_line(line: str, *, root: Any = None) -> Any:
         return 0
     from .interactive.lines import run_line  # the prompt's, which runs on this module
 
-    return run_line(text, root)
+    return run_line(text, root, echo=echo)
+
+
+def process_line_fast(line: str, *, root: Any = None) -> Any:
+    """``gROOT->ProcessLineFast(line)``: the same, the value handed back and nothing printed.
+
+    ROOT's fast path skips the interpreter's echo, so ``gROOT->ProcessLineFast("1+1")`` is
+    silent where ``gROOT->ProcessLine("1+1")`` prints ``(int) 2`` one reads a value back from.
+    """
+    return process_line(line, root=root, echo=False)
 
 
 def _at_top(text: str, root: Any) -> bool:

@@ -9,7 +9,15 @@ import pytest
 from cintfake import fake
 from xrdroot.pycint import MacroError, Refusal, translate_file
 from xrdroot.pycint.dialect import ROOT as DIALECT
-from xrdroot.pycint.execute import arguments, load, process_line, run, run_source, split_call
+from xrdroot.pycint.execute import (
+    arguments,
+    load,
+    process_line,
+    process_line_fast,
+    run,
+    run_source,
+    split_call,
+)
 from xrdroot.pycint.runtime import ROOT
 from xrdroot.pycxx import cache
 from xrdroot.pycxx.runtime.namespace import DECLARED
@@ -183,6 +191,22 @@ def test_a_line_that_is_one_expression_hands_back_its_value(
     assert process_line("int c = 1; c++;", root=fake()) == 1
     assert process_line("b + c", root=fake()) == 5
     assert capsys.readouterr().out == "(int) 42\n(int) 3\n(int) 5\n"
+
+
+def test_the_fast_path_hands_the_value_back_without_printing_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ROOT's ``ProcessLineFast`` is silent where ``ProcessLine`` echoes: cling's echo belongs
+    to the prompt, and a tutorial that reads a file back out of ``hsimple(1)`` gets no line
+    printed for it."""
+    path = write(tmp_path, "twice.C", "int twice(int n) { return 2 * n; }")
+    process_line(f".L {path}", root=fake())
+    capsys.readouterr()
+    assert process_line_fast("twice(21)", root=fake()) == 42
+    assert process_line_fast("7 / 2", root=fake()) == 3
+    assert capsys.readouterr().out == ""
+    assert process_line("twice(21)", root=fake()) == 42  # the slow path still echoes
+    assert capsys.readouterr().out == "(int) 42\n"
 
 
 def test_a_kept_translation_reads_like_the_macro_and_runs_as_a_script() -> None:
