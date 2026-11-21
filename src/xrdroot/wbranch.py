@@ -687,6 +687,11 @@ CLONES, CLONES_MEMBER = 3, 31
 #: ``fStreamerType`` of a ``TString`` member, and of ``TObject``'s bits, whose
 #: ``TLeafElement`` names no width.
 TSTRING, BITS_TYPE = 65, 15
+#: The element kinds that are one object held by value, which a split array writes as the
+#: bytes the object's own streamer made of it: ``TRef``'s record.
+WHOLE_OBJECT = ("TStreamerObject", "TStreamerObjectAny")
+#: The one class ROOT streams itself that a split collection can hold as a member.
+REFERENCE = "TRef"
 
 
 #: ``TObject``'s class version, which ``TRef::Streamer`` writes in front of its ``TObject``
@@ -705,11 +710,17 @@ def tref_record(ref: Any) -> bytes:
     the trees that refer to it. Checked byte for byte against the 6.40 oracle.
     """
     process = getattr(ref, "_pid", None)
+    who = 0 if process is None else int(process.GetUniqueID())
+    return _ref_bytes(int(ref.GetUniqueID()), int(ref._bitword()), who)
+
+
+def _ref_bytes(number: int, bits: int, process: int) -> bytes:
+    """One reference's record: ``TObject``'s version, the object it names, its bits, ``fPID``."""
     buf = WBuffer()
     buf.u16(TOBJECT_VERSION)
-    buf.u32(int(ref.GetUniqueID()))
-    buf.u32(int(ref._bitword()))
-    buf.u16(0 if process is None else int(process.GetUniqueID()))
+    buf.u32(number)
+    buf.u32(bits)
+    buf.u16(process)
     return bytes(buf.data)
 
 
@@ -743,7 +754,7 @@ def clones_members(element: str | Layout) -> list[CloneMember]:
     if isinstance(element, Layout):
         return _layout_members(element)
     found: list[CloneMember] = []
-    for fid, described in enumerate(_description(element)):
+    for fid, described in enumerate(_description(element)[2]):
         if described[0] == "TStreamerBase":
             found += clones_members(described[1])
         else:
@@ -752,37 +763,67 @@ def clones_members(element: str | Layout) -> list[CloneMember]:
 
 
 def _layout_members(layout: Layout) -> list[CloneMember]:
-    """A macro's class as it was declared: each base's members first, then its own."""
+    """A macro's class as it was declared: each base's members first, then its own, each
+    numbered by its place in the class's streamer elements - which is the ``fID`` ROOT
+    writes on a member's branch, the base taking the first place and not its members."""
     found: list[CloneMember] = []
     for base in layout.bases:
         found += clones_members(base.name)
-    for fid, member in enumerate(layout.members):
+    for fid, member in enumerate(layout.members, start=len(layout.bases)):
         found.append(CloneMember(layout.name, fid, member.name, member.stype, member.title,
                                  layout.checksum, layout.version, member.typename))  # fmt: skip
     return found
 
 
-def _description(classname: str) -> tuple[Any, ...]:
-    if classname not in INFOS:
+def _published(classname: str) -> tuple[int, int, tuple[Any, ...]] | None:
+    """The layout a class the program declared has in memory, as its dictionary published it.
+
+    Nothing below ``pyroot`` can reach a class a macro declared, so the layer that knows
+    the class's declaration publishes the description it made of it in
+    :data:`~.interp.DECLARED`, which is where a read of another file's objects takes the
+    class from too. A clone of a split ``TClonesArray`` of such a class is written by it:
+    the class the cloned file describes is the class this program has, and ROOT splits the
+    array by the description in memory rather than by the file's own account of it.
+    """
+    from .interp import DECLARED
+
+    return DECLARED.get(classname)
+
+
+def _description(classname: str) -> tuple[int, int, tuple[Any, ...]]:
+    """What a class is described as: its checksum, version and elements."""
+    found = INFOS.get(classname)
+    if found is None:
+        found = _published(classname)
+    if found is None:
         raise UnsupportedFeatureError(
             f"a TClonesArray of {classname} is split here only for a class this writer "
-            f"carries a description of; give the branch split level 0 and it is written whole"
+            f"carries a description of - one of ROOT's, or one the program declared - and "
+            f"this is neither; give the branch split level 0 and it is written whole"
         )
-    return INFOS[classname][2]
+    return found
 
 
 def _plain(owner: str, fid: int, element: Any) -> CloneMember:
+    """One member of a class a description gives, as a branch of a split array holds it."""
     kind, name, title, stype = element[:4]
-    if kind not in ("TStreamerBasicType", "TStreamerString") or (
-        stype != TSTRING and stype not in BASIC
+    # Only a reference is a whole object this writer streams itself; a member whose class
+    # ROOT would split further - a histogram's axis - is one this writer has no record for.
+    held = stype == OBJECT and kind in WHOLE_OBJECT and element[8] == REFERENCE
+    if not held and (
+        kind not in ("TStreamerBasicType", "TStreamerString")
+        or (stype != TSTRING and stype not in BASIC)
     ):
         raise UnsupportedFeatureError(
             f"{owner}::{name} is a {kind[9:]} member, and a TClonesArray is split here when "
             f"each member of its objects is a number, a TString or an object whose class "
             f"streams itself; give the branch split level 0 and it is written whole"
         )
-    checksum, version, _elements = INFOS[owner]
-    return CloneMember(owner, fid, name, stype, title, checksum, version)
+    checksum, version, _elements = _description(owner)
+    # A whole object's branch names no class of its own - ``fClonesName`` is the array's -
+    # so the leaf is what says the member is a ``TRef`` rather than a number.
+    return CloneMember(owner, fid, name, stype, title, checksum, version,
+                       element[8] if held else "")  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -820,18 +861,40 @@ class SplitClones(Spec):
         return Branch(name, title, 0, column, [leaf], info)
 
     def classes(self) -> tuple[str, ...]:
-        owners = dict.fromkeys(member.owner for member in self.members())
+        members = self.members()
+        owners = dict.fromkeys(member.owner for member in members)
         #: A macro's own class is not one the file *uses*: the description it is written by
         #: is carried in the file's streamer record instead, as a split class of a branch of
         #: objects writes its own - otherwise the writer looks it up among ROOT's and fails.
         own = self._own
         if own is not None:
             owners.pop(own, None)
+        for described in self._carried(members):
+            owners.pop(described.name, None)
         return (*super().classes(), "TClonesArray", *_held("TClonesArray")[1:], *owners)
 
     def declared(self) -> tuple[Any, ...]:
-        """A macro's class, carried rather than looked up among ROOT's."""
-        return () if self._own is None else (self.element,)
+        """The classes carried rather than looked up among ROOT's."""
+        own = () if self._own is None else (self.element,)
+        return (*own, *self._carried(self.members()))
+
+    def _carried(self, members: list[CloneMember]) -> list[Described]:
+        """The classes this write must describe itself, because no donor here describes one.
+
+        A split array's element class is usually one ROOT has, which :data:`~.winfo.INFOS`
+        describes; a class the program declared is not among them, and the file's streamer
+        record carries the layout published for it instead - as a branch of whole objects
+        carries the description of the file it was cloned from.
+        """
+        if self._own is not None:
+            return []  # a macro's class, carried as the declaration it was made from
+        kept: dict[str, Described] = {}
+        for member in members:
+            if member.owner in INFOS:
+                continue
+            checksum, version, elements = _description(member.owner)
+            kept.setdefault(member.owner, Described(member.owner, version, checksum, elements))
+        return list(kept.values())
 
     @property
     def _own(self) -> str | None:
@@ -845,5 +908,42 @@ def _column(name: str, member: CloneMember, size: int) -> Any:
     if member.stype == TSTRING:
         return StringRows(name, size)
     if member.stype == OBJECT:
-        return StreamedColumn(name, size)
+        return WholeRows(name, member.typename, size)
     return MemberRows(name, member.stype, member.title, size)
+
+
+class WholeRows(StreamedColumn):
+    """One member of a split collection that is an object of its own - ROOT writes each row
+    as the object's own record rather than as a column of numbers.
+
+    An entry's rows are the bytes the object's streamer made of them when the objects were
+    in memory. A clone reads the rows back out of the source's baskets instead, where a file
+    has described them as the values its record holds - a ``TRef`` as ``TObject``'s version
+    and the object it refers to, its bits and its ``fPID`` - and those are that record again.
+    """
+
+    #: The class whose described value is written back as a record of its own, which is the
+    #: one class ROOT streams itself that a split collection holds: a reference.
+    classname: str
+
+    def __init__(self, name: str, classname: str, basket_size: int) -> None:
+        super().__init__(name, basket_size)
+        self.classname = classname
+
+    def pack(self, value: Any) -> bytes:
+        if self.classname == REFERENCE and _described_rows(value):
+            return b"".join(_ref_record(row) for row in value)
+        return super().pack(value)  # the bytes the streamer made, or refused
+
+
+def _described_rows(value: Any) -> bool:
+    """Is this one entry's rows as a reader made them from the file's own description?"""
+    return isinstance(value, (list, tuple)) and all(isinstance(row, dict) for row in value)
+
+
+def _ref_record(described: dict[str, Any]) -> bytes:
+    """A ``TRef`` as a reader describes one, back as the record :func:`tref_record` writes."""
+    base = described.get("TObject") or {}
+    return _ref_bytes(
+        int(base.get("fUniqueID", 0)), int(base.get("fBits", 0)), int(described.get("fPID", 0))
+    )
