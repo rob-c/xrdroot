@@ -792,6 +792,22 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   `test.root` this round). Every one was caught by `git status` before the gate; a round should also
   `git clean -n` before it commits.
 
+## Round 24's close (recorded here for the next iteration)
+
+- Base `a12e5e43`, closed at `59a2cac3`. Two commits, **one feature**: the reader now takes a container a
+  member *points at* (`vector<TObject> *fVectorTobject`, stype 71) - `0d4ed89f`, `1ac5101d`.
+- `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r24/ev3`) and `read`'s refusal moved on to
+  `fVectorTnamed`.
+- **The round's most useful result is a near-miss, recorded instead of shipped.** `fVectorTnamed` is
+  `vector<TNamed> *fVectorTnamed[6]` - a pointer to a container *and* an array (stype 91 = `STL_POINTER + 20`).
+  Treating 91 as 71 moved the harness's refusal further, which looked like progress; the existing unit test
+  `test_an_array_of_pointers_to_containers_leaves_the_type_as_the_file_describes_it` failed with
+  `DID NOT RAISE`, so the change was **reverted** (`W0-62`). A future round writes the array-of-pointers
+  reading rather than relabelling the kind.
+- **`W0-63` is the reusable lesson**: a one-line change that moves a refusal further is not progress until
+  the full suite agrees. The unit tests caught this in 0.3 s; the harness alone would have called it a gain.
+  Every round should run `pytest` before believing a harness delta.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -830,6 +846,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 24's result of it, at `59a2cac3`: `TOTAL 117378 0 29358 0 100%`, `12740 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
+  maintainability 30 398 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 23's result of it, at `4fa05128`: `TOTAL 117308 0 29330 0 100%`, `12725 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 367 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -935,6 +954,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 21 | `57940f19` | **one feature in four files** (`W0-55`'s rule): `Event::fTemplateMember`, the `template2<template1<int>>` member of `io/bigevent`'s class - `winfo.py`, `wdeclared.py`, `wdobjects.py`, `rdobjects.py` | **0 PASS, and the wall is gone**: `io/bigevent` builds and measures **2 PASS / 0 FAIL / 2 UNSUPPORTED** (`/tmp/r21/ev2`), its refusal moved to `a TArrayI is not something this writer puts in a ROOT file` | 2: `W0-56` (stale-cache ImportError), `W0-57` (`TArrayI` as a member) |
 | 22 | `249dce34` | **one feature in three files** (`W0-55`'s rule): `TArrayF`/`TArrayI` as a *member* of a class (`W0-57`), which serves `io/bigevent` and `double32` - `winfo.py`, `wdobjects.py`, `rdobjects.py` | **0 PASS, the wall gone**: `io/bigevent` still **2 PASS / 0 FAIL / 2 UNSUPPORTED** with its refusal moved to `a TVector3 here is a float rather than the dict of ...`; `io/double32` **3 PASS / 1 FAIL** (`/tmp/r22/ev`, `/tmp/r22/d32`) | 2: `W0-58` (the `TVector3` member), `W0-59` (stray `docs/` in worktrees) |
 | 23 | `21ab15c4` | **one feature in three files**: a ROOT class's member that is itself one of ROOT's classes (`TLorentzVector::fP` is a `TVector3`) - `pyroot/core/declared.py`, `wdobjects.py`, `rdobjects.py` | **roottest +1: `io/bigevent/write` PASSES** - the group is **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r23/ev`), its `read` side walled by `a vector<TObject> * member ... that this reader does not decode inside an entry` | 2: `W0-60`, `W0-61` |
+| 24 | `a12e5e43` | **one feature in two files**: a container a member *points at* is read as the container it names (`vector<TObject> *fVectorTobject`, stype 71) - `interp.py`, `rdobjects.py` | **0 PASS**: `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r24/ev3`), `read`'s refusal moved to `fVectorTnamed` | 2: `W0-62` (that wall is `vector<TNamed> *[6]`, an array of pointers - the round's one-line attempt was reverted by its own unit test), `W0-63` (a refusal that moves further is not progress until the full suite agrees) |
 
 ## Notes
 
