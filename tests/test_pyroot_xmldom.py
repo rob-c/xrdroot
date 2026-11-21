@@ -114,3 +114,86 @@ def test_a_root_element_let_go_of_leaves_the_document_without_one(document):
     assert document.GetRootNode() is not None
     document.ReleaseRootNode()
     assert document.GetRootNode() is None
+
+
+class Hearer:
+    """A SAX handler that writes down what it hears, as a macro's own handler would."""
+
+    def __init__(self, skip=()):
+        self.heard = []
+        self._skip = skip
+
+    def __getattr__(self, name):
+        if name in self._skip:
+            raise AttributeError(name)
+        return lambda *words: self.heard.append((name, *words))
+
+
+def test_a_sax_parser_tells_its_handler_what_the_document_does(tmp_path):
+    """``TSAXParser`` reports each event of the document to the handler it was connected to:
+    an element with its attributes in the order written, the text between elements, a
+    comment, and a CDATA block as one block."""
+    path = tmp_path / "events.xml"
+    path.write_text(
+        '<?xml version="1.0"?>\n<root>\n<!-- said -->\n<one id="7" city="Oslo">text</one>'
+        "<two><![CDATA[raw <text>]]><?pi value?></two></root>\n"
+    )
+    heard = Hearer()
+    parser = ROOT.TSAXParser()
+    parser.ConnectToHandler("Hearer", heard)
+    assert parser.ParseFile(path) == 0
+    events = [(name, words) for name, *words in heard.heard]
+    assert [name for name, _ in events] == [
+        "OnStartDocument",
+        "OnStartElement",
+        "OnCharacters",
+        "OnComment",
+        "OnCharacters",
+        "OnStartElement",
+        "OnCharacters",
+        "OnEndElement",
+        "OnStartElement",
+        "OnCdataBlock",
+        "OnEndElement",
+        "OnEndElement",
+        "OnEndDocument",
+    ]
+    root = events[1][1]
+    assert (root[0], list(iterated(root[1]))) == ("root", [])  # written without attributes
+    one = events[5][1]
+    assert [(attr.GetName(), attr.GetValue()) for attr in iterated(one[1])] == [
+        ("id", "7"),
+        ("city", "Oslo"),
+    ]
+    assert events[6][1] == ["text"]
+    assert events[9][1] == ["raw <text>", 10]
+
+
+def test_a_sax_parser_on_a_file_it_cannot_read_reports_it_and_says_nothing(tmp_path):
+    """A file that is not there is not read and the handler hears none of it - ROOT's own
+    tutorials hand this parser a path that may not exist - while a document that stops being
+    readable halfway is reported to the handler as the fatal error it is."""
+    heard = Hearer()
+    parser = ROOT.TSAXParser()
+    parser.ConnectToHandler("Hearer", heard)
+    assert parser.ParseFile(tmp_path / "missing.xml") == -1
+    assert heard.heard == []
+    broken = tmp_path / "broken.xml"
+    broken.write_text("<root><unclosed></root>")
+    assert parser.ParseFile(broken) == -1
+    assert [name for name, *_ in heard.heard][-1] == "OnFatalError"
+
+
+def test_a_handler_that_does_not_write_a_method_down_is_told_nothing(tmp_path):
+    """A macro's handler is free to leave a method out, and then nothing happens for it."""
+    path = tmp_path / "quiet.xml"
+    path.write_text("<root><!-- said -->text</root>")
+    quiet = Hearer(skip=("OnStartDocument", "OnEndDocument", "OnComment"))
+    parser = ROOT.TSAXParser()
+    parser.ConnectToHandler("Hearer", quiet)
+    assert parser.ParseFile(path) == 0
+    assert [name for name, *_ in quiet.heard] == [
+        "OnStartElement",
+        "OnCharacters",
+        "OnEndElement",
+    ]
