@@ -373,9 +373,10 @@ class VariableEmitter(StmtEmitter):
             made = f"array('char', {self._dimensions(decl, ctype, init)})"
             return made if init is None else f"text_into({made}, {self.value(init)})"
         if len(ctype.dims) > 1:
-            items = self.value(init) if init is not None else "[]"
-            dims = self._dimensions(decl, ctype, init)
-            return f"array('char*', {dims.split(',')[0].strip('(')}, {items})"
+            # A ``char[N][M]`` is a buffer of the characters, so ``name[i]`` is its row and
+            # ``name[i][j]`` a byte of it, which a write goes into in place.
+            items = f", {self.value(init)}" if init is not None else ""
+            return f"char_array({self._dimensions(decl, ctype, init)}{items})"
         if init is None:
             return "''"
         if isinstance(init, InitList):

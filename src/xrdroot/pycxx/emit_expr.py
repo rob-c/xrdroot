@@ -398,6 +398,9 @@ class ExprEmitter(NameEmitter):
             return f"{writer}({self.value(node.left)}, {self.value(node.right)})", P.POSTFIX
         if found is not None and found.is_char:
             right = f"chr({self.value(node.right)})"
+        elif found is not None and found.is_string and found.dims:
+            # A row of a ``char[N][M]`` is the buffer of a C string, not text itself.
+            right = f"cstr({self.value(node.right)})"
         return f"{self.at(node.left, P.SHIFT)} << {right}", P.SHIFT
 
     # -- unary ---------------------------------------------------------------
