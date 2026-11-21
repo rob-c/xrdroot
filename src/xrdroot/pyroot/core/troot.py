@@ -74,6 +74,7 @@ _TRANSLATOR = "xrdroot.pycint"
 #: The translator's functions this namespace calls, each found through its provider.
 _PROVIDED: dict[str, Callable[[], Any]] = {
     "process_line": lambda: plugins.lookup("interpreter.process_line"),
+    "process_line_fast": lambda: plugins.lookup("interpreter.process_line_fast"),
     "run_source": lambda: plugins.lookup("interpreter.run_source"),
     "load_library": lambda: plugins.lookup("interpreter.load_library"),
     "loaded_libraries": lambda: plugins.lookup("interpreter.loaded_libraries"),
@@ -107,6 +108,13 @@ def _processor(what: str) -> Callable[..., Any]:
             f"not installed"
         )
     return _PROCESSOR[0]
+
+
+def _fast_processor(what: str) -> Callable[..., Any]:
+    """The translator's ``process_line_fast``, whose run is silent where cling's prompt echoes -
+    or, for a translator that has only the one, what ``ProcessLine`` runs."""
+    found = _translator("process_line_fast")
+    return found if found is not None else _processor(what)
 
 
 def _graphics(*path: str) -> Any:
@@ -696,7 +704,8 @@ class TROOT(TDirectory):
         return self.ProcessLine(line, error)
 
     def ProcessLineFast(self, line: Any, error: Any = None) -> Any:
-        return self.ProcessLine(line, error)
+        """``ProcessLineFast``: a line run without the prompt's echo of what it comes to."""
+        return _fast_processor(f"gROOT.ProcessLineFast({str(line)!r})")(str(line))
 
     def Macro(self, filename: Any, error: Any = None, padUpdate: bool = True) -> Any:
         """``Macro``: ``.x filename``, run by :mod:`xrdroot.pycint`."""

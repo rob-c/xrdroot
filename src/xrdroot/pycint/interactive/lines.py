@@ -50,9 +50,10 @@ def session_unit() -> Unit:
     return _UNITS[0]
 
 
-def run_line(text: str, root: Any = None) -> Any:
+def run_line(text: str, root: Any = None, *, echo: bool = True) -> Any:
     """``ProcessLine(text)`` of C++: run in the session's unit, its value handed back - and
-    printed, as cling prints it, when the last expression was given without its ``;``."""
+    printed, as cling prints it, when the last expression was given without its ``;`` and
+    the caller asked for cling's echo, which the fast path through the interpreter does not."""
     unit = session_unit()
     if unit.busy:
         return _cxx.run_line(text, file=FILE, dialect=session_dialect(), namespace=root)
@@ -66,7 +67,9 @@ def run_line(text: str, root: Any = None) -> Any:
     except Diagnostic as why:
         raised = Refusal if why.translating else MacroError
         raise raised(why.why, Where(FILE, _line(why.where))) from None
-    line = shown(outcome.value, outcome.spelled, outcome.lvalue) if outcome.printed else None
+    line = shown(outcome.value, outcome.spelled, outcome.lvalue)
+    if not outcome.printed or not echo:
+        line = None
     if line:
         sys.stdout.write(line + "\n")
     return outcome.value
