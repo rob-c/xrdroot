@@ -1342,6 +1342,9 @@ For the round's work, the evidence is, in this order:
 
 ## Final verification
 
+- Round 43's result of them, at `a57e2d05`: **`TOTAL 119167 0 29918 0 100%`** - 12 954 passed then 44 passed - and
+  ruff clean, mypy 1019 files, maintainability 31 089 functions, components 1018 modules / 0 undeclared,
+  `mkdocs build --strict` built. `/tmp/r43/gate1.log` is the first command's output.
 - Exact monitor-rerunnable commands (`W0-106`'s decomposition; run them in this order, from
   `/Users/rcurrie/src/xrdroot`, with `export PYTHONPATH=$PWD/src`, after `rm -f .coverage`):
   ```
