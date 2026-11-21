@@ -27,6 +27,7 @@ FAMILIES = (
     "reflection",
     "classedit",
     "collectionproxy",
+    "datatypes",
     "buffers",
     "jsonbuffer",
     "collections",
