@@ -34,6 +34,12 @@ class _Index:
         return self.entries.get((int(major), int(minor)), -1)
 
 
+def _where(friend: Any) -> str:
+    """The file a friend's tree is read from, as ROOT's warning names it."""
+    source = getattr(friend, "_source", None)
+    return str(getattr(source, "name", "") or getattr(friend, "_name", ""))
+
+
 class _Friends(_Reading):
     """``AddFriend``, ``BuildIndex`` and ``SetEntryList``."""
 
@@ -49,17 +55,19 @@ class _Friends(_Reading):
         # it in a sentence instead - here, where ROOT says it, and not at the first Draw.
         indexed = getattr(friend, "_index", None) is not None
         try:
-            # A chain of trees of different names is read as a patchwork and has no one
-            # count; it is refused or read at the first entry, not here.
-            friend_entries, own_entries = int(friend.GetEntries()), int(self.GetEntries())
+            # A chain of trees of different names is read as a patchwork and has no one count.
+            theirs, ours = int(friend.GetEntries()), int(self.GetEntries())
         except ValueError:
-            friend_entries = own_entries = 0
-        if not indexed and friend_entries < own_entries:
-            raise ValueError(
-                f"{name!r} has {friend_entries} entries and {self.GetName()!r} has "
-                f"{own_entries}: a friend is read entry for entry, so a shorter one has "
-                f"nothing to read past its own end"
-            )
+            theirs = ours = 0
+        if not indexed and ours and theirs < ours:
+            # ROOT warns "FriendElement T in file ... has less entries 3 than its parent
+            # Tree: 9" and reads on; a friend with an index may be shorter without a word, since
+            # its entries are found by key rather than by position.
+            from ...pyroot.core.messages import message
+
+            message("Warning", "TTree::AddFriend",
+                    f"FriendElement {name} in file {_where(friend)} has less entries {theirs} "
+                    f"than its parent Tree: {ours}")  # fmt: skip
         self._friends.append((name, friend))
         if self._store is None:
             self._befriend(self._source)

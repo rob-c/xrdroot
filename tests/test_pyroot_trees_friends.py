@@ -357,26 +357,39 @@ def test_a_tree_with_no_entries_of_its_own_reads_as_far_as_its_friend_does(tmp_p
     assert base.GetBranch("x") is not None  # a friend's, which ROOT's GetBranch finds
 
 
-def test_a_friend_shorter_than_its_tree_is_a_refusal_here_where_root_warns():
-    # ROOT warns "FriendElement ... has less entries" and reads past the friend's end; that is
-    # a plausible misreading of a file, so this refuses it by name instead.
+def test_a_friend_shorter_than_its_tree_is_a_warning_not_a_refusal(capsys):
+    # ROOT warns "FriendElement ... has less entries ... than its parent Tree" and reads on:
+    # bindings/distrdf's own test builds a 9-entry parent with a 3-entry friend. A friend with
+    # an index may be shorter without a word - its entries are found by key, not by position.
+    short, occasional = _three_entries(), _four_entries()
+    assert occasional.AddFriend(short, "s") is short
+    assert "Warning in <TTree::AddFriend>: FriendElement s in file" in capsys.readouterr().err
+    assert len(occasional.GetListOfFriends()) == 1
+    longer = _parent()
+    assert occasional.AddFriend(longer, "big") is longer  # a longer friend says nothing
+    assert capsys.readouterr().err == ""
+
+
+def _three_entries():
+    """A tree of three entries, shorter than the one it is read beside."""
     short = TTree("S", "shorter")
     px = np.zeros(1, "f")
     short.Branch("px", px, "px/F")
     for i in range(3):
         px[0] = i
         short.Fill()
-    assert len(short) == 3
+    return short
+
+
+def _four_entries():
+    """A tree of four entries, to be given a shorter friend."""
     occasional = TTree("O", "one with four")
     py = np.zeros(1, "f")
     occasional.Branch("py", py, "py/F")
     for i in range(4):
         py[0] = i
         occasional.Fill()
-    with pytest.raises(ValueError, match="a shorter one has nothing to read past its own end"):
-        occasional.AddFriend(short, "s")
-    longer = _parent()
-    assert occasional.AddFriend(longer, "big") is longer  # a longer friend is fine
+    return occasional
 
 
 class _CountingTree:
