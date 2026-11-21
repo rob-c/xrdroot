@@ -1412,6 +1412,36 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   **`TOTAL 119506 … 100%`** before the last two test-only commits, then re-run at `f0655cf0` - see Final
   verification.
 
+## Round 48's close (recorded here for the next iteration)
+
+- Base `c003f165`, closed at **`f16f5aeb`**. **Two commits, no harness PASS** - and the round's real product is a bug my
+  own gate caught plus ROOT's own `testTH1` measured case by case.
+- **`W0-122` closed** (`4e2ba73b`): `TH1::Normalize` (no option makes the integral over the bins' *widths* one, `"max"`
+  the largest bin, `"sum"` the sum of the weights, `GetEntries` untouched) and `TH1::EStatOverflows` as the enum a
+  macro names a value through (`TH1::EStatOverflows::kConsider`), with `Get/SetStatOverflows` over the file's
+  `fStatOverflows` and the static `TH1::StatOverflows(on)` as the global flag. **ROOT's own
+  `hist/hist/test/test_TH1.cxx` went from 13 failing cases to 11**: `TH1.Normalize` and `TH1.StatOverflows` are
+  **OK** now, measured by running the macro directly (`W0-63`: no harness delta is believed without the code's own
+  test agreeing). The numbers in `Normalize`'s unit test are ROOT's ref's, including the variable-bin case
+  (14.399998 and 7.999999).
+- **`f16f5aeb` is the gate's catch, and it is the round's most useful finding.** Putting the enum in `TH1`'s body as a
+  *class* made `hfnative._attribute` refuse that body - a class object is neither a method nor metadata - so **`TH1D`
+  stopped being a native class** and every batched ntuple fill fell back to the scalar loop: **13 failed at the
+  gate**. The bisect (78 passed at the round's base in a fresh worktree) settled it in two minutes rather than an
+  argument. A class written in a body is an enum's namespace - reading it runs nothing - so `_attribute` now accepts
+  a class whose own members are metadata, and a body holding an arbitrary object is still refused.
+- **`W0-129` is what `testTH1` still needs, case by case** (recorded, not chased): `SmoothArray`, `THLimitsFinder`,
+  `SetBuffer`, the implicit-ownership registration case and rows 175/218/270/276-277, plus three `TAxis` bin-edge
+  numerics that must match ROOT exactly. **The program is not closable in one round** - nine cases, each a feature.
+- **`W0-121` was re-examined and left as it stands**: whether `xrdroot run` should call a `.cxx`'s namesake or its
+  `main` cannot be settled against the oracle, because the only file that shows the difference
+  (`testGSLRootFinder.cxx`) defines its own `TStopwatch` and ROOT cannot interpret it at all. ROOT's own
+  `TApplication::ProcessFile` calls the *namesake*, which is what this kit does; the echo is cling's. Recorded so the
+  next round does not re-derive it.
+- Gates: **`TOTAL 119535 0 29984 0 100%`** by the two-command decomposition (12 980 passed, then 44), at a load
+  average of 12-26. ruff clean, mypy 1020 files, maintainability 31 211 functions, components 1019 modules /
+  0 undeclared, `mkdocs --strict` built.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1464,6 +1494,9 @@ For the round's work, the evidence is, in this order:
   The first reports ~99.73% by design (the ignored files' code is not covered yet) and the second
   reaches 100%. Then `ruff check src tests tools`, `mypy`, `python tools/maintainability.py check`,
   `python tools/components.py check`, `mkdocs build --strict`.
+- Round 48's result of them, at `f16f5aeb`: **`TOTAL 119535 0 29984 0 100%`** - 12 980 passed then 44 passed - at a
+  load average of 12-26; ruff clean, mypy 1020 files, maintainability 31 211 functions, components 1019 modules /
+  0 undeclared, `mkdocs build --strict` built. `/tmp/r48/gate2.log` is the first command's output.
 - Round 47's result of them, at `f0655cf0`: **`TOTAL 119506 0 29978 0 100%`** - 12 977 passed then 44 passed - at a
   load average of 13-21; ruff clean, mypy 1020 files, maintainability 31 201 functions, components 1019 modules /
   0 undeclared. `/tmp/r47/gate3.log` is the first command's output.
@@ -1663,6 +1696,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 45 | `2f5d8392` | **two commits**: `fflush` reads the name a translation writes for a stream, as `fprintf` does, and `TBits::Set`/`Get` (`4a98e20d`); `root` names an option it cannot read, and the harness matches a `PASSREGEX` across newlines as CMake does (`4468d37b`) | **`other` +1**: `root_exe_errorMessage` PASSES (`/tmp/r45/errm2`), and **both `test/` and `other` measured whole for the first time in ~28 rounds**: `other` 40 / 109 (`/tmp/r45/other`), `test/` 8 / 59 (`/tmp/r45/testkind`) | 3: `W0-123` (a `Char_t[]` of bytes becomes a `str` truncated at the first NUL), `W0-124` (the five `RooUnitTest` tests are a framework), `W0-125` (`testbits` needs only `W0-123`) |
 | 46 | `56b0a92a` | **three commits**: a `char[]` from a braced list is a byte buffer unless it spells a C string, the dialect's `buffer_functions`, and `TBits::Get` filling bytes into any element width (`af1e82fd`); a word read into a dialect string class is that class (`7e369769`); the two reads' tests and the split of two functions the limits caught (`e142f240`) | **`test/` +1**: `test/testbits` PASSES (`/tmp/r46/bits`, 41 tests), the kind 8 -> 9; `test/stressgraphics-interpreted` FAIL -> UNSUPPORTED (`ROOT has localtime`) | 1: `W0-126` (C's `localtime`/`struct tm`); `W0-123` and `W0-125` closed |
 | 47 | `44c42d2d` | **two commits**: a failed extraction stores nothing, as C++ leaves the variable alone (`35c96338`, `W0-127` closed); C's `tm`/`localtime`/`gmtime`/`strftime` (`f0655cf0`, `W0-126` closed) | **no harness PASS**, but the **gtest kind re-measured whole: 54 PASS / 218 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** (`/tmp/r47/gtest`, one gain, none lost in four rounds), and `test/stressgraphics-interpreted` **UNSUPPORTED -> FAIL**: it runs the graphics stress suite and fails on image byte counts (`/tmp/r47/sg2`) | 1: `W0-128` (the images' character counts - the `canvas/` work `W0-52` records); `W0-126` and `W0-127` closed |
+| 48 | `c003f165` | **two commits**: `TH1::Normalize` and `TH1::EStatOverflows`' own name, with `Get/SetStatOverflows` and the static `StatOverflows` (`4e2ba73b`, `W0-122` closed); a class body's enum is metadata, so `TH1D`'s native methods are still called (`f16f5aeb`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **13 -> 11 failing cases** (`TH1.Normalize` and `TH1.StatOverflows` now OK), and the round's own gate caught a regression a class attribute caused in `hfnative` (13 failed, 78 at the base by bisect) | 1: `W0-129` (`testTH1`'s nine remaining cases, each a feature); `W0-122` closed |
 
 ## Notes
 
