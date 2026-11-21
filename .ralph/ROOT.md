@@ -1049,6 +1049,30 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Gates: `12949 passed`, `TOTAL 118750 0 29792 0 100%`, ruff/mypy (1019 files)/maintainability (30 962
   functions)/components/`mkdocs --strict` clean, `XRDROOT_TEST_OTHER_MACHINE=1` the same.
 
+## Round 37's close (recorded here for the next iteration)
+
+- Base `d13ce7e8`, closed at `b84bdc87`. **Two commits in, two reverted, 0 PASS** - and the round's real finding is about
+  the *gate*, not the code.
+- **`W0-103`: no gate could be measured.** The machine's load average went from 18 to **124** (another session). Under it
+  `pytest -n 2` failed 7 `tests/test_tmva_learn_networks.py` cases that **pass alone** (15 in 3.9 s), `--cov` reported
+  **0-27%** with "The following workers failed to return coverage data", and one `-n 0` run died with `Fatal Python error`
+  at 91%. **`W0-45` is worse than recorded: above a load average of ~20 the coverage gate is not measurable, and nothing
+  may be concluded from its output.** The tree's own state is sound - ruff, mypy (1019 files), maintainability (30 978
+  functions), components and `mkdocs --strict` all pass, and the failing tests pass alone.
+- **Two reverts, each with its exact reason.** `W0-101`: the address of a vector element (`W0-98`'s top row, 10 of
+  `other/math`'s 43) **works** but ships six branches no test reaches (`cppstd/cells.py:94`, `pycxx/emit_calls.py:389`,
+  `:397-399`, `emit_expr.py:538`) and the 100% floor may not be relaxed - branch **`r37-01`** keeps it, and the two tests
+  it needs both hit a *translator* limit first (`list expected at most 1 argument, got 2` when two dereferenced pointers
+  coexist; `a float returned by value cannot be assigned to in place` for `v.front() = x`). `W0-102`: the dictionary
+  warning also warns for `TGeoAtt`, `TGeoVoxelFinder` and `TGeoParallelWorld` - ROOT's own classes - and
+  `tests/test_pyroot_geom_rootfile.py` pins ROOT's exact message sequence.
+- The two surviving commits moved nothing: `io/json` stays **10 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED**, `roottest/root/math`
+  **0 / 4 / 1**. `io/tree` was not re-measured (its last DIFF, `read`, needed the reverted work).
+- **Another session committed to the branch mid-round** (`21254ccb`, a harness perf change) and left
+  `tools/rootsuite/runner.py` modified in the tree; it was checked out before the gates (`W0-49` again).
+- Gates: ruff, mypy (1019 files), maintainability (30 978 functions), components (0 undeclared), `mkdocs --strict` - all
+  pass. **The pytest/coverage gate is deferred to the next iteration** with the exact command below and the load caveat.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1087,6 +1111,10 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 37's result of it, at `b84bdc87`: **not measured** - the load average was 51-124 and the coverage gate reported
+  0-27% with dead workers (`W0-103`); ruff, mypy (1019 files), maintainability (30 978 functions), components 0
+  undeclared and `mkdocs build --strict` all pass, and the 7 `test_tmva_learn_networks.py` failures under load pass alone.
+  **Rerun when the load average is under 20.**
 - Round 36's result of it, at `630618f8`: `TOTAL 118750 0 29792 0 100%`, `12949 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1019 files,
   maintainability 30 962 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -1244,6 +1272,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 34 | `8997cd97` | **three commits**: ROOT::Math's free functions on `SVector`/`SMatrix` (`efa5f946`); a split `TObject`'s identifier keeps the process byte the file carries (`6bd0d6ba`); the SMatrix test split to stay inside the CCN limit (`c5962455`) | **0 PASS**: `io/tree` stays **11 / 7 / 2** (`/tmp/r34/tree`) and `roottest/root/math/*` stays **0 / 4 / 1** (`/tmp/r34/rmath`); both groups' failures moved but none closed | 4: `W0-93` (**a worker's test with CCN 14 failed the maintainability gate** - every gate after every cherry-pick, not coverage alone), `W0-94` (**two of four workers produced nothing at all**); `W0-91` partly taken (two of three pieces), `W0-90` re-queued |
 | 35 | `1c25bcff` | **five commits**: ROOT::Math's `AssignSym` and the `MatRepSym` a translated type names as text (`84e15c0f`); **a clone writes the identifiers its objects were numbered with** (`920dfe4c`, round 33's two edits at last); a `TObject` read member at a time carries the two words its object has (`dee7d185`); ROOT::Math's genetic minimiser and its seed (`3e2588d0`, `e67c9a79`) | **roottest +3**: `io/tree` **11 -> 14 PASS**, 7 -> **4 DIFF**, **0 FAIL** (`/tmp/r35/tree`: `test-rcr`, `test-rcrr`, `test-rcrr3`); **`other` +2**: `other/math` **19 -> 21 PASS** (`/tmp/r35/other`: `genetic-testGAMinimizer`, `genetic-GAMinTutorial`); `roottest/root/math/*` 0 / 4 / 1 (`/tmp/r35/rmath`) | 3: `W0-95` (**the same feature one level deeper** - a clone of a clone still names the base object, three tests, 180 identical-count lines each), `W0-96` (`other/math`'s 43 UNSUPPORTED bucketed), `W0-97` (`roottest/root/math`, take all five macros at once); `W0-91`, `W0-85`, `W0-87` closed |
 | 36 | `59744112` | **two commits**: a reference written after a clone names the file's process record (`1b2ae9d5`, `W0-95`); ROOT's own array-compression forms in JSON (`f0c859a9`) | **roottest +3**: `io/tree` **14 -> 17 PASS**, 4 -> **1 DIFF**, **0 FAIL** (`/tmp/r36/tree`: `test-rcr2`, `test-rcrr2`, `test-rcrr123`) - **the whole `TRef` family is closed**; `io/json` unchanged at 10 / 0 / 0 / 2 (`/tmp/r36/json`) | 3: `W0-98` (**the translator's `&v[0]`/`&v.front()` refusal blocks 10 of `other/math`'s 43** - the top of round 36's 22-cause bucket table), `W0-99` (`io/json`'s last two refusals), `W0-100` (`io/tree/read`'s last DIFF); `W0-95` and `W0-96` closed |
+| 37 | `d13ce7e8` | **two commits in, two reverted**: a TMap's JSON as the pairs it holds (`4e0461e6`); a symmetric SMatrix filled from its upper triangle (`aa265151`). **Reverted**: the address of a vector element (`b28bb2c2`, `W0-98`'s top row - six branches with no test, branch `r37-01` kept) and a user class's missing dictionary (`03c2c442`, `afd8afdd` - it warns for `TGeoAtt`/`TGeoVoxelFinder`/`TGeoParallelWorld`, which ROOT has dictionaries for, and breaks a PASS) | **0 PASS**: `io/json` **10 / 0 / 0 / 2** (`/tmp/r37/json`) and `roottest/root/math/*` **0 / 4 / 1** (`/tmp/r37/rmath`), both unchanged | 3: `W0-101` (what the vector-element tests must reach), `W0-102` (why the class warning broke a PASS), `W0-103` (**no gate is measurable above a load average of ~20** - `W0-45` is worse than recorded) |
 
 ## Notes
 
