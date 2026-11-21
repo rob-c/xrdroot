@@ -70,8 +70,11 @@ class Generator:
         self.names = frozenset(asked) & pdf.dependents()
         self.targets = _targets(pdf, {one.GetName() for one in self.taken})
         self.uniform = _uniformly_drawn(variables, self.names)
+        factors = not getattr(pdf, "factors_announce_themselves", False)
         for _ in range(0 if getattr(pdf, "generated_unnormalised", False) else 2):
-            announce(pdf, self.names, normalising=True)  # the generator's copy, its context's
+            # the generator's copy, and its context's - a product's factors each announcing
+            # their own, so that copy says no word about them
+            announce(pdf, self.names, normalising=True, inner=factors)
         self.context = _context(pdf, self.names, frozenset(one.GetName() for one in self.taken))
 
     def sample(self, total: int, name: str) -> Any:

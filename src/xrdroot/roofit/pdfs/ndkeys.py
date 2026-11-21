@@ -41,6 +41,10 @@ class RooNDKeysPdf(RooAbsPdf):
 
     #: ``RooNDKeysPdf``'s option letters.
     Adaptive, Mirror = "a", "m"
+    #: The kernel estimate is a density already: its normalisation is part of the estimate, so
+    #: RooFit makes no integral object for it - for a plot or a histogram either - and says
+    #: nothing of one.
+    announces_no_integral = True
 
     def __init__(
         self,
