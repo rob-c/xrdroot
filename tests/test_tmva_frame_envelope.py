@@ -50,8 +50,8 @@ def test_the_envelope_refuses_a_result_it_does_not_have(session):
 
 def test_the_tmva_namespace_names_what_it_lacks_and_shows_what_it_is():
     assert repr(ROOT.TMVA) == "<namespace TMVA>"
-    with pytest.raises(AttributeError, match=r"ROOT has TMVA::MethodPyKeras; xrdroot\.pyroot"):
-        _ = ROOT.TMVA.MethodPyKeras
+    with pytest.raises(AttributeError, match=r"ROOT has TMVA::MethodHMatrix; xrdroot\.pyroot"):
+        _ = ROOT.TMVA.MethodHMatrix
     with pytest.raises(AttributeError):
         _ = ROOT.TMVA.__wrapped__
     assert ROOT.TMVA.TMVAGui("file.root") is None

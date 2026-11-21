@@ -41,5 +41,5 @@ def test_a_method_booked_twice_under_one_title_is_refused(session):
 
 def test_a_method_xrdroot_does_not_have_is_refused_by_name(session):
     factory = ROOT.TMVA.Factory("job", "!V:Silent:AnalysisType=Classification")
-    with pytest.raises(xrdroot.UnsupportedFeatureError, match="PyKeras"):
-        factory.BookMethod(loader(), "PyKeras", "keras", "")
+    with pytest.raises(xrdroot.UnsupportedFeatureError, match="CFMlpANN"):
+        factory.BookMethod(loader(), "CFMlpANN", "keras", "")

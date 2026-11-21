@@ -1964,6 +1964,7 @@ trains iteratively, a library does, with TMVA's options mapped onto it.
 | `CrossValidation` | its folds' methods | as they |
 | `PyRandomForest`, `PyAdaBoost`, `PyGTB` | scikit-learn, as TMVA's PyMVA wraps it | - |
 | `PyTorch` | the user's own `TorchScript` model, trained by the user's own loop | - |
+| `PyKeras` | the user's own Keras model, trained by Keras on the events | - |
 
 The mapping onto scikit-learn: a BDT's `MaxDepth`, `MinNodeSize` (as
 `min_weight_fraction_leaf`), `SeparationType` (`GiniIndex` and `CrossEntropy`; the other
@@ -1993,9 +1994,25 @@ to `FilenameTrainedModel`. The weight file holds no weights, only those options,
 ROOT's writes none, so a `Reader` loads the trained model on its first evaluation. It needs
 `pip install 'xrdroot[pymva]'`.
 
+**PyMVA's `PyKeras`** wraps a Keras model the same way, except that Keras does the training.
+The user's script builds a model, **compiles** it and saves it (`.keras`, or `.h5`); xrdroot
+loads `FilenameModel` and calls `model.fit` on the training events as NumPy arrays of single
+precision - the class one-hot or the targets beside them, each event's weight as the sample's,
+the last `ValidationSize` of them held back to validate on. ROOT's options become Keras's
+callbacks: `SaveBestOnly` writes the model whenever the validation loss improves,
+`TriesEarlyStopping` stops the training, `LearningRateSchedule` and `TensorBoard` set the rate
+and log the run, and without `SaveBestOnly` the last model is written at the end. `NumThreads`
+sizes TensorFlow's pools and `GpuOptions=allow_growth=True` lets its GPU's memory grow.
+`UserCode=<file>` may leave `load_model_custom_objects` for `load_model` to rebuild the user's
+own layers with. A multiclass model's softmax row is TMVA's one output per class; a
+classification's first output is the chance of the signal class, as it is ROOT's. The weight
+file holds no weights, and the model is loaded from `FilenameTrainedModel` on first
+evaluation. It needs `pip install 'xrdroot[pymva]'`, which brings TensorFlow: xrdroot's Keras
+is `tf.keras`, whatever `tf.keras` was asked for, since TensorFlow is the only backend here.
+
 **What it refuses.** A method this engine does not have is refused by name when booked or
-read: `HMatrix`, `CFMlpANN`, `TMlpANN`, `BoostedFisher` (TMVA's generalised boosting),
-`PyKeras` (a user's Keras model, which needs TensorFlow), and SOFIE. So are the options that need
+read: `HMatrix`, `CFMlpANN`, `TMlpANN`, `BoostedFisher` (TMVA's generalised boosting), and
+SOFIE. So are the options that need
 what is not here: `FitMethod=SA` and `MINUIT` and a MINUIT `Converger`, RuleFit's
 `RFFriedman`, the `Spline3`, `Spline5` and `KDE` PDFs, PDEFoam's decision-tree cell splitting and kernels, and the DL layers other
 than dense (`CONV`, `MAXPOOL`, `RNN`, `LSTM`, `GRU`, `BNORM`...). PDE-Foam writes its foams

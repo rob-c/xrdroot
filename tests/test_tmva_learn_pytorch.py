@@ -392,9 +392,9 @@ def test_a_model_that_is_no_longer_there_is_refused_when_it_is_first_asked_for(
         method.evaluate(np.zeros((1, 4)))
 
 
-def test_pykeras_is_still_refused_by_name_where_pytorch_is_trained(session):
-    with pytest.raises(xrdroot.UnsupportedFeatureError, match="PyKeras"):
-        ROOT.TMVA.Factory("job", QUIET + "Classification").BookMethod(loader(), "PyKeras", "k", "")
+def test_a_method_xrdroot_does_not_have_is_refused_by_name_where_pytorch_is_trained(session):
+    with pytest.raises(xrdroot.UnsupportedFeatureError, match="TMlpANN"):
+        ROOT.TMVA.Factory("job", QUIET + "Classification").BookMethod(loader(), "TMlpANN", "k", "")
 
 
 # -- the real PyTorch, where it is installed --------------------------------------------
