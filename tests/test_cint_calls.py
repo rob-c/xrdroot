@@ -240,3 +240,18 @@ def test_a_cell_holding_an_object_pointer_carries_the_class_it_was_declared_with
     text = body("TArrayI *a2 = nullptr; TBufferJSON::FromJSON(a2, s);")
     assert "a2 = Cell(None, 'TArrayI')" in text
     assert "ROOT.TBufferJSON.FromJSON(a2," in text
+
+
+def test_strftime_gives_its_character_array_the_time_it_formatted(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``strftime(buf, size, fmt, tt)``: a ``char[]`` is text here, which no write reaches in
+    place, so the call returns what it formatted and the variable keeps it - as ``sprintf``'s.
+    A ``struct tm``'s fields are C's: the year counts from 1900."""
+    text = body('time_t t = 0; struct tm* tt = gmtime(&t); char buf[64];'
+                "strftime(buf, sizeof(buf), \"%Y-%m-%d\", tt);")
+    assert "buf = text_into(buf, formatted_time(" in text
+    source = r"""time_t t = 0; struct tm* tt = gmtime(&t); char buf[64];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tt);
+    printf("%s %d\n", buf, tt->tm_year + 1900);"""
+    assert printed(capsys, "void t() {" + source + "}") == "1970-01-01 00:00:00 1970\n"

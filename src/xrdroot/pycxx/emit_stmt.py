@@ -818,6 +818,13 @@ class StmtEmitter(CallEmitter):
         args = ", ".join(self.value(arg) for arg in expr.args[2:])
         self._written(expr, 3, f"cformat({args})[: {size} - 1]")
 
+    def _strftime(self, expr: Call) -> None:
+        """``strftime(buf, size, fmt, tt)``: the time formatted into ``buf``, which is a
+        ``char[]`` the call returns its text for rather than writing through."""
+        size = self.at(expr.args[1], P.ADD) if len(expr.args) > 1 else ""
+        args = ", ".join(self.value(arg) for arg in expr.args[2:4])
+        self._written(expr, 4, f"formatted_time({args})[: {size} - 1]")
+
     def _strcpy(self, expr: Call) -> None:
         text = f"cstr({self.value(expr.args[1])})" if len(expr.args) > 1 else ""
         if len(expr.args) > 2:
@@ -895,6 +902,7 @@ class StmtEmitter(CallEmitter):
         "copy": _copy,
         "getline": _getline,
         "sprintf": _sprintf,
+        "strftime": _strftime,
         "snprintf": _snprintf,
         "strcpy": _strcpy,
         "strncpy": _strcpy,
