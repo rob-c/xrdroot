@@ -324,15 +324,25 @@ class Program:
     def _buffers(self) -> None:
         """The names handed to a method - or to one of the dialect's ``buffer_functions`` - that
         the dialect says writes into a buffer it is given."""
-        methods, functions = active().buffer_methods, active().buffer_functions
         for _, _, body in self.bodies():
-            self.buffers |= {arg.last for node in walk(body) if isinstance(node, Call)
-                             and isinstance(node.func, Member) and node.func.name in methods
-                             for arg in node.args if isinstance(arg, Name)}  # fmt: skip
-            self.buffers |= {node.args[0].last for node in walk(body)
-                             if isinstance(node, Call) and isinstance(node.func, Name)
-                             and node.func.last in functions and node.args
-                             and isinstance(node.args[0], Name)}  # fmt: skip
+            self.buffers |= self._method_buffers(body) | self._function_buffers(body)
+
+    @staticmethod
+    def _method_buffers(body: Node) -> set[str]:
+        """The ``char`` arrays handed to a method that writes into one: ``t.Branch(s)``."""
+        methods = active().buffer_methods
+        return {arg.last for node in walk(body) if isinstance(node, Call)
+                and isinstance(node.func, Member) and node.func.name in methods
+                for arg in node.args if isinstance(arg, Name)}  # fmt: skip
+
+    @staticmethod
+    def _function_buffers(body: Node) -> set[str]:
+        """Those handed to one of the dialect's free functions that does: ``memset(buf, 0, n)``."""
+        functions = active().buffer_functions
+        first = (node.args[0] if node.args else None for node in walk(body)
+                 if isinstance(node, Call) and isinstance(node.func, Name)
+                 and node.func.last in functions)  # fmt: skip
+        return {given.last for given in first if isinstance(given, Name)}
 
     def analyse(self, func: Function) -> None:
         """A function made after the rest were looked over - an instance of a template - looked
