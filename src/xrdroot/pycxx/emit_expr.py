@@ -482,7 +482,6 @@ class ExprEmitter(NameEmitter):
         if isinstance(operand, Unary) and operand.op in ("++", "--") and not operand.postfix:
             borrowed = self.borrowed_reference(operand)
         borrowed = borrowed if borrowed is not None else self.reader_reference(operand)
-        borrowed = borrowed if borrowed is not None else self._element_call_address(operand)
         if borrowed is None and _is_unaddressable_update(operand):
             # An update whose destination has no reference at all has no address to take.
             raise Refusal(
@@ -520,22 +519,6 @@ class ExprEmitter(NameEmitter):
         if found is not None and (found.is_array or found.is_pointer) and found.element().scalar:
             return f"{array}[{index}:]", P.POSTFIX
         return f"ItemRef({self.value(operand.obj)}, {index})", P.POSTFIX
-
-    def _element_call_address(self, operand: Expr) -> str | None:
-        """``&v.front()``: element 0 of the vector, which is what ``&v[0]`` is.
-
-        ``v.front()`` on its own is that element's value; the address of it is a
-        pointer into the vector, and a call given it - ``TGraph(n, &x.front(), ...)``
-        - must see every element rather than the one value.
-        """
-        if not isinstance(operand, Call) or not isinstance(operand.func, Member):
-            return None
-        func = operand.func
-        if func.name == "front" and not operand.args:
-            return f"ItemRef({self.value(func.obj)}, 0)"
-        if func.name == "at" and len(operand.args) == 1:
-            return f"ItemRef({self.value(func.obj)}, {self.value(operand.args[0])})"
-        return None
 
     def reference(self, target: Expr) -> str:
         """What reads and writes ``target`` as ``.value``: a cell, an ItemRef or an AttrRef."""

@@ -41,8 +41,6 @@ def method(source: str) -> str:
         ('int *p = nullptr; int *same = &*p; auto *s = &"abc";', "same = p"),
         ("TVirtualPad **pad = &gPad;", "pad = ROOT.gPad"),
         ("int *e = &v[0];", "e = ItemRef(ROOT.v, 0)"),
-        ("int *f = &v.front();", "f = ItemRef(ROOT.v, 0)"),
-        ("int *g = &v.at(2);", "g = ItemRef(ROOT.v, 2)"),
         (
             "int i = 0; int x = a[i]++; int y = o.n++; int *p = nullptr; int z = (*p)++;",
             "z = postinc(ItemRef(p, 0), 1)",
