@@ -808,6 +808,20 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   the full suite agrees. The unit tests caught this in 0.3 s; the harness alone would have called it a gain.
   Every round should run `pytest` before believing a harness delta.
 
+## Round 25's close (recorded here for the next iteration)
+
+- Base `3aa0b0db`, closed at `dab9b98d`. Two commits, **one feature**: an array of pointers to containers reads
+  out of one record, each item named (`23be66d4`, `b25b54a4`) - `W0-62`, the wall round 24 had found and reverted.
+- `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r25/ev`) and `read`'s refusal moved **two members
+  further**, to `fMapTNamedp`.
+- **`W0-65` records the contrast that matters**: round 24 removed the refusal by relabelling the stype and a unit
+  test caught it (0.3 s); round 25 removed the same refusal by *implementing the reading* and every gate agreed.
+  Both moved the harness's refusal; only one was progress. That is `W0-63` demonstrated rather than asserted.
+- **`W0-64` is the next feature**: `fMapTNamedp` is `map<TNamed*,int>` (stype 500, extras `(4, 61)`) and the reader
+  refuses it as "a class with a streamer of its own" - a `std::map` whose *key* is a ROOT class. The writer already
+  lays it out.
+- The machine's load average was 10-12, so both workers measured at `--jobs 1` and the round quotes those runs.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -846,6 +860,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 25's result of it, at `dab9b98d`: `TOTAL 117460 0 29386 0 100%`, `12750 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
+  maintainability 30 418 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 24's result of it, at `59a2cac3`: `TOTAL 117378 0 29358 0 100%`, `12740 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
   maintainability 30 398 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -955,6 +972,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 22 | `249dce34` | **one feature in three files** (`W0-55`'s rule): `TArrayF`/`TArrayI` as a *member* of a class (`W0-57`), which serves `io/bigevent` and `double32` - `winfo.py`, `wdobjects.py`, `rdobjects.py` | **0 PASS, the wall gone**: `io/bigevent` still **2 PASS / 0 FAIL / 2 UNSUPPORTED** with its refusal moved to `a TVector3 here is a float rather than the dict of ...`; `io/double32` **3 PASS / 1 FAIL** (`/tmp/r22/ev`, `/tmp/r22/d32`) | 2: `W0-58` (the `TVector3` member), `W0-59` (stray `docs/` in worktrees) |
 | 23 | `21ab15c4` | **one feature in three files**: a ROOT class's member that is itself one of ROOT's classes (`TLorentzVector::fP` is a `TVector3`) - `pyroot/core/declared.py`, `wdobjects.py`, `rdobjects.py` | **roottest +1: `io/bigevent/write` PASSES** - the group is **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r23/ev`), its `read` side walled by `a vector<TObject> * member ... that this reader does not decode inside an entry` | 2: `W0-60`, `W0-61` |
 | 24 | `a12e5e43` | **one feature in two files**: a container a member *points at* is read as the container it names (`vector<TObject> *fVectorTobject`, stype 71) - `interp.py`, `rdobjects.py` | **0 PASS**: `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r24/ev3`), `read`'s refusal moved to `fVectorTnamed` | 2: `W0-62` (that wall is `vector<TNamed> *[6]`, an array of pointers - the round's one-line attempt was reverted by its own unit test), `W0-63` (a refusal that moves further is not progress until the full suite agrees) |
+| 25 | `3aa0b0db` | **one feature in two files**: an array of pointers to containers reads out of one record, each item named (`W0-62`) - `interp.py`, `rdobjects.py` | **0 PASS**: `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r25/ev`), `read`'s refusal moved two members on to `fMapTNamedp` - and this time the full suite agreed, where round 24's relabelling had broken a unit test | 2: `W0-64` (a `std::map` whose key is a ROOT class), `W0-65` (the feature that replaced the revert) |
 
 ## Notes
 
