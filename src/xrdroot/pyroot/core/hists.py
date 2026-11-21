@@ -62,6 +62,10 @@ class TH1(
     kIsHighlight = 1 << 21
     #: ``EStatusBits`` for ``SetCanExtend``: the axes that may grow.
     kNoAxis, kXaxis, kYaxis, kZaxis, kAllAxes = 0, 1, 2, 4, 7
+    #: ``TH1::EStatOverflows``: whether the statistics count the under- and overflow bins.
+    #: ``kIgnore`` and ``kConsider`` say so for this histogram; ``kNeutral`` asks the
+    #: global ``TH1::SetStatOverflows``.
+    kIgnore, kConsider, kNeutral = 0, 1, 2
 
     def SetHighlight(self, set: bool = True) -> None:
         """``SetHighlight``: mark the histogram for highlighting its bin under the mouse - which,

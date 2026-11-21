@@ -62,7 +62,7 @@ def test_slices_grouped_cut_and_said_when_skipped(capsys):
     h.FitSlicesY(None, 0, -1, 0, "QNRS")
     assert ROOT.gDirectory.Get("h_1").GetNbinsX() == 2
     h.GetXaxis().SetRange(0, 0)
-    h.GetXaxis().SetBit(1 << 11)  # kAxisRange over bins 0 to 0, as a file may hold: all bins
+    h.GetXaxis().SetBit(ROOT.TAxis.kAxisRange)  # over bins 0 to 0, as a file may hold: all bins
     h.GetXaxis()._row["fFirst"] = h.GetXaxis()._row["fLast"] = 0
     h.FitSlicesY(None, 0, -1, 0, "QNR")
     assert ROOT.gDirectory.Get("h_1").GetNbinsX() == 4

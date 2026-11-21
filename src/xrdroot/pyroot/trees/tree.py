@@ -106,6 +106,15 @@ def _arranged(address: Any, leaflist: Any, bufsize: int, splitlevel: int) -> tup
 class TTree(_Player):
     """``TTree``: see the module's docstring."""
 
+    #: ``TTree::EStatusBits``: the bits a tree's status word carries, which a macro sets with
+    #: ``SetBit`` and asks about with ``TestBit``.
+    kForceRead = 1 << 11
+    kCircular = 1 << 12
+    kOnlyFlushAtCluster = 1 << 14
+    kEntriesReshuffled = 1 << 19
+    #: ``kSplitCollectionOfPointers``: the split level that splits a collection of pointers.
+    kSplitCollectionOfPointers = 100
+
     def _writable(self, what: str) -> Any:
         if self._store is None:
             raise TypeError(

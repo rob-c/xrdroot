@@ -62,6 +62,7 @@ def test_the_root_finder_brackets_or_follows_a_derivative():
         (finder.Name(), "newton"),
         (bool(finder.Iterations() > 0), True),
         (bracket.Name(), "BrentRootFinder"),
+        (ROOT.Math.RootFinder(ROOT.Math.RootFinder.kMODAB).Name(), "ModABRootFinder"),
     )
     # ``exp`` has no root and Newton's step never shrinks, so it takes the steps it is
     # given and says how many that was.

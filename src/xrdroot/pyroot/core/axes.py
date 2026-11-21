@@ -83,6 +83,24 @@ class TAxis(TNamed, TAttAxis):
 
     CLASS_TITLE = "Axis class"
 
+    #: ``TAxis::EStatusBits``: an axis's status word - which it shares with ``TAxis3D`` and
+    #: its siblings, so that a macro may ask ``axis.TestBit(TAxis.kAxisRange)``.
+    kDecimals = 1 << 7
+    kTickPlus = 1 << 9
+    kTickMinus = 1 << 10
+    kAxisRange = 1 << 11
+    kCenterTitle = 1 << 12
+    kCenterLabels = 1 << 14
+    kRotateTitle = 1 << 15
+    kPalette = 1 << 16
+    kNoExponent = 1 << 17
+    kLabelsHori = 1 << 18
+    kLabelsVert = 1 << 19
+    kLabelsDown = 1 << 20
+    kLabelsUp = 1 << 21
+    kIsInteger = 1 << 22
+    kMoreLogLabels = 1 << 23
+
     def __init__(self, *args: Any) -> None:
         """``TAxis(nbins, xlow, xup)`` or ``TAxis(nbins, edges)``, standing alone."""
         from ...booking import axis_members, binning

@@ -177,12 +177,13 @@ class RootFinder:
         kGSL_NEWTON,
         kGSL_SECANT,
         kGSL_STEFFENSON,
-    ) = range(7)
+        kMODAB,
+    ) = range(8)
 
     #: What ROOT's ``RootFinder::Name()`` answers for each kind: GSL's own algorithm names
     #: for the six GSL solvers, and ``BrentRootFinder`` for ROOT's own Brent implementation.
     NAMES = ("BrentRootFinder", "bisection", "falsepos", "brent", "newton", "secant",
-             "steffenson")  # fmt: skip
+             "steffenson", "ModABRootFinder")  # fmt: skip
 
     def __init__(self, kind: int = 0) -> None:
         self._kind = int(kind)

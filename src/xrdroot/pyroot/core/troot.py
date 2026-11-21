@@ -753,6 +753,10 @@ gROOT = TROOT()
 class TInterpreter:
     """``gInterpreter``: C++ declared and run - by :mod:`xrdroot.pycint`, when it is there."""
 
+    #: ``TInterpreter::EErrorCode``: what a declaration or a call reports back, which a macro
+    #: compares ``gInterpreter->Declare(...)`` with.
+    kNoError, kRecoverable, kDangerous, kFatal, kProcessing = 0, 1, 2, 3, 99
+
     def Declare(self, code: Any) -> bool:
         """``Declare``: C++ declarations, translated, and what they declare put in the namespace.
 

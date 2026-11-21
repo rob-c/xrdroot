@@ -66,6 +66,20 @@ def test_get_takes_its_class_in_brackets_as_a_cpp_template_does():
     back.Close()
 
 
+def test_a_histogram_names_the_stat_overflows_flag_and_the_interpreters_error_codes():
+    """``TH1::EStatOverflows`` is the per-histogram flag that overrides
+    ``TH1::SetStatOverflows`` - ``kConsider`` counts the under- and overflow bins in the
+    statistics - and ``gInterpreter`` reports one of ``TInterpreter::EErrorCode``."""
+    expect(
+        (ROOT.TH1.kIgnore, 0),
+        (ROOT.TH1.kConsider, 1),
+        (ROOT.TH1.kNeutral, 2),
+        (ROOT.gInterpreter.kNoError, 0),
+        (ROOT.TInterpreter.kProcessing, 99),
+        (ROOT.gInterpreter.Declare("int forty_two() { return 42; }"), True),
+    )
+
+
 def test_axes_that_may_grow_and_bars_are_noted():
     h = ROOT.TH1F("h", "", 3, 0, 3)
     expect((h.SetCanExtend(ROOT.TH1.kAllAxes), 0), (h.CanExtendAllAxes(), True))

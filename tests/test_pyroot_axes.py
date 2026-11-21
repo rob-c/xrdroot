@@ -341,3 +341,20 @@ def test_an_axiss_uneven_edges_are_a_tarrayd():
     stats = [0.0] * 2
     ROOT.TH1D("st", "", 3, 0, 3).GetStats(stats)
     assert stats == [0.0, 0.0]  # only as many sums as there is room for
+
+
+def test_an_axis_carries_roots_status_bits_by_name():
+    """``TAxis::EStatusBits`` is a bit of the axis's status word: ``kAxisRange`` is set when
+    the axis shows a range rather than all its bins, and a macro names it, it does not
+    write ``1 << 11``."""
+    axis = ROOT.TH1D("bits", "", 10, 0, 10).GetXaxis()
+    expect(
+        (ROOT.TAxis.kAxisRange, 1 << 11),
+        (ROOT.TAxis.kIsInteger, 1 << 22),
+        (ROOT.TAxis.kMoreLogLabels, 1 << 23),
+        (ROOT.TAxis.kCenterLabels, 1 << 14),  # bit 13 belongs to TObject
+    )
+    axis.SetRange(2, 4)
+    assert axis.TestBit(ROOT.TAxis.kAxisRange)
+    axis.SetBit(ROOT.TAxis.kIsInteger)
+    assert axis.TestBit(ROOT.TAxis.kAxisRange) and axis.TestBit(ROOT.TAxis.kIsInteger)
