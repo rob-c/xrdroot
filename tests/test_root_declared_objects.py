@@ -16,6 +16,7 @@ import pathlib
 import re
 import struct
 from types import SimpleNamespace
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -2714,3 +2715,38 @@ def test_a_member_of_roots_that_is_a_string_or_a_collection_is_left_as_it_is(mon
     row = root_row(Holder(), "Held")
     assert (row["fS"], row["fN"]) == ("text", 0.5)
     assert row["fL"] is held
+
+
+def test_a_kept_object_with_no_attribute_named_after_its_member_is_the_only_one_of_its_class():
+    """``TLorentzVector`` keeps its ``TVector3`` in ``_p``, but a class may keep it under any
+    name; the one value of that class is then the member, and none at all is no member."""
+    from xrdroot.pyroot.core.declared import _kept_object
+
+    class Vector:
+        pass
+
+    class Named:
+        def __init__(self, held):
+            self.somewhere = held
+
+    vector = Vector()
+    assert _kept_object(Named(vector), "fP", "Vector") is vector
+    assert _kept_object(Named(1.0), "fP", "Vector") is None
+
+
+def test_a_member_a_row_does_not_name_is_read_from_the_object_itself():
+    """An object that keeps its members in a row answers from that row, and a member the row
+    does not name falls back to the attribute of that name - or to nothing where it has none."""
+    from xrdroot.pyroot.core.declared import _member_value
+
+    class Drawn:
+        _row: ClassVar[dict[str, int]] = {"fLineColor": 4}
+
+    class Held:
+        _row: ClassVar[dict[str, int]] = {}
+
+        def __init__(self) -> None:
+            self.fAbsent = 3.0
+
+    assert _member_value(Drawn(), "fAbsent") is None  # neither the row nor the object has it
+    assert _member_value(Held(), "fAbsent") == 3.0  # the row does not name it; the object does
