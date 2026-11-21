@@ -45,6 +45,17 @@ BYTE_COUNT = 4
 #: rather than object by object: all the keys, then all the values.
 MEMBER_WISE = 0x4000
 
+#: ``TObject::kIsOnHeap | kNotDeleted``: the two bits a ``TObject`` carries for an object made
+#: with ``new`` and not yet deleted. A file never holds them - ``TObject::Streamer`` masks them
+#: out when it writes, since where the reading process made the object is not the writer's to
+#: say - so ROOT's reader sets them on the object it fills, and so does this one: the oracle
+#: reading a ``TClonesArray`` of ``TNamed`` prints ``50331648`` for a word the file holds as 0.
+HEAP_BITS = 0x03000000
+
+#: ``TObject::kIsReferenced``: the object is one a ``TRef`` may point at, which the word the
+#: file holds says with this bit.
+IS_REFERENCED = 1 << 4
+
 #: The layouts the program's own classes have in memory, by name, as ROOT's dictionary holds
 #: them. A file written by another vintage of a class records a layout that is not the one
 #: the objects in memory have, and only the layer that declares a class knows the latter, so
@@ -59,6 +70,7 @@ def declare(name: str, layout: Described) -> None:
     as re-declaring a class in ROOT replaces what its dictionary said of it.
     """
     DECLARED[name] = layout
+
 
 #: A record header - four bytes of byte count, two of version.
 RECORD = 6
@@ -1077,9 +1089,7 @@ def _base_flattened(member: Member) -> bool:
     return member.stype == 0 and member.typename == "BASE" and member.name not in INFOS
 
 
-def _columns(
-    name: str, source: Source, seen: tuple[str, ...]
-) -> list[tuple[str, Fill]] | None:
+def _columns(name: str, source: Source, seen: tuple[str, ...]) -> list[tuple[str, Fill]] | None:
     """The members of one class as columns - one member of every object in a container
     written member-wise - or ``None`` for a class that has no such list, because it streams
     itself or the file does not describe it.
@@ -1128,9 +1138,7 @@ def _member_columns(
     return [(label, _column(label, member, step, source, seen))]
 
 
-def _column(
-    label: str, member: Member, step: Step, source: Source, seen: tuple[str, ...]
-) -> Fill:
+def _column(label: str, member: Member, step: Step, source: Source, seen: tuple[str, ...]) -> Fill:
     """One member's column, by what the member is."""
     node = parse(member.typename)
     if isinstance(node, Str) and node.record:
@@ -2279,11 +2287,13 @@ def _primitive_element(branch: BranchRecord, leaf: LeafRecord, source: Source) -
     class - so an entry holds one value per object, or ``length`` of them
     for an array member, one object's after another's.
     """
+    bits = branch.classname == "TObject" and leaf.name.rsplit(".", 1)[-1] == "fBits"
     for base in (0, OFFSET_L, OFFSET_P):
         kind = leaf.ltype - base
         prim = BASIC.get(kind)
         if prim is not None:
-            return _primitive_shape(leaf, prim, base)
+            shape = _primitive_shape(leaf, prim, base)
+            return _in_memory(shape) if bits else shape
         if kind in PACKED:
             return _packed_member(branch, leaf, source, kind, base == OFFSET_P)
     return None
@@ -2300,3 +2310,37 @@ def _primitive_shape(leaf: LeafRecord, prim: Prim, base: int) -> Column:
     if leaf.count is not None:
         return Rows(prim, 0, False)
     return Flat(prim, leaf.length)
+
+
+class HeapRows(Rows):
+    """A ``TObject``'s bits, one per object of a split collection, as the object holds them.
+
+    ROOT masks ``kIsOnHeap|kNotDeleted`` out of ``fBits`` when it writes and sets them again on
+    the object its reader fills, so a split collection's ``fBits`` column is the word the file
+    holds with those two bits on - which is what ``TTree::Show`` prints for each object, and
+    what a ``TObject`` made from the row carries.
+    """
+
+    __slots__ = ()
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return super().decode(raw) | HEAP_BITS
+
+
+class HeapFlat(Flat):
+    """A ``TObject``'s bits for an object held whole, one word per entry: see :class:`HeapRows`."""
+
+    __slots__ = ()
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return super().decode(raw) | HEAP_BITS
+
+
+def _in_memory(column: Column) -> Column:
+    """``column`` given the bits ROOT's reader sets on every object it fills, when it is a
+    split ``TObject``'s ``fBits``; any other column is itself."""
+    if isinstance(column, Rows):
+        return HeapRows(column, column.header, column.counted, column.unpack)
+    if isinstance(column, Flat):
+        return HeapFlat(column, column.length, column.unpack)
+    return column
