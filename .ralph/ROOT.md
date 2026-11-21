@@ -40,6 +40,63 @@ Measured at `986f0d8` (`/tmp/x8/final2b` for roottest, `/tmp/x8/final1b` for the
 it came from. §0's table and §4's queue are the plan. **Start each round from the ledger**, not
 from `AGENTS.md`'s stale "what remains" list.
 
+## Where it stood at `a2ef7d77`, the speed pass's measurement (2026-11-21)
+
+Added rather than written over the table above, which is the record of the assessment at
+`986f0d8` and stays as it was. Measured at `a2ef7d77` — each run against a **checkout of that
+one commit** (`--xrdroot-src /private/tmp/wt-measure/src`), because this tree is committed to by
+more than one session and a commit landing mid-run changes the answer for the tests after it:
+the earlier attempt at this measurement had `math/*` and `machine_learning/*` failing for
+`ROOT.TIterator`, which landed at `a2ef7d77` while that run was in progress. Five commits have
+landed since that measurement; none of them was in it.
+
+| kind | PASS / total | against the committed baseline |
+|---|---|---|
+| roottest | **1276 / 2173** | 1037 → 1276 (**+239**) |
+| gtest | 53 / 350 (530 / 2109 cases) | 52 → 53 (+1); the weakest kind, as at the assessment |
+| pyunittest | 81 / 129 (549 / 603 cases) | 78 → 81 (+3) |
+| `test/` | 8 / 59 | 4 → 8 (+4) |
+| module tests (`other`) | 38 / 109 | 14 → 38 (+24) |
+| **all non-tutorial** | **1456 / 2820** | 1185 → 1456 (**+271**, 281 gained and 10 lost) |
+| tutorials | **550 / 1189** | 564 → 550 (**−14**: 9 gained, 23 lost) |
+
+`/tmp/r41/suite-fixed` and `/tmp/r41/tutorials-fixed`, both `-j 8`, load average ~49 from the
+other session, Python 3.11.18 (the venv was replaced during the day; nothing measured across
+that change is comparable, and every number here is an A/B inside one interpreter).
+
+The ten the non-tutorial baseline had and this run did not are the tree's state rather than this
+run's: the five I re-ran at `4dad0dad` (`--only` those five, same checkout trick) answer exactly
+as they do at `a2ef7d77`. Five of the ten differ only by a line ROOT does not print, all of one
+shape — `Warning in <TClass::Init>: no dictionary for class … is available` for `TArray`
+(`fakeClass/forwardDeclAndFake`, `evolution/ClonesArrayEvo`), `TVirtualIndex` (`ClonesArrayEvo`,
+`tree/addresses/ursula`, `datamodelevolution/stl/MapContent`) and `TGeoPatternFinder`
+(`io/webfile/CloseTWebFile`) — which is the class-warning work of rounds 40–42 still in flight,
+not a reading of the file. The other five: `distrdf_unit_test_friendinfo` refuses a friend tree
+shorter than its parent, and `evolution/execBaseClass_v2` with its two `baseClass_53410_*`
+dependents and `tree/friend/file2` are the long-standing ones this file's earlier rounds record.
+
+The twenty-three the tutorial baseline had are twenty `DIFF`s, two `UNSUPPORTED`
+(`ntpl012`/`ntpl015`, processor chains) and one `FAIL` (`math/vecops/vo002_VectorCalculations.C`).
+Of the `DIFF`s, two are written files whose numbers differ in the last digits (`hsimple.root`'s
+`hprof` errors in 2 of 102 places, `tree105.root`'s `vect` in 2626 of 70 000) — the committed
+baselines were recorded on Python 3.14.10 and this venv is 3.11.18, where `sum()` of floats and
+the libm wrappers this package routes through are not guaranteed the same last bit, so those two
+are worth re-measuring on 3.14 before being called a regression; the other eighteen differ in
+`stdout` — a `(TFile *) 0x…` echo ROOT does not print, canvas and legend lines, and
+RooFit/RooStats `INFO`/`WARNING` order and values — and one of those, `visualisation/rcanvas/
+rline.cxx`, also wrote no `line.png`.
+
+Six non-tutorial tests and five tutorials timed out at the 300 s cap under that load and are
+counted as not passing, as the harness counts them:
+`other/math/mathcore/mathcore-stdsort`, `other/math/minuit2/minuit2_ParallelTest`,
+`gtest/tree/ntuple/ntuple_largefile1`, `gtest/tree/tree/testBulkApiMultiple`,
+`roottest/root/math/smatrix/Kalman`, `roottest/root/tree/cloning/runtreeCloneTest2`, and
+`df101_h1Analysis.C`/`.py`, `df102_NanoAODDimuonAnalysis.py`, `df107_SingleTopAnalysis.py`,
+`hist102_NanoAODDimuonAnalysis.C`. On an idle machine the first six do finish — they are slow,
+not stuck: the two bulk-API tests write and read 10⁷ entries, `Kalman` runs four million matrix
+iterations of `testKalman.cxx`, and `runtreeCloneTest2` clones a large tree; the tutorial
+timeouts are the RDF analyses that read NanoAOD over the network.
+
 ## The round, in six steps
 
 ### 1. Read the queue and rank the work
