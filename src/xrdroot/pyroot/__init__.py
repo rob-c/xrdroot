@@ -56,6 +56,7 @@ LATER = (
     "tcut",
     "th2poly",
     "xmlengine",
+    "xmldom",
     "vectors",
     "linalg",
     "minuit2",
