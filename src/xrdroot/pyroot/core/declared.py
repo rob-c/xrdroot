@@ -573,12 +573,15 @@ def _kept_object(obj: Any, member: str, typename: str) -> Any:
     held = getattr(obj, "__dict__", None)
     if not isinstance(held, dict):
         return None
-    kept = [(name.lstrip("_").lower(), value) for name, value in held.items()
-            if _of_class(value, typename)]  # fmt: skip
-    named = [value for name, value in kept if name == member.lstrip("f").lower()]
-    if named:
-        return named[0]
-    return kept[0][1] if kept else None
+    wanted = member.lstrip("f").lower()
+    for name in ("_" + wanted, wanted):  # the one named after the member first
+        found = held.get(name)
+        if _of_class(found, typename):
+            return found
+    for value in held.values():
+        if _of_class(value, typename):
+            return value
+    return None
 
 
 def _plain_member(value: Any, field: Any, catalogue: Catalogue,
