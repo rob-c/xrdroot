@@ -56,6 +56,20 @@ HEAP_BITS = 0x03000000
 #: file holds says with this bit.
 IS_REFERENCED = 1 << 4
 
+#: The bits of ``fUniqueID`` that hold the object's own number; the byte above them is the
+#: reading process's. ROOT's writer stores the number alone - where an object was numbered is
+#: not something the writing process can say - and its reader folds the byte in, so a
+#: ``fUniqueID`` read back is ``((index + 1) << 24) | number``: the oracle prints ``16777225``
+#: for a file holding ``9``, and ``0`` for an object no process ever numbered.
+UID_MASK = 0x00FFFFFF
+
+#: ``TBufferIO::GetPidOffset``: the byte ROOT's reader adds, the index of the ``ProcessID``
+#: record the object was numbered in plus one. A file holds one record per process that wrote
+#: referenced objects into it, and every file whose ``fUniqueID`` has been compared with the
+#: oracle's holds that one, whose index is 0. It is the index plus one rather than the index
+#: because zero has to mean "no process", which is what an unreferenced object's byte is.
+PID_OFFSET = 1
+
 #: The layouts the program's own classes have in memory, by name, as ROOT's dictionary holds
 #: them. A file written by another vintage of a class records a layout that is not the one
 #: the objects in memory have, and only the layer that declares a class knows the latter, so
@@ -2287,13 +2301,15 @@ def _primitive_element(branch: BranchRecord, leaf: LeafRecord, source: Source) -
     class - so an entry holds one value per object, or ``length`` of them
     for an array member, one object's after another's.
     """
-    bits = branch.classname == "TObject" and leaf.name.rsplit(".", 1)[-1] == "fBits"
+    member = leaf.name.rsplit(".", 1)[-1] if branch.classname == "TObject" else ""
     for base in (0, OFFSET_L, OFFSET_P):
         kind = leaf.ltype - base
         prim = BASIC.get(kind)
         if prim is not None:
             shape = _primitive_shape(leaf, prim, base)
-            return _in_memory(shape) if bits else shape
+            if member == "fBits":
+                return _in_memory(shape)
+            return _numbered_column(shape) if member == "fUniqueID" else shape
         if kind in PACKED:
             return _packed_member(branch, leaf, source, kind, base == OFFSET_P)
     return None
@@ -2336,11 +2352,66 @@ class HeapFlat(Flat):
         return super().decode(raw) | HEAP_BITS
 
 
+class NumberedRows(Rows):
+    """A ``TObject``'s identifier, one per object of a split collection, as ROOT's reader leaves
+    it: the number the file holds with the byte naming the process that numbered it.
+
+    ``TTree::Show`` prints that word, so a collection whose objects a file's references number
+    reads back as ``16777225`` rather than the ``9`` the file holds.
+    """
+
+    __slots__ = ()
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return _numbered(super().decode(raw))
+
+
+class NumberedFlat(Flat):
+    """A ``TObject``'s identifier for an object held whole, one word per entry: see
+    :class:`NumberedRows`."""
+
+    __slots__ = ()
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return _numbered(super().decode(raw))
+
+
+def _numbered(values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    """``values`` with the process's byte on every identifier a process numbered.
+
+    Zero is not one of those: an object no reference names is in no process's numbering, and
+    the oracle prints its identifier as ``0``, so only a number in the low bits earns the byte.
+    """
+    numbered = (values & UID_MASK) != 0
+    return values | ((numbered.astype(values.dtype) << 24) * PID_OFFSET)
+
+
+def _as_prim(column: Numeric) -> Prim:
+    """The width and decoding ``column`` already has, as the recipe copying it takes.
+
+    A column that decorates another - the bits ROOT's reader sets, the process's byte - is
+    made from a :class:`Prim` and the column it copies is known only by what it decoded, so
+    what it decoded is said again.
+    """
+    assert column.typename is not None  # a column of numbers is named what it decodes as
+    return Prim(column.typename, column.typecode, column.itemsize)
+
+
+def _numbered_column(column: Column) -> Column:
+    """``column`` given the byte ROOT's reader folds into a split ``TObject``'s ``fUniqueID``;
+    any other column is itself, since no other member is an identifier a process numbered."""
+    if isinstance(column, Rows):
+        return NumberedRows(_as_prim(column), column.header, column.counted, column.unpack)
+    if isinstance(column, Flat):
+        return NumberedFlat(_as_prim(column), column.length, column.unpack)
+    return column
+
+
 def _in_memory(column: Column) -> Column:
     """``column`` given the bits ROOT's reader sets on every object it fills, when it is a
     split ``TObject``'s ``fBits``; any other column is itself."""
     if isinstance(column, Rows):
-        return HeapRows(column, column.header, column.counted, column.unpack)
+        return HeapRows(_as_prim(column), column.header, column.counted, column.unpack)
     if isinstance(column, Flat):
-        return HeapFlat(column, column.length, column.unpack)
+        return HeapFlat(_as_prim(column), column.length, column.unpack)
     return column

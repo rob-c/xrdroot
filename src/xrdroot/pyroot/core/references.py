@@ -38,6 +38,10 @@ NUMBER_MASK = 0xFFFFFF
 MOST = NUMBER_MASK
 #: The index a process past the 255th is filed under in an identifier's top byte.
 FAR = 0xFF
+#: ``TBufferIO::GetPidOffset``: the byte an identifier's top byte carries over its file's
+#: ``ProcessID`` index, one, so that zero can mean "in no process's numbering". ROOT's reader
+#: folds it in and so does :func:`filed_object`, which has to take it back out.
+PID_OFFSET = 1
 #: ``TObject::kIsOnHeap | kNotDeleted``, which every object made on the heap carries:
 #: a ``TRef`` is one here, as ``TClass::New`` makes it when a file reads one back.
 HEAP_BITS = 0x03000000
@@ -555,15 +559,18 @@ def filed_object(found: Any, file: Any = None) -> None:
     """An object read that a ``TRef`` may point at, filed where the reference will look.
 
     ROOT files such an object as its streamer reads it - keyed by the number in the low
-    bits of its identifier, in the file's process the identifier's top byte indexes - and
+    bits of its identifier, in the file's process the identifier's top byte names - and
     a ``TRef`` read beside it names that same process, so the reference finds it again.
-    Nothing in this reader runs that streamer, so a split collection's elements are filed
-    once they are made (roottest/root/io/tree/test-r).
+    The top byte is the process's record index plus ``PID_OFFSET``, as ROOT's reader leaves
+    it, so an object whose identifier carries none of that byte is in the file's first
+    process. Nothing in this reader runs that streamer, so a split collection's elements are
+    filed once they are made (roottest/root/io/tree/test-r).
     """
     if not isinstance(found, TObject) or not found.TestBit(IS_REFERENCED):
         return
     identifier = _unique(found)
-    pid = named_process(file if file is not None else current_file(), identifier >> 24)
+    index = max((identifier >> 24) - PID_OFFSET, 0)
+    pid = named_process(file if file is not None else current_file(), index)
     if pid is not None:
         pid.PutObjectWithID(found, identifier & NUMBER_MASK)
 
