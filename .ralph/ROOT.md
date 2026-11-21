@@ -900,6 +900,28 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Gates: `12835 passed`, `TOTAL 117876 0 29556 0 100%`, ruff/mypy/maintainability/components/`mkdocs --strict` clean,
   and `XRDROOT_TEST_OTHER_MACHINE=1` the same. The coverage gate ran after **each** cherry-pick (`W0-74`).
 
+## Round 30's close (recorded here for the next iteration)
+
+- Base `4cdb3649`, closed at `9d509b79`. **Three commits, +2 PASS** - and the round's shape is new: the fix that paid came
+  from a worker who only *wrote the bug down*.
+- **`W0-81` is the round.** The four `io/json` `TypeError: 'NoneType' object is not subscriptable` failures were never in
+  `jsonbuffer.py`: the translator emitted `self.fChar[i][j] = with_char(...)` for a `char[N][M]` member whose runtime
+  array is one flat buffer of rows. Worker 04 measured it with its own docs commit (`c3045a11`, not taken - `docs/`), the
+  round wrote the finding into a brief, and worker 05 - with nothing but the write-up - fixed it in `71dba22d`.
+  **`BasicTypes` and `Objects` became byte-identical to their `.ref`s**, `io/json` went 5 -> 7 PASS and **every test of
+  that area that runs now passes** (0 FAIL, 0 DIFF; the five left are named refusals).
+- **`W0-83` sharpens `W0-78`**: the `fBits`/`fUniqueID` reassembly does **not** belong in `buffer.py::referenced` - worker
+  01 measured that doing it there breaks seven round-trip tests. The file holds `fBits & ~0x03000000` and a plain
+  identifier, and ROOT's reader puts the heap's two bits back plus the process index **+1** (`TBufferIO::GetPidOffset`,
+  in `TKey::fSeekPdir`'s high bits). It belongs in **`interp.py`'s element read**. The oracle probe that measures it is
+  `/tmp/r30/oracle/{probe2,show}.C`: ROOT prints `16777216` and `50331672` for a referenced `TNamed`.
+- `8e797bcb` (a `std::pair` on its own) and `ae646b4e` (the identifier's tests) moved nothing; `W0-82` (`FromJSON` filling
+  an existing object's containers) is `STL`/`STL1`/`ArrayCompress`.
+- **`W0-84`**: workers 02 and 03 died without a commit (only stray `docs/`), so `W0-79` and `W0-77` are still open with
+  the same briefs. Two deaths in two rounds - check the session files, not the logs.
+- Gates: `12845 passed`, `TOTAL 117893 0 29564 0 100%`, ruff/mypy/maintainability/components/`mkdocs --strict` clean,
+  `XRDROOT_TEST_OTHER_MACHINE=1` the same; the coverage gate ran after each cherry-pick (`W0-74`).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -938,6 +960,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 30's result of it, at `9d509b79`: `TOTAL 117893 0 29564 0 100%`, `12845 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
+  maintainability 30 613 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 29's result of it, at `21517c9a`: `TOTAL 117876 0 29556 0 100%`, `12835 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
   maintainability 30 600 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -1067,6 +1092,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 27 | `4c82dc31` | **seven commits, four features, one chain**: a split `TClonesArray` read by `SetAddress` is filled (`42898a9a`); a `TRef` member read out of a tree resolves through its `TProcessID` (`212010d0`); a split `TClonesArray` of a class the program declared is cloned by it (`9867dfc9`); a member-wise container reads a base ROOT gives a record to (`5dd0ebba`); plus `ROOT.memset` and collections in JSON (`fd1d360a`, `32cc0d7f`) and the six branches they left untested (`23e557d8`) | **roottest +4 in `roottest/root/io/tree/*`: PASS 6 -> 10** (`/tmp/r26/tree` -> `/tmp/r27/tree2`: `create-rc`, `create-rcr`, `create-rcrr`, **`test-r`**), 12 UNSUPPORTED -> 8 DIFF, 0 FAIL; `io/json` 4/5/3 (`/tmp/r27/json2`); `io/bigevent` still 3/0/1 (`/tmp/r27/ev`) | 4: `W0-71` (bigevent's next container), `W0-72` (7 `io/tree` DIFFs = `Show`'s formatting), `W0-73` (`io/json`'s unbound-method and `None` shapes), `W0-74` (the coverage gate belongs after every commit) |
 | 28 | `d42d8a5c` | **five commits, five features, no PASS**: `Show` prints a split collection's count line and unbroken members (`df9caceb`); a clone carries the `ProcessID` record its `TRef`s name (`1d00c3ed`); an array of strings and an array of pointers read every element (`2aee3989`); a member function named through its class is called on the object (`6224b151`); `TBufferJSON` writes a macro class's member (`db8b97ee`) | **0 PASS**: `io/tree` 10 PASS / 8 DIFF / 2 UNSUPPORTED (`/tmp/r28/tree`), `io/json` 4 / 4 / 1 / 3 with **`String` FAIL -> DIFF** (`/tmp/r28/json`), `io/bigevent` 3 / 0 / 1 (`/tmp/r28/ev`) | 3: `W0-75` (**three lines per entry** from seven PASSes: the process byte in `fUniqueID`/`fBits`, `fRef` printing `TRef`, a trailing blank line), `W0-76` (`io/json/String` one line from PASS), `W0-77` (bigevent's class reference points nowhere); `W0-72` corrected |
 | 29 | `9dd616a0` | **three one-line behaviours**: a null `char*` member is `null` in JSON (`44e2d2ed`); `Show` prints a bare record as the reference it is (`d07c8610`); every object carries the two heap bits (`8ffa748c`) | **roottest +1: `roottest/root/io/json/String` PASSES** (`/tmp/r29/json`: `io/json` 4 -> 5 PASS), `io/tree` 10 PASS / 8 DIFF / 2 UNSUPPORTED with `test-rc` down from **four** differing line kinds to **three** (`/tmp/r29/tree`) | 3: `W0-78` (the `fBits`/`fUniqueID` bytes - the last three lines of six tests), `W0-79` (`test-rcrr123`'s third-level `TRef` chain), `W0-80` (a worker died; `W0-77` still open); `W0-75` corrected and closed |
+| 30 | `4cdb3649` | **three commits**: a `char[N][M]` is one buffer of its rows (`71dba22d`), a `std::pair` written on its own is `$pair` (`8e797bcb`), the identifier and its process (`ae646b4e`) | **roottest +2: `io/json/BasicTypes` and `io/json/Objects` PASS** (`/tmp/r30/json` -> `/tmp/r30/json2`); `io/json` is **7 PASS / 0 FAIL / 0 DIFF / 5 UNSUPPORTED**, `io/tree` unchanged at 10 / 8 / 2 (`/tmp/r30/tree`) | 3: `W0-82` (`FromJSON` filling an existing object's containers), `W0-83` (`W0-78` with its mechanism measured), `W0-84` (two workers died, `W0-77`/`W0-79` open); `W0-81` closed |
 
 ## Notes
 
