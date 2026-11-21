@@ -98,6 +98,29 @@ def _packer(stype: int) -> struct.Struct:
     return found
 
 
+def _wrapped(values: Any, target: str) -> Any:
+    """``values`` as ``target``, wrapping a number too wide or negative for it, as C does.
+
+    NumPy 2 wraps such a number where NumPy 1 refuses it outright, and what ROOT's file holds is
+    the wrapped one either way - so the mask is written here rather than taken from whichever
+    NumPy is installed.
+    """
+    given = np.asarray(values)
+    kind = np.dtype(target)
+    if kind.kind not in "iu":
+        return given.astype(target)
+    wrapped = np.asarray([_c_integer(value, kind) for value in given.reshape(-1)], dtype=kind)
+    return wrapped.reshape(given.shape)
+
+
+def _c_integer(value: Any, kind: np.dtype) -> int:
+    """``value`` as C holds it in an integer of ``kind``'s width: truncated, then wrapped."""
+    bits = kind.itemsize * 8
+    whole = int(value) & ((1 << bits) - 1)
+    low = whole - (1 << bits) if whole >= 1 << (bits - 1) else whole
+    return int(low) if kind.kind == "i" else int(whole)
+
+
 def _whole(stype: int, values: Any) -> bytes | None:
     """One value written through ``struct``, or ``None`` where NumPy must convert it
     instead: a float into an integer member truncates there and raises here, and a number
@@ -106,7 +129,7 @@ def _whole(stype: int, values: Any) -> bytes | None:
         return None
     try:
         return _packer(stype).pack(values[0])
-    except (struct.error, TypeError):
+    except (struct.error, TypeError, OverflowError):
         return None
 
 
@@ -116,7 +139,7 @@ def pack_member(stype: int, title: str, values: Any) -> bytes:
         one = _whole(stype, values)
         if one is not None:
             return one
-        return bytes(np.asarray(values).astype(BASIC[stype][0]).tobytes())
+        return bytes(_wrapped(values, BASIC[stype][0]).tobytes())
     given = np.asarray(values)
     xmin, xmax, factor = _recipe(title)
     if factor:

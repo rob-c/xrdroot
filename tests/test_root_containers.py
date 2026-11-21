@@ -1073,9 +1073,11 @@ def test_the_rvec_an_rdataframe_writes_reads_back_as_the_vector_it_is():
         assert tree.unreadable == {}
         momenta = tree["MC_px"].array(0, 1)
         assert momenta.lengths() == [192]
-        assert [round(value, 5) for value in momenta[0][6:9]] == [0.0, 30.39946, -30.39946]
+        # float(), because round() of a NumPy scalar keeps its own dtype on NumPy 1 and
+        # returns a Python float on NumPy 2 - the same number, rounded differently.
+        assert [round(float(value), 5) for value in momenta[0][6:9]] == [0.0, 30.39946, -30.39946]
         assert tree["MC_pdg"].array(0, 1)[0][:5].tolist() == [11.0, -11.0, 11.0, -11.0, 23.0]
-        assert round(tree["EVT_thrust_x"].array(0, 1)[0], 5) == -5.89043
+        assert round(float(tree["EVT_thrust_x"].array(0, 1)[0]), 5) == -5.89043
 
 
 def test_a_bitset_is_a_byte_a_bit_with_the_lowest_bit_first():

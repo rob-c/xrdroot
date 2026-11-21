@@ -23,8 +23,17 @@ VALUES = (0, 1, -1, 127, 255, 1000, -1000, 2**31 - 1, -(2**31), 2**53 + 1, 1.5, 
 
 
 def numpy_bytes(stype: int, value: object) -> bytes:
-    """What the NumPy path alone writes for one value of a plain streamer type."""
-    return bytes(np.asarray([value]).astype(BASIC[stype][0]).tobytes())
+    """What one value of a plain streamer type is on file: C's wrap of it into the member.
+
+    NumPy 2 wraps a negative or over-wide number into an unsigned member where NumPy 1 raises,
+    so the mask is written out: the bytes on file are the wrapped ones on either version.
+    """
+    target = np.dtype(BASIC[stype][0])
+    if target.kind in "iu":
+        bits = target.itemsize * 8
+        whole = int(value) & ((1 << bits) - 1)
+        value = whole - (1 << bits) if target.kind == "i" and whole >= 1 << (bits - 1) else whole
+    return bytes(np.asarray([value]).astype(target).tobytes())
 
 
 @pytest.mark.parametrize("stype", PLAIN)
