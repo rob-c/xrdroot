@@ -16,11 +16,10 @@ import struct
 import weakref
 from typing import IO, TYPE_CHECKING, Any
 
-from xrdclient.url import parse
-
 from .buffer import Buffer, as_datetime
 from .compression import decompress
 from .errors import FormatError, UnsupportedFeatureError
+from .transport import parse
 
 if TYPE_CHECKING:
     from xrdclient.config import Config

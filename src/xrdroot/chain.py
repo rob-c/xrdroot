@@ -22,10 +22,10 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from xrdclient.url import parse
 
 from .drawable import Drawable
 from .errors import UnsupportedFeatureError
+from .transport import parse
 from .tree import DEFAULT_STEP, _bounds, concatenate, scattered
 
 if TYPE_CHECKING:

@@ -39,7 +39,6 @@ from collections.abc import Callable, Iterator, Mapping
 from typing import IO, TYPE_CHECKING, Any
 
 import numpy as np
-from xrdclient.url import parse
 
 from .buffer import BYTE_COUNT_MASK, CLASS_MASK, IS_REFERENCED, MAP_OFFSET, NEW_CLASS_TAG, Buffer
 from .compression import CODES, LEVELS, compress, spelled
@@ -53,6 +52,7 @@ from .interp import MEMBER_WISE, OFFSET_L, OFFSET_P
 from .profile import PROFILES
 from .rootarrays import ARRAYS
 from .stacks import MultiGraph
+from .transport import parse
 from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running

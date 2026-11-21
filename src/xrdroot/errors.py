@@ -1,20 +1,19 @@
 """What reading a ROOT file can go wrong with.
 
-Both are :class:`~xrdclient.errors.XRootDError`, so one ``except`` still covers
-everything this package raises, and they are two rather than one because the
-answers differ: a :class:`FormatError` means the bytes are wrong, and a
-:class:`UnsupportedFeatureError` means they are right and this reader is the
-one that is missing something.
+They are two rather than one because the answers differ: a :class:`FormatError`
+means the bytes are wrong, and a :class:`UnsupportedFeatureError` means they are
+right and this reader is the one that is missing something. Both are
+:class:`ROOTError`, and :class:`ROOTError` is the library's own - the transport's
+:class:`~xrdclient.errors.XRootDError` is raised by the transport, at the moment
+a URL is opened and read, and is not what a reader of a local file pays for.
 """
 
 from __future__ import annotations
 
-from xrdclient.errors import XRootDError
-
 __all__ = ["ROOTError", "FormatError", "UnsupportedFeatureError"]
 
 
-class ROOTError(XRootDError):
+class ROOTError(Exception):
     """Base of everything :mod:`xrdroot` raises."""
 
 
