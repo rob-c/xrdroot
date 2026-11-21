@@ -636,3 +636,34 @@ def test_the_rntuples_a_file_holds_are_looked_for_below_its_directories():
         expect((files._ntuples(held), []))
     finally:
         held.close()
+
+
+def test_a_program_that_threads_gives_each_thread_its_own_current_directory(tmp_path):
+    """ROOT::EnableThreadSafety makes the current directory one per thread.
+
+    roottest's current_dir opens a file in each thread and asserts the thread's own file is still
+    the current directory at the end; one directory for the process lets another thread's cd move
+    it. Before the call ROOT has the one directory, which the same test relies on staying put.
+    """
+    import threading
+
+    from xrdroot.pyroot.core import directories
+
+    seen = []
+    ROOT.EnableThreadSafety()
+    try:
+        def work(number: int) -> None:
+            path = tmp_path / f"t{number}.root"
+            opened = ROOT.TFile(str(path), "RECREATE")
+            here = ROOT.TDirectory.CurrentDirectory().GetName()
+            seen.append((number, pathlib.Path(here).name))
+            opened.Close()
+
+        threads = [threading.Thread(target=work, args=(number,)) for number in range(3)]
+        for one in threads:
+            one.start()
+        for one in threads:
+            one.join()
+    finally:
+        directories._THREADED.clear()
+    assert sorted(seen) == [(0, "t0.root"), (1, "t1.root"), (2, "t2.root")]

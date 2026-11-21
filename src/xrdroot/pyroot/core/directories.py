@@ -17,6 +17,7 @@ closes - going back to memory leaves it be, as in ROOT.
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from .collections import TList
@@ -28,38 +29,64 @@ __all__ = ["TDirectory", "gDirectory", "gFile", "current_directory"]
 #: The current directory, once one has been gone into; memory until then.
 _CURRENT: list[Any] = []
 
+#: The current file: the file of the last directory gone into that was in one.
+_FILE: list[Any] = []
+
+#: Whether ROOT::EnableThreadSafety has been called. ROOT's current directory is then one per
+#: thread, so that a thread working in its own file cannot be moved by another's cd - before
+#: that it is the one directory of the process, which is what most programs see.
+_THREADED: list[bool] = []
+
+#: Each thread's own current directory and file, made on first use once the above is set.
+_LOCAL = threading.local()
+
+
+def enable_thread_local_directories() -> None:
+    """``ROOT::EnableThreadSafety``'s effect on the current directory: from now, one per thread."""
+    _THREADED[:] = [True]
+
+
+def _held(name: str, of_process: list[Any]) -> list[Any]:
+    """The list holding ``name`` now: this thread's, or the process's before thread safety."""
+    if not _THREADED:
+        return of_process
+    mine = getattr(_LOCAL, name, None)
+    if mine is None:
+        mine = []
+        setattr(_LOCAL, name, mine)
+    return mine
+
 
 def current_directory() -> Any:
     """What ``gDirectory`` is now: the directory last gone into, or ``gROOT``."""
-    if _CURRENT:
-        return _CURRENT[0]
+    here = _held("current", _CURRENT)
+    if here:
+        return here[0]
     from .troot import gROOT
 
     return gROOT
 
 
-#: The current file: the file of the last directory gone into that was in one.
-_FILE: list[Any] = []
-
-
 def set_current(directory: Any) -> None:
     """Go into ``directory``: what ``cd`` does, without the checks."""
-    _CURRENT[:] = [directory]
+    _held("current", _CURRENT)[:] = [directory]
     found = getattr(directory, "GetFile", None)
     held = found() if callable(found) else None
     if held is not None:
-        _FILE[:] = [held]
+        _held("file", _FILE)[:] = [held]
 
 
 def current_file() -> Any:
     """What ``gFile`` is now: the current file, or ``None`` when there is none."""
-    return _FILE[0] if _FILE else None
+    here = _held("file", _FILE)
+    return here[0] if here else None
 
 
 def forget_file(file: Any) -> None:
     """A file closed is no longer ``gFile``, which ROOT leaves null."""
-    if _FILE and _FILE[0] is file:
-        _FILE.clear()
+    here = _held("file", _FILE)
+    if here and here[0] is file:
+        here.clear()
 
 
 def forget(obj: Any) -> None:
@@ -207,6 +234,11 @@ class TDirectory(TNamed):
     def pwd(self) -> None:
         """``pwd``: print where this directory is."""
         print(self.GetPath())
+
+    @staticmethod
+    def CurrentDirectory() -> Any:
+        """``TDirectory::CurrentDirectory``: the directory a file's objects are made in now."""
+        return current_directory()
 
     @staticmethod
     def Cd(path: Any) -> bool:

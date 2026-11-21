@@ -43,7 +43,11 @@ class thread:
 
     def __init__(self, function: Any = None, *args: Any) -> None:
         self._thread: threading.Thread | None = None
-        if function is not None:
+        if isinstance(function, thread):
+            # C++ has only the move: the work becomes this thread's, and the one moved from no
+            # longer joins it. roottest's ttree_write builds one inside make_shared<std::thread>.
+            self._thread, function._thread = function._thread, None
+        elif function is not None:
             self._thread = threading.Thread(target=function, args=args, daemon=True)
             self._thread.start()
 

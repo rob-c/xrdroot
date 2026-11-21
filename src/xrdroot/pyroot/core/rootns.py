@@ -28,7 +28,14 @@ __all__ = [
 
 
 def EnableThreadSafety() -> None:
-    """``ROOT::EnableThreadSafety``: nothing to do - xrdroot's objects share no global lock."""
+    """``ROOT::EnableThreadSafety``: from here the current directory is one per thread.
+
+    ROOT keeps a directory per thread once a program says it will run several, so that a thread
+    reading its own file is not moved by another thread's ``cd``.
+    """
+    from .directories import enable_thread_local_directories
+
+    enable_thread_local_directories()
 
 
 class TSeqI:

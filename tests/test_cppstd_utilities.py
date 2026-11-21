@@ -6,6 +6,8 @@ import importlib
 
 import pytest
 
+from xrdroot.cppstd import threads
+
 
 @pytest.mark.parametrize(("new", "old"), [
     ("chrono", "pycxx.runtime.chrono"), ("threads", "pycxx.runtime.threads"),
@@ -27,6 +29,19 @@ def test_standard_random_engines_continue_the_same_stream_across_import_paths() 
     reference = mt19937(5489)
     assert canonical(engine) == canonical(reference)
     assert engine() == reference()
+
+
+def test_a_thread_moved_into_another_is_the_one_that_runs():
+    """C++ has only std::thread's move, and roottest's ttree_write moves one into make_shared.
+
+    Treating the argument as a callable would run nothing and say 'thread object is not callable'.
+    """
+    ran = []
+    first = threads.thread(ran.append, 1)
+    second = threads.thread(first)
+    second.join()
+    assert ran == [1]
+    assert first.joinable() is False
 
 
 def test_standard_durations_are_shared_with_interpreter_thread_calls(monkeypatch) -> None:
