@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
+from xrdroot.cppstd.references import assign_into
 from xrdroot.pycint.runtime import Cell
 
 
@@ -106,3 +107,19 @@ def test_a_matrix_is_set_whole_printed_and_given_to_numpy(capsys) -> None:
     a.Print("f=%5.1f ")
     out = capsys.readouterr().out
     assert "2x2 matrix is as follows" in out and "  5.0" in out
+
+
+def test_a_matrix_assigned_a_number_or_another_is_written_through_in_place() -> None:
+    """``m = 1.0`` fills it and ``m = other`` copies the elements - the object stays ``m``."""
+    matrix = ROOT.TMatrixD(2, 2)
+    assert assign_into(matrix, 1.0) == 1.0
+    assert matrix.GetMatrixArray().tolist() == [1.0, 1.0, 1.0, 1.0]
+    other = ROOT.TMatrixD(2, 2)
+    other.__setcall__(0, 1, 4.0)
+    assign_into(matrix, other)
+    assert matrix(0, 1) == 4.0 and other(0, 1) == 4.0
+    matrix[0, 1] = 0.0
+    assert other(0, 1) == 4.0  # a copy of the elements, not the same array
+    grown = ROOT.TMatrixD(3, 1)
+    assign_into(matrix, grown)
+    assert (matrix.GetNrows(), matrix.GetNcols()) == (3, 1)

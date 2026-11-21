@@ -67,3 +67,34 @@ def test_std_copy_without_a_destination_is_refused() -> None:
 
     with pytest.raises(Refusal, match="std::copy without a range and a place to copy it to"):
         translate("void t() { int a[2]; std::copy(a, a + 2); }", "t.C")
+
+
+def test_a_static_member_of_a_class_template_is_reached_through_its_instance() -> None:
+    """``T::size`` of ``T`` an instance the translator made: the instance's own class member."""
+    source = """
+    template <typename T> struct Box { static int size; int v; };
+    template <typename T> int size_of() { return T::size; }
+    int f() { return size_of<Box<int>>(); }
+    """
+    python = translate(source, "t.C")
+    assert "def size_of__Box_int():\n    return Box__int.size" in python
+
+
+def test_a_reference_parameter_of_an_instance_takes_what_writes_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A variable the caller keeps by value goes into a cell of its own, given back after."""
+    bumped = """
+    template <typename T> void bump(T &e) { e += 1; }
+    void t() { double x = 1.5; bump(x); printf("%d\\n", (int) x); }
+    """
+    python = translate(bumped, "t.C")
+    assert "def bump__double(e):\n    e.value += 1" in python
+    assert "written_after(bump__double(ref_1 := Cell(x)), x := ref_1.value)" in python
+    assert output(capsys, bumped) == "2\n"
+    element = """
+    template <typename T> void bump(T &e) { e += 1; }
+    void t() { double a[2] = {1.0, 2.0}; bump(a[0]); printf("%d %d\\n", (int) a[0], (int) a[1]); }
+    """
+    assert "bump__double(ItemRef(a, 0))" in translate(element, "t.C")
+    assert output(capsys, element) == "2 2\n"

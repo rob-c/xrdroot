@@ -31,7 +31,7 @@ from xrdroot.pycxx import (
 )
 from xrdroot.pycxx import runtime as plain
 from xrdroot.pycxx.base import P
-from xrdroot.pycxx.ctype import canonical
+from xrdroot.pycxx.ctype import CType, canonical
 from xrdroot.pycxx.cursor import looks_like_type
 from xrdroot.pycxx.runtime.namespace import HostNamespace
 
@@ -195,3 +195,90 @@ def test_a_macro_the_dialect_refuses_is_defined_and_refused_where_it_is_used() -
     source = '#include "lab/units.h"\n#ifdef FURLONGS\nint f() { return FURLONGS(2); }\n#endif\n'
     with pytest.raises(Refusal, match="FURLONGS, a unit no lab measures in"):
         translate(source, "t.cxx", dialect=LAB)
+
+
+# -- what a library template's member aliases stand for ------------------------------------
+
+
+def _members(name: str, args: list[Any]) -> dict[str, Any] | None:
+    """``LabBox<double>::Scalar_t`` is a ``double``, ``::Matrix_t`` a ``LabMatrix<double>``."""
+    if name != "LabBox":
+        return None
+    kind = args[0] if args and isinstance(args[0], CType) else CType("double")
+    return {"Scalar_t": kind, "Matrix_t": CType("LabMatrix", args=[kind])}
+
+
+def _cooked(name: str, args: list[Any]) -> dict[str, Any] | None:
+    """A member alias of a class of the library's that is itself no type here."""
+    return {"LabBox": {"Scalar_t": "not a type"}}.get(name)
+
+
+TEMPLATED = Dialect(**{
+    **{field: getattr(LAB, field) for field in LAB.__dataclass_fields__},
+    "name": "lab-templated",
+    "templates": frozenset({"LabBox"}),
+    "member_types": _members,
+    "number_filled": frozenset({"LabMatrix"}),
+})
+
+ALIASED = Dialect(**{**{field: getattr(LAB, field) for field in LAB.__dataclass_fields__},
+                     "name": "lab-aliased", "templates": frozenset({"LabBox"}),
+                     "member_types": _cooked})  # fmt: skip
+
+
+def test_a_library_templates_member_aliases_are_the_types_the_dialect_says() -> None:
+    source = """
+    template <typename A>
+    auto made(size_t n) -> typename A::Scalar_t {
+       using Matrix_t = typename A::Matrix_t;
+       Matrix_t m(n, n);
+       typename A::Scalar_t half = 0.5;
+       return half;
+    }
+    double f() { return made<LabBox<double>>(2); }
+    """
+    python = translate(source, "made.cxx", TEMPLATED)
+    assert "LAB.LabMatrix['double'](n, n)" in python
+    assert "half = 0.5" in python
+
+
+def test_a_member_alias_the_dialect_names_no_type_for_is_left_to_the_library() -> None:
+    """A name the dialect does not know a type for is the library's, spelled as it was."""
+    assert "LAB.Thing.Scalar_t()" in translate(
+        "void g() { Thing::Scalar_t x; }", "g.cxx", ALIASED)
+    # what the dialect answers with and says is no type is left to the library too
+    assert "LAB.LabBox.Scalar_t()" in translate(
+        "void g() { LabBox<double>::Scalar_t x; }", "g.cxx", ALIASED)
+
+
+def test_a_library_templates_member_is_reached_through_the_instance_of_its_arguments() -> None:
+    assert "LAB.LabBox['double'].Ticks(3)" in translate(
+        "void f() { LabBox<double>::Ticks(3); }", "f.cxx", TEMPLATED)
+    aliased = "void f() { using Arch = LabBox<double>; Arch::Ticks(3); }"
+    assert "LAB.LabBox['double'].Ticks(3)" in translate(aliased, "f.cxx", TEMPLATED)
+
+
+def test_a_store_of_a_number_into_a_matrix_of_the_dialects_fills_it() -> None:
+    source = """
+    void f() {
+       LabMatrix<double> m(2, 2);
+       m = 1.0;
+       LabMatrix<double> other(2, 2);
+       m = other;
+    }
+    """
+    python = translate(source, "f.cxx", TEMPLATED)
+    assert "assign_into(m, 1.0)" in python
+    # another matrix is the copy C++ makes of it, which is no number's store
+    assert "m = value_copy(other)" in python
+
+
+def test_a_function_templates_reference_parameter_is_a_cell_the_caller_gives_back() -> None:
+    source = """
+    template <typename T> void bump(T &e) { e += 1; }
+    int f() { double x = 1.5; bump(x); return (int) x; }
+    """
+    python = translate(source, "f.cxx")
+    assert "def bump__double(e):\n    e.value += 1" in python
+    assert "written_after(bump__double(ref_1 := Cell(x)), x := ref_1.value)" in python
+

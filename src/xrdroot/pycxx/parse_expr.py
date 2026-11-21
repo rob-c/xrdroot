@@ -587,17 +587,28 @@ class ExprParser(TypeParser):
             if not ((self.at_("::") and self.peek(1).kind == "id") or self._scoped_operator()):
                 break
             self.take()
-        found = Name(where, self._standard(self._type_scope(self.unaliased(parts))), targs, rooted)
-        if len(each) > 1 and len(found.parts) == len(each):
-            found.scope_targs = each[-2]
+        scoped, scope_args = self._type_scope(self.unaliased(parts))
+        found = Name(where, self._standard(scoped), targs, rooted)
+        found.scope_targs = self._scoped_arguments(each, found.parts, scope_args)
         return found
 
-    def _type_scope(self, parts: list[str]) -> list[str]:
-        """``generator::max`` after ``using generator = std::mt19937``: the class's member."""
+    @staticmethod
+    def _scoped_arguments(
+        each: list[list[Any] | None], parts: list[str], from_alias: list[Any] | None
+    ) -> list[Any] | None:
+        """The arguments of the class a member is reached through: ``Box<int>::count``'s, written
+        on the class - or those of the alias it was written as, ``Arch::count``."""
+        written = each[-2] if len(each) > 1 and len(parts) == len(each) else None
+        return written if written is not None else from_alias
+
+    def _type_scope(self, parts: list[str]) -> tuple[list[str], list[Any] | None]:
+        """``generator::max`` after ``using generator = std::mt19937``: the class's member - and
+        the template arguments its alias was an instance of, for ``Architecture::SetRandomSeed``
+        after ``using Architecture = TCpu<Float_t>``."""
         alias = self.aliases.get(parts[0]) if len(parts) > 1 else None
-        if alias is None or alias.pointer or alias.enum is not None or alias.args:
-            return parts
-        return [*alias.name.split("::"), *parts[1:]]
+        if alias is None or alias.pointer or alias.enum is not None:
+            return parts, None
+        return [*alias.name.split("::"), *parts[1:]], list(alias.args) or None
 
     def _special_part(self) -> str | None:
         """``operator+`` or ``~Name`` where a name's next part stands, else ``None``."""

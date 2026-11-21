@@ -748,7 +748,10 @@ class ExprEmitter(NameEmitter):
             return numeric
         if isinstance(target, Call):
             return self.call_assignment(node, result)
-        if node.op == "=" and isinstance(target, Name) and _assigned_into(self.typeof(target)):
+        if node.op == "=" and isinstance(target, Name) and (
+            _assigned_into(self.typeof(target))
+            or _filled_with_number(self.typeof(target), self.typeof(node.value))
+        ):
             return f"assign_into({self.value(target)}, {self.value(node.value)})"
         if not self._held_through(target):
             return None
@@ -1095,6 +1098,16 @@ def _assigned_into(ctype: CType | None) -> bool:
     if ctype is None or ctype.pointer:
         return False
     return bool(active().assigned_pattern.match(ctype.name.split("::")[-1]))
+
+
+def _filled_with_number(ctype: CType | None, value: CType | None) -> bool:
+    """Is ``target = number`` the store that fills a matrix of the dialect's - every element
+    set, as ``TMatrixT::operator=(const TElement &)`` sets them - rather than a rebinding?"""
+    if ctype is None or ctype.pointer or value is None or value.pointer:
+        return False
+    if not (value.scalar and not value.is_string):
+        return False
+    return ctype.name.split("::")[-1] in active().number_filled
 
 
 def _is_unaddressable_update(operand: Expr) -> bool:

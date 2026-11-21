@@ -34,8 +34,9 @@ DEFAULT = "xrdroot.pyroot"
 #: are called unqualified by argument-dependent lookup - ``MakeModelAndMeasurementFast(meas)``
 #: of a ``HistFactory::Measurement`` - which finds them there too. ``ROOT::Math``'s
 #: vectors come last of all: ``using namespace ROOT::Math`` and then ``XYZTVector``.
-USED = ("RooFit", "RooStats", "RooStats.HistFactory", "TMVA", "TMVA.Experimental", "RDF",
-        "VecOps", "Math")  # VecOps late: RooFit's Range is not VecOps' Range
+USED = ("RooFit", "RooStats", "RooStats.HistFactory", "TMVA", "TMVA.DNN",
+        "TMVA.Experimental", "RDF", "VecOps", "Math")  # VecOps late: RooFit's Range is not
+# VecOps' Range; TMVA.DNN before TMVA.Experimental: a DNN test says ``using namespace TMVA::DNN``
 
 
 def _pyroot() -> Any:

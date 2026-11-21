@@ -14,6 +14,7 @@ import dataclasses
 from typing import Any
 
 from .ctype import CType
+from .dialect import active
 from .errors import Where
 from .nodes import Call, Cast, Literal, Name, Node
 
@@ -49,16 +50,28 @@ MEMBER_TYPES = {"value_type": 0, "key_type": 0, "element_type": 0, "mapped_type"
 
 def _member_type(name: str, bindings: Bindings) -> CType | None:
     """``typename T::value_type`` with ``T`` a container of the standard's: its element, as
-    ``std::map<K, V>::mapped_type`` is ``V``; ``T::size_type`` is ``size_t``."""
+    ``std::map<K, V>::mapped_type`` is ``V``; ``T::size_type`` is ``size_t``. A class of the
+    dialect's library answers through :attr:`~.dialect.Dialect.member_types`."""
     head, _, rest = name.partition("::")
     bound = bindings.get(head)
-    if not isinstance(bound, CType) or not bound.name.startswith("std::") or bound.pointer:
+    if not isinstance(bound, CType) or bound.pointer:
         return None
+    if not bound.name.startswith("std::"):
+        return _library_member(bound, rest)
     if rest == "size_type":
         return CType("unsigned long")
     index = MEMBER_TYPES.get(rest)
     found = bound.args[index] if index is not None and index < len(bound.args) else None
     return found if isinstance(found, CType) else None
+
+
+def _library_member(bound: CType, rest: str) -> CType | None:
+    """The member alias ``rest`` of the library class ``bound`` is an instance of, if the
+    dialect knows what that class's aliases stand for."""
+    asked = active().member_types
+    found = asked(bound.name, list(bound.args)) if asked is not None else None
+    alias = (found or {}).get(rest)
+    return alias if isinstance(alias, CType) else None
 
 
 def _dimension(dim: Any, bindings: Bindings) -> Any:

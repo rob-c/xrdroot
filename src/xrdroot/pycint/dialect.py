@@ -49,7 +49,11 @@ TEMPLATES = frozenset(
     """RVec TMatrixT TMatrixTSym TVectorT TMatrixTSparse TParameter TTreeReaderValue
     TElementActionT TElementPosActionT
     TTreeReaderArray RResultPtr RNode TArrayT RVecOps TNDArrayT THnT THnSparseT RHist RTensor
-    TMatrixTRow TMatrixTColumn TMatrixTDiag dynamic_range_cast static_range_cast""".split()
+    TMatrixTRow TMatrixTColumn TMatrixTDiag dynamic_range_cast static_range_cast
+    TCpu TCuda TReference TCpuMatrix TCpuTensor TCpuBuffer TDeepNet TNet ATensor
+    TGeneralLayer VGeneralLayer TDenseLayer TBatchNormLayer TConvLayer TMaxPoolLayer
+    TReshapeLayer TTensorDataLoader TDataLoader TSGD TAdam TAdagrad TRMSProp TAdadelta"""
+    .split()
 )
 
 #: ROOT's version as Cling reports it, ``ROOT_VERSION(6, 40, 4)``.
@@ -234,6 +238,43 @@ ASSIGNED = re.compile(
     re.S,
 )
 
+#: The member aliases of TMVA's DNN classes, each the C++ type it stands for as a function of
+#: the arguments of the template instance the class is - ``TCpu<double>::Matrix_t`` is a
+#: ``TCpuMatrix<double>``. TMVA's DNN tests name them without including the headers that
+#: declare them, so what they stand for is here as data.
+def _dnn_members(name: str, args: list[CType]) -> dict[str, CType] | None:
+    """The aliases of the DNN class ``name``, an instance of ``args``."""
+    if name in ("TDeepNet", "TNet"):
+        return _deep_net_members(args)
+    kind = args[0] if args and isinstance(args[0], CType) else CType("double")
+    matrix, tensor = CType("TCpuMatrix", args=[kind]), CType("TCpuTensor", args=[kind])
+    if name in ("TCpu", "TCuda", "TReference"):
+        return {
+            "Scalar_t": kind,
+            "Matrix_t": matrix,
+            "Tensor_t": tensor,
+            "HostBuffer_t": CType("TCpuBuffer", args=[kind]),
+            "DeviceBuffer_t": CType("TCpuBuffer", args=[kind]),
+        }
+    if name in ("TCpuMatrix", "TCpuTensor"):
+        return {"Scalar_t": kind, "Matrix_t": matrix, "Tensor_t": tensor}
+    return None
+
+
+def _deep_net_members(args: list[CType]) -> dict[str, CType]:
+    """``TDeepNet<Architecture_t, Layer_t>``'s aliases: its architecture's, and its layers'."""
+    architecture = args[0] if args and isinstance(args[0], CType) else CType("TCpu")
+    layer = args[1] if len(args) > 1 else CType("VGeneralLayer", args=[architecture])
+    return {
+        **(_dnn_members(architecture.name, list(architecture.args)) or {}),
+        "Architecture_t": architecture,
+        "Layer_t": layer,
+    }
+
+
+#: ROOT's matrices, whose ``m = 1.0`` sets every element: ``operator=(const TElement &)``.
+NUMBER_FILLED = frozenset({"TMatrixT", "TMatrixTSym", "TMatrixTSparse", "TMatrixD", "TMatrixF"})
+
 #: ``ROOT::RVecF`` and its kind: ``RVec``s whose element type their name gives.
 TYPED_VECTORS = frozenset(
     f"RVec{kind}" for kind in ("B", "C", "D", "F", "I", "L", "LL", "U", "UL", "ULL")
@@ -319,6 +360,7 @@ ROOT = Dialect(
     constants={"kTRUE": "True", "kFALSE": "False", "kNPOS": "npos"},
     functions={"R__ASSERT": "cassert"},
     member_pattern=re.compile(r"^f[A-Z]\w*$"),
+    member_types=_dnn_members,
     calls={"Format": emit.formatted, emit.CLASS_VERSION: emit.class_version},
     call_classes=frozenset({"TString"}),
     member_statement=emit.changing,
@@ -337,6 +379,7 @@ ROOT = Dialect(
     array_readers=frozenset({"TTreeReaderArray"}),
     held_results=frozenset({"RResultPtr", "RDF::RResultPtr", "ROOT::RDF::RResultPtr"}),
     assigned_pattern=ASSIGNED,
+    number_filled=NUMBER_FILLED,
     containers=frozenset({"RVec", *TYPED_VECTORS}),
     typed_containers=TYPED_VECTORS,
     vector="RVec",

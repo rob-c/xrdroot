@@ -38,6 +38,7 @@ from .nodes import (
     Name,
 )
 from .operators import conversion
+from .program import by_reference
 from .symbols import Symbol
 
 __all__ = ["CallEmitter", "WRAPS"]
@@ -201,18 +202,43 @@ class CallEmitter(ExprEmitter):
 
     def _instance_call(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
         """A call of a function template's instance, a member template's handed ``self``."""
-        instance = self.function_instance(func, node, symbol)
+        instance, written = self.function_instance(func, node, symbol) or (None, None)
         if instance is None:
             return None
         own = "self" if symbol is not None and symbol.kind == "method" else ""
-        return f"{instance}({', '.join(filter(None, (own, self.arguments(node))))})"
+        assert written is not None
+        arguments, given_back = self.instance_arguments(node, written)
+        call = f"{instance}({', '.join(filter(None, (own, arguments)))})"
+        return f"written_after({call}, {given_back})" if given_back else call
 
-    def function_instance(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
-        """The instance of a function template a call calls, if it is one."""
-        raise NotImplementedError
+    def instance_arguments(self, node: Call, written: Function) -> tuple[str, str]:
+        """The call's arguments, a parameter of the instance's that is a reference passed as
+        something writable - which for a variable the caller keeps by value means a cell of its
+        own, given back to that variable once the call has run: those assignments, and the
+        arguments."""
+        positions = tuple(
+            index for index, param in enumerate(written.params) if by_reference(param.ctype))
+        replaced: dict[int, str] = {}
+        given_back: list[str] = []
+        for index in positions:
+            arg = node.args[index] if index < len(node.args) else None
+            variable = self.local_name(arg) if arg is not None else None
+            if variable is None:
+                continue
+            held = self.fresh("ref")
+            replaced[index] = f"{held} := Cell({self.value(arg)})"
+            given_back.append(f"{variable} := {held}.value")
+        return self.argument_list(node.args, positions, replaced), ", ".join(given_back)
 
     def method_instance(self, owner: CType | None, func: Member, node: Call) -> str | None:
         """The instance of a member template a call of a method calls, if it is one."""
+        raise NotImplementedError
+
+    def function_instance(
+        self, func: Name, node: Call, symbol: Symbol | None
+    ) -> tuple[str, Function | None] | None:
+        """The instance of a function template a call calls, if it is one - and the instance's
+        declaration, whose parameters say which of the arguments it writes through."""
         raise NotImplementedError
 
     def _special(self, func: Name) -> Callable[[CallEmitter, Name, Call], Out | None] | None:

@@ -155,6 +155,10 @@ class Dialect:
     functions: Mapping[str, str] = field(default_factory=dict)
     #: What a member of one of the library's classes looks like, used in a derived class.
     member_pattern: re.Pattern[str] = NEVER
+    #: The types a library class's member aliases stand for - ``TCpu<double>::Matrix_t`` - by
+    #: the class's name and the arguments of the template instance it is, or ``None`` where
+    #: the class is no template of the library's: ``(name, args) -> {member: CType}``.
+    member_types: Callable[[str, list[Any]], Mapping[str, Any] | None] | None = None
 
     # -- calls and values --------------------------------------------------------------
 
@@ -196,6 +200,8 @@ class Dialect:
     held_results: frozenset[str] = frozenset()
     #: Classes a variable of is set by ``=`` in place rather than bound anew, by last name.
     assigned_pattern: re.Pattern[str] = NEVER
+    #: Classes whose ``= number`` sets every element - ``TMatrixT::operator=(const TElement &)``.
+    number_filled: frozenset[str] = frozenset()
 
     # -- vectors -----------------------------------------------------------------------
 

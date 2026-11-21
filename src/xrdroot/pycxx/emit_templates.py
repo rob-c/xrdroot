@@ -148,9 +148,12 @@ class TemplateEmitter(ClassEmitter):
             )
         return not isinstance(value, Name) or value.parts[0] not in self.template_names
 
-    def function_instance(self, func: Name, node: Call, symbol: Symbol | None) -> str | None:
+    def function_instance(
+        self, func: Name, node: Call, symbol: Symbol | None
+    ) -> tuple[str, Function] | None:
         """The Python name of the instance a call of a function template calls - asked for
-        now, to be written before the declaration that calls it - or ``None``."""
+        now, to be written before the declaration that calls it - and the instance, or
+        ``None``."""
         template = self._template_of(symbol, node)
         bindings = self._bindings(func, node, template) if template is not None else None
         if template is None or bindings is None:
@@ -162,7 +165,7 @@ class TemplateEmitter(ClassEmitter):
         key, made = found
         if made is not None:
             self._made(key, made, owner)
-        return key
+        return key, self.program.templates.functions[key]
 
     def _made(self, key: str, made: Function, owner: str | None) -> None:
         """A new instance, to be written before the declaration being written: its name, and

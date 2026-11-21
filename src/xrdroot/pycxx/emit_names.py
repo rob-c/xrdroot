@@ -197,7 +197,25 @@ class NameEmitter(Inference):
             return found
         if len(parts) == 1:
             return self._plain(node)
-        return self.host_name(parts) + self.targs(node.targs), P.POSTFIX
+        return self._in_host(node), P.POSTFIX
+
+    def _in_host(self, node: Name) -> str:
+        """A qualified name of the library's, its parts joined in the host - or, for a template
+        instance's member, the member of the class the arguments make."""
+        if node.scope_targs and node.parts[0] in active().templates:
+            return self._member_of_instance(node)
+        return self.host_name(node.parts) + self.targs(node.targs)
+
+    def _member_of_instance(self, node: Name) -> str:
+        """``TCpu<double>::SetRandomSeed``: the member of the instance ``ROOT.TCpu['double']``.
+
+        A library template's member is reached through the class the arguments make, as the
+        host builds it on a subscript - so the arguments go on the template's name, not after
+        the member's."""
+        text = self.host_name(node.parts[:1]) + self.targs(node.scope_targs)
+        text += "".join(f".{python_operator(part)}" for part in node.parts[1:])
+        own = None if node.targs is node.scope_targs else node.targs
+        return text + self.targs(own)
 
     def trait_value(self, node: Name) -> bool | None:
         """A type trait of types all known here - not a parameter of a template being written
