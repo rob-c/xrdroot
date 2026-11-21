@@ -13,12 +13,13 @@ from __future__ import annotations
 from typing import Any, ClassVar, cast
 from xml.dom import Node as DomNode
 from xml.dom import minidom
+from xml.parsers import expat
 from xml.parsers.expat import ExpatError
 
 from .core.collections import TList
 from .core.objects import TNamed, TObject
 
-__all__ = ["TDOMParser", "TXMLAttr", "TXMLDocument", "TXMLNode"]
+__all__ = ["TDOMParser", "TSAXParser", "TXMLAttr", "TXMLDocument", "TXMLNode"]
 
 
 class TXMLAttr(TNamed):
@@ -198,3 +199,103 @@ class TDOMParser(TObject):
         if code == 0:
             return "Parsing OK"
         return "The document is not valid XML"
+
+
+class _Handler:
+    """What the document's events are passed to: the macro's own handler object, through the
+    methods ROOT's ``TSAXParser`` calls on it. A handler that does not define one is left
+    alone, as a macro is free not to write down every method ROOT may call."""
+
+    def __init__(self, handler: Any) -> None:
+        self._handler = handler
+        self._in_cdata: str | None = None
+
+    def _say(self, name: str, *words: Any) -> None:
+        told = getattr(self._handler, name, None)
+        if told is not None:
+            told(*words)
+
+    def start_document(self) -> None:
+        self._say("OnStartDocument")
+
+    def end_document(self) -> None:
+        self._say("OnEndDocument")
+
+    def start_element(self, name: str, attrs: list[str]) -> None:
+        written = TList()
+        for at in range(0, len(attrs), 2):
+            written.Add(TXMLAttr(attrs[at], attrs[at + 1]))
+        self._say("OnStartElement", name, written)
+
+    def end_element(self, name: str) -> None:
+        self._say("OnEndElement", name)
+
+    def characters(self, content: str) -> None:
+        if self._in_cdata is None:
+            self._say("OnCharacters", content)
+        else:  # a CDATA block is told as one block, not character run by character run
+            self._in_cdata += content
+
+    def start_cdata(self) -> None:
+        self._in_cdata = ""
+
+    def end_cdata(self) -> None:
+        text = self._in_cdata or ""
+        self._in_cdata = None
+        self._say("OnCdataBlock", text, len(text))
+
+    def comment(self, text: str) -> None:
+        self._say("OnComment", text)
+
+    def fatal_error(self, text: str) -> None:
+        self._say("OnFatalError", text)
+
+
+class TSAXParser(TObject):
+    """``TSAXParser``: read an XML file by telling a macro's handler what happens in it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._handler: Any = None
+        self._code = 0
+
+    def ConnectToHandler(self, classname: str, handler: Any) -> None:
+        """``ConnectToHandler``: ``handler`` hears what ``ParseFile`` reads next. ROOT asks
+        ``classname`` for the type a handler is, to cast it; the object it is given is
+        already the macro's own, so only the object matters here."""
+        self._handler = handler
+
+    def _reader(self) -> tuple[Any, _Handler]:
+        """A reader that reports comments and CDATA blocks too, in document order, as the
+        SAX reader ROOT calls on libxml2 does, and the bridge that passes them on."""
+        reader = expat.ParserCreate()
+        reader.ordered_attributes = True
+        told = _Handler(self._handler)
+        reader.StartElementHandler = told.start_element
+        reader.EndElementHandler = told.end_element
+        reader.CharacterDataHandler = told.characters
+        reader.CommentHandler = told.comment
+        reader.StartCdataSectionHandler = told.start_cdata
+        reader.EndCdataSectionHandler = told.end_cdata
+        return reader, told
+
+    def ParseFile(self, path: Any) -> int:
+        """``ParseFile``: the file read, ``0`` - or ``-1`` for one that was not, the handler
+        told of a document that stopped being readable halfway."""
+        reader, told = self._reader()
+        try:
+            opened = open(str(path), "rb")
+        except OSError:
+            self._code = -1
+            return self._code
+        with opened:
+            told.start_document()
+            try:
+                reader.ParseFile(opened)
+            except expat.ExpatError as bad:
+                told.fatal_error(str(bad))
+                self._code = -1
+                return self._code
+        told.end_document()
+        self._code = 0
+        return 0
