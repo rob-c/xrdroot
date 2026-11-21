@@ -940,6 +940,28 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Gates: `12867 passed`, `TOTAL 118034 0 29632 0 100%`, ruff/mypy/maintainability/components/`mkdocs --strict` clean,
   `XRDROOT_TEST_OTHER_MACHINE=1` the same; the coverage gate ran after each cherry-pick (`W0-74`).
 
+## Round 32's close (recorded here for the next iteration)
+
+- Base `3372a1eb`, closed at `f359f0be`. **Two commits, +3 PASS** - and two of the round's four workers produced nothing,
+  which is now a pattern worth its own row.
+- **`io/json` is finished as far as running goes**: `roottest/root/io/json/STL` PASSES (`8c150a28` - a `std::set`/`std::map`
+  keeps a copy of what it is given, as C++ does), and the area is **10 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED**
+  (`/tmp/r32/json`: only `ArrayCompress` and `RootClasses` remain, each a named `TBufferJSON` refusal).
+- **`other/math/*` is 16 -> 18 PASS** (`62afe7fe`: ROOT::Math's `IntegrationOneDim`/`IntegrationMultiDim`/
+  `IntegratorMultiDim`, `WrappedTF1` and `Integrator::Integral(f, a, b)`), measured by its worker at
+  `/tmp/r32/other` with no PASS lost.
+- **`W0-88` is the round's process finding.** Four of the last round's workers died without a commit, and *this* round's
+  two live ones left a **discovery record uncommitted in their worktree** (`/tmp/r32/w04/docs/discoveries/…`), correctly,
+  since `docs/` is not theirs. That record is where `W0-87`'s six blocked tests came from - `mathtools.py`'s
+  `Minimizer.Clear()`/`GetMinosError()`, `ROOT.Minuit2.Minuit2Minimizer`, `Fit.BinData.GetErrorType`,
+  `_FitNamespace.Chi2FCN` - and it names the three that need translator pointer arithmetic. **A round reads
+  `<worktree>/docs/discoveries/` before it closes.**
+- `W0-89` records that `roottest/root/math/*` is nearly empty (5 tests, **0 PASS**) and untouched by any round.
+- `W0-85` (five `io/tree` tests, two lines each) and `W0-79` (`test-rcrr123`'s third-level chain) are open only because
+  their workers died: both briefs are unchanged and are the next iteration's first two.
+- Gates: `12888 passed`, `TOTAL 118142 0 29650 0 100%`, ruff/mypy/maintainability/components/`mkdocs --strict` clean,
+  `XRDROOT_TEST_OTHER_MACHINE=1` the same; the coverage gate ran after each cherry-pick (`W0-74`).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -978,6 +1000,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 32's result of it, at `f359f0be`: `TOTAL 118142 0 29650 0 100%`, `12888 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
+  maintainability 30 734 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 31's result of it, at `27f23efd`: `TOTAL 118034 0 29632 0 100%`, `12867 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
   maintainability 30 659 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -1115,6 +1140,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 29 | `9dd616a0` | **three one-line behaviours**: a null `char*` member is `null` in JSON (`44e2d2ed`); `Show` prints a bare record as the reference it is (`d07c8610`); every object carries the two heap bits (`8ffa748c`) | **roottest +1: `roottest/root/io/json/String` PASSES** (`/tmp/r29/json`: `io/json` 4 -> 5 PASS), `io/tree` 10 PASS / 8 DIFF / 2 UNSUPPORTED with `test-rc` down from **four** differing line kinds to **three** (`/tmp/r29/tree`) | 3: `W0-78` (the `fBits`/`fUniqueID` bytes - the last three lines of six tests), `W0-79` (`test-rcrr123`'s third-level `TRef` chain), `W0-80` (a worker died; `W0-77` still open); `W0-75` corrected and closed |
 | 30 | `4cdb3649` | **three commits**: a `char[N][M]` is one buffer of its rows (`71dba22d`), a `std::pair` written on its own is `$pair` (`8e797bcb`), the identifier and its process (`ae646b4e`) | **roottest +2: `io/json/BasicTypes` and `io/json/Objects` PASS** (`/tmp/r30/json` -> `/tmp/r30/json2`); `io/json` is **7 PASS / 0 FAIL / 0 DIFF / 5 UNSUPPORTED**, `io/tree` unchanged at 10 / 8 / 2 (`/tmp/r30/tree`) | 3: `W0-82` (`FromJSON` filling an existing object's containers), `W0-83` (`W0-78` with its mechanism measured), `W0-84` (two workers died, `W0-77`/`W0-79` open); `W0-81` closed |
 | 31 | `c862d06a` | **five commits, one feature in two halves**: a `TObject` reads back with `fBits`' heap bits (`a65836dd`) and `fUniqueID`'s process byte (`ca510e97`); `FromJSON` fills a container a constructor left empty (`46dbd65c`); a value in full where a pointer is a `$ref` (`6b3e0928`); a `Double32_t` template spelling (`d07a00cd`) | **roottest +3**: `io/tree/test-rc` PASSES (`/tmp/r31/tree2`: `io/tree` 10 -> **11** PASS), and `io/json/STL1` + `StreamerLoop` PASS while `STL` moved UNSUPPORTED -> DIFF (`/tmp/r31/json`: `io/json` 7 -> **9** PASS, 1 DIFF, 2 UNSUPPORTED); `io/double32` unchanged at 3 PASS / 1 FAIL (`/tmp/r31/d32`) | 2: `W0-85` (the same two values for a **cloned** file's split collection - five tests, two lines each), `W0-86` (`STL`'s `set1` is 2 343 bytes where ROOT's is 5 144); `W0-82` and `W0-83` closed |
+| 32 | `3372a1eb` | **two commits**: a `std::set`/`std::map` keeps a copy of what it is given, as C++ does (`8c150a28`); ROOT::Math's integration kinds, function interfaces and Util (`62afe7fe`) | **roottest +1**: `io/json/STL` PASSES - `io/json` **10 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED** (`/tmp/r32/json`); **`other` +2**: `other/math/*` **16 -> 18 PASS**, no PASS lost (`/tmp/r32/other`) | 5: `W0-87` (`other/math`'s next six: `Minimizer.Clear()`/`GetMinosError()`, `Minuit2Minimizer`, `BinData.GetErrorType`, `Chi2FCN`), `W0-88` (**read a dead worker's `docs/discoveries/` - that is where `W0-87` came from**), `W0-89` (`roottest/root/math/*`, 5 tests, 0 PASS); `W0-86` closed; `W0-85`/`W0-79` re-queued |
 
 ## Notes
 
