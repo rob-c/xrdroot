@@ -1057,6 +1057,18 @@ def _into(label: str, sub: str, step: Step) -> Step:
     return read
 
 
+def _base_flattened(member: Member) -> bool:
+    """Is this member a base whose own class the program declares, and so written as columns?
+
+    ROOT writes every base of a member-wise collection that way: the class's members are
+    columns among the rest and the base gets no record of its own. ``vector<TLine>`` in the
+    bigevent roottest is the exception this reader cannot yet tell apart from the rule - the
+    oracle gives ``TAttLine`` a record of its own there - so ``Event::fVectorTLine`` is still
+    not readable, and :func:`_columns` flattens.
+    """
+    return member.stype == 0 and member.typename == "BASE"
+
+
 def _columns(
     name: str, source: Source, seen: tuple[str, ...]
 ) -> list[tuple[str, Fill]] | None:
@@ -1068,6 +1080,14 @@ def _columns(
     rest, every object's ``std::string`` member inside one record, a member that is a
     container of a class under one header and then each object's count and items, a
     map likewise, and every other kind of member for each object in turn.
+
+    A base whose own class the program declares is flattened into these columns - the class
+    in memory has it laid out, so ROOT writes its members among the rest. A base of one of
+    ROOT's own classes is not: it has a description of its own, and ROOT gives it a record
+    of its own per object, version and all, exactly as it writes an object held by value.
+    The oracle's ``vector<TLine>`` holds ``4000 0008 0002 0001 0001 0001`` for ``TAttLine``
+    and ``4000 0002 0000`` for ``TAttBBox2D`` where a flattened ``TLine`` would hold the
+    three shorts and nothing else.
     """
     if name in SELF_STREAMING:
         return None
@@ -1078,7 +1098,7 @@ def _columns(
     found: list[tuple[str, Fill]] = []
     members = (_description(source, name) or {}).values()
     for (label, step), member in zip(steps, members, strict=True):
-        if member.stype != 0 or member.typename != "BASE":
+        if not _base_flattened(member):
             found.append((label, _column(label, member, step, source, seen)))
             continue
         inner = _columns(member.name, source, seen)
@@ -1519,9 +1539,16 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
 #: The streamer type ROOT gives a member that points at a container: ``kSTLp``.
 STL_POINTER = 71
 
+#: The streamer type of a container held by value: ``kSTL``.
+STL = 300
+
 #: The streamer type of an array of pointers to containers: ``kSTLp`` and the array offset,
 #: which is what ``Event::fVectorTnamed`` - ``vector<TNamed> *f[6]`` - is described as.
 STL_POINTERS = STL_POINTER + OFFSET_L
+
+#: The streamer type of an array of containers: ``kSTL`` and the array offset, which is what
+#: ``Event::fVectorD`` - ``vector<double> f[4]`` - is described as.
+STL_ARRAY = STL + OFFSET_L
 
 
 def _held_container(member: Member) -> str:
@@ -1532,10 +1559,15 @@ def _held_container(member: Member) -> str:
     say a pointer was there, so the member reads as a container held by value does. An array
     of pointers to containers, ``vector<TNamed> *f[6]``, is a different shape and keeps its
     type: it is read by :func:`_containers_held`, out of one record for the whole array.
+
+    A class that *derives* from a container - ``Event``'s ``UShortVector``, a
+    ``vector<UShort_t>`` - is described by one element per base, and ROOT puts the
+    container in that element's name with no type name of its own beside it, which is
+    the only place left for the type to be read from.
     """
     if member.stype == STL_POINTER and member.typename.endswith("*"):
         return member.typename.rstrip("*").strip()
-    return member.typename
+    return member.typename or member.name
 
 
 def _containers_held(
@@ -1633,20 +1665,32 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
     or strings; what is left is a container of one class, held by value or by
     pointer, which reads as a list of whole objects. An array of pointers to
     containers is neither - its elements share one record - and is asked first.
+
+    The name asked is :func:`_held_container`'s rather than the member's own, because a
+    class that derives from a container is described with the container as the element's
+    name and no type name of its own: ``UShortVector`` is a ``vector<unsigned short>``.
     """
     if member.stype == STL_POINTERS:
         return _plainly(_containers_held(member, source, seen))
-    node = parse(member.typename)
-    if node is not None:
-        return _plainly(_reader(node))
     named = _held_container(member)
     held = _class_held(named)
-    if held is None:
-        return _pointer_map(named, source, seen)
-    name, pointed = held
-    if pointed:
+    if held is not None and held[1]:
+        # A container of pointers holds *objects*, whatever they point at: an item is the
+        # class it names and then the object, so ``list<string*>`` - which ``Event`` keeps
+        # three of - is four pointers and not four strings, however much the item's type
+        # name looks like the string a container of strings holds.
         classes = _Described(source, seen)
         return _plainly(_objects(lambda buf: buf.any(classes)))
+    node = parse(named)
+    if node is not None:
+        if member.stype == STL_ARRAY and isinstance(node, Seq):
+            # ``vector<double> f[4]``: the whole array in one record, each element's count
+            # and items in turn - which is one reading per element and not one for the lot.
+            return _plainly(_array_of(_counted_items(node.item), member.length, named))
+        return _plainly(_reader(node))
+    if held is None:
+        return _pointer_map(named, source, seen) or _pair_map(named, source, seen)
+    name, _pointed = held
     # A class the file describes can also be written field by field; one
     # that streams itself, such as a TArrayD, only ever comes whole.
     return _plainly(
@@ -1769,6 +1813,66 @@ def _pointer_map(typename: str, source: Source, seen: tuple[str, ...]) -> Step |
     return _plainly(read)
 
 
+#: The class a map is written as a container *of*: a map has no bytes of its own, only the
+#: pairs its contents are iterated into.
+PAIR_CLASS = "pair"
+
+
+def _pair_map(typename: str, source: Source, seen: tuple[str, ...]) -> Step | None:
+    """How a map whose *key* is an object reads - ``map<TNamed*,int>``, which is what the
+    bigevent roottest's ``Event`` keeps its named counters in - or ``None`` for anything else.
+
+    A map is written as a container of pairs, and a container of objects goes member-wise, so
+    its pairs are a column of ``first``s and then a column of ``second``s under the version of
+    the pair's class. How each of those is written is what the file's description of
+    ``pair<K,V>`` says: :func:`_columns` reads it, which is the same reading a member-wise
+    ``vector`` of an object uses, so a key held by value and one held by pointer need nothing
+    here that the pair's own members do not already describe.
+
+    The description is looked up only once a map has a pair to read: an empty one is a count
+    and no more, and the writer of a file that holds no pairs never describes them - ROOT's
+    own description of a pair a file never wrote is not in that file to be found.
+    """
+    head, angle, rest = typename.replace("std::", "").strip().partition("<")
+    if not angle or not rest.endswith(">") or head not in POINTER_MAPS:
+        return None
+    pair = f"{PAIR_CLASS}<{rest[:-1]}>"
+    found: list[list[tuple[str, Fill]]] = []
+
+    def columns() -> list[tuple[str, Fill]]:
+        if not found:
+            held = _columns(pair, source, seen)
+            if held is None or len(held) != 2:
+                raise UnsupportedFeatureError(
+                    f"a {typename} is written as a container of {pair}, and this file's "
+                    f"streamer information does not describe a pair well enough to read "
+                    f"one: read the file with a reader that has ROOT's own description of "
+                    f"{pair} instead"
+                )
+            found.append(held)
+        return found[0]
+
+    def read(buf: Buffer) -> list[tuple[Any, Any]]:
+        version, end = buf.header()
+        if not version & MEMBER_WISE:
+            raise UnsupportedFeatureError(
+                f"a {typename} whose pairs were not written field by field is not a shape "
+                f"this reader decodes: ROOT writes a map of objects a member at a time, so "
+                f"a file that holds one the other way was written by something else"
+            )
+        _versioned(buf)
+        count = buf.i32()
+        plan = columns() if count else []
+        rows: list[dict[str, Any]] = [{} for _ in range(count)]
+        for _label, column in plan:
+            column(buf, rows)
+        _ended(buf, end, f"{count} pairs of {typename}")
+        key, value = (label for label, _column in plan) if plan else ("first", "second")
+        return [(row[key], row[value]) for row in rows]
+
+    return _plainly(read)
+
+
 #: The streamer type of a ``TStreamerLoop``: ``x[n]`` of a class.
 STREAM_LOOP = 501
 
@@ -1781,18 +1885,22 @@ def _loop_step(
     It is ``MyClass* x; //[n]`` - ``TH2Poly`` keeps a ``TList`` per cell of
     its partition that way - and ROOT writes it as one record holding the
     ``n`` objects, each streaming itself, or for ``MyClass**`` each a pointer
-    naming its class.
+    naming its class. ``TString *name //[n]`` - ``Event::fTstringp`` - holds the
+    strings themselves rather than objects, so each of the ``n`` is one string.
     """
     if member.stype != STREAM_LOOP:
         return None
     where = before.get(member.count)
     if where is None:
         raise _Unreadable(f"{member.name!r}, which is counted by a member written after it")
+    inside = member.typename.rstrip("*")
     if member.typename.endswith("**"):
         classes = _Described(source, ())
         one: Callable[[Buffer], Any] = lambda buf: buf.any(classes)  # noqa: E731
+    elif isinstance(parse(inside), Str):
+        one = _string
     else:
-        one = _embedded(member.typename.rstrip("*"), source, seen)
+        one = _embedded(inside, source, seen)
 
     def step(buf: Buffer, row: dict[str, Any]) -> list[Any]:
         _version, end = buf.header()
