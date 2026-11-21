@@ -259,6 +259,7 @@ extensions = [
     { caller = "xrdroot.tmva.evaluating", point = "tmva.roc_canvas", provider = "pyroot", target = "xrdroot.pyroot.tmvaplot:roc_canvas" },
     # The ROOT namespace runs C++ through the interpreter built on it, never by importing it.
     { caller = "xrdroot.pyroot.core.troot", point = "interpreter.process_line", provider = "pycint", target = "xrdroot.pycint.execute:process_line" },
+    { caller = "xrdroot.pyroot.core.troot", point = "interpreter.process_line_fast", provider = "pycint", target = "xrdroot.pycint.execute:process_line_fast" },
     { caller = "xrdroot.pyroot.core.troot", point = "interpreter.run_source", provider = "pycint", target = "xrdroot.pycint.execute:run_source" },
     { caller = "xrdroot.session", point = "interpreter.run", provider = "pycint", target = "xrdroot.pycint.execute:run" },
     { caller = "xrdroot.session", point = "interpreter.process_line", provider = "pycint", target = "xrdroot.pycint.execute:process_line" },
