@@ -39,6 +39,11 @@ DOTS = "*" + "." * 76 + "*"
 SHOW_MAX = 20
 #: The leaf classes ``Show`` puts five values to a line for, rather than ten.
 FIVE_A_LINE = ("TLeafF", "TLeafD", "TLeafC", "TLeafF16", "TLeafD32")
+#: The class of a record that names none, by a member only that class's streamer writes, the
+#: more specific first: ``TRefArray`` writes the identifiers it refers to as ``TRef`` does not.
+#: ROOT prints the type the member was *declared* with - ``TRef`` for a ``TRef`` - which only
+#: the file's streamer information names here, so the record's own members have to say it.
+RECORD_CLASSES = (("fUIDs", "TRefArray"), ("fPID", "TRef"))
 
 
 def _ratio(tot: int, zipped: int) -> float:
@@ -182,14 +187,24 @@ def _printed(leaf: LeafInfo, value: Any) -> str:
 
     A value that is one object's members rather than a number is an object ROOT streams
     itself - a ``TRef`` - which it prints as the class the value names, or, when the record
-    names no class, as the pointer ROOT would have shown.
+    names no class, as the reference its members are, and failing that as the pointer ROOT
+    would have shown.
     """
     if isinstance(value, Mapping):
-        return str(value.get("classname") or "->")
+        return _record_class(value) or "->"
     number = np.asarray(value).item()
     if isinstance(number, float):
         return f"{number:g}"
     return str(int(number))
+
+
+def _record_class(value: Mapping[str, Any]) -> str | None:
+    """The class a record of one object's members names, or ``None`` when nothing says it."""
+    named = value.get("classname")
+    if named:
+        return str(named)
+    found = [name for member, name in RECORD_CLASSES if member in value]
+    return found[0] if found else None
 
 
 def _values(value: Any) -> list[Any]:

@@ -272,9 +272,22 @@ def test_a_member_of_one_string_per_object_is_printed_as_the_names_it_holds():
 
 
 def test_a_member_of_whole_objects_is_printed_as_the_class_or_the_pointer_it_is():
+    """ROOT prints the type the member was declared with: ``TRef`` for a ``TRef``.
+
+    ``roottest/root/io/tree``'s ``.ref`` files say ``TRef`` where this test used to pin
+    ``->``: a ``TRef`` writes neither its class nor a pointer, so what it is has to be read
+    from the members it does write.
+    """
     from xrdroot.pyroot.trees.printing import show_lines
 
     leaf = SimpleNamespace(name="r1.fRef", text=False, vector=False, classname="")
+    lines = show_lines(0, [(leaf, [{"TObject": {"fUniqueID": 1}, "fPID": 0}])])
+    assert lines[-1] == " r1.fRef         = TRef"
+    array = [{"TObject": {"fUniqueID": 1}, "fLowerBound": 0, "fPID": 0, "fUIDs": [1]}]
+    assert show_lines(0, [(leaf, array)])[-1] == " r1.fRef         = TRefArray"
+    named = [{"classname": "TNamed", "TObject": {"fUniqueID": 1}}]
+    assert show_lines(0, [(leaf, named)])[-1] == " r1.fRef         = TNamed"
+    # A record that names neither a class nor a reference is the pointer ROOT would show.
     lines = show_lines(0, [(leaf, [{"TObject": {"fUniqueID": 1}}])])
     assert lines[-1] == " r1.fRef         = ->"
 
