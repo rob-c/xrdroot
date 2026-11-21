@@ -129,6 +129,50 @@ def test_data_members_are_described_as_the_dictionary_describes_them():
     )
 
 
+#: A class template, whose instance a macro's linkdef asks for by the spelling it was written
+#: with - ``Holder<Double32_t>`` - while the declaration settles on the typedef's type.
+HOLDER = """
+template <typename T>
+class Holder { public: T value; double reg; };
+Holder<Double32_t> held;
+"""
+
+
+def test_a_template_instance_is_found_by_the_double32_spelling_its_linkdef_asked_for():
+    """roottest's ``io/double32`` asks ``TClass::GetClass("MyVector<Double32_t>")`` for the
+    class a ``#pragma link C++ class MyVector<Double32_t>+`` selected, and ROOT answers it:
+    the dictionary was generated under that spelling. The translation makes ``Double32_t`` a
+    ``double``, so the class here is ``Holder<double>``, and the typedef's spelling has to
+    find it or the class is one nothing describes and ``GetStreamerInfo`` is ``nullptr``.
+    """
+    run_source(HOLDER, "holder.C", call=False)
+    found = ROOT.TClass.GetClass("Holder<Double32_t>")
+    members = found.GetListOfDataMembers()
+    expect(
+        (found.GetName(), "Holder<Double32_t>"),
+        (found.HasDictionary(), True),
+        (found.GetState(), reflection.K_HAS_TCLASS_INIT),
+        (found.GetStreamerInfo() is not None, True),
+        ([(m.GetName(), m.GetTypeName()) for m in members],
+         [("value", "Double32_t"), ("reg", "double")]),
+    )  # fmt: skip
+    assert found.GetStreamerInfo().GetCheckSum() == ROOT.TClass.GetClass(
+        "Holder<double>"
+    ).GetCheckSum()
+
+
+def test_a_name_that_is_not_a_template_instance_finds_nothing_by_its_plain_spelling():
+    """Only a ``Double32_t``/``Float16_t`` argument is looked for under the type it spells, so
+    a name nothing declares is still a class with no dictionary rather than a cousin's."""
+    _declared()
+    assert reflection._plain_spelling("Named") == "Named"
+    expect(
+        (reflection._plain_spelling("Holder<Float16_t>"), "Holder<float>"),
+        (ROOT.TClass.GetClass("Holder<Float16_t>").GetStreamerInfo(), None),
+        (ROOT.TClass.GetClass("Nothing<Double32_t>").HasDictionary(), False),
+    )
+
+
 def test_bases_are_listed_and_found_at_any_depth():
     _declared()
     named = ROOT.TClass.GetClass("Named")

@@ -104,6 +104,11 @@ FUNDAMENTAL = frozenset({
     "Short_t",
 })  # fmt: skip
 
+#: The typedefs that name how many bits a float is stored in - ``Double32_t`` is a ``double``
+#: written as a float, ``Float16_t`` a ``float`` written in 16 bits - spelled as the type
+#: they are, which is the only spelling the translation keeps of them.
+PRECISION = {"Double32_t": "double", "Float16_t": "float"}
+
 #: ``kIsTObject`` and the other bits ``TClass::Property`` and ``GetState`` answer with.
 K_IS_TOBJECT = 0x00008000
 #: ``TClass::EState``: ``kInterpreted``, a class the interpreter describes and no dictionary
@@ -469,9 +474,26 @@ def _class_named(name: str) -> type | None:
 
 
 def _declared(name: str) -> type | None:
+    """The class declared as ``name``, or - for a template instance whose argument is one of
+    :data:`PRECISION` - the class declared under the plain spelling of that argument.
+
+    A macro's linkdef names the instance as ROOT's dictionary does, ``MyVector<Double32_t>``,
+    but a declaration writes the typedef's type, so that is the one class here: the
+    translation makes ``Double32_t`` a ``double`` and the instance it records is
+    ``MyVector<double>``. roottest's ``io/double32`` asks for the class by the linkdef's
+    spelling, and ROOT answers it because its dictionary is under that spelling too.
+    """
     from .declared import find_class
 
-    return find_class(name)
+    return find_class(name) or find_class(_plain_spelling(name))
+
+
+def _plain_spelling(name: str) -> str:
+    """``name`` with each :data:`PRECISION` typedef in it written as the type it is."""
+    spelled = name
+    for typedef, plain in PRECISION.items():
+        spelled = spelled.replace(typedef, plain)
+    return spelled
 
 
 def _template(name: str) -> bool:
