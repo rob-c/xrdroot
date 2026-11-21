@@ -186,3 +186,96 @@ def test_a_matrix_places_vectors_and_submatrices():
     assert [len(line) for line in lines] == [38, 38, 38, 40]
     assert lines[0].startswith("[ ") and lines[0].endswith("3")
     assert lines[-1].endswith("6 ]")
+
+
+def test_a_vector_or_matrix_is_built_from_a_pointer_and_a_count():
+    numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert list(SVector["double", 3](numbers, 3)) == [1.0, 2.0, 3.0]
+    assert SMatrix["double", 3](numbers, 9)(2, 2) == 9.0
+    with pytest.raises(TypeError, match="these two arguments are none of those"):
+        SMatrix["double", 2, 2]("abc", "ab")
+
+
+def test_a_vector_or_matrix_is_built_from_two_pointers_into_one_array():
+    numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    assert SMatrix["double", 3](numbers, numbers[9:])(0, 1) == 2.0
+    assert list(SVector["double", 4](numbers, numbers[4:])) == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_a_range_of_a_vector_or_matrix_is_read_by_its_cursors():
+    square = SMatrix["double", 2, 2]([1, 2, 3, 4])
+    assert list(square.begin()) == [1.0, 2.0, 3.0, 4.0]
+    assert square.begin() != square.end() and square.end() == square.end()
+    assert next(square.begin()) == 1.0
+    assert list(SVector["double", 4](square.begin(), square.end())) == [1.0, 2.0, 3.0, 4.0]
+    three = SVector["double", 3](1, 2, 3)
+    assert list(three.begin()) == [1.0, 2.0, 3.0] and list(three.end()) == []
+    assert list(SVector["double", 3](three.begin(), three.end())) == [1.0, 2.0, 3.0]
+
+
+def test_a_matrix_reads_a_row_a_column_and_its_diagonal_as_vectors():
+    square = SMatrix["double", 2, 2]([1, 2, 3, 4])
+    assert list(square.Row(0)) == [1.0, 2.0]
+    assert list(square.Col(1)) == [2.0, 4.0]
+    assert list(square.Diagonal()) == [1.0, 4.0]
+    flat = SMatrix["double", 2, 3]([1, 2, 3, 4, 5, 6])
+    assert list(flat.Diagonal()) == [1.0, 5.0]
+    assert isinstance(square.Row(0), SVector) and square.Row(0).kSize == 2
+
+
+def test_a_matrix_copies_the_rest_of_a_row_a_column_or_itself():
+    numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    square = SMatrix["double", 3](numbers, 9)
+    assert list(square.SubRow(0, 1)) == [2.0, 3.0]
+    assert list(square.SubCol(0, 1)) == [2.0, 5.0, 6.0]
+    corner = square.Sub(1, 1)
+    assert (corner.kRows, corner.kCols) == (2, 2)
+    assert [corner(i, j) for i in range(2) for j in range(2)] == [5.0, 6.0, 6.0, 9.0]
+    assert list(square.SubRow[SVector["double", 2]](0, 1)) == [2.0, 3.0]
+    assert list(square.SubCol[SVector["double", 2]](0, 1)) == [2.0, 5.0, 6.0]
+    assert square.Sub[SMatrix["double", 2, 2]](1, 1)(1, 1) == 9.0
+
+
+def test_a_symmetric_matrix_hands_over_its_triangles():
+    square = SMatrix["double", 3]([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    assert list(square.UpperBlock()) == [1.0, 2.0, 3.0, 5.0, 6.0, 9.0]
+    assert list(square.LowerBlock()) == [1.0, 2.0, 5.0, 3.0, 6.0, 9.0]
+
+
+def test_the_free_functions_make_the_matrices_and_vectors_root_makes():
+    from xrdroot.pyroot.linalg.smatrix import (
+        Cross,
+        Mag,
+        Mag2,
+        Similarity,
+        SimilarityT,
+        SMatrixIdentity,
+        Square,
+        Times,
+        Transpose,
+        Unit,
+    )
+
+    square = SMatrix["double", 2, 2](1, 2, 3, 4)
+    assert Transpose(square)(0, 1) == 3.0
+    assert Times(square, square)(0, 1) == 4.0
+    assert Times(square, 2)(1, 0) == 6.0
+    assert Square(square)(1, 1) == 16.0
+    x = SVector["double", 3](1, 2, 3)
+    assert Mag2(x) == 14.0 and Mag(x) == pytest.approx(14.0**0.5)
+    assert list(Cross(x, SVector["double", 3](4, 5, 6))) == [-3.0, 6.0, -3.0]
+    assert list(Unit(x)) == pytest.approx([1 / 14.0**0.5 * n for n in (1, 2, 3)])
+    assert Mag(SVector["int", 2](3, 4)) == 5
+    identity = SMatrixIdentity(SMatrix["float", 2, 3])
+    assert [identity(i, j) for i in range(2) for j in range(3)] == [1.0, 0, 0, 0, 1.0, 0]
+    three = SMatrix["double", 3, 3]([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    assert Similarity(x, three) == pytest.approx(228.0)
+    assert Similarity(square, square)(0, 1) == (square * square * square.Transpose())(0, 1)
+    assert SimilarityT(square, square)(0, 0) == pytest.approx(
+        (square.Transpose() * square * square)(0, 0)
+    )
+    assert Times(SVector["double", 2](1, 2), SVector["double", 2](3, 4))[1] == 8.0
+    with pytest.raises(TypeError, match="two vectors of three elements, not 2 and 3"):
+        Cross(SVector["double", 2](1, 2), x)
+    with pytest.raises(TypeError, match="has to name that variable's class here"):
+        SMatrixIdentity()

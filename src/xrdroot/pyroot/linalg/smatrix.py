@@ -9,17 +9,39 @@ dtype decides what ``float`` means for a matrix ROOT would have kept in single p
 ``SMatrix<float, 3>`` with one dimension is ROOT's symmetric matrix, and an explicit
 ``MatRepSym``/``MatRepStd`` fourth template argument says which representation, exactly as
 ROOT defaults it.
+
+The free functions a macro calls unqualified in ``ROOT::Math`` - ``Transpose``, ``Similarity``,
+``Mag``, ``Cross``, ``Square``, ``Times`` - are here beside the classes, because what they do
+is what the classes hold and nothing above this layer decides it.
 """
 
 from __future__ import annotations
 
+import copy
+import math
 import typing as _typing
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import numpy as np
 
-__all__ = ["MatRepStd", "MatRepSym", "SMatrix", "SVector", "Dot"]
+__all__ = [
+    "MatRepStd",
+    "MatRepSym",
+    "SMatrix",
+    "SMatrixIdentity",
+    "SVector",
+    "Cross",
+    "Dot",
+    "Mag",
+    "Mag2",
+    "Similarity",
+    "SimilarityT",
+    "Square",
+    "Times",
+    "Transpose",
+    "Unit",
+]
 
 
 def _text(value: Any) -> str:
@@ -33,6 +55,112 @@ def _text(value: Any) -> str:
 def _is_number(value: Any) -> bool:
     """Whether ``value`` is a number rather than something a vector can be filled from."""
     return isinstance(value, (int, float, np.integer, np.floating))
+
+
+def _upto(first: Any, last: Any) -> list[Any]:
+    """The numbers from one cursor up to another of the same container, stepped the way C++
+    steps one: ``*it`` reads and ``++it`` moves on, which is what a ``std::vector``'s iterator
+    and the one here both do."""
+    found: list[Any] = []
+    at = copy.copy(first)  # the caller's cursor keeps its own position
+    while at != last:
+        found.append(at.__deref__())
+        at += 1
+    return found
+
+
+def _counted(first: Any, last: Any) -> list[Any]:
+    """The numbers between two C pointers: ``SMatrix<T,D>(a, size)`` hands over the array and a
+    count, ``SMatrix<T,D>(begin, end)`` two pointers into one array - which the translator
+    writes as two slices, ``d`` and ``d + 9`` - and ``std::vector<T>(v.begin(), v.end())`` two
+    iterators of another container, which are stepped."""
+    if _is_number(last):
+        return list(first)[: int(last)]
+    if not (hasattr(first, "__len__") and hasattr(last, "__len__")):
+        return _upto(first, last)
+    return _spanning(list(first), list(last))
+
+
+def _spanning(whole: list[Any], rest: list[Any]) -> list[Any]:
+    """The head of one array a second slice of the same array ends: ``d`` and ``d + 9`` differ
+    by what is left after the nine elements they name."""
+    if len(rest) >= len(whole) or whole[len(whole) - len(rest) :] != rest:
+        raise TypeError(
+            "an SVector or SMatrix is built from a sequence, from a pointer and a count, or "
+            "from two pointers into one array, and these two arguments are none of those"
+        )
+    return whole[: len(whole) - len(rest)]
+
+
+def _selected(values: tuple[Any, ...]) -> list[Any]:
+    """The numbers a constructor's arguments name: one sequence to copy - also when it is one
+    half of a ``(pointer, count)`` or ``(begin, end)`` pair - or one number per element."""
+    if len(values) == 1 and not _is_number(values[0]):
+        return list(values[0])
+    if len(values) == 2 and not _is_number(values[0]):
+        return _counted(values[0], values[1])
+    return list(values)
+
+
+class _Templated:
+    """A method a macro may also name with a result type, ``m.SubRow<SVector<double,2>>(0, 1)``:
+    the translator writes that as a subscript on the method, ``m.SubRow[SVector['double', 2]]
+    (0, 1)``, so the attribute has to take one before it is called. The type is not passed on -
+    these methods take their shape from where they start, the remainder of the row or column -
+    and an ordinary ``m.Row(0)`` reaches the same call through ``__call__``."""
+
+    def __init__(self, method: Callable[..., Any]) -> None:
+        self._method = method
+        self.__doc__ = method.__doc__
+        self.__name__ = method.__name__
+
+    def __get__(self, instance: Any, owner: Any = None) -> _Templated:
+        return type(self)(self._method.__get__(instance, owner))
+
+    def __getitem__(self, result_type: Any) -> Callable[..., Any]:
+        return self._method
+
+    def __call__(self, *args: Any) -> Any:
+        return self._method(*args)
+
+
+class _Cursor:
+    """A position in a vector or matrix, which ``(begin, last)`` builds another container from:
+    the range form ``std::vector<T>(a.begin(), a.end())`` compares its two cursors and steps
+    one, so this is what both an equal comparison and ``next()`` mean here."""
+
+    def __init__(self, values: list[Any], at: int = 0) -> None:
+        self._values, self._at = values, at
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, _Cursor)
+            and self._values is other._values
+            and self._at == other._at
+        )
+
+    def __iadd__(self, step: int) -> _Cursor:
+        """``++it``: the next position, which walking a range moves to."""
+        self._at += step
+        return self
+
+    def __ne__(self, other: object) -> bool:
+        return not self == other
+
+    __hash__: Any = None  # a position, compared as one
+
+    def __next__(self) -> Any:
+        taken = self._values[self._at]
+        self._at += 1
+        return taken
+
+    def __deref__(self) -> Any:
+        """``*it``: the element the cursor is at, which a range reads at each step."""
+        return self._values[self._at]
+
+    def __iter__(self) -> Iterator[Any]:
+        while self._at < len(self._values):
+            yield next(self)
 
 
 class _Shape:
@@ -111,12 +239,7 @@ class SVector:
     def _given(self, values: tuple[Any, ...]) -> list[Any]:
         """The numbers a constructor was handed: none for a zero vector, one sequence to
         copy, or one number per element."""
-        if not values:
-            return [0] * self.kSize
-        if len(values) == 1 and not _is_number(values[0]):
-            given = list(values[0])
-        else:
-            given = list(values)
+        given = [0] * self.kSize if not values else _selected(values)
         if len(given) != self.kSize:
             raise TypeError(
                 f"an SVector of {self.kSize} elements cannot be built from {len(given)} values"
@@ -183,6 +306,15 @@ class SVector:
         for offset, value in enumerate(vector):
             self._values[at + offset] = self._element(value)
 
+    def begin(self) -> _Cursor:
+        """A cursor at the first element, so that ``std::vector<T>(v.begin(), v.end())`` - and
+        every other range a macro builds from a vector - can read it."""
+        return _Cursor(self._values)
+
+    def end(self) -> _Cursor:
+        """A cursor past the last element, which is where a range ends."""
+        return _Cursor(self._values, self.kSize)
+
     def Dot(self, other: SVector) -> Any:
         """The scalar product with another vector of the same size."""
         return Dot(self, other)
@@ -231,8 +363,7 @@ class SMatrix:
     def __init__(self, *values: Any) -> None:
         self._values = [0] * (self.kRows * self.kCols)
         if values:
-            single = len(values) == 1 and not _is_number(values[0])
-            self._filled(list(values[0]) if single else list(values))
+            self._filled(_selected(values))
 
     def _filled(self, given: list[Any]) -> None:
         """Fill from the elements in row order, and from one triangle's worth when the matrix
@@ -407,6 +538,82 @@ class SMatrix:
             for j in range(other.kCols):
                 self[row + i, col + j] = other(i, j)
 
+    def Row(self, row: int) -> SVector:
+        """One row as a vector, as ``SMatrix::Row`` makes it."""
+        return self._vector_of([self._values[row * self.kCols + c] for c in range(self.kCols)])
+
+    def Col(self, col: int) -> SVector:
+        """One column as a vector, as ``SMatrix::Col`` makes it."""
+        return self._vector_of([self._values[r * self.kCols + col] for r in range(self.kRows)])
+
+    def Diagonal(self) -> SVector:
+        """The diagonal as a vector, which is as long as the shorter side."""
+        return self._vector_of(
+            [self._values[i * self.kCols + i] for i in range(min(self.kRows, self.kCols))]
+        )
+
+    def _vector_of(self, numbers: list[Any]) -> SVector:
+        """A vector of this matrix's element type holding ``numbers``."""
+        made = _vector(type(self)._element, len(numbers))
+        return _typing.cast(SVector, made(numbers))
+
+    @_Templated
+    def SubRow(self, row: int, col: int) -> SVector:
+        """The rest of row ``row`` from column ``col``, as ``SubRow<M>(row, col)`` copies."""
+        return self._vector_of(
+            [self._values[row * self.kCols + c] for c in range(col, self.kCols)]
+        )
+
+    @_Templated
+    def SubCol(self, row: int, col: int) -> SVector:
+        """The rest of column ``col`` from row ``row``, as ``SubCol<M>(row, col)`` copies."""
+        return self._vector_of(
+            [self._values[r * self.kCols + col] for r in range(row, self.kRows)]
+        )
+
+    @_Templated
+    def Sub(self, row: int, col: int) -> SMatrix:
+        """The corner from ``(row, col)`` to the bottom right, as ``Sub<M>(row, col)`` copies:
+        the shape a macro names in the angle brackets is the remainder, which the translator
+        does not pass on."""
+        made = _matrix(type(self)._element, self.kRows - row, self.kCols - col)
+        cells = [self(r, c) for r in range(row, self.kRows) for c in range(col, self.kCols)]
+        return _typing.cast(SMatrix, made(cells))
+
+    def UpperBlock(self) -> SVector:
+        """The upper triangle in row order, which is what a symmetric matrix stores."""
+        cells = [
+            self._values[r * self.kCols + c]
+            for r in range(self.kRows)
+            for c in range(r, self.kCols)
+        ]
+        return self._vector_of(cells)
+
+    def LowerBlock(self) -> SVector:
+        """The lower triangle in row order, the same numbers as the upper one when the matrix
+        is symmetric."""
+        cells = [
+            self._values[r * self.kCols + c] for r in range(self.kRows) for c in range(r + 1)
+        ]
+        return self._vector_of(cells)
+
+    def begin(self) -> _Cursor:
+        """A cursor at the first element in row order, so a range built from
+        ``(m.begin(), m.end())`` reads the matrix as ROOT's iterators hand it over."""
+        return _Cursor(self._values)
+
+    def end(self) -> _Cursor:
+        """A cursor past the last element in row order."""
+        return _Cursor(self._values, len(self._values))
+
+    def _product_by_element(self, other: Any) -> Any:
+        """Each element times the matching one, or times a number: ``Times(a, b)``, which is
+        not the matrix product ``a * b`` is."""
+        if isinstance(other, SMatrix):
+            self._same_shape(other)
+            return type(self)([a * b for a, b in zip(self._values, other._values, strict=True)])
+        return type(self)([a * other for a in self._values])
+
     def __iter__(self) -> _typing.Iterator[Any]:
         return iter(self._values)
 
@@ -418,3 +625,78 @@ class SMatrix:
             for r in range(self.kRows)
         ]
         return "[ " + "\n  ".join(rows) + " ]"
+
+
+def Transpose(matrix: SMatrix) -> SMatrix:
+    """``Transpose(A)``: the mirrored matrix, which is what ``A.Transpose()`` makes too."""
+    return _typing.cast(SMatrix, matrix.Transpose())
+
+
+def Mag2(vector: SVector) -> Any:
+    """``Mag2(x)``: the squared length, ``Dot(x, x)``, kept in the element type."""
+    return Dot(vector, vector)
+
+
+def Mag(vector: SVector) -> Any:
+    """``Mag(x)``: the length, in the element type - which ROOT truncates for an integer one."""
+    return vector._element(math.sqrt(Dot(vector, vector)))
+
+
+def Unit(vector: SVector) -> SVector:
+    """``Unit(x)``: the same direction, one long, as ``x / Mag(x)``."""
+    return _typing.cast(SVector, vector / Mag(vector))
+
+
+def Cross(one: SVector, other: SVector) -> SVector:
+    """``Cross(a, b)``: the vector product of two three-element vectors."""
+    if one.kSize != 3 or other.kSize != 3:
+        raise TypeError(
+            f"a vector product is of two vectors of three elements, not {one.kSize} and "
+            f"{other.kSize}"
+        )
+    a, b = list(one), list(other)
+    return type(one)(
+        a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]
+    )
+
+
+def Times(one: Any, two: Any) -> Any:
+    """``Times(a, b)``: the element-by-element product - of two matrices, of a matrix and a
+    number, or of two vectors - which ROOT keeps apart from the matrix product."""
+    if isinstance(one, SMatrix):
+        return one._product_by_element(two)
+    return one._combined(two, lambda a, b: a * b)
+
+
+def Square(one: Any) -> Any:
+    """``Square(x)``: each element multiplied by itself, which is ``Times(x, x)``."""
+    return Times(one, one)
+
+
+def Similarity(one: Any, other: Any) -> Any:
+    """``Similarity(x, A)``: ``x^T A x`` for a vector and a matrix, and ``A B A^T`` for two
+    matrices, which is the sandwich a Kalman fit is written with."""
+    if isinstance(one, SVector):
+        return Dot(one, other * one)
+    return one * other * one.Transpose()
+
+
+def SimilarityT(one: Any, other: Any) -> Any:
+    """``SimilarityT(A, B)``: ``A^T B A``, the same sandwich with the first matrix transposed
+    on the other side."""
+    return one.Transpose() * other * one
+
+
+def SMatrixIdentity(like: Any = None) -> Any:
+    """``SMatrixIdentity<T,D1,D2>()``: the identity matrix of the shape the declaration it is
+    assigned to names, which is where C++ reads the template arguments from - ``like`` is that
+    declared class, and without it the shape is not written anywhere in the call."""
+    if like is None:
+        raise TypeError(
+            "SMatrixIdentity() takes its shape from the variable it initialises, and the "
+            "translator has to name that variable's class here for the identity to have a size"
+        )
+    identity = like()
+    for at in range(min(identity.kRows, identity.kCols)):
+        identity[at, at] = 1
+    return identity

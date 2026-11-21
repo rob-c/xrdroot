@@ -1,5 +1,6 @@
 """ROOT's linear algebra: dense matrices, views of them, decompositions, and the checks on them.
 
+``SVector``, ``SMatrix`` and the free functions a macro calls on them (:mod:`.smatrix`),
 ``TMatrixD``, ``TMatrixDSym`` and ``THilbertMatrixD`` (:mod:`.matrices`), the
 row, column and diagonal views (:mod:`.views`), and ``TDecompLU``,
 ``TDecompChol``, ``TDecompBK``, ``TDecompSVD`` and ``TDecompQRH``
@@ -28,7 +29,23 @@ from .matrices import (
     TMatrixTSym,
     values_of,
 )
-from .smatrix import Dot, MatRepStd, MatRepSym, SMatrix, SVector
+from .smatrix import (
+    Cross,
+    Dot,
+    Mag,
+    Mag2,
+    MatRepStd,
+    MatRepSym,
+    Similarity,
+    SimilarityT,
+    SMatrix,
+    SMatrixIdentity,
+    Square,
+    SVector,
+    Times,
+    Transpose,
+    Unit,
+)
 from .views import (
     TMatrixDColumn,
     TMatrixDColumn_const,
@@ -51,7 +68,9 @@ __all__ = [
     "TMatrixDColumn_const", "TMatrixDDiag_const", "TMatrixTRow", "TMatrixTColumn",
     "TMatrixTDiag", "TDecompLU", "TDecompChol", "TDecompBK", "TDecompSVD", "TDecompQRH",
     "NormalEqn", "VerifyVectorIdentity", "VerifyMatrixIdentity",
-    "SVector", "SMatrix", "MatRepStd", "MatRepSym", "Dot",
+    "SVector", "SMatrix", "MatRepStd", "MatRepSym", "Dot", "Transpose", "Similarity",
+    "SMatrixIdentity",
+    "SimilarityT", "Mag", "Mag2", "Cross", "Unit", "Square", "Times",
 ]  # fmt: skip
 
 
