@@ -1161,13 +1161,16 @@ def test_an_array_of_a_declared_class_arrives_nested_and_is_written_as_its_rows(
     )
 
 
-def test_an_object_one_member_already_holds_is_written_as_the_number_of_that_object(monkeypatch):
+def test_an_object_one_member_already_points_at_is_written_as_that_object_number(monkeypatch):
     """``Objects.ref``: ``TJsonEx5``'s ``fPtr3`` is ``fPtr1``, and ROOT writes it as
-    ``{"$ref":3}`` - the third object of the export - rather than a second copy of it."""
+    ``{"$ref":3}`` - the third object of the export - rather than a second copy of it.
+
+    The members are pointers because that is what ROOT streams as a reference: two members
+    holding the same *value* would be two copies of it in C++, and a copy is written whole."""
     kind = _reading_class(monkeypatch, "TShared", (("fInt", "int", "", ()),))
-    kinds = _reading_class(monkeypatch, "THoldsTwice", (("fOne", "TShared", "", ()),
-                                                        ("fTwo", "TShared", "", ()),
-                                                        ("fOther", "TShared", "", ())))  # fmt: skip
+    members = (("fOne", "TShared*", "", ()), ("fTwo", "TShared*", "", ()),
+               ("fOther", "TShared*", "", ()))  # fmt: skip
+    kinds = _reading_class(monkeypatch, "THoldsTwice", members)
     shared = kind()
     shared.fInt = 5
     kinds = kinds()
@@ -1180,10 +1183,10 @@ def test_an_object_one_member_already_holds_is_written_as_the_number_of_that_obj
 
 def test_a_reference_reads_back_as_the_object_it_names_rather_than_a_copy(monkeypatch):
     """What ``store/read/store`` asks of a ``$ref``: the object read from the number is the
-    one the member before it already holds, so writing it again writes the same number."""
+    one the member before it already points at, so writing it again writes the same number."""
     _reading_class(monkeypatch, "TShared2", (("fInt", "int", "", ()),))
-    _reading_class(monkeypatch, "TBackTwice", (("fOne", "TShared2", "", ()),
-                                               ("fTwo", "TShared2", "", ())))  # fmt: skip
+    _reading_class(monkeypatch, "TBackTwice", (("fOne", "TShared2*", "", ()),
+                                               ("fTwo", "TShared2*", "", ())))  # fmt: skip
     text = ('{"_typename":"TBackTwice","fOne":{"_typename":"TShared2","fInt":9},'
             '"fTwo":{"$ref":1}}')
     read = ROOT.TBufferJSON.ConvertFromJSON(text)

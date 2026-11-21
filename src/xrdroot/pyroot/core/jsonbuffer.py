@@ -761,15 +761,16 @@ class _Writer:
             )
         )
 
-    def _value(self, obj: Any, depth: int) -> str:
-        """``obj`` as JSON: a number, a string, an array, a map, or an object."""
+    def _value(self, obj: Any, depth: int, by_value: bool = False) -> str:
+        """``obj`` as JSON: a number, a string, an array, a map, or an object - ``by_value``
+        for one a container or a member holds by value rather than through a pointer."""
         for kind, write in WRITERS:
             if isinstance(obj, kind):
                 return write(self, obj, depth)
         if isinstance(obj, TSeqCollection):
             return self._collection(obj, depth)
         if _writable(obj):  # a class of its own, even one that derives from a container
-            return self._object(obj, depth)
+            return self._object(obj, depth, by_value)
         if isinstance(obj, _Container):
             return self._nested_container(obj, depth)
         raise UnsupportedFeatureError(
@@ -804,8 +805,14 @@ class _Writer:
 
     # -- objects ----------------------------------------------------------------------
 
-    def _object(self, obj: Any, depth: int) -> str:
-        repeated = self._written.get(id(obj))
+    def _object(self, obj: Any, depth: int, by_value: bool = False) -> str:
+        """``obj`` as a JSON object, numbered in the table a ``{"$ref":N}`` counts off.
+
+        ``by_value`` is a member or an element ROOT streams in place rather than through a
+        pointer: a pointer is one object and goes out as a reference to the one written
+        before, but a value is a copy of the object wherever it is written, so it is written
+        whole every time - and numbered, since the numbers count every object in the export."""
+        repeated = None if by_value else self._written.get(id(obj))
         if repeated is not None:
             return '{"$ref":' + str(repeated) + "}"
         if depth:  # the object the export is of is no entry of the table ROOT numbers
@@ -926,17 +933,18 @@ class _Writer:
         streams a member of a class type, so it is a JSON object of its own - or, where its
         declaration makes it an array, the nested arrays of them. A pointer with nothing
         there is ``null`` at every depth."""
+        by_value = _held_by_value(member.decl)
         if member.kind == "object":
-            return self._value(value, depth + 1)
+            return self._value(value, depth + 1, by_value)
         if value is None:
             return "null"
         nested = _nest(_flatten(value), member.dims,
-                       lambda group: self._object_row(group, depth))  # fmt: skip
+                       lambda group: self._object_row(group, depth, by_value))  # fmt: skip
         return _list_text(nested, self._layout.item_comma)
 
-    def _object_row(self, group: list[Any], depth: int) -> str:
+    def _object_row(self, group: list[Any], depth: int, by_value: bool) -> str:
         """One row of an array of objects: each written as the object it is."""
-        items = [self._value(each, depth + 1) for each in group]
+        items = [self._value(each, depth + 1, by_value) for each in group]
         return "[" + self._layout.item_comma.join(items) + "]"
 
     def _containers(self, member: _Member, value: Any, depth: int) -> str:
@@ -965,14 +973,14 @@ class _Writer:
         if member.kind == "bitset":
             bits = ["true" if value[at] else "false" for at in range(value.size())]
             return "[" + self._layout.item_comma.join(bits) + "]"
-        held = [self._value(each, depth + 1) for each in value]
+        held = [self._value(each, depth + 1, _element_by_value(value)) for each in value]
         return "[" + self._layout.item_comma.join(held) + "]"
 
     def _nested_container(self, obj: Any, depth: int) -> str:
         """A container that is a value of its own - the ``set`` a ``map`` holds - written as
         the array of the values it holds, and a ``std::multimap``'s as the ``$pair`` per entry
         a map's is: ROOT streams the container where the value is, not behind a name."""
-        held = [self._value(each, depth + 1) for each in obj]
+        held = [self._value(each, depth, _element_by_value(obj)) for each in obj]
         return "[" + self._layout.item_comma.join(held) + "]"
 
     def _braced(self, pairs: list[str], depth: int) -> str:
@@ -1050,23 +1058,27 @@ class _Writer:
         if self._map_as_object:
             return self._map_object(obj, entries, depth)
         name = named or f"pair<{cpp_name(obj.kinds[0])},{cpp_name(obj.kinds[1])}>"
-        pairs = [self._pair_entry(name, entry, depth) for entry in entries]
+        kinds = (_held_by_value(str(obj.kinds[0])), _held_by_value(str(obj.kinds[1])))
+        pairs = [self._pair_entry(name, entry, depth, kinds) for entry in entries]
         return "[" + self._layout.item_comma.join(pairs) + "]"
 
-    def _pair_entry(self, name: str, entry: tuple[Any, Any] | _Pair, depth: int) -> str:
+    def _pair_entry(self, name: str, entry: tuple[Any, Any] | _Pair, depth: int,
+                    by_value: tuple[bool, bool] = (True, True)) -> str:
         """One ``std::pair``, as ROOT writes it: the types it holds - or, at a level that
         skips them, their number - and its two values. A map's entry arrives as the two
         things a pair unpacks to, and a ``std::multimap``'s value as the pair itself."""
         colon = self._layout.colon
         pairs = ['"$pair"' + colon + ("1" if self._skip_typename else _quoted(name)),
-                 '"first"' + colon + self._value(entry[0], depth + 1),
-                 '"second"' + colon + self._value(entry[1], depth + 1)]  # fmt: skip
+                 '"first"' + colon + self._value(entry[0], depth + 1, by_value[0]),
+                 '"second"' + colon + self._value(entry[1], depth + 1, by_value[1])]  # fmt: skip
         return self._keys(pairs)
 
     def _map_object(self, obj: _Map, entries: list[tuple[Any, Any]], depth: int) -> str:
         """A map written as a JSON object: its keys, each with the value it holds."""
         colon = ":" if self._layout.colon == ":" else ": "
-        pairs = [_quoted(key) + colon + self._value(value, depth + 1) for key, value in entries]
+        by_value = _held_by_value(str(obj.kinds[1]))
+        pairs = [_quoted(key) + colon + self._value(value, depth + 1, by_value)
+                 for key, value in entries]
         return self._keys(self._typed(pairs, str(obj.__cpp_name__), colon))
 
 
@@ -1148,6 +1160,27 @@ def _expanded(data: dict[str, Any], name: str) -> list[Any]:
         values[at : at + len(placed)] = placed
         at += len(placed)
         index += 1
+
+
+def _held_by_value(kind: Any) -> bool:
+    """Does a container of ``kind``, or a member declared as ``kind``, hold its object by
+    value rather than through a pointer?
+
+    A pointer is one object, so ROOT writes the second link to it as a ``{"$ref":N}`` to the
+    first; a value is a copy wherever it is streamed, so ROOT writes it whole every time.
+    """
+    spelled = kind if isinstance(kind, str) else str(getattr(kind, "__cpp_name__", ""))
+    return not spelled.strip().endswith("*")
+
+
+def _element_by_value(container: Any) -> bool:
+    """Whether a sequence or a set keeps the elements it holds by value, by the type it was
+    made of - ``std.vector["TJsonEx1"]`` holds copies and ``std.vector["TJsonEx1*"]`` links."""
+    for name in ("element", "kind", "dtype"):
+        found = getattr(container, name, None)
+        if found is not None:
+            return _held_by_value(found)
+    return True
 
 
 def _pair_name(decl: str) -> str | None:
