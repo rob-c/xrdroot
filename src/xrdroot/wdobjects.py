@@ -623,10 +623,22 @@ class _Writer:
         self.collection(found, value)
 
     def _object(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
+        """An object a class holds whole, as ``TLorentzVector fLorentz`` and the ``TVector3``
+        in its ``fP`` are: a record of its own, its length and version in front of its
+        members, standing where the member goes and with no pointer to it - which is what
+        makes the vector inside the four-vector one record inside another.
+
+        What arrives is the members a layer made of that object, never the object itself: the
+        layer above is what knows a program's objects, and asking a ``TLorentzVector`` here
+        for the ``TVector3`` it keeps would be asking this component for a ROOT name. Those
+        members go to :meth:`record` as they are, so a class the program declares is written
+        by its declaration and one of ROOT's by the layout this writer carries.
+
+        An array of them, ``T a[N]``, is that record once per element, in turn, and no count
+        of its own anywhere: how long the array is, the declaration said.
+        """
         if element[3] in (OBJECT + OFFSET_L, ANY + OFFSET_L):
-            # An array of them, as `T a[N]` and `std::array<T,N>` are laid out: one record
-            # after another, in place.
-            for one in value or ():
+            for one in _run_of(value, element):
                 self.record(element[8], one)
             return
         self.record(element[8], value)
@@ -841,6 +853,25 @@ _ELEMENTS: dict[str, Callable[[_Writer, Element, Any, Mapping[str, Any]], None]]
     "TStreamerObjectPointer": _Writer._pointed,
     "TStreamerObjectAnyPointer": _Writer._pointed,
 }
+
+
+def _run_of(value: Any, element: Element) -> list[Any]:
+    """The objects of a member declared ``T a[N]``, in the order the declaration gives them.
+
+    A member that is an array of objects is a run and never one object: a mapping or an
+    instance where the run goes would be walked as its keys or its fields and written as a
+    record each, which is bytes no reader of the class can make sense of - so it is refused,
+    naming the member, rather than written as though it were the array.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (Mapping, Instance, Record)):
+        raise UnsupportedFeatureError(
+            f"{element[1]} is an array of {element[8]} and holds the members of one object "
+            f"where the run of them belongs; hand over the objects the array holds, in the "
+            f"order the declaration gives them"
+        )
+    return list(value)
 
 
 def _contents(found: Spelled, value: Any) -> tuple[list[Any], Spelled]:
