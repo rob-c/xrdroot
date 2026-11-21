@@ -211,6 +211,19 @@ def test_converters_that_cannot_run_leave_the_output_as_it_was(root):
     assert judge(test, run, root, root / "missing").status == "PASS"
 
 
+def test_a_regex_matches_across_newlines_as_cmakes_does(root):
+    """CMake's ``.`` is every character including a newline, so a ``PASS_REGULAR_EXPRESSION``
+    written against three lines of output - ROOT's three-line ``root: unrecognized option``
+    message - matches; Python's ``.`` stops at the newline unless it is told not to."""
+    said = result("", "root: unrecognized option '-e invalid'\n"
+                      "root: unrecognized option '--no_exist'\n"
+                      "Try 'root --help' for more information.\n")  # fmt: skip
+    test = roottest(passregex=("root: unrecognized option '-e invalid'"
+                               ".*--no_exist.*Try 'root --help'",))
+    assert status(test, said, root) == "PASS"
+    assert status(test, result("", "root: unrecognized option '-e invalid'\n"), root) == "FAIL"
+
+
 def test_a_regex_cmake_takes_but_python_does_not_is_matched_literally(root):
     assert status(roottest(passregex=("a[",)), result("x a[ y"), root) == "PASS"
 

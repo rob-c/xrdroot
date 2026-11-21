@@ -280,8 +280,12 @@ def _regexes(test: Test, result: Result, verdict: Verdict) -> Verdict:
 
 
 def _search(pattern: str, text: str) -> str:
+    """CMake's own regexp match: ``.`` is every character *including* a newline, which is what
+    a ``PASS_REGULAR_EXPRESSION`` written across several lines of output relies on -
+    ``root: unrecognized option '-e invalid'.*--no_exist.*Try 'root --help'`` is three lines
+    of stderr and one expression."""
     try:
-        found = re.search(pattern, text, re.M)
+        found = re.search(pattern, text, re.S)
     except re.error:
         found = re.search(re.escape(pattern), text)
     return found.group(0) or pattern if found else ""

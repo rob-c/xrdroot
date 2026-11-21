@@ -52,6 +52,10 @@ FLAGS = {"-l": "no_banner", "-b": "batch", "-q": "quit", "-x": "exit_on_error",
 #: Flags ``root`` takes with a value of their own after them.
 VALUED = frozenset({"-e", "-config"})
 
+#: The long options ``root`` accepts and this has nothing to do with: ``--web=off`` says which
+#: display to use, and a batch translation has no display to use it for.
+IGNORED = frozenset({"--notebook", "--web", "--memstat", "--nosplash", "--build", "-memstat"})
+
 #: The extensions of the files ``root`` attaches rather than runs.
 ROOT_FILES = (".root",)
 
@@ -87,7 +91,8 @@ class Options:
     memstat: bool = False
     help: bool = False
     version: bool = False
-    #: Each ``("e", line)`` and ``("file", argument)``, as given.
+    #: Each ``("e", line)`` and ``("file", argument)``, as given, and ``("bad", word)`` for a
+    #: word ``root`` reads as an option it does not know - which it reports and then exits.
     items: list[tuple[str, str]] = field(default_factory=list)
 
 
@@ -106,9 +111,19 @@ def options(argv: Sequence[str]) -> Options:
             found.help = True
         elif word == "--version":
             found.version = True
-        elif not word.startswith("--"):  # ``--web=off``, ``--notebook``: nothing to do here
+        elif word.startswith("-") and not _ignored(word):
+            # ROOT's own parser reports an option it does not know - ``-e invalid`` glued into
+            # one word is one, and so is anything else beginning with a dash - and stops.
+            found.items.append(("bad", word))
+        elif not word.startswith("-"):
             found.items.append(("file", word))
     return found
+
+
+def _ignored(word: str) -> bool:
+    """Is a word beginning with a dash one ``root`` takes and has nothing to do here - a long
+    option of :data:`IGNORED`, with ``=value`` attached or not?"""
+    return word.split("=", 1)[0] in IGNORED
 
 
 class _RootParser(argparse.ArgumentParser):
@@ -174,13 +189,24 @@ def _missing(given: str) -> str | None:
 
 
 def _checked(given: Options) -> int | None:
-    """Every file looked for before anything runs, as ``root`` does; the status to end with
-    if one is not there."""
+    """Every option read and every file looked for before anything runs, as ``root`` does;
+    the status to end with if one is unknown or one is not there.
+
+    ``root`` names each option it does not know, then says where the help is - and runs
+    nothing, which is what a command line with an option ROOT's parser cannot read gets."""
+    unknown = False
     for what, text in given.items:
+        if what == "bad":
+            sys.stderr.write(f"root: unrecognized option '{text}'\n")
+            unknown = True
+            continue
         said = _missing(text) if what == "file" else None
         if said is not None:
             sys.stderr.write(said + "\n")
             return USAGE
+    if unknown:
+        sys.stderr.write("Try 'root --help' for more information.\n")
+        return USAGE
     return None
 
 
