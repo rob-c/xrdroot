@@ -19,6 +19,15 @@ __all__ = ["TBits"]
 MOST = 0xFFFFFFFF
 
 
+def _bytes_of(array: Any) -> bytes:
+    """The bytes an array of numbers holds, in the order C's memory holds them: an array of
+    ``Char_t``, ``Short_t`` or ``Int_t`` is one buffer however wide its elements are."""
+    import numpy as np
+
+    found: bytes = np.asarray(array).tobytes()
+    return found
+
+
 class TBits(TObject):
     """``TBits``: bits by number, as many as were asked for or set."""
 
@@ -48,6 +57,23 @@ class TBits(TObject):
             return
         self._grow(bit)
         self._bytes[bit >> 3] |= 1 << (bit & 7)
+
+    def Set(self, nbits: int, array: Any) -> None:
+        """``Set(nbits, array)``: the first ``nbits`` bits taken from the *bytes* of
+        ``array``, as ROOT copies them - which is why an array of shorts or ints works as an
+        array of chars does, its bytes read in order - and the bitset made exactly that
+        long, the array's own width saying nothing."""
+        wanted = int(nbits)
+        room = (wanted + 7) // 8
+        raw = _bytes_of(array)[:room]
+        self._nbits = wanted
+        self._bytes = bytearray(raw) + bytearray(room - len(raw))
+
+    def Get(self, array: Any) -> None:
+        """``Get(array)``: this bitset's bytes copied into ``array``, which C++ writes into
+        the memory the pointer names."""
+        for at, byte in enumerate(self._bytes):
+            array[at] = byte
 
     def ResetBitNumber(self, bit: int) -> None:
         bit = int(bit)

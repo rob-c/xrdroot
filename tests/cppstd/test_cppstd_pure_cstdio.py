@@ -122,3 +122,15 @@ def test_rand_draws_what_the_macos_c_library_draws_from_each_seed() -> None:
     assert [stdlib.rand(), stdlib.rand()] == [2136609518, 1922107539]
     assert stdlib.RAND_MAX == 2**31 - 1
     stdlib.srand(1)
+
+
+def test_the_standard_streams_are_named_by_the_translation_and_flushed_by_name(capsys) -> None:
+    """A translation has no ``FILE`` object for ``stderr`` - it writes ``'stderr'`` in its
+    place - so both ``fprintf`` and ``fflush`` read that name as the stream it stands for,
+    and ``fflush(NULL)`` flushes every stream that is open."""
+    assert cstdio.standard("stderr") is not None
+    assert cstdio.standard("stdout") is not None
+    assert cstdio.standard("a name that is no stream") == "a name that is no stream"
+    assert printf.fprintf("stderr", "%d", 3) == 1
+    assert (cstdio.fflush("stderr"), cstdio.fflush("stdout"), cstdio.fflush()) == (0, 0, 0)
+    assert capsys.readouterr().err == "3"

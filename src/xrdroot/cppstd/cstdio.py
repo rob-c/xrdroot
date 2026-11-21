@@ -17,6 +17,7 @@ variable's place and the variable is given the text afterwards: that is
 from __future__ import annotations
 
 import os
+import sys
 from typing import IO, Any
 
 from .buffers import text_into
@@ -24,8 +25,8 @@ from .cformat import EOF as EOF
 from .cformat import sscanf as sscanf
 
 __all__ = ["FILE", "fopen", "fclose", "fwrite", "fread", "fgets", "fputs", "fgetc", "fflush",
-           "feof", "ftell", "fseek", "rewind", "sscanf", "written_after", "EOF", "SEEK_SET",
-           "SEEK_CUR", "SEEK_END"]  # fmt: skip
+           "feof", "ftell", "fseek", "rewind", "sscanf", "written_after", "standard", "EOF",
+           "SEEK_SET", "SEEK_CUR", "SEEK_END"]  # fmt: skip
 
 #: ``fseek``'s origins: the start, the current position, the end.
 SEEK_SET, SEEK_CUR, SEEK_END = 0, 1, 2
@@ -147,10 +148,26 @@ def fgetc(file: FILE) -> int:
     return byte[0]
 
 
+def standard(name: Any) -> Any:
+    """What a standard stream's *name* stands for - ``fprintf(stderr, ...)`` translates to
+    ``fprintf('stderr', ...)``, since a translation has no ``FILE`` object for it - or
+    ``name`` itself for anything else.
+
+    The stream is looked up as it is used, so that whatever ``sys.stdout`` is now - a
+    pytest's captured stream, a program's own - is what is written to and flushed.
+    """
+    return getattr(sys, name, name) if name in ("stdin", "stdout", "stderr") else name
+
+
 def fflush(file: Any = None) -> int:
-    """``fflush``: what was written handed to the system."""
-    if file is not None:
-        (file.stream if isinstance(file, FILE) else file).flush()
+    """``fflush``: what was written handed to the system - ``fflush(NULL)`` flushes every
+    stream that is open, which for a translation is the two it writes to."""
+    if file is None:
+        for each in (sys.stdout, sys.stderr):
+            each.flush()
+        return 0
+    stream = file.stream if isinstance(file, FILE) else standard(file)
+    stream.flush()
     return 0
 
 

@@ -17,6 +17,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .cells import address_of
+from .cstdio import standard
 
 __all__ = ['cformat', 'printf', 'sprintf', 'fprintf', 'puts', 'putchar']
 
@@ -157,8 +158,7 @@ def printf(fmt: Any, *args: Any) -> int:
 def fprintf(stream: Any, fmt: Any, *args: Any) -> int:
     """C's ``fprintf`` to ``stdout``/``stderr`` (or any object with a ``write``)."""
     text = cformat(fmt, *args)
-    target = {"stdout": sys.stdout, "stderr": sys.stderr}.get(stream, stream)
-    target.write(text)
+    standard(stream).write(text)
     return len(text)
 
 

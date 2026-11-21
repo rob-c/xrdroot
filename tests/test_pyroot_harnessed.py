@@ -173,3 +173,38 @@ def test_sequences_classes_by_name_and_thread_safety_as_root_names_them():
         (list(ROOT.ROOT.TSeqL(3)), [0, 1, 2]),
         (ROOT.gROOT.GetClass("TH1F").InheritsFrom("TH1"), True),
     )
+
+
+def test_a_bitset_is_set_from_the_bytes_of_an_array_and_given_back_as_bytes():
+    """``TBits::Set(nbits, array)`` takes the *bytes* an array of any width holds - an array
+    of ``Char_t``, ``Short_t`` or ``Int_t`` is one buffer however wide its elements are -
+    and makes the bitset exactly ``nbits`` long; ``Get`` copies the bytes back out."""
+    import numpy as np
+
+    chars = np.array([0, 1, 3, 7, 15, 31, 63, 127], dtype=np.int8)
+    bits = ROOT.TBits()
+    bits.Set(64, chars)
+    expect(
+        (bits.GetNbits(), 64),
+        # The first byte is 0, so bits 0-7 are clear; the second is 1, so bit 8 is set.
+        ([bits.TestBitNumber(bit) for bit in range(9)], [False] * 8 + [True]),
+    )
+    buffer = np.zeros(8, dtype=np.int8)
+    bits.Get(buffer)
+    assert buffer.tolist() == chars.tolist()
+    # An array of wider elements is its bytes in order, which is what C's memory holds:
+    # ``{0x0307, 0x033F}`` is ``07 03 3F 03``, so byte 2 is 0x3F and bits 16..21 are set.
+    wider = np.array([0x0307, 0x033F], dtype=np.int16)
+    short_bits = ROOT.TBits()
+    short_bits.Set(32, wider)
+    back = np.zeros(4, dtype=np.int8)
+    short_bits.Get(back)
+    expect(
+        (short_bits.GetNbits(), 32),
+        (back.tolist(), [7, 3, 0x3F, 3]),
+        (short_bits.TestBitNumber(0), True),
+        (short_bits.TestBitNumber(8), True),
+        (short_bits.TestBitNumber(21), True),
+        (short_bits.TestBitNumber(22), False),
+        (short_bits.TestBitNumber(31), False),
+    )
