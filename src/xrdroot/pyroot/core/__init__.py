@@ -30,6 +30,7 @@ FAMILIES = (
     "buffers",
     "jsonbuffer",
     "collections",
+    "rangecast",
     "strings",
     "urls",
     "complexes",

@@ -26,10 +26,14 @@ from ...pycxx.runtime import references as _references
 from ...pycxx.runtime import typeinfo as _typeinfo
 from ...pycxx.runtime.istreams import KINDS
 from ...pycxx.runtime.printf import cformat
+from ...pyroot.core.collections import TCollection as _TCollection
+from ...pyroot.core.objects import TObject as _TObject
+from ...pyroot.core.rangecast import elements_of
 from .root import ROOT
 
 __all__ = [
     "delete",
+    "iterate",
     "fscanf",
     "construct_at",
     "deref",
@@ -57,6 +61,18 @@ def delete(obj: Any) -> None:
     close = getattr(obj, "Close", None)
     if callable(close) and hasattr(obj, "IsOpen"):
         close()
+
+
+def iterate(container: Any) -> Any:
+    """What a range-for visits: a ROOT collection's objects as the ``TObject *`` C++ gives.
+
+    ``TCollection``'s iterators name ``TObject``, so a ``for (auto bcl : *list)`` has
+    to call ``bcl->Class()`` on that static type - see :mod:`xrdroot.pyroot.core.rangecast`.
+    Everything else is :func:`xrdroot.cppstd.objects.iterate`'s, a map's entries as pairs.
+    """
+    if isinstance(container, _TCollection):
+        return elements_of(container, _TObject)
+    return _objects.iterate(container)
 
 
 def construct_at(container: Any, index: Any, obj: Any) -> Any:
