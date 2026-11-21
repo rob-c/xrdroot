@@ -1899,6 +1899,17 @@ reader = ROOT.TMVA.Reader("!Color:!Silent")      # and back, one event at a time
   (`"undersampling"`, `"oversampling"`), `sampling_ratio` and `replacement`.
 - **The genetic algorithm** (`GeneticFitter`, `IFitterTarget`, `Interval`) is TMVA's, draw
   for draw.
+- **`TMVA::DNN`**, TMVA's deep-learning vocabulary: `EActivationFunction`,
+  `EOutputFunction` and `ELossFunction`, whose members carry TMVA's own numbers and
+  letters; `TCpuMatrix<T>` (`TCpuMatrix("float")` is `TCpuMatrix<float>`), the CPU
+  backend's matrix, which a `TMatrixT<T>` is made from and makes; and the free
+  functions `evaluate<Arch>(...)` and `evaluateGradients<Arch>(...)` of a loss
+  function, over the three loss functions TMVA has - cross entropy, mean squared
+  error and softmax cross entropy - and their gradients, weighted per row of the
+  matrix as `TMVA/DNN/Architectures/Cpu/LossFunctions.hxx` weights them. `TCpu<T>`,
+  `TCpuTensor<T>`, `TNet<T>` and `TDeepNet<T>` - the backend's own tensors, dense,
+  convolutional and recurrent layers and the training over them - are refused by
+  name, so TMVA's DNN unit tests beyond the loss functions do not run.
 
 **The methods, and what trains them.** Where the method is TMVA's closed form or TMVA's
 own sampler, it is ported, and its outputs are TMVA's to single precision; where TMVA
