@@ -1519,20 +1519,111 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
 #: The streamer type ROOT gives a member that points at a container: ``kSTLp``.
 STL_POINTER = 71
 
+#: The streamer type of an array of pointers to containers: ``kSTLp`` and the array offset,
+#: which is what ``Event::fVectorTnamed`` - ``vector<TNamed> *f[6]`` - is described as.
+STL_POINTERS = STL_POINTER + OFFSET_L
+
 
 def _held_container(member: Member) -> str:
     """The container a member holds: the one it names, or the one it points at.
 
     ``vector<TObject> *fVectorTobject`` - the bigevent roottest's ``Event`` - is described
     with ``kSTLp``, and ROOT writes the container where the pointer stands with nothing to
-    say a pointer was there, so the member reads as a container held by value does. The one
-    that keeps its type is an array of pointers to containers, ``vector<TNamed> *f[6]`` -
-    ``kSTLp`` plus the array offset - which ROOT writes into one record for the whole array
-    and this reader has no reading for.
+    say a pointer was there, so the member reads as a container held by value does. An array
+    of pointers to containers, ``vector<TNamed> *f[6]``, is a different shape and keeps its
+    type: it is read by :func:`_containers_held`, out of one record for the whole array.
     """
     if member.stype == STL_POINTER and member.typename.endswith("*"):
         return member.typename.rstrip("*").strip()
     return member.typename
+
+
+def _containers_held(
+    member: Member, source: Source, seen: tuple[str, ...]
+) -> Callable[[Buffer], list[Any]]:
+    """The containers an array of pointers to them holds - ``vector<TNamed> *f[6]``.
+
+    ROOT writes the whole array into *one* record: the count and the items of each element
+    in turn, with no record per element as a container of containers gets and no word saying
+    how many pointers there are - the declaration gives the array's length, and a null
+    pointer is written as the empty container it would have held. So the reading is the one
+    a single container of that kind gets, once per element, with the header hoisted out of
+    the elements and a check that the record ended where it said.
+    """
+    held = member.typename.rstrip("*").strip()
+    length = member.length
+    node = parse(held)
+    if isinstance(node, (Prim, Str, Seq)):
+        item = node.item if isinstance(node, Seq) else node
+        return _array_of(_counted_items(item), length, held)
+    found = _class_held(held)
+    if found is None:
+        raise _Unreadable(
+            f"{member.name!r}, an array of pointers to {held}, which is not a container of "
+            f"the one class that would read inside an entry"
+        )
+    name, pointed = found
+    if pointed:
+        classes = _Described(source, seen)
+        return _array_of(_pointed_objects(classes), length, held)
+    columns = _columns(name, _read_by_memory(source, name), seen)
+    if columns is None:
+        raise _Unreadable(
+            f"{member.name!r}, an array of pointers to containers of {name}, which streams "
+            f"itself rather than being written a member at a time as such a container is"
+        )
+    return _array_of_members(columns, length, name)
+
+
+def _counted_items(item: Any) -> Callable[[Buffer], Any]:
+    """One container of numbers or strings written inside another's record: how many, then
+    the items, with no record of its own."""
+
+    def read(buf: Buffer) -> Any:
+        return _items(item, buf, buf.u32())
+
+    return read
+
+
+def _pointed_objects(classes: dict[str, Any]) -> Callable[[Buffer], list[Any]]:
+    """One container of pointers written inside another's record: how many, then each
+    object where its pointer stands - a zero for a null one."""
+
+    def read(buf: Buffer) -> list[Any]:
+        return [buf.any(classes) for _ in range(buf.u32())]
+
+    return read
+
+
+def _array_of(
+    one: Callable[[Buffer], Any], length: int, held: str
+) -> Callable[[Buffer], list[Any]]:
+    """One record holding ``length`` containers of ``held``, each of them ``one``."""
+
+    def read(buf: Buffer) -> list[Any]:
+        _version, end = buf.header()
+        found = [one(buf) for _ in range(length)]
+        _ended(buf, end, f"the {length} containers of {held}")
+        return found
+
+    return read
+
+
+def _array_of_members(
+    columns: list[tuple[str, Fill]], length: int, name: str
+) -> Callable[[Buffer], list[Any]]:
+    """One record holding ``length`` containers of ``name``, written a member at a time: the
+    class's version once for the whole array, then each element's count and its objects'
+    members as columns, which is how ROOT writes ``vector<TNamed> *f[6]``."""
+
+    def read(buf: Buffer) -> list[Any]:
+        _version, end = buf.header()
+        _versioned(buf)
+        found = [_group(buf, columns) for _ in range(length)]
+        _ended(buf, end, f"the {length} containers of {name}")
+        return found
+
+    return read
 
 
 def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step | None:
@@ -1540,8 +1631,11 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
 
     What the type's name parses into covers strings and containers of numbers
     or strings; what is left is a container of one class, held by value or by
-    pointer, which reads as a list of whole objects.
+    pointer, which reads as a list of whole objects. An array of pointers to
+    containers is neither - its elements share one record - and is asked first.
     """
+    if member.stype == STL_POINTERS:
+        return _plainly(_containers_held(member, source, seen))
     node = parse(member.typename)
     if node is not None:
         return _plainly(_reader(node))

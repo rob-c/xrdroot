@@ -7,8 +7,11 @@ rather than held.
 
 ROOT writes a container the same bytes whether it is a member or what a member points at: a
 record, a count and the items, with no tag in front to say a pointer stood there. So the
-reader is given the container the pointer names, with the pointer taken off the type. These
-tests ask the reader what it makes of such a member, and write and read the bytes back.
+reader is given the container the pointer names, with the pointer taken off the type. An
+*array* of such pointers - ``vector<TNamed> *f[6]`` - is written the other way about: one
+record for the whole array, holding the count and the items of each element in turn, and no
+word saying how many pointers there are, since the declaration gives that. These tests ask
+the reader what it makes of each such member, and write and read the bytes back.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from typing import Any
 import pytest
 
 from xrdroot.buffer import Buffer
-from xrdroot.interp import _Unreadable
+from xrdroot.interp import STL_POINTERS, _Unreadable
 from xrdroot.pycint.execute import run_source
 from xrdroot.pyroot.core.declared import catalogue_of, find_class
 from xrdroot.rdobjects import (
@@ -99,17 +102,90 @@ def test_a_pointer_member_that_is_not_a_container_keeps_its_star():
 
 def test_an_array_of_pointers_to_containers_leaves_the_type_as_the_file_describes_it():
     """``vector<TNamed> *f[2]`` - ``Event::fVectorTnamed`` - is type 91, the container pointed
-    at *and* an array, which ROOT writes into one record for the whole array rather than one
-    record per element. Reading it would take the pointer off a type whose bytes the reader
-    has no reading for, so the type is left as it is and the member refused rather than read
-    wrongly."""
+    at *and* an array: the type keeps the star the file wrote, since the pointer is the
+    array's and not each element's, and the array's length comes with it."""
     catalogue, source = _described(
         CONTAINERS.replace("LINES", "vector<TNamed> *fNamed[2];"), "ContainerHolder"
     )
     array = _members(source, "ContainerHolder")["fNamed"]
-    assert array.stype == STL_POINTER + 20
+    assert array.stype == STL_POINTERS == STL_POINTER + 20
     assert array.typename == "vector<TNamed>*"
-    with pytest.raises(_Unreadable, match=r"'fNamed', which is of a kind that this reader"):
+    assert array.length == 2
+    assert reader_for("ContainerHolder", catalogue) is not None
+
+
+def test_an_array_of_pointers_to_containers_reads_out_of_one_record_for_the_whole_array():
+    """The member after an array of pointers to containers reads its own value, which is only
+    possible if the array's elements shared one record that ended where its byte count said:
+    one record per element would have left the second count where that member stood."""
+    catalogue, _source = _described(
+        CONTAINERS.replace("LINES", "vector<TNamed> *fNamed[2];\n   Int_t fAfter;"),
+        "ContainerHolder",
+    )
+    named = Instance(
+        "TNamed", {"TObject": {"fUniqueID": 0, "fBits": 0}, "fName": "a", "fTitle": "t"}
+    )
+    payload = DeclaredObject(
+        Instance(
+            "ContainerHolder",
+            {"fN": 7, "fNamed": [[named], []], "fAfter": 9},
+        ),
+        catalogue,
+    ).root_payload(0)[0]
+    row = reader_for("ContainerHolder", catalogue)(Buffer(payload))
+    assert row["fAfter"] == 9
+    assert [len(one) for one in row["fNamed"]] == [1, 0]
+    assert row["fNamed"][0][0]["fName"] == "a"
+
+
+def test_an_array_of_pointers_to_containers_of_numbers_reads_the_runs_they_hold():
+    """A container of numbers is written object-wise inside that one record - a count and the
+    numbers - so each element comes back as the run of numbers a single container is."""
+    catalogue, _source = _described(
+        CONTAINERS.replace("LINES", "vector<int> *fNumbers[2];"), "ContainerHolder"
+    )
+    payload = DeclaredObject(
+        Instance("ContainerHolder", {"fN": 1, "fNumbers": [[1, 2, 3], []]}), catalogue
+    ).root_payload(0)[0]
+    row = reader_for("ContainerHolder", catalogue)(Buffer(payload))
+    assert [list(one) for one in row["fNumbers"]] == [[1, 2, 3], []]
+
+
+def test_an_array_of_pointers_to_containers_of_pointers_reads_the_objects_they_name():
+    """``vector<TNamed*> *f[2]``: what each element holds is a pointer, so it is written as
+    the tag naming the class it points at, and read back as that class's object."""
+    catalogue, _source = _described(
+        CONTAINERS.replace("LINES", "vector<TNamed*> *fNamedp[2];"), "ContainerHolder"
+    )
+    named = Instance(
+        "TNamed", {"TObject": {"fUniqueID": 0, "fBits": 0}, "fName": "b", "fTitle": "t"}
+    )
+    payload = DeclaredObject(
+        Instance("ContainerHolder", {"fN": 1, "fNamedp": [[named], []]}), catalogue
+    ).root_payload(0)[0]
+    row = reader_for("ContainerHolder", catalogue)(Buffer(payload))
+    assert [[one["fName"] for one in held] for held in row["fNamedp"]] == [["b"], []]
+
+
+def test_an_array_of_pointers_to_containers_of_a_self_streaming_class_is_refused():
+    """``vector<TArrayD> *f[2]`` holds a class that streams itself rather than being written
+    a member at a time, and this reader has no reading for such a class inside a member-wise
+    record: it names the member and says so rather than reading the record as another shape."""
+    catalogue, _source = _described(
+        CONTAINERS.replace("LINES", "vector<TArrayD> *fArray[2];"), "ContainerHolder"
+    )
+    with pytest.raises(_Unreadable, match=r"'fArray', an array of pointers to containers of"):
+        reader_for("ContainerHolder", catalogue)
+
+
+def test_an_array_of_pointers_to_maps_is_refused_by_the_container_it_does_not_read():
+    """A ``map<string,int> *f[2]`` is an array of pointers to a container of more than one
+    type, which is not the count-and-items shape this reading is for: the member is refused
+    by the container it names."""
+    catalogue, _source = _described(
+        CONTAINERS.replace("LINES", "map<string,int> *fMaps[2];"), "ContainerHolder"
+    )
+    with pytest.raises(_Unreadable, match=r"'fMaps', an array of pointers to map<string,int>"):
         reader_for("ContainerHolder", catalogue)
 
 
