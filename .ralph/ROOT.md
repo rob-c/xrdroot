@@ -842,6 +842,26 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - **`W0-69`**: worker 04 committed `docs/README.md` and `docs/discoveries/…` (`572b39e2`), not taken. A brief cannot
   prevent it; **check `git show --stat` of every worker commit for `docs/` before cherry-picking**.
 
+## Round 27's close (recorded here for the next iteration)
+
+- Base `4c82dc31`, closed at `0e7e9fda`. **Seven commits, four features**, two waves of workers (four, then two).
+- **`roottest/root/io/tree/*` went PASS 6 -> 10** (`/tmp/r26/tree` -> `/tmp/r27/tree2`): `create-rc`, `create-rcr`,
+  `create-rcrr` (a split `TClonesArray` of a class the *program* declared is cloned by that declaration) and
+  **`test-r`** (a `TRef` read out of a tree resolves through its `TProcessID`, so the refs print the names they name).
+  The other seven of the family now *run* and are DIFF: `TTree::Show`'s formatting is all that is left of them
+  (`W0-72`, the cheapest seven tests in the suite today).
+- **Three named walls fell without a PASS**: `W0-67` (a member-wise container of a class with a base - `vector<TLine>`'s
+  480-byte desync is gone; `io/bigevent` now stops at a garbage length, `W0-71`), `W0-68` (SplitClones of a file-only
+  class) and part of `W0-66`.
+- **`W0-74` is the round's process lesson**: five commits were cherry-picked before the coverage gate ran, and it
+  reported **99.99%** - a worker's eight-file commit had tests for some of its branches and not the other six
+  (`ClonedSlot._live`'s three answers, `filed_object`'s `PutObjectWithID`, two `Show` text paths). `23e557d8` adds
+  the five missing tests. **Run `pytest --cov` after every cherry-pick**, not once per round.
+- `io/json` gained no PASS but `String` moved UNSUPPORTED -> FAIL onto a translator bug (`W0-73`); `io/bigevent` is
+  still 3 PASS / 0 FAIL / 1 UNSUPPORTED.
+- The machine's load average was 8-14 all round; every measurement was `--jobs 1`, and the `io/tree` family was
+  measured alone each time (its tests share one working directory).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -880,6 +900,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 27's result of it, at `0e7e9fda`: `TOTAL 117765 0 29514 0 100%`, `12817 passed, 1 skipped,
+  46 xfailed`; `ruff` clean, `mypy` 1018 files, maintainability 30 562 functions, components 0
+  undeclared, `mkdocs build --strict` built.
 - Round 26's result of it, at `85adfa05`: `TOTAL 117554 0 29432 0 100%`, `12777 passed, 1 skipped,
   46 xfailed` (measured at the three feature commits; the docs commits follow); `ruff` clean, `mypy` 1018
   files, maintainability 30 477 functions, components 0 undeclared.
@@ -997,6 +1020,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 24 | `a12e5e43` | **one feature in two files**: a container a member *points at* is read as the container it names (`vector<TObject> *fVectorTobject`, stype 71) - `interp.py`, `rdobjects.py` | **0 PASS**: `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r24/ev3`), `read`'s refusal moved to `fVectorTnamed` | 2: `W0-62` (that wall is `vector<TNamed> *[6]`, an array of pointers - the round's one-line attempt was reverted by its own unit test), `W0-63` (a refusal that moves further is not progress until the full suite agrees) |
 | 25 | `3aa0b0db` | **one feature in two files**: an array of pointers to containers reads out of one record, each item named (`W0-62`) - `interp.py`, `rdobjects.py` | **0 PASS**: `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r25/ev`), `read`'s refusal moved two members on to `fMapTNamedp` - and this time the full suite agreed, where round 24's relabelling had broken a unit test | 2: `W0-64` (a `std::map` whose key is a ROOT class), `W0-65` (the feature that replaced the revert) |
 | 26 | `a4f10d15` | **three features, three workers, disjoint files**: `fName`/`fTitle` are the object's own members, read and written (`7f1663d1`, `172093d3`, `pyroot/core/`); a container template's nested `iterator` is a name a macro can declare (`a6336c75`, `cppstd/`); the `Event`'s maps read (`33678ae2`, `interp.py`) | **roottest +1: `io/tree/create-r` PASSES** (`/tmp/r26/base1` -> `/tmp/r26/tree`, 5 -> 6 PASS in `roottest/root/io/tree/*`), `test-r` FAIL -> DIFF (it runs now); `io/bigevent` 3 PASS / 0 FAIL / 1 UNSUPPORTED with a named format error 48 bytes/event into `vector<TLine>` (`/tmp/r26/ev`) | 5: `W0-66` (the chain's real feature: a `TRef` read, 11 tests), `W0-67` (a class with a base read member-wise), `W0-68` (SplitClones of a file-only class), `W0-69` (`docs/` committed by a worker again), `W0-70` (scratch files) |
+| 27 | `4c82dc31` | **seven commits, four features, one chain**: a split `TClonesArray` read by `SetAddress` is filled (`42898a9a`); a `TRef` member read out of a tree resolves through its `TProcessID` (`212010d0`); a split `TClonesArray` of a class the program declared is cloned by it (`9867dfc9`); a member-wise container reads a base ROOT gives a record to (`5dd0ebba`); plus `ROOT.memset` and collections in JSON (`fd1d360a`, `32cc0d7f`) and the six branches they left untested (`23e557d8`) | **roottest +4 in `roottest/root/io/tree/*`: PASS 6 -> 10** (`/tmp/r26/tree` -> `/tmp/r27/tree2`: `create-rc`, `create-rcr`, `create-rcrr`, **`test-r`**), 12 UNSUPPORTED -> 8 DIFF, 0 FAIL; `io/json` 4/5/3 (`/tmp/r27/json2`); `io/bigevent` still 3/0/1 (`/tmp/r27/ev`) | 4: `W0-71` (bigevent's next container), `W0-72` (7 `io/tree` DIFFs = `Show`'s formatting), `W0-73` (`io/json`'s unbound-method and `None` shapes), `W0-74` (the coverage gate belongs after every commit) |
 
 ## Notes
 
