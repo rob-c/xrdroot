@@ -419,12 +419,62 @@ class _Container:
     __cpp_name__ = ""
 
 
+class _DeclaredIterator:
+    """``std::list<T>::iterator it;``: the iterator a macro declares before it walks.
+
+    A macro keeps the iterator outside the loop and assigns a container's
+    ``begin()`` to it - ``std::list<T>::iterator i; for (i = l.begin(); ...)`` - so
+    what the declaration makes has to exist, be compared and stepped, and is
+    replaced by the value assigned to it. The translator drops the template
+    arguments of a nested type name, so one class stands for the iterator of every
+    container and for its ``const_iterator``; reading through one that was never
+    assigned refuses, there being no element it is at.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<iterator, no container given>"
+
+    def __eq__(self, other: object) -> bool:
+        """Equal to another unassigned one, as two default-made C++ iterators are."""
+        return isinstance(other, _DeclaredIterator)
+
+    def __ne__(self, other: object) -> bool:
+        return not self.__eq__(other)
+
+    __hash__ = None  # type: ignore[assignment]
+
+    def __iadd__(self, step: int) -> _DeclaredIterator:
+        return self
+
+    def __add__(self, step: int) -> _DeclaredIterator:
+        return self
+
+    def __deref__(self) -> Any:
+        raise TypeError(
+            "an iterator made by a declaration points at no element; assign it a "
+            "container's begin() before reading through it"
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(self.__deref__(), name)
+
+
 class _Template:
     """``std.vector``: a class for each element type, by ``[...]`` or by ``(...)``.
 
     Both spellings give the one class for the one type, so ``isinstance``
     and a tree's check of what it was handed work whichever was used.
     """
+
+    #: C++'s nested iterator names, which a macro declares a variable of
+    #: (``std::vector<int>::iterator``) - by the class the declaration makes, and the
+    #: ``const_iterator``, which differs from it only in what it may be assigned.
+    iterator = _DeclaredIterator
+    const_iterator = _DeclaredIterator
 
     def __init__(self, name: str, arity: int, build: Any) -> None:
         self._name = name
@@ -832,8 +882,13 @@ class _VectorIterator:
     def __init__(self, owner: Any, position: int) -> None:
         self._owner, self._position = owner, position
 
-    def __deref__(self) -> Any:
+    def _element(self) -> Any:
+        """The thing at :attr:`_position` - read through the owner, which is what an
+        iterator of another container overrides, as a set's does."""
         return self._owner[self._position]
+
+    def __deref__(self) -> Any:
+        return self._element()
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):
@@ -843,17 +898,22 @@ class _VectorIterator:
     def __float__(self) -> float:
         return float(self.__deref__())
 
+    def __int__(self) -> int:
+        """``printf("%d", *it)``: the number the iterator is at, as ``%g`` reads it through
+        :meth:`__float__`."""
+        return int(self.__deref__())
+
     def __iadd__(self, step: int) -> _VectorIterator:
         self._position += int(step)
         return self
 
     def __add__(self, step: int) -> _VectorIterator:
-        return _VectorIterator(self._owner, self._position + int(step))
+        return type(self)(self._owner, self._position + int(step))
 
     def __sub__(self, other: Any) -> Any:
         if isinstance(other, _VectorIterator):
             return self._position - other._position
-        return _VectorIterator(self._owner, self._position - int(other))
+        return type(self)(self._owner, self._position - int(other))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, _VectorIterator):
@@ -868,6 +928,19 @@ class _VectorIterator:
         return self._position < other._position
 
     __hash__ = None  # type: ignore[assignment]
+
+
+class _SetIterator(_VectorIterator):
+    """A ``std::set`` iterator: the element at a place among the elements in order.
+
+    A set holds its elements unordered here, so an iterator counts off the sorted
+    ones instead of indexing the container as a vector's does, and
+    ``for (std::set<float>::const_iterator i = s.begin(); i != s.end(); ++i)`` steps
+    them in the order iteration gives.
+    """
+
+    def _element(self) -> Any:
+        return self._owner._ordered()[self._position]
 
 
 def _insertion(what: Sequence[Any]) -> list[Any]:
@@ -1181,6 +1254,19 @@ class _Set(_Container):
     def count(self, value: Any) -> int:
         return int(value in self)
 
+    def _ordered(self) -> list[Any]:
+        """The elements in the order iteration gives them, which is what an iterator of a set
+        counts off: a set has no place to index, so its iterator is a step count."""
+        return sorted(self._items)
+
+    def begin(self) -> _SetIterator:
+        """``begin()``: an iterator at the first element, which ``*it`` and ``it += 1`` use."""
+        return _SetIterator(self, 0)
+
+    def end(self) -> _SetIterator:
+        """``end()``: the iterator one past the last element."""
+        return _SetIterator(self, len(self))
+
     def insert(self, value: Any) -> None:
         self._items.add(self._value(value))
 
@@ -1226,6 +1312,10 @@ class _Multiset(_Set):
     def _flat(self) -> list[Any]:
         kept = sorted(self._counts.items(), key=lambda pair: (pair[0],))
         return [value for value, count in kept for _ in range(count)]
+
+    def _ordered(self) -> list[Any]:
+        """The copies in order, as many as there are of each - what an iterator steps over."""
+        return self._flat()
 
     def __len__(self) -> int:
         return sum(self._counts.values())
