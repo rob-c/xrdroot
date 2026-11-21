@@ -226,15 +226,65 @@ def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None
     :mod:`xrdroot.streamers` read them from.
     """
     origin = _origin(source)
-    for name, (checksum, version, elements) in infos:
+    for name in _as_root_lists_them(infos):
         if name not in FILE_INFOS and _undictionaried(name):
             message("Warning", "TClass::Init", "no dictionary for class %s is available", name)
+    for name, (checksum, version, elements) in infos:
         met = _met(name, (checksum, version, elements), origin)
         if met or _in_memory(name, checksum, version):
             continue
         held = FILE_INFOS[name]
         taken = {found[1] for found in held}
         held.append((checksum, _free_version(name, version, taken), elements))
+
+
+def _as_root_lists_them(infos: list[tuple[str, Layout]]) -> list[str]:
+    """The classes a file describes, in the order ROOT warns of them: a class before the
+    classes its layout is built on.
+
+    ROOT registers a class's streamer information as it first streams an object of it, and a
+    base's after the derived class's - ``roottest/root/io/tree``'s ``write.C`` streams a
+    ``TEmcl``, whose base is ``TPhysObj``, so the file ROOT wrote lists ``TEmcl`` first and
+    ``missingClass.ref`` names it first. The writer here lays a base down before its derived
+    class, which is ROOT's order read backwards, so the order ROOT would have read is worked
+    out from the layouts: a class whose base the file lists before it is warned of first, and
+    the base with it.
+    """
+    bases = {}
+    for name, (_sum, _version, elements) in infos:
+        bases[name] = _bases_of(elements)
+    deferred: set[str] = set()
+    for found in bases.values():
+        deferred.update(found)
+    order: list[str] = []
+    warned: set[str] = set()
+    for name, _layout in infos:
+        if name not in deferred:
+            _warn_order(name, bases, order, warned)
+    for name, _layout in infos:
+        _warn_order(name, bases, order, warned)
+    return order
+
+
+def _bases_of(elements: tuple[Element, ...]) -> list[str]:
+    """The classes a layout is built on: the names of its ``TStreamerBase`` elements."""
+    found = []
+    for element in elements:
+        if element[0] == "TStreamerBase":
+            found.append(element[1])
+    return found
+
+
+def _warn_order(name: str, bases: dict[str, list[str]], order: list[str],
+                warned: set[str]) -> None:  # fmt: skip
+    """``name``, then the classes its layout is built on, each once - which is the order a
+    file ROOT wrote lists them in."""
+    if name in warned:
+        return
+    warned.add(name)
+    order.append(name)
+    for base in bases.get(name, ()):
+        _warn_order(base, bases, order, warned)
 
 
 def _origin(source: Any) -> str:

@@ -1093,3 +1093,15 @@ def test_a_member_the_two_layouts_type_alike_names_no_new_type(capsys):
     assert "   i= 0, first           type=  3, offset=  0, len=1, method=0" in printed
     # A member the layout in memory does not have is the file's own, new type or no.
     assert "   i= 1, gone            type=  3, offset=  0, len=1, method=0" in printed
+
+
+def test_a_files_classes_are_warned_of_in_the_order_root_wrote_them(capfd):
+    """ROOT registers a class's streamer information as it first streams an object of it and a
+    base's after the derived class's, so ``roottest/root/io/tree``'s file lists ``TEmcl``
+    before its base ``TPhysObj`` and ``missingClass.ref`` names it first. The writer here lays
+    a base down first, so the warnings are put in ROOT's order before they are given."""
+    base = ("TStreamerBase", "TPhysObj", "", 0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (0,))
+    described = [("TPhysObj", (0x1, 1, ())), ("TEmcl", (0x2, 1, (base,)))]
+    reflection.note_file_infos(described)
+    printed = capfd.readouterr().err
+    assert printed.index("class TEmcl") < printed.index("class TPhysObj")
