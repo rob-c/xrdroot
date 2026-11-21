@@ -30,7 +30,7 @@ from .formula import Formula, compile_formula
 from .objects import SAMPLE, Whole, _whole, learned
 from .ops import truth
 
-__all__ = ["select", "TreeNames", "dimensions"]
+__all__ = ["select", "TreeNames", "dimensions", "one_entry"]
 
 Array = Any
 
@@ -248,6 +248,28 @@ class _Read:
             entry_numbers=self.numbers,
             local_entries=self.local,
         )
+
+
+def one_entry(source: Any, formula: Formula, entry: int, whole: Any = None) -> tuple[Any, Any]:
+    """``formula``'s values and mask for one entry of ``source``, as a whole draw reads them.
+
+    This is what evaluates an expression against the entry a tree last read - the
+    ``TTreeFormula::EvalInstance`` a macro calls after ``GetEntry`` - so the columns
+    are read exactly as ``Draw`` reads them: a fixed-size array keeps its shape, and
+    a member of an object the tree holds whole comes out of that object. ``whole``
+    is the member table ``TreeNames`` learnt for the source, when the caller has it
+    already; without it the members are learnt from the tree, once.
+    """
+    read = _Read(source, entry, entry + 1, None, _whole_of(source, formula, whole), borrowed=True)
+    found: tuple[Any, Any] = read.evaluate(formula, masked=True)
+    return found
+
+
+def _whole_of(source: Any, formula: Formula, whole: Any) -> Any:
+    """The member table of the tree's whole objects, if the formula reads inside one."""
+    if whole is not None or all(name in source for name in formula.branches):
+        return whole
+    return TreeNames(source).whole
 
 
 def _as_rows(value: Any) -> Jagged:

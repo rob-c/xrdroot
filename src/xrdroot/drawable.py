@@ -9,8 +9,11 @@ scan the same way. The work is in :mod:`~xrdroot.treedraw` and
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping, Sequence
-from typing import IO, Any
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from typing import IO, TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .formula import FormulaError
 
 __all__ = ["Drawable"]
 
@@ -108,6 +111,7 @@ class Drawable:
         conversions: Sequence[str] | None = None,
         file: IO[str] | None = None,
         aliases: Mapping[str, str] | None = None,
+        on_error: Callable[[FormulaError, str], None] | None = None,
     ) -> str:
         """``TTree::Scan``: the values of expressions as ROOT's table of text.
 
@@ -128,6 +132,12 @@ class Drawable:
         The table comes back as a string; ``file`` is also written to as the
         rows are made, which for a long scan is the way to see them come.
         ROOT's pause every fifty rows is not made.
+
+        ``on_error`` is how a column that does not compile is reported. ROOT's
+        ``Scan`` makes a ``TTreeFormula`` of every column and keeps the ones
+        that failed as empty ones, so a table is printed with nothing under
+        that name; a caller that gives ``on_error`` gets that, and one that
+        does not is told of the bad expression by the exception it raises.
         """
         from .scan import scan
 
@@ -142,4 +152,5 @@ class Drawable:
             conversions=conversions,
             file=file,
             aliases=aliases,
+            on_error=on_error,
         )

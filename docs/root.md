@@ -2914,6 +2914,20 @@ keeps its mutations. Object and variable-length collection readers keep their
 existing read paths. Pointer stability across branch-address rebinding is not
 part of this reader contract.
 
+`TTreeFormula("name", "expression", tree)` is ROOT's own way of asking a tree
+one question at a time: it is compiled once against the tree's branches -
+members of the objects the tree holds whole included, and its aliases - and
+then `EvalInstance(i)` gives instance `i` of the entry the tree last read, one
+past the last element of a dynamic array being `NaN` as ROOT's is, while
+`GetNdata()` says how many there are. An expression that does not compile is
+reported as ROOT reports it - `Bad numerical expression` - and the formula
+stays invalid, which is what `GetNdim()` returning 0 says; a `Scan` keeps such
+a column and prints it empty. A formula added to `gROOT`'s list of functions
+under a name ending in `()` - `TTreeFormula("myfunc()", "(i>5)", tree)` - may
+be called by that name from another formula. `EvalObject`, `EvalClass`,
+`EvalStringInstance` and `Print` name the C++ objects and the compiled
+expression ROOT keeps; they are refused with a sentence saying what to use.
+
 `Print`'s byte counts are this writer's baskets', and a tree not yet written
 prints its branches as ROOT's "One basket in memory".
 

@@ -17,8 +17,9 @@ from collections.abc import Mapping
 from typing import NoReturn
 
 from ..errors import UnsupportedFeatureError
+from ..plugins import lookup_loaded
 from .errors import FormulaError
-from .functions import CASTS, FUNCTIONS, STRING_FUNCTIONS
+from .functions import CASTS, FUNCTIONS, STRING_FUNCTIONS, Function
 from .lexer import Token, tokenize
 from .names import Names
 from .nodes import (
@@ -234,7 +235,8 @@ class Parser:
                 return Number(CONSTANTS[text])
             raise FormulaError(
                 f"{text!r} in {self.text!r} is not a branch, an alias or a name ROOT's "
-                f"formulas know; {self.names.nearest(text, self.aliases)}"
+                f"formulas know; {self.names.nearest(text, self.aliases)}",
+                name=text,
             )
         column, rest = found
         if rest:
@@ -438,7 +440,23 @@ def _is_reducer(parser: Parser, name: str) -> bool:
 
 
 def _is_function(parser: Parser, name: str) -> bool:
-    return name in FUNCTIONS or name in STRING_FUNCTIONS
+    return name in FUNCTIONS or name in STRING_FUNCTIONS or _registered(name) is not None
+
+
+def _registered(name: str) -> Function | None:
+    """A formula ROOT's own session registered under that name, in the language's table.
+
+    A macro may name a ``TTreeFormula`` ``myfunc()`` and add it to ``gROOT``'s list of
+    functions, after which any other formula may write ``myfunc()``: ROOT asks that list
+    when a name it does not know is called. The session is the one that holds the list,
+    so it is asked through the provider this component declares rather than imported, and
+    the answer joins the table here, where the parser and the evaluator both look.
+    """
+    ask = lookup_loaded("formula.user_function")
+    found = None if ask is None else ask(name)
+    if found is not None:
+        FUNCTIONS[name] = found
+    return found
 
 
 def _is_cast(parser: Parser, name: str) -> bool:
