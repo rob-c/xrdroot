@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 import numpy as np
 
 from .directories import current_directory
-from .objects import Indent
+from .objects import Indent, renamed
 
 __all__: list[str] = []
 
@@ -238,6 +238,7 @@ class Booked:
         return str(self._core()["TNamed"]["fName"])
 
     def SetName(self, name: Any) -> None:
+        renamed(self)
         self._core()["TNamed"]["fName"] = str(name)
 
     def GetTitle(self) -> str:

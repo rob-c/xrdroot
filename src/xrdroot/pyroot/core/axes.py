@@ -16,7 +16,7 @@ import numpy as np
 
 from ...fillrandom import AXIS_RANGE
 from .messages import message
-from .objects import TNamed
+from .objects import TNamed, renamed
 
 __all__ = ["TAxis", "TAttAxis"]
 
@@ -108,6 +108,7 @@ class TAxis(TNamed, TAttAxis):
         return str(self._row["TNamed"]["fName"])
 
     def SetName(self, name: Any) -> None:
+        renamed(self)
         self._row["TNamed"]["fName"] = str(name)
 
     def GetTitle(self) -> str:

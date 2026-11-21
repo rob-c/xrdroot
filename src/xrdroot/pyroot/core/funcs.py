@@ -23,7 +23,7 @@ import numpy as np
 from ...function import Function
 from ...function.members import UNSET
 from .messages import message
-from .objects import TAttFill, TAttLine, TAttMarker, TNamed
+from .objects import TAttFill, TAttLine, TAttMarker, TNamed, renamed
 from .refs import store
 from .wrapping import adopt, register, remember, unwrap, wrap
 
@@ -182,6 +182,7 @@ class TFormula(TNamed):
         return str(self._named()["fName"])
 
     def SetName(self, name: Any) -> None:
+        renamed(self)
         self._named()["fName"] = str(name)
 
     def GetTitle(self) -> str:
