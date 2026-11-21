@@ -409,6 +409,11 @@ class StmtEmitter(CallEmitter):
             kind = self.typeof(target)
             name = kind.name if kind is not None else "double"
             read = f"{stream}.extract({name!r})"
+            if kind is not None and not kind.pointer and name in active().string_classes:
+                # A word read into one of a dialect's string classes is that class, not the
+                # plain ``str`` an extraction gives: ``while (in >> line) line.Contains(...)``
+                # is a ``TString``'s method, and a ``str`` has none.
+                read = f"{self.class_expr(kind.value())}({read})"
             if self._held_through(target):
                 self.out.line(self.store_expression(target, read)[0], expr.where)
             else:
