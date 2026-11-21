@@ -217,6 +217,12 @@ CONTAINERS = ("std::vector", "std::list", "std::deque", "std::set", "std::multis
 #: a sequence or map of values, one that names itself an object of its keys, or its bits.
 CONTAINER_KINDS = ("container", "map_object", "bitset")
 
+#: The ``_Member.kind`` a member of one of ROOT's own classes is written as - the object's
+#: own JSON, member for member, since ROOT's streamer writes a member of a class type by
+#: streaming it - and the kind its declaration makes an array of: ``TNamed fName[10]`` is
+#: ten objects in one JSON array. A pointer to one that holds nothing is ``null``.
+OBJECT_KINDS = ("object", "objects")
+
 
 def _remainder(value: int, mod: int) -> int:
     """``value % mod`` with the sign of ``value``, as C's ``%`` has it."""
@@ -384,21 +390,27 @@ def _declared_member(classname: str, entry: tuple[str, str, str, tuple[int, ...]
     if not dims and kind.endswith("*") and LENGTH.search(comment or ""):
         kind, dims = kind.rstrip("*").strip(), (None,)
     of = f"an array of {kind}" if dims else f"a {kind}"
-    style = _container_style(kind, comment)
+    style = _member_style(kind, comment, dims)
     if style is not None:
         return _Member(name, style, bool(dims), dims)
-    text = TEXTS.get((kind, bool(dims)))
-    if text is not None:
-        return _Member(name, text, bool(dims), dims)
-    scalar = SCALARS.get(kind)
-    if scalar is not None:
-        return _Member(name, scalar, bool(dims), dims)
     raise UnsupportedFeatureError(
         f"TBufferJSON::ConvertToJSON does not yet write {classname}::{name}, which is "
         f"declared as {of}. It writes the members a class declares of a number type "
-        f"({', '.join(SCALARS)}) and of text (std::string, TString, char[N], char*), and "
-        f"the members of the classes in its table ({', '.join(sorted(MEMBERS))}); a "
-        "container member needs a writer for the container it holds first"
+        f"({', '.join(SCALARS)}), of text (std::string, TString, char[N], char*), of a "
+        f"container, and of the classes in its table ({', '.join(sorted(MEMBERS))}); any "
+        "other member type needs a writer of its own first"
+    )
+
+
+def _member_style(kind: str, comment: str, dims: tuple[int | None, ...]) -> Any:
+    """What a declared member of type ``kind`` is written as: the container it holds, one of
+    ROOT's own classes, the text it is, or the ``$arr`` type of the number - and ``None`` for
+    a type this writer has nothing for."""
+    return (
+        _container_style(kind, comment)
+        or _object_style(kind, dims)
+        or TEXTS.get((kind, bool(dims)))
+        or SCALARS.get(kind)
     )
 
 
@@ -412,6 +424,20 @@ def _container_style(kind: str, comment: str) -> str | None:
     if bare.startswith("std::bitset"):
         return "bitset"
     return "map_object" if "JSON_object" in (comment or "") else "container"
+
+
+def _object_style(kind: str, dims: tuple[int | None, ...]) -> str | None:
+    """How ROOT writes a member declared as one of its own classes - ``TNamed fName`` - or
+    as a pointer to one that its declaration gives a length: the object's own JSON, and one
+    object per element where the declaration makes it an array. ``None`` for any other type.
+
+    A class is only written this way when :data:`MEMBERS` knows its members, since ROOT
+    writes a member of a class type by streaming it, and a class whose members this cannot
+    write is refused by name rather than written short.
+    """
+    if kind.rstrip("* ").strip() not in MEMBERS:
+        return None
+    return "objects" if dims else "object"
 
 
 def _held(obj: Any, member: _Member) -> Any:
@@ -718,6 +744,8 @@ class _Writer:
             return self._char_text(value, member)
         if member.kind in ("strings", "strptrs", "tstrings"):
             return self._texts(member, value, depth)
+        if member.kind in OBJECT_KINDS:
+            return self._objects(member, value, depth)
         if member.kind in CONTAINER_KINDS:
             return self._containers(member, value, depth)
         if member.kind in ("cstring", "strptr"):
@@ -763,6 +791,24 @@ class _Writer:
         nothing there."""
         items = ["null" if each is None and member.kind == "strptrs"
                  else _quoted("" if each is None else str(each)) for each in group]
+        return "[" + self._layout.item_comma.join(items) + "]"
+
+    def _objects(self, member: _Member, value: Any, depth: int) -> str:
+        """A member declared as one of ROOT's classes: the object written as one - ROOT
+        streams a member of a class type, so it is a JSON object of its own - or, where its
+        declaration makes it an array, the nested arrays of them. A pointer with nothing
+        there is ``null`` at every depth."""
+        if member.kind == "object":
+            return self._value(value, depth + 1)
+        if value is None:
+            return "null"
+        nested = _nest(list(value or []), member.dims,
+                       lambda group: self._object_row(group, depth))  # fmt: skip
+        return _list_text(nested, self._layout.item_comma)
+
+    def _object_row(self, group: list[Any], depth: int) -> str:
+        """One row of an array of objects: each written as the object it is."""
+        items = [self._value(each, depth + 1) for each in group]
         return "[" + self._layout.item_comma.join(items) + "]"
 
     def _containers(self, member: _Member, value: Any, depth: int) -> str:
@@ -1133,6 +1179,8 @@ def _blank(value: Any) -> bool:
 def _converted(member: _Member, value: Any) -> Any:
     """What a member of a declared class holds, as the JSON wrote it: a number, a string of
     characters, or the array of them its declared lengths shape."""
+    if member.kind in OBJECT_KINDS:
+        return _converted_objects(value)
     if isinstance(member.kind, str):
         return _converted_text(member, value)
     return _converted_number(member, value)
@@ -1153,6 +1201,19 @@ def _converted_text(member: _Member, value: Any) -> Any:
     if member.kind in ("cstring", "strptr"):
         return None if value is None else str(value)
     return "" if value is None else str(value)
+
+
+def _converted_objects(value: Any) -> Any:
+    """A member of a class type read back: the object the JSON describes, and - an array of
+    them, which ROOT nests as deeply as the declaration does - one object per element, with
+    ``None`` where a pointer held nothing.
+
+    A class the reader does not know is refused by :func:`_rebuilt_object`, which names it,
+    rather than kept as the dict the JSON happens to be.
+    """
+    if isinstance(value, list):
+        return [_converted_objects(each) for each in value]
+    return None if value is None else _rebuilt_object(value)
 
 
 def _place_chars(placed: Any, rows: Any) -> None:

@@ -9,6 +9,8 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
+from xrdroot.cppstd.buffers import CharBuffer, text_into
+from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.core import cformat
 
 
@@ -164,3 +166,28 @@ def test_ownership_and_addresses_are_what_python_keeps():
         (ROOT.addressof(thing), id(thing)),
         (bool(ROOT.nullptr is None), True),
     )
+
+
+def test_memset_fills_the_memory_a_char_pointer_points_into_in_place():
+    """``memset(buf, 0, n)`` over memory ``new char[n]`` handed out: the bytes are written
+    where they lie, so every pointer into them sees the fill, as in C."""
+    memory = CharBuffer(6)
+    text_into(memory, "abc")
+    assert ROOT.memset(memory, ord("x"), 3) is memory
+    assert str(memory) == "xxx"
+
+
+def test_memset_hands_back_the_text_a_char_array_would_hold():
+    """A ``char name[N]`` is a Python ``str``, which no write reaches in place: the text the
+    fill leaves is what is returned for the variable to keep - here the ``''`` a zeroed
+    buffer holds, which is what ``TJsonEx4``'s constructor asks for."""
+    assert ROOT.memset("", 0, 100) == ""
+    assert ROOT.memset("abc", 0, 100) == ""
+    assert ROOT.memset("abc", ord("y"), 2) == "yyc"
+
+
+def test_memset_refuses_a_fill_that_runs_past_the_characters_it_has():
+    """A ``str`` keeps no capacity, so a fill past the characters it holds has no memory to
+    land in; guessing at the length would write a shorter string than ROOT's."""
+    with pytest.raises(UnsupportedFeatureError, match=r"keeps no capacity"):
+        ROOT.memset("abc", ord("y"), 10)

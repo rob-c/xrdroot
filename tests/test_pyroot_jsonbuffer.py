@@ -904,3 +904,43 @@ def test_a_t_string_array_reads_back_with_the_empty_pointer_as_none(monkeypatch)
         '{"_typename":"TStringBack","fStr":["a",""],"fStr2":[["b"],[null]]}')
     assert read.fStr == ["a", ""]
     assert read.fStr2 == [["b"], [None]]
+
+
+def test_a_member_of_a_root_class_is_written_as_one_json_object_of_its_own():
+    """ROOT streams a member of a class type, so ``TNamed fName`` is a JSON object inside the
+    object, its own members indented a level deeper - ``Objects.ref``'s ``TJsonEx10`` - and a
+    pointer that holds nothing is the ``null`` ROOT writes for it."""
+    kinds = _declared_class("THolds", (("fName0", "TNamed", "", ()),
+                                       ("fObj0", "TObject", "", ()),
+                                       ("fNull", "TNamed*", "", ()),
+                                       ("fArr", "TNamed*", "[fCnt]", ())))  # fmt: skip
+    made = kinds()
+    named = ROOT.TNamed("SimpleName", "SimpleTitle")
+    obj = ROOT.TObject()
+    obj.SetUniqueID(10000)
+    made.fName0, made.fObj0, made.fNull, made.fArr = named, obj, None, [named, None]
+    assert _json(made) == (
+        '{\n  "_typename" : "THolds",\n  "fName0" : {\n    "_typename" : "TNamed",\n'
+        '    "fUniqueID" : 0,\n    "fBits" : 0,\n    "fName" : "SimpleName",\n'
+        '    "fTitle" : "SimpleTitle"\n  },\n  "fObj0" : {\n    "_typename" : "TObject",\n'
+        '    "fUniqueID" : 10000,\n    "fBits" : 0\n  },\n  "fNull" : null,\n'
+        '  "fArr" : [{\n    "_typename" : "TNamed",\n    "fUniqueID" : 0,\n'
+        '    "fBits" : 0,\n    "fName" : "SimpleName",\n    "fTitle" : "SimpleTitle"\n'
+        '  }, null]\n}'
+    )
+    made.fArr = None  # an array of objects its pointer holds none of is one ``null``
+    assert _json(made).endswith('  "fArr" : null\n}')
+
+
+def test_an_array_of_objects_reads_back_as_one_object_per_element(monkeypatch):
+    """A member of a class type is read back into an object of the class its ``_typename``
+    names, and an array of them into one per element, with the ``null`` a pointer left."""
+    _reading_class(monkeypatch, "TBackHolds", (("fArr", "TNamed*", "[fCnt]", ()),
+                                                ("fObj", "TNamed", "", ())))  # fmt: skip
+    read = ROOT.TBufferJSON.ConvertFromJSON(
+        '{"_typename":"TBackHolds","fObj":null,"fArr":[{"_typename":"TNamed",'
+        '"fUniqueID":0,"fBits":0,"fName":"a","fTitle":"t"},null]}'
+    )
+    assert read.fObj is None
+    assert read.fArr[0].GetName() == "a"
+    assert read.fArr[1] is None

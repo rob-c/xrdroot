@@ -159,6 +159,40 @@ def __dir__() -> list[str]:
     return sorted(globals())
 
 
+def memset(memory: _typing.Any, value: int = 0, count: int = 1) -> _typing.Any:
+    """``memset(memory, value, count)``: C's own, which ROOT's namespace has by that name.
+
+    A translated constructor zeroes a ``char`` array with it - ``memset(fName, 0,
+    sizeof(fName))`` - and the name is ROOT's because the macro declares nothing of it, so
+    it is looked up in the namespace rather than in a library. Memory ``new char[n]`` hands
+    out is filled where it lies, as C fills it, and given back. A ``char name[N]`` is a
+    Python ``str``, which no write reaches in place: the text the fill leaves is returned
+    for the variable to keep, as ``strcpy``'s is, and a fill that would run past the
+    characters the ``str`` holds - whose capacity a ``str`` does not carry - is refused
+    rather than guessed at.
+    """
+    import numpy as np  # only this function needs the array a char buffer is
+
+    from ..cppstd.buffers import put_char  # below this component, asked for when needed
+    from ..errors import UnsupportedFeatureError
+
+    filled, length = int(value) & 0xFF, int(count)
+    if isinstance(memory, np.ndarray):
+        for at in range(min(length, memory.size)):
+            put_char(memory, at, filled)
+        return memory
+    text = str(memory)
+    if filled and length > len(text):
+        raise UnsupportedFeatureError(
+            f"memset cannot fill {length} bytes over the {len(text)} characters this char "
+            "array holds: a char[N] is a Python str here, which keeps no capacity past the "
+            "characters it holds, so a fill running past them has no memory to land in. "
+            "Fill the characters the array holds, or use memory from new char[N] instead"
+        )
+    written = (chr(filled) if filled else "\\0") * min(length, len(text)) + text[length:]
+    return written.split("\\0")[0]
+
+
 def _declared(name: str) -> _typing.Any:
     """What C++ run so far declared by that name - a macro, ``Declare``, a library loaded -
     or else what the library on the search path providing it declares, autoloaded."""
