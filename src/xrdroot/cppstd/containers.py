@@ -980,6 +980,19 @@ def _element(kind: Any, value: Any) -> Any:
     return _converted(kind, value)
 
 
+def _held(kind: Any, value: Any) -> Any:
+    """``value`` as a set or a map keeps it: C++ stores a *copy* of what ``insert`` and
+    ``m[k] = v`` are given, so a caller that goes on changing its own object - the
+    ``TJsonEx1`` ``TJsonEx13::Init`` inserts four times, each turn with other members -
+    does not change what the container holds. A number, a string and a pointer stand for
+    themselves; a class held by value and a container are copied."""
+    if isinstance(kind, np.dtype) or value is None or kind is string:
+        return value
+    if getattr(kind, "opaque", False) and str(kind.__cpp_name__).rstrip().endswith("*"):
+        return value  # a pointer is copied as the pointer, and the pointer here is the object
+    return copy.deepcopy(value)
+
+
 def _default(kind: Any) -> Any:
     """What a new element of type ``kind`` is before anything is put in it: zero, or empty."""
     if isinstance(kind, np.dtype):
@@ -1076,12 +1089,17 @@ class _Map(_Container):
 
     def __getitem__(self, key: Any) -> Any:
         found = self._key(key)
-        if found not in self._items:
-            self._items[found] = _default(self.kinds[1])
-        return self._items[found]
+        if found in self._items:
+            return self._items[found]
+        kept = _held(self.kinds[0], found)
+        self._items[kept] = _default(self.kinds[1])
+        return self._items[kept]
 
     def __setitem__(self, key: Any, value: Any) -> None:
-        self._items[self._key(key)] = _element(self.kinds[1], value)
+        found = self._key(key)
+        if found not in self._items:  # a key already there keeps the copy it was put in as
+            found = _held(self.kinds[0], found)
+        self._items[found] = _held(self.kinds[1], _element(self.kinds[1], value))
 
     def items(self) -> list[tuple[Any, Any]]:
         """Every key and its value, in the key order a ``std::map`` keeps."""
@@ -1268,7 +1286,7 @@ class _Set(_Container):
         return _SetIterator(self, len(self))
 
     def insert(self, value: Any) -> None:
-        self._items.add(self._value(value))
+        self._items.add(_held(self.kind, self._value(value)))
 
     def erase(self, value: Any) -> int:
         """``erase(value)``: how many were taken out - one, or none if it was not there."""
@@ -1334,6 +1352,8 @@ class _Multiset(_Set):
 
     def insert(self, value: Any) -> None:
         found = self._value(value)
+        if found not in self._counts:
+            found = _held(self.kind, found)
         self._counts[found] = self._counts.get(found, 0) + 1
 
     def erase(self, value: Any) -> int:
