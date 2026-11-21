@@ -60,14 +60,22 @@ def test_a_cleared_tables_row_is_written_as_empty():
 
 
 def _two_entries_of_two_referenced_names(tree, clones):
-    """Fill ``tree`` twice, two numbered ``TNamed``s a branch entry."""
+    """Fill ``tree`` twice, two numbered ``TNamed``s a branch entry.
+
+    The identifiers the session gave them come back too: numbering runs on from whatever the
+    session numbered before, so a test that says which identifier the last object got has to
+    ask rather than count.
+    """
+    numbered = []
     for entry in range(2):
         clones.Clear()
         for slot in range(2):
             named = clones.ConstructedAt(slot)
             named.SetName(f"N_{entry}_{slot}")
-            ROOT.TRef(named)  # numbers it, so the branch holding it is recorded
+            numbered.append(ROOT.TRef(named).GetUniqueID() & 0xFFFFFF)  # numbers it, so the
+            # branch holding it is recorded
         tree.Fill()
+    return numbered
 
 
 def test_each_fill_records_the_branch_holding_every_referenced_object():
@@ -75,14 +83,16 @@ def test_each_fill_records_the_branch_holding_every_referenced_object():
     clones = ROOT.TClonesArray("TNamed")
     tree.Branch("n", Cell(clones))
     table = tree.BranchRef().GetRefTable()
-    _two_entries_of_two_referenced_names(tree, clones)
+    numbered = _two_entries_of_two_referenced_names(tree, clones)
     branch = tree.GetBranch("n")
     assert branch is not None
-    assert table.GetN() == 5  # ROOT's fN: the last identifier plus one, not how many there are
-    assert table.GetSize() >= 5
-    assert table.GetParent(3) is table.GetParents().At(0)
-    assert table.GetParent(4) is table.GetParents().At(0)
-    assert table.GetParent(3).GetName() == branch.GetName()
+    last = max(numbered)
+    # ROOT's fN: the last identifier plus one, not how many there are.
+    assert table.GetN() == last + 1
+    assert table.GetSize() >= last + 1
+    assert table.GetParent(last - 1) is table.GetParents().At(0)
+    assert table.GetParent(last) is table.GetParents().At(0)
+    assert table.GetParent(last).GetName() == branch.GetName()
     assert table.GetParent(0) is None
     assert table.GetParent(99) is None
     assert table.GetParents().GetEntriesFast() == 1

@@ -78,6 +78,25 @@ def test_bits_are_set_tested_reset_and_inverted():
     assert thing.GetUniqueID() == 7
 
 
+def test_every_object_carries_the_two_bits_of_the_heap_it_was_made_on():
+    """``kIsOnHeap`` and ``kNotDeleted`` are in the bits ROOT prints, and no file holds them.
+
+    ``TObject::Streamer`` masks them out when it writes - where the reading process made the
+    object is not the writer's to say - and every object made there is on the heap and not
+    yet deleted, so a reader puts both back. ``roottest``'s ``io/tree/test-rc`` prints them.
+    """
+    thing = ROOT.TObject()
+    expect(
+        (thing.TestBits(0xFFFFFFFF), objects.HEAP_BITS),
+        (thing._bitword(), objects.HEAP_BITS),
+        (bool(thing.TestBit(0x01000000)), True),  # kIsOnHeap
+    )
+    thing._store_bits(objects.HEAP_BITS | ROOT.kIsReferenced)
+    assert thing._bitword() == objects.HEAP_BITS | ROOT.kIsReferenced
+    assert not thing.__dict__['_bits'] & 0x01000000  # not kept: the heap's own are added
+    assert thing.TestBits(0xFFFFFF) == ROOT.kIsReferenced
+
+
 def test_a_tnamed_keeps_its_name_and_title_and_compares_by_name():
     a, b = ROOT.TNamed("a", "first"), ROOT.TNamed("b", "second")
     a.SetNameTitle("c", "third")

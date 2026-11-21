@@ -45,7 +45,7 @@ from ...wdeclared import (
 from ...wdobjects import Clones, DeclaredObject, Instance, written_flat
 from ...winfo import INFOS
 from ...writer import WBuffer
-from .objects import TNamed, TObject
+from .objects import HEAP_BITS, TNamed, TObject
 
 __all__ = [
     "declared_class",
@@ -470,7 +470,9 @@ def root_row(obj: Any, classname: str) -> dict[str, Any]:
     row: dict[str, Any] = {}
     held = getattr(obj, "members", None)
     if isinstance(obj, TObject):
-        row["fBits"] = obj._bitword()
+        # The heap's two bits are the reader's, never the file's: ROOT's writer masks them out
+        # and only a reader puts them back, so a row ready to be written carries none.
+        row["fBits"] = obj._bitword() & ~HEAP_BITS
         row["fUniqueID"] = obj.GetUniqueID()
     elif isinstance(held, Mapping) and classname == "TObject":
         # A drawing class keeps the members ROOT would write by name in ``members``, and is
