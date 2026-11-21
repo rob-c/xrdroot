@@ -406,26 +406,12 @@ class StmtEmitter(CallEmitter):
             root = root.left
         stream = self.value(root)
         for target in targets:
-            read = self._extracted(stream, target)
+            read = self.read_expression(stream, target)
             if self._held_through(target):
                 self.out.line(self.store_expression(target, read)[0], expr.where)
             else:
                 self.out.line(f"{self.value(target)} = {read}", expr.where)
         return True
-
-    def _extracted(self, stream: str, target: Expr) -> str:
-        """``stream.extract('kind')`` for what ``target`` is, as the class the read gives.
-
-        A word read into one of a dialect's string classes is that class and not the plain
-        ``str`` an extraction gives: ``while (in >> line) line.Contains(...)`` is a
-        ``TString``'s method, and a ``str`` has none.
-        """
-        kind = self.typeof(target)
-        name = kind.name if kind is not None else "double"
-        read = f"{stream}.extract({name!r})"
-        if kind is not None and not kind.pointer and name in active().string_classes:
-            return f"{self.class_expr(kind.value())}({read})"
-        return read
 
     def _call_statement(self, expr: Call) -> bool:
         return self.call_statement(expr)

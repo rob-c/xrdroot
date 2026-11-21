@@ -299,16 +299,21 @@ class CallEmitter(ExprEmitter):
         stream = self._stream(root)
         stores = []
         for target in targets:
-            kind = self.typeof(target)
-            name = kind.name if kind is not None else "double"
-            read = f"{stream}.extract({name!r})"
-            if kind is not None and not kind.pointer and name in active().string_classes:
-                # A word read into one of a dialect's string classes is that class, not the
-                # plain ``str`` an extraction gives: ``while (in >> line) line.Contains(...)``
-                # is a ``TString``'s method, and a ``str`` has none.
-                read = f"{self.class_expr(kind.value())}({read})"
-            stores.append(self.store_expression(target, read)[0])
+            stores.append(self.store_expression(target, self.read_expression(stream, target))[0])
         return f"stream_after({stream}, {', '.join(stores)})", P.POSTFIX
+
+    def read_expression(self, stream: str, target: Expr) -> str:
+        """``extracted(stream, target, 'kind')``: the next value, or the one ``target`` holds
+        where the stream has failed - C++ stores nothing through a failed extraction - of the
+        class the target is, when that is one of the dialect's string classes, since an
+        extraction alone gives the plain ``str`` a ``TString`` is not.
+        """
+        kind = self.typeof(target)
+        name = kind.name if kind is not None else "double"
+        read = f"extracted({stream}, {self.value(target)}, {name!r})"
+        if kind is not None and not kind.pointer and name in active().string_classes:
+            return f"{self.class_expr(kind.value())}({read})"
+        return read
 
     def _stream(self, node: Expr) -> str:
         """The stream a read in an expression reads from, which the Python names twice."""

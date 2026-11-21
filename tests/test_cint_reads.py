@@ -71,12 +71,29 @@ def test_a_word_read_into_a_string_class_of_the_dialect_is_that_class(
     the one in a condition and the one that is a statement of its own."""
     condition = translate('void t() { TString line; std::istringstream in("a b");'
                           ' while (in >> line) { } }', "t.C")
-    assert "ROOT.TString(in_.extract('TString'))" in condition
+    assert "ROOT.TString(extracted(in_, line, 'TString'))" in condition
     statement = translate('void t() { TString line; std::istringstream in("a b"); in >> line; }',
                           "t.C")
-    assert "line = ROOT.TString(in_.extract('TString'))" in statement
+    assert "line = ROOT.TString(extracted(in_, line, 'TString'))" in statement
     source = r"""TString word; std::istringstream in("ab cd ef"); int n = 0;
     while (in >> word) if (word.Contains("d")) n++;
     printf("%d\n", n);"""
     run_source("{\n" + source + "\n}\n", "t.C")
     assert capsys.readouterr().out == "1\n"
+
+
+def test_a_failed_extraction_leaves_the_variable_as_it_was(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """C++ stores nothing through an extraction that fails - it sets failbit and leaves the
+    variable alone - so ``while (in >> word) {}`` ends with the last word still in ``word``,
+    where storing the empty text a failed read gives would lose it. And a read after a failed
+    one never happens at all."""
+    source = r"""TString word; std::istringstream in("a b"); int n = 0;
+    while (in >> word) n++;
+    int keep = 7; std::istringstream empty("");
+    while (empty >> keep) n++;
+    std::istringstream two("1 2"); int first = 0, second = 0; bool ok = (two >> first >> second);
+    printf("%d [%s] %d %d %d\n", n, word.Data(), keep, first, second);"""
+    run_source("{\n" + source + "\n}\n", "t.C")
+    assert capsys.readouterr().out == "2 [b] 7 1 2\n"
