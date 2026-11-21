@@ -1363,6 +1363,23 @@ does, and cuts what is drawn with `[cutname]`; `TExec` runs its line of C++
 each time its pad is painted - what it paints with `PaintText` put where it
 stands among the pad's primitives - and `TPavesText` is the stacked pave.
 
+**Matrices by element and by promise.** A ROOT macro can fill a matrix with a
+class of its own: `class FillMatrix : public TElementPosActionD` writes
+`void Operation(Double_t &element) const` and reads `fI` and `fJ`, and
+`m.Apply(f)` runs it over every element in row order, as `TMatrixTBase::Apply`
+does - a symmetric matrix over its upper triangle, mirrored. `TElementActionT`
+and `TElementPosActionT` are both here with their `D` and `F` typedefs, and
+`TVectorT.Apply` takes them too. A `TMatrixTLazy` is a promise: a class of the
+macro's gives the matrix's bounds and a `FillIn` that writes it, and
+`TMatrixD m = THaarMatrixD(order)` forces the promise into `m`, as does
+`m = promise(...)`, which writes into the matrix `m` already is.
+`THaarMatrixD`/`THaarMatrixF` are ROOT's Haar matrix, whose columns are
+orthogonal and of unit length. `TMatrixF` and `TMatrixFSym` keep their
+elements as `Float_t`, which is what ROOT's `TMatrixT<Float_t>` does, so
+what is written into them is rounded to 32 bits; `TMatrixT<float>` is
+`TMatrixF`. `GetSub`, `SetSub`, `RowNorm` and `ColNorm` are the rest of
+`TMatrixTBase`'s members the macros use.
+
 **XML.** `TXMLEngine` makes, walks, changes, reads and writes documents as
 ROOT's does: nodes, attributes and namespaces by pointer, `nullptr` being
 `None`, and a document written byte for byte as `SaveDoc` lays one out.

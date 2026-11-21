@@ -594,19 +594,23 @@ class CallEmitter(ExprEmitter):
         return not self._same_class(ctype, found)
 
     def _same_class(self, ctype: CType, found: CType) -> bool:
-        """Is ``found`` the class ``ctype`` names, or one the program derives from it?"""
-        seen = set()
-        name = found.name
-        while name not in seen:
-            if name.split("::")[-1] == ctype.name.split("::")[-1]:
+        """Is ``found`` the class ``ctype`` names, or one the program derives from it?
+
+        The walk goes up ``found``'s first bases, which ends because C++ has no cycle of them.
+        """
+        tail = ctype.name.split("::")[-1]
+        name: str | None = found.name
+        while name is not None:
+            if name.split("::")[-1] == tail:
                 return True
-            seen.add(name)
-            info = self.program.classes.get(name.split("::")[-1])
-            bases = [base.ctype.name for base in info.decl.bases] if info is not None else []
-            if not bases:
-                return False
-            name = bases[0]
+            name = self._first_base(name)
         return False
+
+    def _first_base(self, name: str) -> str | None:
+        """The class ``name``'s first base, or ``None`` when the program declares none."""
+        info = self.program.classes.get(name.split("::")[-1])
+        bases = [base.ctype.name for base in info.decl.bases] if info is not None else []
+        return bases[0] if bases else None
 
     def _copied(self, ctype: CType, node: Expr) -> bool:
         """Is ``T b = a`` a copy of an object - which Python would otherwise share, not copy?"""

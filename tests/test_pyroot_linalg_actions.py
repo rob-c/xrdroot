@@ -166,6 +166,8 @@ def test_haars_matrix_is_orthonormal_and_lazy_in_both_element_types() -> None:
         assert np.allclose(matrix.values.T @ matrix.values, np.eye(8), atol=1e-6)
     wide = ROOT.THaarMatrixD(3, 5)
     assert (wide.GetRowUpb(), wide.GetColUpb()) == (7, 4)
+    part = ROOT.TMatrixD(ROOT.THaarMatrixD(4, 5))  # a sub-matrix: five of the sixteen columns
+    assert part.GetNcols() == 5 and np.allclose(part.values.T @ part.values, np.eye(5), atol=1e-6)
     small = ROOT.TMatrixF(ROOT.THaarMatrixF(3))
     assert small.values.dtype == np.float32
     assert small(0, 1) == pytest.approx(8**-0.5, rel=1e-6) and small(0, 2) == 0.5
