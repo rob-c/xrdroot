@@ -760,6 +760,20 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   translation cache is not always revalidated when the source changes under it - rerun once before believing an
   `ImportError` in a build step.
 
+## Round 22's close (recorded here for the next iteration)
+
+- Base `249dce34`, closed at `356d077f`. Three commits, **one feature**, `TArrayF`/`TArrayI` as a *member*
+  (`d0e3a132`, `de5f7ef3`, `79c574f3`), one file per worker - the same shape as round 21.
+- **The wall moved again and no PASS did.** `io/bigevent` still measures **2 PASS / 0 FAIL / 2 UNSUPPORTED**
+  and its refusal is now `a TVector3 here is a float rather than the dict of ...` (`W0-58`). `io/double32`
+  measures **3 PASS / 1 FAIL**; `template32` did *not* follow, so `W0-57`'s second half needs its own work.
+- **Two features, two rounds, two walls removed, zero PASS.** That is the rate the remaining work has, and
+  the ledger says so; the group is now three walls deep (`fTemplateMember`, `TArrayI`, `TVector3`) and the
+  next is named.
+- **`W0-59`:** three of four workers left untracked `docs/README.md`, `docs/gotchas/`, `docs/discoveries/` in
+  their worktrees. Nothing was copied into the tree, but a brief must say plainly that `docs/` is not
+  theirs, and a round should look for stray `docs/` before taking a worktree's files.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -798,6 +812,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 22's result of it, at `356d077f`: `TOTAL 117152 0 29290 0 100%`, `12704 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
+  maintainability 30 323 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 21's result of it, at `02f37c6e`: `TOTAL 117057 0 29252 0 100%`, `12685 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 295 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -895,6 +912,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 19 | `2c6be318` | **eight groups with their whole component in scope** (the rule `W0-50` set): bigevent, `pairEnumEvo`, `io/tree`, the data model, `double32`, the graphics pad, `TBufferJSON`, `roottest/python` | **0 gained, 0 lost again** (`/tmp/r19/areas`, `/tmp/r19/tree`): six commits, each removing one refusal | 3: `W0-51`, `W0-52` (what each group actually needs), `W0-53` |
 | 20 | `1000afdd` | **four** targets, each one change round 19 had named: the ACLiC `NameError` (24 cases of `roottest/python`), `TClass::GetClassVersion` for a file-only layout (11 `io/tree` tests), `TBufferJSON`'s `MEMBERS` entries, and the pad's PostScript counts | **0 gained, 0 lost**: three commits, and both groups measured unchanged in PASS (`/tmp/r20/areas`, `/tmp/r20/tree`) - each fix revealed the group's next wall | 2: `W0-54`, `W0-55` |
 | 21 | `57940f19` | **one feature in four files** (`W0-55`'s rule): `Event::fTemplateMember`, the `template2<template1<int>>` member of `io/bigevent`'s class - `winfo.py`, `wdeclared.py`, `wdobjects.py`, `rdobjects.py` | **0 PASS, and the wall is gone**: `io/bigevent` builds and measures **2 PASS / 0 FAIL / 2 UNSUPPORTED** (`/tmp/r21/ev2`), its refusal moved to `a TArrayI is not something this writer puts in a ROOT file` | 2: `W0-56` (stale-cache ImportError), `W0-57` (`TArrayI` as a member) |
+| 22 | `249dce34` | **one feature in three files** (`W0-55`'s rule): `TArrayF`/`TArrayI` as a *member* of a class (`W0-57`), which serves `io/bigevent` and `double32` - `winfo.py`, `wdobjects.py`, `rdobjects.py` | **0 PASS, the wall gone**: `io/bigevent` still **2 PASS / 0 FAIL / 2 UNSUPPORTED** with its refusal moved to `a TVector3 here is a float rather than the dict of ...`; `io/double32` **3 PASS / 1 FAIL** (`/tmp/r22/ev`, `/tmp/r22/d32`) | 2: `W0-58` (the `TVector3` member), `W0-59` (stray `docs/` in worktrees) |
 
 ## Notes
 
