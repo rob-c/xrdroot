@@ -16,6 +16,7 @@ from typing import Any, ClassVar
 
 from .ctype import BUILTIN_WORDS, CType, builtin_name, canonical
 from .cursor import KEYWORDS, STD_NAMES, NoParse, is_template
+from .dialect import active
 from .literals import number, user_literal
 from .nodes import (
     Assign,
@@ -607,6 +608,11 @@ class ExprParser(TypeParser):
         after ``using Architecture = TCpu<Float_t>``."""
         alias = self.aliases.get(parts[0]) if len(parts) > 1 else None
         if alias is None or alias.pointer or alias.enum is not None:
+            return parts, None
+        if list(alias.args) and alias.name.split("::")[-1] not in active().templates:
+            # An instance of a template this kit cannot name - ROOT's SMatrix here - is left as
+            # the alias was written, so the dialect refuses it by name rather than the member
+            # being looked up on a class whose arguments were lost.
             return parts, None
         return [*alias.name.split("::"), *parts[1:]], list(alias.args) or None
 

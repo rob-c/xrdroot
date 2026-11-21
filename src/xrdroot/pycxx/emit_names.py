@@ -202,7 +202,10 @@ class NameEmitter(Inference):
     def _in_host(self, node: Name) -> str:
         """A qualified name of the library's, its parts joined in the host - or, for a template
         instance's member, the member of the class the arguments make."""
-        if node.scope_targs and node.parts[0] in active().templates:
+        # The class the member is reached through is the part before it, which is the first
+        # part for ``TCpu<double>::SetRandomSeed`` and the last-but-one for a qualified one,
+        # ``ROOT::Math::SMatrix<double,4,4>::kSize`` after an alias of that instance.
+        if node.scope_targs and node.parts[-2] in active().templates:
             return self._member_of_instance(node)
         return self.host_name(node.parts) + self.targs(node.targs)
 
@@ -212,8 +215,8 @@ class NameEmitter(Inference):
         A library template's member is reached through the class the arguments make, as the
         host builds it on a subscript - so the arguments go on the template's name, not after
         the member's."""
-        text = self.host_name(node.parts[:1]) + self.targs(node.scope_targs)
-        text += "".join(f".{python_operator(part)}" for part in node.parts[1:])
+        text = self.host_name(node.parts[:-1]) + self.targs(node.scope_targs)
+        text += "".join(f".{python_operator(part)}" for part in node.parts[-1:])
         own = None if node.targs is node.scope_targs else node.targs
         return text + self.targs(own)
 
