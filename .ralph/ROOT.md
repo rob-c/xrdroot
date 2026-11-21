@@ -1073,6 +1073,31 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Gates: ruff, mypy (1019 files), maintainability (30 978 functions), components (0 undeclared), `mkdocs --strict` - all
   pass. **The pytest/coverage gate is deferred to the next iteration** with the exact command below and the load caveat.
 
+## Round 38's close (recorded here for the next iteration)
+
+- Base `7216c284`, closed at `4bd75d90`. **Three commits, no harness PASS, and three pre-existing breakages fixed.**
+- **`W0-101` is closed**: the address of a vector element (`b28bb2c2`'s feature, reverted in round 37 for six uncovered
+  branches) is **back** in `bcd98495` **with each of them covered** - `cells.ItemRef.__repr__`, `_element_pointer`'s and
+  `_element_call_end`'s `None` fall-backs, and `_element_call_address`. The two test forms that failed in round 37 failed
+  for reasons that had nothing to do with the feature: `cintfake.fake()` has no `std::vector<double> v(3, 1.5)`
+  constructor, and two dereferenced pointers in one function hit `list expected at most 1 argument, got 2`. `push_back`
+  and one pointer per test avoid both. **`W0-98`'s ten `other/math` tests now have their feature** - they need a
+  measurement, not more code.
+- **`W0-104`: three breakages that predate this round**, found by running the gate rather than trusting it:
+  `wpacking._whole` caught `struct.error` where **Python 3.14 raises `OverflowError`** (six `test_wpacking` cases died
+  instead of falling back to NumPy), a test asked NumPy for `'atan'` (**NumPy 2.0's** alias for `arctan`; the venv has
+  1.26), and two tests compared `round(x, 5) == 30.39946` with `==` - two *different floats* whose repr matches, so they
+  asserted a spelling rather than a number, now a `pytest.approx` with the same five-decimal precision.
+- **`W0-105`:** the venv runs **Python 3.14 and NumPy 1.26.4**, and CI runs 3.10-3.13 with NumPy 2.x - so both classes of
+  failure are invisible to CI and visible only here. A round touching numerics or `struct` should print
+  `sys.version_info[:2]` and `numpy.__version__` first.
+- **The gate is still not measurable** (`W0-103`): the load average was 20-124 all round, `pytest -n 2 --cov` reported
+  24% with dead workers and 7 `test_tmva_learn_networks.py` failures that pass alone. What *can* be stated: **916 unit
+  tests pass** in every file the three commits touch, and ruff, mypy (1019 files), maintainability, components and
+  `mkdocs --strict` are clean.
+- **The next iteration's first act** should be to re-run the full gate when the load is under ~20, then measure
+  `other/math` (the ten tests `W0-98` names) and `io/tree/read` (`W0-100`).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1111,6 +1136,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 38's result of it, at `4bd75d90`: **not measured** - the load average was 20-124 all round (`W0-103` again);
+  916 unit tests pass in every file the three commits touch, and ruff/mypy (1019 files)/maintainability/components/
+  `mkdocs --strict` are clean. **Rerun when the load average is under 20.**
 - Round 37's result of it, at `b84bdc87`: **not measured** - the load average was 51-124 and the coverage gate reported
   0-27% with dead workers (`W0-103`); ruff, mypy (1019 files), maintainability (30 978 functions), components 0
   undeclared and `mkdocs build --strict` all pass, and the 7 `test_tmva_learn_networks.py` failures under load pass alone.
@@ -1273,6 +1301,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 35 | `1c25bcff` | **five commits**: ROOT::Math's `AssignSym` and the `MatRepSym` a translated type names as text (`84e15c0f`); **a clone writes the identifiers its objects were numbered with** (`920dfe4c`, round 33's two edits at last); a `TObject` read member at a time carries the two words its object has (`dee7d185`); ROOT::Math's genetic minimiser and its seed (`3e2588d0`, `e67c9a79`) | **roottest +3**: `io/tree` **11 -> 14 PASS**, 7 -> **4 DIFF**, **0 FAIL** (`/tmp/r35/tree`: `test-rcr`, `test-rcrr`, `test-rcrr3`); **`other` +2**: `other/math` **19 -> 21 PASS** (`/tmp/r35/other`: `genetic-testGAMinimizer`, `genetic-GAMinTutorial`); `roottest/root/math/*` 0 / 4 / 1 (`/tmp/r35/rmath`) | 3: `W0-95` (**the same feature one level deeper** - a clone of a clone still names the base object, three tests, 180 identical-count lines each), `W0-96` (`other/math`'s 43 UNSUPPORTED bucketed), `W0-97` (`roottest/root/math`, take all five macros at once); `W0-91`, `W0-85`, `W0-87` closed |
 | 36 | `59744112` | **two commits**: a reference written after a clone names the file's process record (`1b2ae9d5`, `W0-95`); ROOT's own array-compression forms in JSON (`f0c859a9`) | **roottest +3**: `io/tree` **14 -> 17 PASS**, 4 -> **1 DIFF**, **0 FAIL** (`/tmp/r36/tree`: `test-rcr2`, `test-rcrr2`, `test-rcrr123`) - **the whole `TRef` family is closed**; `io/json` unchanged at 10 / 0 / 0 / 2 (`/tmp/r36/json`) | 3: `W0-98` (**the translator's `&v[0]`/`&v.front()` refusal blocks 10 of `other/math`'s 43** - the top of round 36's 22-cause bucket table), `W0-99` (`io/json`'s last two refusals), `W0-100` (`io/tree/read`'s last DIFF); `W0-95` and `W0-96` closed |
 | 37 | `d13ce7e8` | **two commits in, two reverted**: a TMap's JSON as the pairs it holds (`4e0461e6`); a symmetric SMatrix filled from its upper triangle (`aa265151`). **Reverted**: the address of a vector element (`b28bb2c2`, `W0-98`'s top row - six branches with no test, branch `r37-01` kept) and a user class's missing dictionary (`03c2c442`, `afd8afdd` - it warns for `TGeoAtt`/`TGeoVoxelFinder`/`TGeoParallelWorld`, which ROOT has dictionaries for, and breaks a PASS) | **0 PASS**: `io/json` **10 / 0 / 0 / 2** (`/tmp/r37/json`) and `roottest/root/math/*` **0 / 4 / 1** (`/tmp/r37/rmath`), both unchanged | 3: `W0-101` (what the vector-element tests must reach), `W0-102` (why the class warning broke a PASS), `W0-103` (**no gate is measurable above a load average of ~20** - `W0-45` is worse than recorded) |
+| 38 | `7216c284` | **three commits**: the address of a vector element reaches every branch it added (`bcd98495`, `W0-101` closed); `wpacking`'s `OverflowError` on Python 3.14 and `np.atan`'s NumPy-2 spelling (`2c64e67f`); two float comparisons through their decimal spelling, as a tolerance (`db1c1a00`) | **no harness measurement** (load average 20-124, `W0-103` stands); **916 unit tests pass** in every file the commits touch | 2: `W0-104` (three pre-existing breakages, fixed, with their causes), `W0-105` (**the venv is Python 3.14 + NumPy 1.26**, where the tree assumed NumPy 2 and older `struct` errors); `W0-101` closed |
 
 ## Notes
 
