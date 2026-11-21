@@ -417,18 +417,50 @@ def _is_constant(name: str, value: Any) -> bool:
     return bool(_CONSTANT.match(name)) and isinstance(value, int) and not isinstance(value, bool)
 
 
-#: What the names of ROOT's own classes look like: each has a dictionary in ROOT.
-ROOT_NAMES = re.compile(r"^(T[A-Z]|Roo|ROOT::|TMVA::|RooStats::|HistFactory::)")
-
-
 def _undictionaried(name: str) -> bool:
     """Has nothing here a dictionary of the class ``name`` - neither the program nor ROOT -
     which ROOT warns of when a file it opens describes one?"""
-    if ROOT_NAMES.match(name) or _template(name) or _synthetic_pair(name):
+    if _template(name) or _synthetic_pair(name):
         return False
-    if _pair_base(name) or _instantiable(name):
+    if _pair_base(name) or _instantiable(name) or _modelled(name):
         return False
     return TClass(name)._class() is None
+
+
+def _modelled(name: str) -> bool:
+    """Is ``name`` a class of ROOT's own, one of those ROOT's libraries carry a dictionary
+    for, so that opening a file which describes it says nothing?
+
+    A name's spelling is no help: a user's class is called ``TEmcl`` or ``TCedarEvent`` as
+    readily as ROOT's own is called ``TBasket``, and ROOT warns of the program's four
+    emulated classes in ``roottest/root/io/tree``'s ``missingClass`` while staying silent
+    about the ``TTree`` beside them. What tells them apart is knowledge of the class, not of
+    its name, and what the kit knows of ROOT's classes is what it implements - as a Python
+    class of the namespace's, ``TCanvas`` and ``TUUID`` too, which derive from no ``TObject``
+    here - and what it streams: the layouts of :data:`xrdroot.winfo.INFOS`, and the readers
+    of :mod:`xrdroot.objects` and :mod:`xrdroot.known` for the classes the kit writes itself.
+    A name none of those knows is emulated from the file with ROOT's warning.
+    """
+    from ...known import KNOWN
+    from ...objects import CLASSES
+    from ...sparse import SPARSE
+
+    if name in INFOS or name in GENERATED:
+        return True
+    if name in CLASSES or name in KNOWN or name in SPARSE:
+        return True
+    return _implemented(name)
+
+
+def _implemented(name: str) -> bool:
+    """Does the namespace hold a class called ``name``, whether or not it derives from
+    ``TObject`` - which is how ``TEventList``, ``TUUID``, ``TStyle`` and ``TColor`` are known
+    to be ROOT's own, whose files ROOT describes without a warning."""
+    for module in list(sys.modules.values()):
+        if getattr(module, "__name__", "").startswith("xrdroot.pyroot"):
+            if isinstance(getattr(module, name, None), type):
+                return True
+    return False
 
 
 def _pair_base(name: str) -> bool:

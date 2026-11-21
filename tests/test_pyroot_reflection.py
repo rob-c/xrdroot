@@ -634,6 +634,36 @@ def test_a_name_that_is_no_instance_of_anything_needs_its_dictionary(capfd):
     assert "no dictionary for class <odd> is available" in printed
 
 
+def test_a_user_class_named_like_roots_own_needs_its_dictionary(capfd):
+    """A name's spelling says nothing about whose class it is: ``roottest/root/io/tree``'s
+    ``missingClass`` reads a file describing ``TEmcl``, ``TPhysObj``, ``TNonEmcl`` and
+    ``TNonPhysObj``, a program's own classes all four, and ROOT warns of each beside the
+    ``TTree`` its file describes without a word."""
+    reflection.note_file_infos([("TEmcl", (0x7D5A2E11, 1, ()))])
+    assert (
+        "Warning in <TClass::Init>: no dictionary for class TEmcl is available"
+        in capfd.readouterr().err
+    )
+
+
+def test_a_root_class_the_kit_streams_needs_no_dictionary(capfd):
+    """ROOT's own classes have the dictionaries its libraries were built with, and the kit
+    knows them by what it streams: the layout ``TH1F`` is written with, ``TBasket``'s reader,
+    ``THnSparseD``'s branches and ``TRef``'s."""
+    described = [(name, (index, 1, ())) for index, name in enumerate(
+        ("TH1F", "TBasket", "THnSparseD", "TRef"))]
+    reflection.note_file_infos(described)
+    assert capfd.readouterr().err == ""
+
+
+def test_a_root_class_the_kit_implements_without_a_tobject_needs_no_dictionary(capfd):
+    """``TStyle``, ``TCanvas`` and ``TColor`` are ROOT's own classes and have their
+    dictionaries, though the namespace's implementations of them derive from no ``TObject``
+    - a file describing one opens as quietly as ROOT opens it."""
+    reflection.note_file_infos([("TStyle", (0x11, 1, ())), ("TColor", (0x12, 1, ()))])
+    assert capfd.readouterr().err == ""
+
+
 def test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory(capfd):
     _evo("int", "one.root")
     _evo("float", "two.root")
