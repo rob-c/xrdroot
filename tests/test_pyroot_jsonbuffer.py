@@ -916,9 +916,10 @@ def test_a_member_of_a_root_class_is_written_as_one_json_object_of_its_own():
                                        ("fArr", "TNamed*", "[fCnt]", ())))  # fmt: skip
     made = kinds()
     named = ROOT.TNamed("SimpleName", "SimpleTitle")
+    also = ROOT.TNamed("SimpleName", "SimpleTitle")
     obj = ROOT.TObject()
     obj.SetUniqueID(10000)
-    made.fName0, made.fObj0, made.fNull, made.fArr = named, obj, None, [named, None]
+    made.fName0, made.fObj0, made.fNull, made.fArr = named, obj, None, [also, None]
     assert _json(made) == (
         '{\n  "_typename" : "THolds",\n  "fName0" : {\n    "_typename" : "TNamed",\n'
         '    "fUniqueID" : 0,\n    "fBits" : 0,\n    "fName" : "SimpleName",\n'
@@ -1004,3 +1005,109 @@ def test_a_collection_json_without_a_name_reads_back_under_the_one_it_was_made_w
     read = ROOT.TBufferJSON.FromJSON["TList"]('{"_typename":"TList","arr":[]}')
     assert read.GetName() == "TList"
     assert len(read) == 0
+
+
+def test_a_member_of_a_class_a_macro_declared_is_written_as_its_own_object(monkeypatch):
+    """``Objects.ref``: ``TJsonEx5``'s ``TJsonEx1 fObj1`` is the JSON of that object's own
+    members, one level in - and a declared class is written this way however it is spelled,
+    ``TJsonEx1``, ``TJsonEx1*``, and refused only when nothing can write it whole."""
+    inner_kind = _reading_class(monkeypatch, "TInner", (("fInt", "int", "", ()),))
+    _reading_class(monkeypatch, "TOuter", (("fObj", "TInner", "", ()),
+                                          ("fPtr", "TInner*", "", ()),
+                                          ("fPair", "std::pair<int, int>", "", ())))  # fmt: skip
+    inner = inner_kind()
+    inner.fInt = 7
+    outer = DECLARED["TOuter"]()
+    outer.fObj, outer.fPtr, outer.fPair = inner, None, None
+    member = _reading_class(monkeypatch, "TOuter2", (("fObj", "TInner", "", ()),))()
+    member.fObj = inner
+    assert _json(member) == (
+        '{\n  "_typename" : "TOuter2",\n  "fObj" : {\n    "_typename" : "TInner",\n'
+        '    "fInt" : 7\n  }\n}'
+    )
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        _json(outer)
+    assert "does not yet write TOuter::fPair" in str(refused.value)
+
+
+def test_an_array_of_a_declared_class_arrives_nested_and_is_written_as_its_rows(monkeypatch):
+    """A translated ``TJsonEx6::fSafePtr33[3][3]`` arrives as lists of lists rather than one
+    flat run, and ROOT writes it as the arrays of objects its lengths describe."""
+    deep = _reading_class(monkeypatch, "TDeep", (("fInt", "int", "", ()),))
+    first, second = deep(), deep()
+    first.fInt = second.fInt = 3
+    kinds = _reading_class(monkeypatch, "TGrid", (("fPtr", "TDeep*", "", (2, 2)),))()
+    kinds.fPtr = [[first, None], [None, second]]
+    assert _json(kinds) == (
+        '{\n  "_typename" : "TGrid",\n  "fPtr" : [[{\n    "_typename" : "TDeep",\n'
+        '    "fInt" : 3\n  }, null], [null, {\n    "_typename" : "TDeep",\n'
+        '    "fInt" : 3\n  }]]\n}'
+    )
+
+
+def test_an_object_one_member_already_holds_is_written_as_the_number_of_that_object(monkeypatch):
+    """``Objects.ref``: ``TJsonEx5``'s ``fPtr3`` is ``fPtr1``, and ROOT writes it as
+    ``{"$ref":3}`` - the third object of the export - rather than a second copy of it."""
+    kind = _reading_class(monkeypatch, "TShared", (("fInt", "int", "", ()),))
+    kinds = _reading_class(monkeypatch, "THoldsTwice", (("fOne", "TShared", "", ()),
+                                                        ("fTwo", "TShared", "", ()),
+                                                        ("fOther", "TShared", "", ())))  # fmt: skip
+    shared = kind()
+    shared.fInt = 5
+    kinds = kinds()
+    kinds.fOne, kinds.fTwo, kinds.fOther = shared, shared, kind()
+    assert _json(kinds, 3) == (
+        '{"_typename":"THoldsTwice","fOne":{"_typename":"TShared","fInt":5},'
+        '"fTwo":{"$ref":1},"fOther":{"_typename":"TShared","fInt":0}}'
+    )
+
+
+def test_a_reference_reads_back_as_the_object_it_names_rather_than_a_copy(monkeypatch):
+    """What ``store/read/store`` asks of a ``$ref``: the object read from the number is the
+    one the member before it already holds, so writing it again writes the same number."""
+    _reading_class(monkeypatch, "TShared2", (("fInt", "int", "", ()),))
+    _reading_class(monkeypatch, "TBackTwice", (("fOne", "TShared2", "", ()),
+                                               ("fTwo", "TShared2", "", ())))  # fmt: skip
+    text = ('{"_typename":"TBackTwice","fOne":{"_typename":"TShared2","fInt":9},'
+            '"fTwo":{"$ref":1}}')
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert read.fOne is read.fTwo
+    assert _json(read, 3) == text
+
+
+def test_a_reference_to_an_object_the_json_never_wrote_is_refused(monkeypatch):
+    """A ``$ref`` past the objects the text holds cannot be resolved, and says so."""
+    _reading_class(monkeypatch, "TBackTwice3", (("fOne", "TNamed*", "[fCnt]", ()),))
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.ConvertFromJSON('{"_typename":"TBackTwice3","fOne":[{"$ref":4}]}')
+    assert "reference to object 4 of this JSON" in str(refused.value)
+
+
+def test_a_nested_string_array_reads_back_as_the_rows_the_json_holds(monkeypatch):
+    """A ``std::string[2][3][4]`` is written as nested arrays of strings, so reading it back
+    gives those rows again rather than one flat list of them - ``Objects.ref``'s
+    ``fStringArr234``."""
+    _reading_class(monkeypatch, "TBackStrings", (("fStr", "std::string", "", (2, 2)),))
+    text = '{"_typename":"TBackStrings","fStr":[["a","b"],["c","d"]]}'
+    read = ROOT.TBufferJSON.ConvertFromJSON(text)
+    assert read.fStr == [["a", "b"], ["c", "d"]]
+
+
+def test_a_member_that_is_an_array_is_written_as_the_text_root_gives_it(monkeypatch):
+    """``Objects.ref``: ``ToJSON(&ex6, 0, "fObj1")`` prints ``<not supported>``, because ROOT
+    writes one member on its own only as the one value it is - and one that is a value is
+    written at the depth the whole object would have had it at."""
+    inner = _reading_class(monkeypatch, "TOne", (("fInt", "int", "", ()),))
+    kinds = _reading_class(monkeypatch, "TMixed", (("fArr", "TOne", "", (2,)),
+                                                   ("fMap", "std::map<int, int>", "", ()),
+                                                   ("fObj", "TOne", "", ())))  # fmt: skip
+    made = kinds()
+    made.fArr = [inner(), inner()]
+    made.fMap = std.map("int", "int")()
+    made.fObj = inner()
+    made.fObj.fInt = 4
+    assert str(ROOT.TBufferJSON.ToJSON(made, 0, "fArr")) == "<not supported>"
+    assert str(ROOT.TBufferJSON.ToJSON(made, 0, "fMap")) == "<not supported>"
+    assert str(ROOT.TBufferJSON.ToJSON(made, 0, "fObj")) == (
+        '{\n  "_typename" : "TOne",\n  "fInt" : 4\n}'
+    )

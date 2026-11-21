@@ -428,17 +428,30 @@ def _container_style(kind: str, comment: str) -> str | None:
 
 
 def _object_style(kind: str, dims: tuple[int | None, ...]) -> str | None:
-    """How ROOT writes a member declared as one of its own classes - ``TNamed fName`` - or
-    as a pointer to one that its declaration gives a length: the object's own JSON, and one
-    object per element where the declaration makes it an array. ``None`` for any other type.
+    """How ROOT writes a member declared as a class type - ``TNamed fName``, ``TJsonEx1
+    fObj1``, or a pointer to one - or as an array of that class: the object's own JSON, and
+    one object per element where the declaration makes it an array. ``None`` for any other
+    type.
 
-    A class is only written this way when :data:`MEMBERS` knows its members, since ROOT
-    writes a member of a class type by streaming it, and a class whose members this cannot
-    write is refused by name rather than written short.
+    A class is only written this way when it is one this can write whole - in :data:`MEMBERS`,
+    or declared by the translation, which knows its members from the declaration. A class
+    whose members this cannot write is refused by name rather than written short, since ROOT
+    writes a member of a class type by streaming it.
     """
-    if kind.rstrip("* ").strip() not in MEMBERS:
+    if not _writes_object(kind.rstrip("* ").strip()):
         return None
     return "objects" if dims else "object"
+
+
+def _writes_object(name: str) -> bool:
+    """Can the whole of a ``name`` be written: is it one of the classes in :data:`MEMBERS`, or
+    one the translation declared? A member of such a class is written as the object it is,
+    which is how ``TJsonEx5``'s ``TJsonEx1 fObj1`` gets the JSON of its own members."""
+    if name in MEMBERS:
+        return True
+    from .declared import find_class
+
+    return find_class(name) is not None
 
 
 def _held(obj: Any, member: _Member) -> Any:
@@ -578,6 +591,15 @@ def _nested_dimensions(dims: tuple[int | None, ...]) -> bool:
     return len(dims) > 1 and all(isinstance(dim, int) for dim in dims)
 
 
+def _flatten(value: Any) -> list[Any]:
+    """A member's value as one flat list, however deeply the object nests it: a declared
+    ``TJsonEx6::fSafePtr33[3][3]`` arrives as lists of lists, and :func:`_nest` cuts the flat
+    run into the rows the declaration gives it."""
+    if isinstance(value, (list, tuple)):
+        return [item for each in value for item in _flatten(each)]
+    return [value]
+
+
 def _nest(values: list[Any], dims: tuple[int | None, ...],
           leaf: Callable[[list[Any]], Any]) -> Any:  # fmt: skip
     """``values``, a flat array, as the nested lists ``dims`` describe, each group of the
@@ -657,6 +679,10 @@ class _Writer:
         self._map_as_object = level >= 5
         self._skip_typename = _digit(compact, 100) == 1
         self._store_inf = _digit(compact, 1000) == 1
+        #: How many objects have been written whole, which is what a ``$ref`` counts: ROOT
+        #: writes an object that another member or element already holds as ``{"$ref":N}``,
+        #: the N-th object of the export, so a graph of pointers is one tree in the JSON.
+        self._written: dict[int, int] = {}
 
     # -- what to write ----------------------------------------------------------------
 
@@ -665,11 +691,18 @@ class _Writer:
 
     def member(self, obj: Any, name: str) -> str:
         """The JSON of one member of ``obj``, which is what ``ToJSON(obj, level, member)``
-        writes in place of the whole object."""
+        writes in place of the whole object - at the depth the object itself is at, which is
+        why the member is written as though it were a member of an object one level out.
+
+        A member that is an array or a map is ``<not supported>``: ROOT writes a member on
+        its own only as the one value it is, and ``Objects.ref`` has that text for
+        ``ToJSON(&ex6, 0, "fObj1")``, whose member is an array of objects."""
         members = _writable(obj)
         for member in members:
             if member.name == name:
-                return self._member(member, obj, 0)
+                if member.kind in ("objects", "container", "map_object"):
+                    return "<not supported>"  # ROOT writes no array or map as one member
+                return self._member(member, obj, -1)
         raise UnsupportedFeatureError(
             f"{_classname(obj) or type(obj).__name__} has no member {name!r} for "
             "TBufferJSON to write on its own; it writes a whole object of a class whose "
@@ -722,6 +755,11 @@ class _Writer:
     # -- objects ----------------------------------------------------------------------
 
     def _object(self, obj: Any, depth: int) -> str:
+        repeated = self._written.get(id(obj))
+        if repeated is not None:
+            return '{"$ref":' + str(repeated) + "}"
+        if depth:  # the object the export is of is no entry of the table ROOT numbers
+            self._written[id(obj)] = len(self._written) + 1
         members = [self._pair(member, obj, depth) for member in _writable(obj)]
         return self._braced(self._typed(members, _classname(obj), self._layout.colon), depth)
 
@@ -805,7 +843,7 @@ class _Writer:
         counter says, and ``fStr2[3]`` is three of those."""
         if member.kind == "tstrings":
             return _text_tree(value, self._layout.item_comma)
-        nested = _nest(list(value or []), member.dims,
+        nested = _nest(_flatten(value or []), member.dims,
                        lambda group: self._text_row(member, group))  # fmt: skip
         return _list_text(nested, self._layout.item_comma)
 
@@ -825,7 +863,7 @@ class _Writer:
             return self._value(value, depth + 1)
         if value is None:
             return "null"
-        nested = _nest(list(value or []), member.dims,
+        nested = _nest(_flatten(value), member.dims,
                        lambda group: self._object_row(group, depth))  # fmt: skip
         return _list_text(nested, self._layout.item_comma)
 
@@ -839,7 +877,7 @@ class _Writer:
         which ROOT writes as an array of the containers."""
         if not member.array:
             return self._container_text(member, value, depth)
-        nested = _nest(list(value or []), member.dims,
+        nested = _nest(_flatten(value or []), member.dims,
                        lambda group: self._container_row(member, group, depth))  # fmt: skip
         return _list_text(nested, self._layout.item_comma)
 
@@ -1055,6 +1093,7 @@ def _decoded(text: str) -> Any:
 
 def _rebuilt(text: str, kind: str | None) -> Any:
     """What the JSON in ``text`` stands for, built as the class ``kind`` names it."""
+    _READ.clear()
     data = _decoded(text)
     name = _named(kind)
     if name.startswith("map<"):
@@ -1128,11 +1167,35 @@ def _namespace_class(name: str) -> type[Any] | None:
     return found if name in MEMBERS or issubclass(found, TSeqCollection) else None
 
 
+#: The objects read so far, in the order they were made: what a ``{"$ref":N}`` stands for,
+#: and the mirror of the writer's own table. The object the export is of is entry 0, which
+#: is the number ROOT never gives it - a reference counts the objects *inside* the export.
+#: Emptied at the start of each read.
+_READ: list[Any] = []
+
+
+def _referenced(data: dict[str, Any]) -> Any:
+    """The object a ``{"$ref":N}`` names: the N-th object read out of this JSON, which is the
+    one a second member or element points at rather than a copy of it."""
+    at = int(data["$ref"])
+    if not 0 < at < len(_READ):
+        raise UnsupportedFeatureError(
+            f"TBufferJSON::FromJSON cannot read the reference to object {at} of this JSON: "
+            f"it holds {len(_READ) - 1} objects, so the reference points at one that was "
+            "never written. Read JSON that TBufferJSON::ConvertToJSON wrote, or one it wrote "
+            "without the references"
+        )
+    return _READ[at]
+
+
 def _rebuilt_object(data: dict[str, Any]) -> Any:
     """The object a JSON object describes: the class its ``_typename`` names, made, and given
-    back the members that JSON holds."""
+    back the members that JSON holds - or, a ``$ref``, the object already read."""
+    if "$ref" in data:
+        return _referenced(data)
     name = _named(str(data.get("_typename", "")))
     made = _class_for(name)()
+    _READ.append(made)
     if isinstance(made, TSeqCollection):
         _rebuilt_collection(made, data)
         return made
@@ -1290,9 +1353,12 @@ def _converted_tree(value: Any) -> Any:
     return None if value is None else str(value)
 
 
-def _converted_texts(member: _Member, value: Any) -> list[str | None]:
+def _converted_texts(member: _Member, value: Any) -> Any:
     """An array of ``std::string`` - or of pointers to one - as the strings it holds, with
-    ``None`` where a pointer had nothing there."""
+    ``None`` where a pointer had nothing there, nested as deeply as a ``std::string[N][M]``
+    declaration nests the rows the JSON holds."""
+    if _nested_dimensions(member.dims) and isinstance(value, list):
+        return _nest(_flatten(value), member.dims, list)
     items = value if isinstance(value, list) else [value]
     return [None if each is None and member.kind == "strptrs" else str(each or "")
             for each in items]
@@ -1431,6 +1497,7 @@ class TBufferJSON:
         """``ConvertFromJSONAny(json, &cl)``: the object the JSON describes, and - in the
         cell ``cl`` - the class it was read as, since ROOT writes the object back through
         that class and ``roottest`` compares the two JSON strings."""
+        _READ.clear()
         data = _decoded(_untext(text))
         named = str(data.get("_typename", "")) if isinstance(data, dict) else ""
         made = _rebuilt_named(data, _named(named))
