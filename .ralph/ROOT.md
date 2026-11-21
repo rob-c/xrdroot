@@ -1196,33 +1196,40 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   the gate unmeasurable. Part 1 of the two-command decomposition reports **99.73%** no matter what the tree does (the
   ignored files' code), so only **part 2's report names the misses**, and it is the command that has to be read.
   Both now have tests (`938d9faf`).
+- **`W0-117` is the same lesson from the other side**: without `--cov`,
+  `test_pyroot_distrdf_graph.py::test_a_dataset_spec_is_cut_like_a_chain_of_its_samples` fails on its own -
+  measured at the round's **base** in a clean worktree - because an unclosed `a.root` is finalised inside the test
+  and the suite turns a `ResourceWarning` into an error, while coverage tracing keeps the object alive until the
+  fixture closes it. `rdf/distributed.py:73`'s `Window.change` drops an owned chain with its files open.
 - **`938d9faf`** also lands `RootFinder::Name`/`Iterations` with ROOT's names, verified against the oracle
   (`BrentRootFinder`, `bisection`, `falsepos`, `brent`, `newton`, `secant`, `steffenson`). It moves no PASS and the
   round says so: `other/math`'s `testGSLRootFinder` prints its four solver blocks and stops at `ROOT::Math::Roots`,
   which is `W0-116`.
-- ruff (clean), mypy (1019 files), maintainability (31 064 functions), components (1018 modules, 0 undeclared) all pass.
-  `mkdocs --strict` was not run this round. The pytest gate was started three times at load 22-59; see
-  "Final verification" for what it said at this commit.
+- **The gate is green at `fd657322`, even at a load average of 90-139**: `TOTAL 119070 0 29912 0 100%` by the
+  two-command decomposition (12 948 passed, then 44 with `--cov-append`). ruff clean, mypy 1019 files,
+  maintainability 31 064 functions, components 1018 modules / 0 undeclared, `mkdocs build --strict` built.
 
 ## Checklist (per round)
 
-- [ ] `git status` clean; the gates green at the round's base commit
-- [ ] the queue read and the failures ranked by cause, from the last `results.json`
-- [ ] sixteen scopes chosen, disjoint files, each with a measured "before"
-- [ ] sixteen worktrees created from `HEAD`, one branch each
-- [ ] sixteen briefs written and launched, staggered, detached
-- [ ] workers watched; a worker that blocked reports, a worker that left a patch is honoured
-- [ ] every commit that applies cleanly cherry-picked `-x`, one fix group each, gates green
-- [ ] **every branch that loses a PASS rejected**, with the refusal to relax recorded
-- [ ] both harness runs made; every TIMEOUT rerun alone before being called a loss
-- [ ] `TODO.md` §0, §7's cumulative table and the ledger rows updated in the same commits
-- [ ] **every extra thing the round found added to §4's queue or §5's housekeeping**, with file,
+- [x] `git status` clean; the gates green at the round's base commit
+- [x] the queue read and the failures ranked by cause, from the last `results.json`
+- [ ] sixteen scopes chosen, disjoint files, each with a measured "before" - **not this round**: the load
+      average opened at 76 (`W0-103`), so there was no fan-out
+- [ ] sixteen worktrees created from `HEAD`, one branch each - **not this round**
+- [ ] sixteen briefs written and launched, staggered, detached - **not this round**
+- [ ] workers watched; a worker that blocked reports, a worker that left a patch is honoured - n/a
+- [x] every commit that applies cleanly cherry-picked `-x`, one fix group each, gates green
+- [x] **every branch that loses a PASS rejected**, with the refusal to relax recorded - none lost
+- [x] the areas the round touched were measured before and after (`/tmp/r42/ac`, `/tmp/r42/json`)
+- [x] `TODO.md` §0 and the ledger rows updated in the same commits (§7's cumulative table has no
+      column for this round: no whole-suite run was possible, as in rounds 37-41)
+- [x] **every extra thing the round found added to §4's queue or §5's housekeeping**, with file,
       message and first step (see step 6c) — a round that discovers work and does not write it
       down has wasted it
-- [ ] the round's summary written into the loop's task file (`.ralph/<name>.md`)
-- [ ] gates re-run at the round's final commit
-- [ ] commits made; nothing pushed unless asked
-- [ ] the round directory kept (its `results.json` files are the evidence)
+- [x] the round's summary written into the loop's task file (`.ralph/<name>.md`)
+- [x] gates re-run at the round's final commit
+- [x] commits made; nothing pushed unless asked
+- [x] the round directory kept (its `results.json` files are the evidence; `/tmp/r42/EVIDENCE.md`)
 
 ## Verification
 
@@ -1240,7 +1247,24 @@ For the round's work, the evidence is, in this order:
 
 ## Final verification
 
-- Exact monitor-rerunnable command:
+- Exact monitor-rerunnable commands (`W0-106`'s decomposition; run them in this order, from
+  `/Users/rcurrie/src/xrdroot`, with `export PYTHONPATH=$PWD/src`, after `rm -f .coverage`):
+  ```
+  .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot --cov-report= \
+      --ignore=tests/test_tmva_learn_networks.py --ignore=tests/test_pyroot_references.py
+  .venv/bin/python -m pytest -q -p no:cacheprovider \
+      tests/test_tmva_learn_networks.py tests/test_pyroot_references.py --cov=xrdroot --cov-append
+  ```
+  The first reports ~99.73% by design (the ignored files' code is not covered yet) and the second
+  reaches 100%. Then `ruff check src tests tools`, `mypy`, `python tools/maintainability.py check`,
+  `python tools/components.py check`, `mkdocs build --strict`.
+- Round 42's result of them, at `fd657322`: **`TOTAL 119070 0 29912 0 100%`** - 12 948 passed then
+  44 passed - at a load average of 90-139, which is the highest a 100% has ever been measured at here.
+  **The same two commands with `XRDROOT_TEST_OTHER_MACHINE=1` are green too** (12 948 then 44, 100%,
+  `/tmp/r42/gate-other2.log`). ruff clean, mypy 1019 files, maintainability 31 064 functions in 1729
+  files, components 1018 modules and 0 undeclared imports, `mkdocs build --strict` built.
+  `/tmp/r42/gate-final-cov.txt` is the summary; `/tmp/r42/EVIDENCE.md` says where each number came from.
+- Exact single command (the same gate in one process, which `W0-106` says fails on this machine):
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
 - Round 41's result of it, at `24b40f3b`: **not measurable** - the load average reached 144 (`W0-103`). The six test
   files the two commits touch report 355 passed, and ruff/mypy (1019 files)/maintainability (31 028
