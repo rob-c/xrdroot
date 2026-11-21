@@ -1462,6 +1462,39 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   average of 21-23. ruff clean, mypy 1020 files, maintainability 31 213 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built.
 
+## Round 50's close (recorded here for the next iteration)
+
+- Base `a21ec264`, closed at **`2e10bb4d`**. **One commit, no harness PASS**, and ROOT's own `testTH1` is now **9 failing
+  cases** (round 49 left it at 10).
+- **`TAxis` reports the binning it cannot use.** ROOT's `TAxis::Set` *reports* - `Error in <TAxis::Set>: Axis limits need
+  to be finite numbers`, `Error in <TAxis::Set>: bin edges must be in increasing order` - and leaves the default one-bin
+  axis; it does not raise. Ours said nothing. And `TAxis(edges)` - ROOT's constructor from a vector, which a macro writes
+  as `TAxis _({1, 1})` - was read as *no* argument and fell back to the default binning, so the equal edges never reached
+  a check. `TAxis.EqualBinEdges` is **OK** now.
+- **`W0-129` is the handover item**: `testTH1`'s nine remaining cases, each with its message and its real requirement -
+  `SmoothArray` (the static 353 routine), `THLimitsFinder`, `SetBuffer` **and the buffer's semantics** (a buffered fill
+  must keep its weights for a later `Sumw2`), `Dump` (ROOT prints the *C++* members as `*name` at column 30; ours prints
+  Python attributes - a fidelity gap), the two implicit-ownership cases and two `TAxis` bin-edge numerics. **None is a
+  missing name alone; each is a feature, and the program is not closable in one round.**
+- Gates: **`TOTAL 119555 0 29992 0 100%`** by the two-command decomposition (12 982 passed, then 44), at a load
+  average of 24-39. ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
+  0 undeclared, `mkdocs --strict` built.
+
+## Handover: where this loop stands at iteration 50
+
+- **The mission is not done** and cannot be declared so: roottest ≈ **1241 / 2173**, gtest **54 / 350**, pyunittest
+  **81 / 129**, `test/` **9 / 59**, `other` **40 / 109** - about **1423 / 2820** non-tutorial. `AGENTS.md`'s "Done means"
+  asks for all of them PASS or refused in a full sentence for something genuinely out of scope.
+- **The gate is green and reproducible**: `TOTAL 119555 0 29992 0 100%` at `2e10bb4d`, by the two-command
+  decomposition of `W0-106` (one process cannot run it on this machine). Run it with a load average under ~20
+  (`W0-109`) or read only its failures, never its coverage figure.
+- **The most valuable queue entries** for whoever continues, in order of measured cost:
+  `W0-129` (`testTH1`'s nine cases, `hist/`), `W0-113` (`TRangeStaticCast` and ROOT's static `Class()`, 2 gtest
+  programs), `W0-120` (`std::vector::resize`), `W0-128` (the `canvas/` encoders' character counts, which is what
+  `test/stressgraphics` now fails on), `W0-126`/`W0-127`-style translator gaps being closed one at a time, and
+  `W0-114`/`W0-115` for the last two big roottest and gtest items.
+- **Nothing is uncommitted and nothing is pushed.** The last ten rounds' evidence lives in `/tmp/r41` … `/tmp/r50`.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1514,6 +1547,9 @@ For the round's work, the evidence is, in this order:
   The first reports ~99.73% by design (the ignored files' code is not covered yet) and the second
   reaches 100%. Then `ruff check src tests tools`, `mypy`, `python tools/maintainability.py check`,
   `python tools/components.py check`, `mkdocs build --strict`.
+- Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
+  load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
+  0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
 - Round 49's result of them, at `3f3dae7f`: **`TOTAL 119540 0 29984 0 100%`** - 12 981 passed then 44 passed - at a
   load average of 21-23; ruff clean, mypy 1020 files, maintainability 31 213 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r49/gate1.log` is the first command's output.
@@ -1721,6 +1757,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 47 | `44c42d2d` | **two commits**: a failed extraction stores nothing, as C++ leaves the variable alone (`35c96338`, `W0-127` closed); C's `tm`/`localtime`/`gmtime`/`strftime` (`f0655cf0`, `W0-126` closed) | **no harness PASS**, but the **gtest kind re-measured whole: 54 PASS / 218 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** (`/tmp/r47/gtest`, one gain, none lost in four rounds), and `test/stressgraphics-interpreted` **UNSUPPORTED -> FAIL**: it runs the graphics stress suite and fails on image byte counts (`/tmp/r47/sg2`) | 1: `W0-128` (the images' character counts - the `canvas/` work `W0-52` records); `W0-126` and `W0-127` closed |
 | 48 | `c003f165` | **two commits**: `TH1::Normalize` and `TH1::EStatOverflows`' own name, with `Get/SetStatOverflows` and the static `StatOverflows` (`4e2ba73b`, `W0-122` closed); a class body's enum is metadata, so `TH1D`'s native methods are still called (`f16f5aeb`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **13 -> 11 failing cases** (`TH1.Normalize` and `TH1.StatOverflows` now OK), and the round's own gate caught a regression a class attribute caused in `hfnative` (13 failed, 78 at the base by bisect) | 1: `W0-129` (`testTH1`'s nine remaining cases, each a feature); `W0-122` closed |
 | 49 | `55318546` | **one commit**: `AddBinContent` takes one bin number per axis, as `TH2`/`TH3` overload it (`3f3dae7f`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **11 -> 10 failing cases** (`TH1.AddBinContent` now OK); the round's own gate caught the `Eval` regression the change caused | 0 new: `W0-129` **sharpened** to a case-by-case account of `testTH1`'s ten remaining cases |
+| 50 | `a21ec264` | **one commit**: `TAxis` reports the binning it cannot use, as ROOT's `TAxis::Set` does, and `TAxis(edges)` is ROOT's constructor from a vector of edges (`2e10bb4d`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **10 -> 9 failing cases** (`TAxis.EqualBinEdges` now OK) | 0 new: `W0-129` re-stated as the handover item, with each of `testTH1`'s nine cases and what it needs |
 
 ## Notes
 
