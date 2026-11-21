@@ -194,8 +194,45 @@ def _class_of(source: Any, classname: str) -> tuple[tuple[str, str], ...]:
     )  # fmt: skip
 
 
+def _cell_of(member: Member) -> str | None:
+    """The class a container member holds *by value*, or ``None`` for a member that is no
+    such container.
+
+    ROOT describes a container of objects by the type it names - ``vector<TObject>`` - so what
+    the items are is in the spelling and nowhere else, and the kind of content it is says how
+    they were written: ``kObject``, the object itself in the record, against ``kObjectPtr``,
+    a pointer, whose item names its own class in the bytes and may well be of a subclass. Only
+    the first is a class the declaration can name, so only it is named here; a map is none of
+    them, its items being the pairs its two types make.
+    """
+    if member.stype != STREAMER:
+        return None
+    found = parse_type(member.typename)
+    if found.name in MAPS or found.name not in STL_KINDS or len(found.args) != 1:
+        return None
+    content = found.args[0]
+    return content.name if not content.stars and content.name in INFOS else None
+
+
+def _cells_of(source: Any, classname: str) -> tuple[tuple[str, str], ...]:
+    """Which of a class's members are a container of one of ROOT's own classes by value, and
+    the class each of them holds - the ``vector<TObject> *fVectorTobject`` of the bigevent
+    roottest's ``Event``, whose three objects the bytes give as three rows of numbers.
+
+    Nothing in the bytes says which class an item is, since the container was declared as one:
+    what the reader hands back for the lot is dictionaries of members, and the description is
+    the only place where the class of them is written down - so a macro asking an item for what
+    its class has has nothing to ask.
+    """
+    layout = source.streamers().get(classname) or {}
+    return tuple(
+        (name, cell) for name, member in layout.items() if (cell := _cell_of(member)) is not None
+    )
+
+
 class Members(dict[str, Any]):
-    """The members of one of ROOT's own classes, read from a record that held it by value.
+    """The members of one of ROOT's own classes, read from a record that held it by value - or
+    from one item of a container that held them all so.
 
     A dictionary of the members the class is described with, and the name of the class, which
     the bytes did not carry: ``TLorentzVector::fP`` is a ``TVector3``, and the three numbers it
@@ -213,12 +250,14 @@ def _array_read(
     source: Any, classname: str, read: Callable[[Buffer], Any]
 ) -> Callable[[Buffer], Any]:
     """A class's record read, with each member that is one of ROOT's arrays handed back as the
-    members that class is described with, and each that is one of ROOT's own objects handed
-    back as those members and the name of their class - or ``read`` itself, for a class holding
-    neither, which is every class but the ones that keep a ROOT array or object in them."""
+    members that class is described with, each that is one of ROOT's own objects handed back as
+    those members and the name of their class, and each that is a container of them - every
+    item of it so - or ``read`` itself, for a class holding none of the three, which is every
+    class but the few that keep a ROOT array, object or container of them in them."""
     names = _array_members(source, classname)
     held = _class_of(source, classname)
-    if not names and not held:
+    cells = _cells_of(source, classname)
+    if not names and not held and not cells:
         return read
 
     def value(buf: Buffer) -> dict[str, Any]:
@@ -231,6 +270,10 @@ def _array_read(
             members = row.get(name)
             if isinstance(members, dict):  # a member that streams itself is no dict - a TDatime
                 row[name] = Members(members, of_class)
+        for name, of_class in cells:
+            items = row.get(name)
+            if items:  # a container that was never made holds nothing to name
+                row[name] = [Members(item, of_class) for item in items]
         return row
 
     return value
