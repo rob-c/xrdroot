@@ -1152,6 +1152,26 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   100%` remains the last clean measurement.
 - ruff, mypy (1019 files), maintainability (31 005 functions), components (0 undeclared) and `mkdocs --strict` all pass.
 
+## Round 41's close (recorded here for the next iteration)
+
+- Base `54ff9563`, closed at `24b40f3b`. **Two commits, no measured PASS** - the machine's load average reached **144**
+  again, so the round could measure almost nothing (`W0-103`/`W0-109`).
+- **The round's finding became code**: `TBufferJSON::FromJSON(T*& obj, json)` is a **qualified static call**, and
+  `pycxx/program.py`'s `reference_positions` answered out-parameters only for a member call or a single-part name, so
+  `arr2` was never a cell and nothing could fill it (`9acf40db` + `pycint/dialect.py`'s `("FromJSON", 2): (0,)`). The
+  refusal moved to `TBufferJSON::FromJSON cannot read this JSON as any class: a bare JSON array does not say what class
+  it holds` - **the next gap is `FromJSON` reading a `TArrayI`, in `jsonbuffer.py`** (`W0-99`).
+- **Worker 02's uncommitted work was recovered from its tree** and committed (`e008ab0b`): the three std algorithms, the
+  ostream formatting state and `ROOT::Math::Random<T>`'s engine kinds - 11 `other/math` tests' worth of features whose
+  measurement the load denied. Its next-permutation test had CCN 11 and was split in two, every assertion kept.
+- **Worker 03's `smatrix.py` change is not taken** (`W0-110`): its own 31 tests pass, but `roottest/root/math/*` went from
+  **0/4/1 UNSUPPORTED** to **0/4/1 TIMEOUT** under the load - unproven, and the patch is kept at
+  `/tmp/r41/w03-smatrix.patch`.
+- **`W0-111`:** two of three workers ended without a commit. A round should read each worktree's `git status` at the
+  **halfway point** and copy the files of a session that has stopped, which is how w02's work survived this round.
+- ruff, mypy (1019 files), maintainability (31 028 functions), components (0 undeclared) and `mkdocs --strict` all pass;
+  the six test files the commits touch report **355 passed**.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1190,6 +1210,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 41's result of it, at `24b40f3b`: **not measurable** - the load average reached 144 (`W0-103`). The six test
+  files the two commits touch report 355 passed, and ruff/mypy (1019 files)/maintainability (31 028
+  functions)/components/`mkdocs --strict` are clean.
 - Round 40's result of it, at `aabf7f48`: **not measurable at this load** (`W0-109`): at a load average of 34-54 the
   two-command gate reported 99.54% and 99.85% with all 12 931 tests passing. Round 39's at `297950c4` remains the last
   clean one: `TOTAL 118830 0 29826 0 100%` by the two-command decomposition (12 925 + 44 passed).
@@ -1365,6 +1388,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 38 | `7216c284` | **three commits**: the address of a vector element reaches every branch it added (`bcd98495`, `W0-101` closed); `wpacking`'s `OverflowError` on Python 3.14 and `np.atan`'s NumPy-2 spelling (`2c64e67f`); two float comparisons through their decimal spelling, as a tolerance (`db1c1a00`) | **no harness measurement** (load average 20-124, `W0-103` stands); **916 unit tests pass** in every file the commits touch | 2: `W0-104` (three pre-existing breakages, fixed, with their causes), `W0-105` (**the venv is Python 3.14 + NumPy 1.26**, where the tree assumed NumPy 2 and older `struct` errors); `W0-101` closed |
 | 39 | `ebd7485f` | **one commit**: both of the trainer's optimisers, and the coverage gate measurable again (`4f7ddee5`, `W0-107`) | **the gate is green**: `TOTAL 118830 0 29826 0 100%` by the two-command decomposition (12 925 pass, then 44 with `--cov-append`); **`other` +1**: `other/math` **21 -> 22 PASS** (`/tmp/r39/other`, `mathcore-testSpecFuncBeta`), 0 FAIL, 45 -> 41 UNSUPPORTED, one new TIMEOUT (`mathcore-stdsort` runs now); `io/tree/read` **4 lines** from PASS (`/tmp/r39/read`) | 1: `W0-108` (**`mathcore-stdsort` times out at 300 s** - the translated `std::sort` needs one NumPy pass); `W0-102` sharpened to its two-part fix; `W0-107` closed |
 | 40 | `17c9a7fa` | **two commits**: a class ROOT has a dictionary for is no warning, by name as well as by layout (`82001fb0`, `W0-102` closed after three rounds); the declared-class accessors' fall-backs (`de1e9cac`) | **roottest +1: `io/tree/read` PASSES** - `roottest/root/io/tree/*` is **18 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED** (`/tmp/r40/tree`) | 2: `W0-108` (**`mathcore-stdsort` is a benchmark** - 10^7 comparator calls, 4 min without finishing the first size: a decision, not a fix), `W0-109` (**the gate needs a load under ~20 again** - 99.5% at 34-54 with every test passing); `W0-102` closed |
+| 41 | `54ff9563` | **two commits**: a qualified static call fills the local handed to it by reference (`9acf40db`, half of `W0-99`); `std::generate`/`shuffle`/`next_permutation`, the ostream formatting state and `ROOT::Math::Random<T>`'s engine kinds (`e008ab0b`, worker 02's uncommitted work taken from its tree) | **no harness PASS measured** - the load average reached **144**, so `io/json` and `other/math` were not measured and `roottest/root/math/*`'s 0/4/TIMEOUT is unproven (`W0-103`) | 3: `W0-99` sharpened (**`FromJSON` reading a `TArrayI`** is the next gap), `W0-110` (w02's work landed, w03's patch not taken - UNSUPPORTED → TIMEOUT), `W0-111` (**check the worktrees at the halfway point**) |
 
 ## Notes
 
