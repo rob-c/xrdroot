@@ -45,7 +45,7 @@ from typing import Any
 
 import numpy as np
 
-from ...cppstd.containers import _Map, cpp_name, std, string
+from ...cppstd.containers import _Map, _Pair, cpp_name, std, string
 from ...errors import UnsupportedFeatureError
 from ..vectors import TArrayC, TArrayD, TArrayF, TArrayI, TArrayL, TArrayS
 from .collections import TList, TSeqCollection
@@ -990,9 +990,10 @@ class _Writer:
         pairs = [self._pair_entry(name, entry, depth) for entry in entries]
         return "[" + self._layout.item_comma.join(pairs) + "]"
 
-    def _pair_entry(self, name: str, entry: tuple[Any, Any], depth: int) -> str:
-        """One ``std::pair`` of a map, as ROOT writes it: the types it holds - or, at a
-        level that skips them, their number - and its two values."""
+    def _pair_entry(self, name: str, entry: tuple[Any, Any] | _Pair, depth: int) -> str:
+        """One ``std::pair``, as ROOT writes it: the types it holds - or, at a level that
+        skips them, their number - and its two values. A map's entry arrives as the two
+        things a pair unpacks to, and a ``std::multimap``'s value as the pair itself."""
         colon = self._layout.colon
         pairs = ['"$pair"' + colon + ("1" if self._skip_typename else _quoted(name)),
                  '"first"' + colon + self._value(entry[0], depth + 1),
@@ -1016,6 +1017,13 @@ def _numpy_array(self: _Writer, obj: np.ndarray[Any, Any], depth: int) -> str:
     return self._array(obj, NUMPY_NAMES[obj.dtype], depth)
 
 
+def _std_pair(self: _Writer, obj: _Pair, depth: int) -> str:
+    """A ``std::pair`` written on its own: a ``std::multimap``'s values are pairs rather than
+    a map's entries, and ROOT writes each one the way it writes a map's - a ``$pair`` object
+    naming the types it holds."""
+    return self._pair_entry(str(obj.__cpp_name__), obj, depth)
+
+
 #: Which writer takes which Python type, in the order they are tried: ``bool`` before the
 #: ``int`` it is a kind of, the strings ROOT and C++ both have, and the arrays before the
 #: maps. A class is written by :data:`MEMBERS` once none of these takes it.
@@ -1032,6 +1040,7 @@ WRITERS: tuple[tuple[Any, Callable[[_Writer, Any, int], str]], ...] = (
     ((TArrayD, TArrayF, TArrayI, TArrayL, TArrayS), _number_array),
     (np.ndarray, _numpy_array),
     (_Map, _Writer._map),
+    (_Pair, _std_pair),
 )
 
 

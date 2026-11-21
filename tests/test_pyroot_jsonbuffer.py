@@ -650,6 +650,30 @@ def test_an_empty_container_is_written_as_the_empty_json_root_writes_for_it():
     )
 
 
+def test_a_multimap_is_written_as_one_pair_object_per_entry():
+    """``std::multimap``'s values are ``std::pair``s rather than the entries a map holds, and
+    ``STL.ref`` writes each the way it writes a map's: a ``$pair`` naming the types it
+    holds, in key order and with a key repeated as often as it was inserted."""
+    kinds = _declared_class("TMulti", (("fMultimap", "std::multimap<int, double>", "", ()),))()
+    kinds.fMultimap = std.multimap("int", "double")()
+    kinds.fMultimap.insert((0, 0.0))
+    kinds.fMultimap.insert((0, 1000.0))
+    assert _json(kinds) == (
+        '{\n  "_typename" : "TMulti",\n  "fMultimap" : ['
+        '{"$pair" : "pair<int,double>", "first" : 0, "second" : 0}, '
+        '{"$pair" : "pair<int,double>", "first" : 0, "second" : 1000}]\n}'
+    )
+
+
+def test_a_pair_written_on_its_own_is_the_pair_object_a_map_holds():
+    """A ``std::pair`` reaches the writer as itself when it is a container's element rather
+    than a map's entry, so it is written as the one JSON object ``_map`` writes one as."""
+    made = std.pair("int", "double")(7, 2.5)
+    assert str(ROOT.TBufferJSON.ToJSON(made)) == (
+        '{"$pair" : "pair<int,double>", "first" : 7, "second" : 2.5}'
+    )
+
+
 def test_a_container_is_written_as_the_values_it_holds():
     """A sequence is one JSON array of its values and a map a ``$pair`` per entry, as
     ``STL.ref`` has them for every container ``TJsonEx7`` fills."""
