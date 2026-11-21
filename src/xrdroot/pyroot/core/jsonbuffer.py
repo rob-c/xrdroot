@@ -48,6 +48,7 @@ import numpy as np
 from ...cppstd.containers import _Map, cpp_name, std, string
 from ...errors import UnsupportedFeatureError
 from ..vectors import TArrayC, TArrayD, TArrayF, TArrayI, TArrayL, TArrayS
+from .collections import TList, TSeqCollection
 from .strings import TString
 
 __all__ = ["TBufferJSON"]
@@ -684,13 +685,15 @@ class _Writer:
         for kind, write in WRITERS:
             if isinstance(obj, kind):
                 return write(self, obj, depth)
+        if isinstance(obj, TSeqCollection):
+            return self._collection(obj, depth)
         if _writable(obj):
             return self._object(obj, depth)
         raise UnsupportedFeatureError(
             "TBufferJSON::ConvertToJSON does not yet write the JSON of a "
             f"{_classname(obj) or type(obj).__name__}: it writes numbers and strings, the "
             f"TArrays ({', '.join(sorted(ARRAY_CLASSES))}), a std::map with the pairs it "
-            "holds, and the classes whose members are in its table "
+            "holds, a collection's objects, and the classes whose members are in its table "
             f"({', '.join(sorted(MEMBERS))}). Writing another one means adding its "
             "members there, in the order its streamer writes them"
         )
@@ -721,6 +724,26 @@ class _Writer:
     def _object(self, obj: Any, depth: int) -> str:
         members = [self._pair(member, obj, depth) for member in _writable(obj)]
         return self._braced(self._typed(members, _classname(obj), self._layout.colon), depth)
+
+    def _collection(self, obj: TSeqCollection, depth: int) -> str:
+        """A collection - a ``TList``, a ``TClonesArray`` - as ROOT writes one: the objects
+        it holds as one JSON array, after the name it holds them under, which is what its
+        reader makes the collection for.
+
+        A ``TList`` keeps its objects in links, and ROOT writes one ``opt`` entry per link
+        beside the objects - ``null`` for a link added without an option. The objects here
+        are the ones added, and a collection of this kit keeps no option to write, so every
+        entry is ``null``: a list whose links carry an option is what the object cannot hold
+        and :func:`_rebuilt_collection` refuses to read one of."""
+        held = [self._value(each, depth + 1) for each in obj]
+        colon = self._layout.colon
+        comma = self._layout.item_comma
+        members = [_quoted("name") + colon + _quoted(str(obj.GetName())),
+                   _quoted("arr") + colon + "[" + comma.join(held) + "]"]
+        if isinstance(obj, TList):
+            options = ["null"] * len(held)
+            members.append(_quoted("opt") + colon + "[" + comma.join(options) + "]")
+        return self._braced(self._typed(members, _classname(obj), colon), depth)
 
     def _typed(self, written: list[str], classname: str, colon: str) -> list[str]:
         """``written`` with the ``_typename`` ROOT puts in front of it, unless the level
@@ -1079,28 +1102,30 @@ def _class_for(name: str) -> type[Any]:
         raise UnsupportedFeatureError(
             "TBufferJSON::ConvertFromJSONAny does not know the class "
             f"{name or 'this JSON gives no name of'}: it reads back an object of a class a "
-            f"macro declared, the TArrays ({', '.join(sorted(ARRAY_CLASSES))}), and the "
-            f"classes whose members are in its table ({', '.join(sorted(MEMBERS))}). Read "
-            "anything else with a class this kit has, or ask FromJSON<T>(json) for the "
-            "class it names"
+            f"macro declared, the TArrays ({', '.join(sorted(ARRAY_CLASSES))}), a collection "
+            "of the namespace's, and the classes whose members are in its table "
+            f"({', '.join(sorted(MEMBERS))}). Read anything else with a class this kit has, "
+            "or ask FromJSON<T>(json) for the class it names"
         )
     return found
 
 
 def _namespace_class(name: str) -> type[Any] | None:
-    """The namespace's class of ROOT's called ``name``, for a class :data:`MEMBERS` describes.
+    """The namespace's class of ROOT's called ``name``, for a class :data:`MEMBERS` describes
+    or for a collection ROOT writes as the objects it holds - a ``TList``, a
+    ``TClonesArray``, whose JSON is those objects and the name they are held under.
 
     What this writes it reads back, which is what ``ConvertFromJSONAny`` promises of a JSON
     that names its ``_typename``: ``TObject``'s members are known here, so its JSON becomes
     the ``TObject`` the namespace has. A class in the table that the namespace does not have
     - ``TPolyMarker3D``, which only a file ever holds - is left to the refusal.
     """
-    if name not in MEMBERS:
-        return None
     import xrdroot.pyroot as namespace  # asked for a name, it gathers the module holding it
 
     found = getattr(namespace, name, None)  # a name it does not have is left to the refusal
-    return found if isinstance(found, type) else None
+    if not isinstance(found, type):
+        return None
+    return found if name in MEMBERS or issubclass(found, TSeqCollection) else None
 
 
 def _rebuilt_object(data: dict[str, Any]) -> Any:
@@ -1108,10 +1133,35 @@ def _rebuilt_object(data: dict[str, Any]) -> Any:
     back the members that JSON holds."""
     name = _named(str(data.get("_typename", "")))
     made = _class_for(name)()
+    if isinstance(made, TSeqCollection):
+        _rebuilt_collection(made, data)
+        return made
     for member in _writable(made):
         if member.name in data:
             _restore(made, member, data[member.name])
     return made
+
+
+def _rebuilt_collection(made: TSeqCollection, data: dict[str, Any]) -> None:
+    """Fill a collection with the objects of the ``arr`` ROOT writes for one, under the name it
+    had, which is how ``RootClasses`` reads a ``TList`` back and writes it the same again.
+
+    A link's option is refused rather than dropped: ROOT writes a list whose links carry one
+    as an ``opt`` array beside the objects, and a collection here keeps no option to give
+    them back to, so reading one would say the list holds less than the JSON does.
+    """
+    if "opt" in data and any(option is not None for option in data["opt"]):
+        raise UnsupportedFeatureError(
+            "TBufferJSON::FromJSON does not yet read back a collection whose links carry an "
+            'option, which ROOT writes as an entry of the "opt" array beside the objects, '
+            "since a collection here keeps no option to give them back to. Read a "
+            f"{_classname(made)} whose links have none, or make the collection again and "
+            "Add each object with the option it had"
+        )
+    if data.get("name"):
+        made.SetName(str(data["name"]))
+    for each in data.get("arr", []):
+        made.Add(_rebuilt_named(each, ""))
 
 
 def _restore(obj: Any, member: _Member, value: Any) -> None:
@@ -1302,10 +1352,25 @@ class _FromJSON:
             )
         return _filled(target, _rebuilt(_untext(text), getattr(target, "ctype", None)))
 
-    def __getitem__(self, kind: Any) -> Callable[[Any], Any]:
-        """``FromJSON<T>(json)``: the reader for the class ``T`` names - ``TArrayI``,
-        ``std::map<std::string,int>``."""
-        return lambda text: _rebuilt(_untext(text), str(kind))
+    def __getitem__(self, kind: Any) -> Callable[..., Any]:
+        """``FromJSON<T>(json)`` and ``FromJSON<T>(obj, json)``: the reader for the class
+        ``T`` names - ``TArrayI``, ``std::map<std::string,int>`` - which ROOT has as two
+        overloads, one making the object and one filling the pointer it is handed."""
+
+        def read(text: Any, *rest: Any) -> Any:
+            if not rest:
+                return _rebuilt(_untext(text), str(kind))
+            if text is None:
+                raise UnsupportedFeatureError(
+                    "TBufferJSON::FromJSON<T> writes the object it read into the pointer "
+                    "it is given, and this one arrived as its value rather than as a cell "
+                    "holding it, so there is nowhere to write; read what FromJSON<T> "
+                    "returns instead - FromJSON<T>(json), or the cell a translated "
+                    "pointer arrives in"
+                )
+            return _filled(text, _rebuilt(_untext(rest[0]), str(kind)))
+
+        return read
 
 
 class TBufferJSON:

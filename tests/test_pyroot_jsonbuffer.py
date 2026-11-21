@@ -944,3 +944,63 @@ def test_an_array_of_objects_reads_back_as_one_object_per_element(monkeypatch):
     assert read.fObj is None
     assert read.fArr[0].GetName() == "a"
     assert read.fArr[1] is None
+
+
+#: What ROOT's oracle prints for a ``TList`` of one ``TNamed`` at ``kNoSpaces``, ``opt`` and
+#: all: a link added without an option is a ``null`` in it, since a list keeps its options
+#: per link rather than with the object.
+LIST_JSON = ('{"_typename":"TList","name":"TList","arr":[{"_typename":"TNamed","fUniqueID":0,'
+             '"fBits":0,"fName":"name0","fTitle":"title0"}],"opt":[null]}')
+
+
+def test_a_collection_is_the_objects_it_holds_under_the_name_it_holds_them_by():
+    """``TCollection``'s streamer writes the objects, and a ``TList``'s links' options beside
+    them, as ``RootClasses`` and ROOT's own ``TBufferJSONTests`` show them."""
+    held = ROOT.TList()
+    held.Add(ROOT.TNamed("name0", "title0"))
+    assert _json(held, 3) == LIST_JSON
+    empty = ROOT.TList()
+    assert _json(empty, 3) == '{"_typename":"TList","name":"TList","arr":[],"opt":[]}'
+    clones = ROOT.TClonesArray("TNamed", 0)
+    assert _json(clones, 3) == '{"_typename":"TClonesArray","name":"TClonesArray","arr":[]}'
+
+
+def test_a_collection_reads_back_as_the_collection_it_names_with_its_objects():
+    """``TBufferJSON::FromJSON<TList>`` of ROOT's own JSON: the objects are made again from
+    their own ``_typename``, and what is written from that list is the JSON it came from."""
+    read = ROOT.TBufferJSON.FromJSON["TList"](LIST_JSON)
+    assert isinstance(read, ROOT.TList)
+    assert read.GetName() == "TList"
+    assert [each.GetName() for each in read] == ["name0"]
+    assert _json(read, 3) == LIST_JSON
+    assert _json(ROOT.TBufferJSON.ConvertFromJSON(LIST_JSON), 3) == LIST_JSON
+
+
+def test_a_collection_whose_links_carry_an_option_is_refused_rather_than_read_short():
+    """A collection here keeps no option per link, so reading one back would lose them."""
+    text = '{"_typename":"TList","name":"TList","arr":[{"_typename":"TNamed","fUniqueID":0,' \
+           '"fBits":0,"fName":"name0","fTitle":"title0"}],"opt":["option0"]}'
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.FromJSON["TList"](text)
+    assert "whose links carry an option" in str(refused.value)
+
+
+def test_from_json_of_a_template_reads_into_the_pointer_it_is_handed():
+    """``FromJSON<T>(obj, json)``: ROOT has the reader as an overload filling the pointer it
+    is given, which is the cell a translated ``T *p`` arrives in."""
+    cell = Cell(None, "TNamed")
+    read = ROOT.TBufferJSON.FromJSON["TNamed"](
+        cell, '{"_typename":"TNamed","fUniqueID":0,"fBits":0,"fName":"a","fTitle":"t"}')
+    assert read.GetName() == "a"
+    assert cell.value is read
+    with pytest.raises(UnsupportedFeatureError) as refused:
+        ROOT.TBufferJSON.FromJSON["TNamed"](None, '{"_typename":"TNamed"}')
+    assert "arrived as its value rather than as a cell holding it" in str(refused.value)
+
+
+def test_a_collection_json_without_a_name_reads_back_under_the_one_it_was_made_with():
+    """ROOT always writes the name a collection is held under; a JSON that leaves it out
+    still names its class, so the collection is made under the name its constructor gives."""
+    read = ROOT.TBufferJSON.FromJSON["TList"]('{"_typename":"TList","arr":[]}')
+    assert read.GetName() == "TList"
+    assert len(read) == 0
