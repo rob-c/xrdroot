@@ -880,6 +880,26 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   `12819 -> 12833 passed`, `TOTAL 117866 0 29554 0 100%`.
 - The machine's load average was 9-14; every measurement was `--jobs 1`, the `io/tree` family alone.
 
+## Round 29's close (recorded here for the next iteration)
+
+- Base `9dd616a0`, closed at `21517c9a`. **Three commits, +1 PASS.**
+- **`roottest/root/io/json/String` PASSES** (`44e2d2ed`): a null `TString*` member is `null` in JSON, not `""`. It had
+  been one line from PASS since round 28.
+- **`W0-75` was corrected, not chased**: its third item - "one trailing blank line" - was **my own measurement artefact**.
+  The harness's judge (`tools/rootsuite/refdiff.filtered`) drops blank lines and `Processing …`, so they never counted.
+  Measured with the harness's own `custom_diff`, `String` was always one line and `test-rc` four line kinds. **Use
+  `custom_diff` to measure a diff, never a hand-written one.**
+- **`test-rc` is down to three line kinds** (`W0-78`): `N.fUniqueID` (`16777225` vs `9`), `N.fBits` (`50331672` vs `24`),
+  `r1.fBits` (`50331648` vs `0`) - ten of each per file, and no other difference. The `fRef`→`TRef` line is
+  `d07c8610` and the `Show` shape is round 28's `df9caceb`. **The oracle can write the same file for a byte-by-byte
+  comparison; that is the whole of the next round's first task.**
+- `test-rcrr123` (`W0-79`) is different in kind: its references name the *previous level's* clones where ours name the
+  base objects, and the `GOOD!` suffixes pile up to three - a third-level `TRef` chain, its own feature.
+- `8ffa748c` (the heap bits) moved no test; worker 04 died with only stray `docs/` committed nowhere (`W0-80`), so
+  `W0-77` (`io/bigevent/read`'s class reference) is still open with the same brief.
+- Gates: `12835 passed`, `TOTAL 117876 0 29556 0 100%`, ruff/mypy/maintainability/components/`mkdocs --strict` clean,
+  and `XRDROOT_TEST_OTHER_MACHINE=1` the same. The coverage gate ran after **each** cherry-pick (`W0-74`).
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -918,6 +938,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 29's result of it, at `21517c9a`: `TOTAL 117876 0 29556 0 100%`, `12835 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1018 files,
+  maintainability 30 600 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 28's result of it, at `3d69abeb`: `TOTAL 117866 0 29554 0 100%`, `12833 passed, 1 skipped,
   46 xfailed`; `ruff` clean, `mypy` 1018 files, maintainability 30 596 functions, components 0
   undeclared, `mkdocs build --strict` built.
@@ -1043,6 +1066,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 26 | `a4f10d15` | **three features, three workers, disjoint files**: `fName`/`fTitle` are the object's own members, read and written (`7f1663d1`, `172093d3`, `pyroot/core/`); a container template's nested `iterator` is a name a macro can declare (`a6336c75`, `cppstd/`); the `Event`'s maps read (`33678ae2`, `interp.py`) | **roottest +1: `io/tree/create-r` PASSES** (`/tmp/r26/base1` -> `/tmp/r26/tree`, 5 -> 6 PASS in `roottest/root/io/tree/*`), `test-r` FAIL -> DIFF (it runs now); `io/bigevent` 3 PASS / 0 FAIL / 1 UNSUPPORTED with a named format error 48 bytes/event into `vector<TLine>` (`/tmp/r26/ev`) | 5: `W0-66` (the chain's real feature: a `TRef` read, 11 tests), `W0-67` (a class with a base read member-wise), `W0-68` (SplitClones of a file-only class), `W0-69` (`docs/` committed by a worker again), `W0-70` (scratch files) |
 | 27 | `4c82dc31` | **seven commits, four features, one chain**: a split `TClonesArray` read by `SetAddress` is filled (`42898a9a`); a `TRef` member read out of a tree resolves through its `TProcessID` (`212010d0`); a split `TClonesArray` of a class the program declared is cloned by it (`9867dfc9`); a member-wise container reads a base ROOT gives a record to (`5dd0ebba`); plus `ROOT.memset` and collections in JSON (`fd1d360a`, `32cc0d7f`) and the six branches they left untested (`23e557d8`) | **roottest +4 in `roottest/root/io/tree/*`: PASS 6 -> 10** (`/tmp/r26/tree` -> `/tmp/r27/tree2`: `create-rc`, `create-rcr`, `create-rcrr`, **`test-r`**), 12 UNSUPPORTED -> 8 DIFF, 0 FAIL; `io/json` 4/5/3 (`/tmp/r27/json2`); `io/bigevent` still 3/0/1 (`/tmp/r27/ev`) | 4: `W0-71` (bigevent's next container), `W0-72` (7 `io/tree` DIFFs = `Show`'s formatting), `W0-73` (`io/json`'s unbound-method and `None` shapes), `W0-74` (the coverage gate belongs after every commit) |
 | 28 | `d42d8a5c` | **five commits, five features, no PASS**: `Show` prints a split collection's count line and unbroken members (`df9caceb`); a clone carries the `ProcessID` record its `TRef`s name (`1d00c3ed`); an array of strings and an array of pointers read every element (`2aee3989`); a member function named through its class is called on the object (`6224b151`); `TBufferJSON` writes a macro class's member (`db8b97ee`) | **0 PASS**: `io/tree` 10 PASS / 8 DIFF / 2 UNSUPPORTED (`/tmp/r28/tree`), `io/json` 4 / 4 / 1 / 3 with **`String` FAIL -> DIFF** (`/tmp/r28/json`), `io/bigevent` 3 / 0 / 1 (`/tmp/r28/ev`) | 3: `W0-75` (**three lines per entry** from seven PASSes: the process byte in `fUniqueID`/`fBits`, `fRef` printing `TRef`, a trailing blank line), `W0-76` (`io/json/String` one line from PASS), `W0-77` (bigevent's class reference points nowhere); `W0-72` corrected |
+| 29 | `9dd616a0` | **three one-line behaviours**: a null `char*` member is `null` in JSON (`44e2d2ed`); `Show` prints a bare record as the reference it is (`d07c8610`); every object carries the two heap bits (`8ffa748c`) | **roottest +1: `roottest/root/io/json/String` PASSES** (`/tmp/r29/json`: `io/json` 4 -> 5 PASS), `io/tree` 10 PASS / 8 DIFF / 2 UNSUPPORTED with `test-rc` down from **four** differing line kinds to **three** (`/tmp/r29/tree`) | 3: `W0-78` (the `fBits`/`fUniqueID` bytes - the last three lines of six tests), `W0-79` (`test-rcrr123`'s third-level `TRef` chain), `W0-80` (a worker died; `W0-77` still open); `W0-75` corrected and closed |
 
 ## Notes
 
