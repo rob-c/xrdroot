@@ -60,3 +60,23 @@ def test_find_if_over_a_container_is_refused() -> None:
     source = "void t() { std::vector<int> v; auto it = std::find_if(v.begin(), v.end(), f); }"
     with pytest.raises(Refusal, match="std::find_if over a container"):
         translate(source, "t.C")
+
+
+def test_a_word_read_into_a_string_class_of_the_dialect_is_that_class(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``while (in >> line) if (line.Contains(...))`` - ROOT's own stressGraphics counting a
+    PostScript file - reads into a ``TString``, and an extraction gives a plain ``str``: a
+    ``str`` has no ``Contains``. Both places a read is written put the class around the word,
+    the one in a condition and the one that is a statement of its own."""
+    condition = translate('void t() { TString line; std::istringstream in("a b");'
+                          ' while (in >> line) { } }', "t.C")
+    assert "ROOT.TString(in_.extract('TString'))" in condition
+    statement = translate('void t() { TString line; std::istringstream in("a b"); in >> line; }',
+                          "t.C")
+    assert "line = ROOT.TString(in_.extract('TString'))" in statement
+    source = r"""TString word; std::istringstream in("ab cd ef"); int n = 0;
+    while (in >> word) if (word.Contains("d")) n++;
+    printf("%d\n", n);"""
+    run_source("{\n" + source + "\n}\n", "t.C")
+    assert capsys.readouterr().out == "1\n"
