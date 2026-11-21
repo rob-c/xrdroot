@@ -16,4 +16,13 @@ __all__ = ["FormulaError"]
 
 
 class FormulaError(ROOTError, ValueError):
-    """An expression that is not one: bad syntax, an unknown name, a wrong call."""
+    """An expression that is not one: bad syntax, an unknown name, a wrong call.
+
+    ``name`` is the name nothing has, when that is what is wrong: ROOT reports that
+    piece on its own and then the expression it stood in, so it is kept apart from
+    the sentence that says so here.
+    """
+
+    def __init__(self, message: str, name: str | None = None) -> None:
+        super().__init__(message)
+        self.name = name

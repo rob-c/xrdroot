@@ -28,11 +28,11 @@ entry being the most any of them has and the columns that run out left blank.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import IO, Any, NamedTuple
 
 from .drawspec import split_names
-from .formula import Formula, compile_formula
+from .formula import Formula, FormulaError, compile_formula
 from .formula.select import TreeNames, _Read, _shaped, _underlying
 from .formula.together import evaluate_together
 from .tree import Jagged
@@ -228,11 +228,31 @@ def _passes(value: Any) -> bool:
     return value is not None and bool(value != 0)
 
 
+class _Blank:
+    """A column whose expression did not compile: ROOT prints its name and none of its values.
+
+    ``Scan`` makes a ``TTreeFormula`` of every column, and one that does not compile is
+    reported and left invalid; the table still has its column, with nothing in it. This
+    answers what :class:`Result` answers of a column that was read, which is one row an
+    entry and no value at all in it.
+    """
+
+    __slots__ = ()
+
+    def count(self, entry: int) -> int:
+        """One row per entry, as a column of one value has."""
+        return 1
+
+    def at(self, entry: int, instance: int) -> None:
+        """No value at all, which ``PrintValue`` prints as nothing."""
+        return None
+
+
 class Table:
     """The rows of a scan, an entry at a time."""
 
     def __init__(
-        self, layout: Layout, formulas: list[Formula], selection: Formula | None
+        self, layout: Layout, formulas: list[Formula | None], selection: Formula | None
     ) -> None:
         self.layout = layout
         self.formulas = formulas
@@ -241,31 +261,45 @@ class Table:
         self.together = selection is not None and bool(selection.per_element)
         self.selected = 0
 
-    def results(self, columns: Mapping[str, Any], read: Any, total: int) -> list[Result]:
-        everything = self.formulas + ([self.selection] if self.selection else [])
-        given = {
+    def expressions(self) -> list[Formula]:
+        """Every expression the table evaluates: the columns that compiled, then the selection."""
+        compiled = [f for f in self.formulas if f is not None]
+        if self.selection is not None:
+            compiled.append(self.selection)
+        return compiled
+
+    def results(self, columns: Mapping[str, Any], read: Any, total: int) -> list[Any]:
+        everything = self.expressions()
+        given: dict[str, Any] = {
             "entries": total,
             "rows": len(read.numbers),
             "entry_numbers": read.numbers,
             "local_entries": read.local,
         }
         if self.together:
-            found = evaluate_together(everything, columns, **given)
+            found = evaluate_together(everything, columns, **given) if everything else []
         else:
             found = [evaluate_together([f], columns, **given)[0] for f in everything]
-        return [Result(*pair) for pair in found]
+        return self._with_blanks([Result(*pair) for pair in found])
 
-    def _count(self, results: Sequence[Result], entry: int) -> int:
+    def _with_blanks(self, made: list[Any]) -> list[Any]:
+        """The results in column order, a blank standing in for a column that did not compile."""
+        for at, formula in enumerate(self.formulas):
+            if formula is None:
+                made.insert(at, _Blank())
+        return made
+
+    def _count(self, results: Sequence[Any], entry: int) -> int:
         """How many rows an entry prints before the selection is asked."""
         if self.together:
-            return results[-1].count(entry)
+            return int(results[-1].count(entry))
         chosen = results[: len(self.formulas)]
-        count = max([1, *(r.count(entry) for r in chosen)]) if self.layout.instances else 1
+        count = int(max([1, *(r.count(entry) for r in chosen)])) if self.layout.instances else 1
         if self.selection is not None and results[-1].at(entry, 0) is None:
             return 0  # the selection has no value, so nothing is selected
         return count
 
-    def rows(self, results: Sequence[Result], numbers: Array) -> Iterator[str]:
+    def rows(self, results: Sequence[Any], numbers: Array) -> Iterator[str]:
         for entry, number in enumerate(numbers.tolist()):
             for instance in range(self._count(results, entry)):
                 if self.selection is not None and not _passes(results[-1].at(entry, instance)):
@@ -273,7 +307,7 @@ class Table:
                 self.selected += 1
                 yield self._row(results, entry, instance, number)
 
-    def _row(self, results: Sequence[Result], entry: int, instance: int, number: int) -> str:
+    def _row(self, results: Sequence[Any], entry: int, instance: int, number: int) -> str:
         line = f"* {number:8d} " + (f"* {instance:8d} " if self.layout.instances else "")
         for result, field in zip(results, self.layout.fields, strict=False):
             line += self.layout.cell(result.at(entry, instance), field)
@@ -291,10 +325,24 @@ def _column_of(source: Any, name: str, whole: Any) -> Any:
 
 
 def _compiled(
-    source: Any, names: list[str], selection: str, aliases: Mapping[str, str] | None
-) -> tuple[list[Formula], Formula | None]:
+    source: Any,
+    names: list[str],
+    selection: str,
+    aliases: Mapping[str, str] | None,
+    on_error: Callable[[FormulaError, str], None] | None,
+) -> tuple[list[Formula | None], Formula | None]:
+    """Each column compiled, and the selection; a column that does not compile is a ``None``
+    when the caller said how to report it, as ``Scan`` does, and raises otherwise."""
     known = TreeNames(source)
-    formulas = [compile_formula(name, known, aliases=aliases) for name in names]
+    formulas: list[Formula | None] = []
+    for name in names:
+        try:
+            formulas.append(compile_formula(name, known, aliases=aliases))
+        except FormulaError as refused:
+            if on_error is None:
+                raise
+            on_error(refused, name)
+            formulas.append(None)
     cut = compile_formula(selection, known, aliases=aliases) if selection else None
     return formulas, cut
 
@@ -304,8 +352,7 @@ def _batches(
 ) -> Iterator[list[str]]:
     total = len(source)
     stop = total if entries is None else min(total, first + entries)
-    everything = table.formulas + ([table.selection] if table.selection else [])
-    branches = list(dict.fromkeys(name for f in everything for name in f.branches))
+    branches = list(dict.fromkeys(name for f in table.expressions() for name in f.branches))
     # A scan may name a member of an object the tree holds whole - ``Scan("fTemperature")``
     # of a branch of Events - which is no branch at all: the members are what the tree's
     # objects offer, learned the first time an expression reads inside one of them.
@@ -351,12 +398,14 @@ def scan(
     file: IO[str] | None = None,
     step: int = STEP,
     aliases: Mapping[str, str] | None = None,
+    on_error: Callable[[FormulaError, str], None] | None = None,
 ) -> str:
     """``TTree::Scan`` on a tree, a chain or anything that reads like one; see ``TTree.scan``."""
     _checked(first_entry, entries, step)
     names = _columns(source, varexp)
-    formulas, cut = _compiled(source, names, selection, aliases)
-    looping = any(bool(f.per_element) for f in [*formulas, *([cut] if cut else [])])
+    formulas, cut = _compiled(source, names, selection, aliases, on_error)
+    everything = [f for f in [*formulas, cut] if f is not None]
+    looping = any(bool(f.per_element) for f in everything)
     layout = _layout(names, width, precision, conversions, looping)
     table = Table(layout, formulas, cut)
     out = Output(file)

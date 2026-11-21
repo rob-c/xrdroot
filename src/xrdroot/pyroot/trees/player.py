@@ -228,6 +228,7 @@ class _Player(_Friends):
             conversions=conversions,
             file=sys.stdout,
             aliases=self._aliases or None,
+            on_error=_column_refused,
         )
         found = re.search(r"==> (\d+) selected", text)
         if found is not None:
@@ -286,6 +287,14 @@ class _Player(_Friends):
 
     def SetScanField(self, count: int = 50) -> None:
         """How many rows ``Scan`` pauses after in ROOT; a script never waits here."""
+
+
+def _column_refused(refused: Any, name: str) -> None:
+    """A column ``Scan`` could not compile, in ROOT's words: ``TTreeFormula::Compile`` says
+    so and the scan prints the column empty rather than stopping."""
+    from .formula import refused_expression
+
+    refused_expression(refused, name)
 
 
 def _stop(first: int, count: int | None) -> int | None:

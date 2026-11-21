@@ -125,6 +125,11 @@ class Formula:
             )
         return loops(self._root, bind(self._root, self._dims.__getitem__))
 
+    @property
+    def root(self) -> Node:
+        """The expression this evaluates, as it was parsed: what it is made of, not its text."""
+        return self._root
+
     def _layouts(self, columns: Mapping[str, Any]) -> dict[str, Layout]:
         layouts = {}
         for name in self.branches:

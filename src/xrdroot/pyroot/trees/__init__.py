@@ -1,8 +1,9 @@
 """ROOT's trees, as PyROOT scripts and translated macros use them.
 
 ``TTree``, ``TNtuple``, ``TNtupleD`` and ``TChain``, their ``TBranch`` and
-``TLeaf``, ``TEntryList``, and ``TTreeReader`` with its values and arrays -
-by ROOT's names, with ROOT's arguments and what ROOT gives back - over
+``TLeaf``, ``TEntryList``, ``TTreeFormula`` - one expression of a tree's
+branches, evaluated an entry at a time - and ``TTreeReader`` with its values
+and arrays - by ROOT's names, with ROOT's arguments and what ROOT gives back - over
 xrdroot's own reader, writer, ``Draw`` and ``Scan``. A tree is filled
 through addresses, as in C++: see :mod:`.addresses` for what stands for a
 pointer here, and :mod:`.tree` for how ``Branch`` and ``Fill`` use them.
@@ -20,6 +21,7 @@ from ._base import hooks as hooks
 from .branches import TBranch, TBranchElement, TBranchObject, TLeaf
 from .chain import TChain
 from .entrylist import TEntryList
+from .formula import TTreeFormula
 from .ntuple import TNtuple, TNtupleD
 from .reader import TTreeReader, TTreeReaderArray, TTreeReaderValue
 from .selector import TSelector
@@ -35,6 +37,7 @@ __all__ = [
     "TBranchObject",
     "TLeaf",
     "TEntryList",
+    "TTreeFormula",
     "TTreeReader",
     "TTreeReaderValue",
     "TTreeReaderArray",

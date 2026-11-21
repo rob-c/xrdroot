@@ -270,6 +270,7 @@ extensions = [
     { caller = "xrdroot.interp", point = "canvas.streamer.custom", provider = "graphics", target = "xrdroot.canvas.streamer:streamer_for" },
     { caller = "xrdroot.kinds", point = "canvas.classes", provider = "graphics", target = "xrdroot.canvas:class_registry" },
     { caller = "xrdroot.roofit.bindings", point = "roofit.binding_name", provider = "pyroot", target = "xrdroot.pyroot.roofit.bindings:registered_name" },
+    { caller = "xrdroot.formula.parser", point = "formula.user_function", provider = "pyroot", target = "xrdroot.pyroot.trees.formula:registered_function" },
     { caller = "xrdroot.roofit.fitting.contour", point = "root.class", provider = "pyroot", target = "xrdroot.pyroot.graphics.shapes:TMarker" },
     { caller = "xrdroot.roofit.fitting.contour", point = "roofit.contour_graph", provider = "pyroot", target = "xrdroot.pyroot.roofit.contour:make_graph" },
     { caller = "xrdroot.roostats.mcmc", point = "roostats.posterior_hist", provider = "pyroot", target = "xrdroot.pyroot.roostats.mcmcplot:posterior_hist" },
