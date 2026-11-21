@@ -1078,6 +1078,30 @@ def _flattened(
     return found
 
 
+def _folded(
+    fill: Fill, label: str, fold: Callable[[np.ndarray[Any, Any]], np.ndarray[Any, Any]]
+) -> Fill:
+    """``fill`` with the words it read for ``label`` given what ROOT's reader makes of them.
+
+    A container written a member at a time is read straight into objects ROOT has already
+    made, so what its ``TObject`` base holds is not the file's word: the reader sets
+    ``kIsOnHeap|kNotDeleted`` on the bits and folds the reading process's byte into the
+    identifier (:data:`FOLDED`). The fold is the one the split branch's column gets, taken
+    over the values the fill brought rather than one at a time - an identifier and a word of
+    bits are four bytes each, whatever the class (``UInt_t``), so they make one array.
+    """
+
+    def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+        fill(buf, rows)
+        if not rows:
+            return
+        values = fold(np.asarray([row[label] for row in rows], dtype=np.uint32))
+        for row, value in zip(rows, values, strict=True):
+            row[label] = value
+
+    return column
+
+
 def _into(label: str, sub: str, step: Step) -> Step:
     """A base class's field, read into the base's own dictionary in the object's."""
 
@@ -1135,7 +1159,7 @@ def _columns(name: str, source: Source, seen: tuple[str, ...]) -> list[tuple[str
     found: list[tuple[str, Fill]] = []
     members = (_description(source, name) or {}).values()
     for (label, step), member in zip(steps, members, strict=True):
-        columns = _member_columns(label, step, member, source, seen)
+        columns = _member_columns(name, label, step, member, source, seen)
         if columns is None:
             return None
         found += columns
@@ -1143,23 +1167,41 @@ def _columns(name: str, source: Source, seen: tuple[str, ...]) -> list[tuple[str
 
 
 def _member_columns(
-    label: str, step: Step, member: Member, source: Source, seen: tuple[str, ...]
+    owner: str,
+    label: str,
+    step: Step,
+    member: Member,
+    source: Source,
+    seen: tuple[str, ...],
 ) -> list[tuple[str, Fill]] | None:
     """One member's columns - its own, or a flattened base's several - or ``None`` for a base
     whose own class has nothing to read one member at a time: one that streams itself, or one
     the file does not describe. That leaves the whole container unreadable field by field,
-    which is what the class's own fields would be too."""
+    which is what the class's own fields would be too.
+
+    The two words of a ``TObject`` base that a file does not hold as the object does - the
+    identifier and the bits - are folded as they are read, see :data:`FOLDED`.
+    """
     if member.stype == 0:
         inner = _columns(member.name, source, seen)
         if inner is None:
             return None
         if _base_flattened(member):
             return [(label, _into_column(label, column)) for _sub, column in inner]
-    return [(label, _column(label, member, step, source, seen))]
+    fold = FOLDED.get(member.name) if owner == "TObject" else None
+    return [(label, _column(label, member, step, source, seen, fold))]
 
 
-def _column(label: str, member: Member, step: Step, source: Source, seen: tuple[str, ...]) -> Fill:
-    """One member's column, by what the member is."""
+def _column(
+    label: str,
+    member: Member,
+    step: Step,
+    source: Source,
+    seen: tuple[str, ...],
+    fold: Callable[[np.ndarray[Any, Any]], np.ndarray[Any, Any]] | None = None,
+) -> Fill:
+    """One member's column, by what the member is, with ``fold`` applied to what it read when
+    the word the file holds is not the word the object has."""
     node = parse(member.typename)
     if isinstance(node, Str) and node.record:
         return _string_column(label)
@@ -1168,7 +1210,8 @@ def _column(label: str, member: Member, step: Step, source: Source, seen: tuple[
     held = _class_held(member.typename) if node is None else None
     if held is not None and not held[1]:
         return _container_column(label, held[0], source, seen)
-    return _each_row(label, step)
+    fill = _each_row(label, step)
+    return fill if fold is None else _folded(fill, label, fold)
 
 
 def _each_row(label: str, step: Step) -> Fill:
@@ -2346,7 +2389,7 @@ class HeapRows(Rows):
     __slots__ = ()
 
     def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
-        return super().decode(raw) | HEAP_BITS
+        return _with_heap_bits(super().decode(raw))
 
 
 class HeapFlat(Flat):
@@ -2355,7 +2398,7 @@ class HeapFlat(Flat):
     __slots__ = ()
 
     def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
-        return super().decode(raw) | HEAP_BITS
+        return _with_heap_bits(super().decode(raw))
 
 
 class NumberedRows(Rows):
@@ -2396,6 +2439,22 @@ def _numbered(values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     unstamped = (values & PID_MASK) == 0
     fresh = numbered & unstamped
     return values | ((fresh.astype(values.dtype) << 24) * PID_OFFSET)
+
+
+def _with_heap_bits(values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    """``values`` with the two bits ROOT's reader sets on every object it fills."""
+    return values | HEAP_BITS
+
+
+#: What ROOT's reader makes of a ``TObject``'s two words, by member name: a container written
+#: a member at a time holds the file's word, and the object holds these - the identifier with
+#: the byte of the process that numbered it, the bits with ``kIsOnHeap|kNotDeleted``. The same
+#: two folds a split branch's column gets, so that a class read a member at a time carries what
+#: the same object read branch by branch carries.
+FOLDED: dict[str, Callable[[np.ndarray[Any, Any]], np.ndarray[Any, Any]]] = {
+    "fBits": _with_heap_bits,
+    "fUniqueID": _numbered,
+}
 
 
 def _as_prim(column: Numeric) -> Prim:
