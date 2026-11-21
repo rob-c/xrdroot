@@ -713,3 +713,26 @@ def test_a_library_is_autoloaded_by_the_name_of_an_enumeration_it_declares() -> 
     assert loading.autoload_enum("myns::Kind")
     assert ours() == ["libEnums"]
     assert troot.find_enum("myns::Kind") is not None
+
+
+def test_a_dictionary_describes_only_the_classes_it_selects() -> None:
+    """A header's classes are translated with the dictionary it is built from, but only the
+    ones a LinkDef selects have a dictionary - which is what ``GetMissingDictionaries``
+    reports of a class of such a header."""
+    write("Two.h", "class First { public: int a; };\nclass Second { public: int b; };\n")
+    write("TwoLinkDef.h", "#pragma link C++ class First+;\n")
+    build_dictionary("Two", [Path("Two.h")], linkdef=Path("TwoLinkDef.h"))
+    assert load("libTwo") == 0
+    assert ROOT.TClassTable.GetDict("First") is not None
+    assert ROOT.TClassTable.GetDict("Second") is None
+
+
+def test_a_selection_of_patterns_describes_every_class_the_header_declares() -> None:
+    """``pattern="Fir*"`` selects whatever of the header matches, so a dictionary built from
+    a selection of patterns describes every class its headers declare, not a list of names."""
+    write("Pat.h", "class First { public: int a; };\nclass Second { public: int b; };\n")
+    write("pat.xml", '<lcgdict>\n  <class pattern="Fir*"/>\n</lcgdict>\n')
+    build_dictionary("Pat", [Path("Pat.h")], selection=Path("pat.xml"))
+    assert load("libPat") == 0
+    assert ROOT.TClassTable.GetDict("First") is not None
+    assert ROOT.TClassTable.GetDict("Second") is not None

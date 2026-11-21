@@ -3039,6 +3039,23 @@ it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
 lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
 file opened since describes the class with.
 
+Its functions are described too, as a dictionary describes them:
+`GetListOfMethods` lists a `TMethod` per overload - a const function of the
+same parameters is an overload of the non-const one - and
+`GetMethod(name, params)` and `GetMethodWithPrototype` find one by its
+parameters' types, preferring the non-const overload for a non-const object
+and taking a `char*` for a `const char*` unless `ROOT::kExactMatch` is asked
+for. A `TMethod` answers `GetReturnTypeName` (`int&`), `GetPrototype`
+(`int& Holder::data()`), `GetClass` and `ExtraProperty`, whose bits are
+ROOT's `kIsInlined`, `kIsConstructor`, `kIsDestructor`, `kIsConversion` and
+`kIsOperator`; `GetFunctionTemplate` gives a member function template.
+`GetMissingDictionaries(ht, recurse)` fills a `THashTable` with the `TClass`
+of each class no dictionary describes - the class itself where nothing does,
+the class of each data member, a standard container's elements, and, with
+`recurse`, what those hold in turn. `TObject::SetObjectStat` and
+`GetObjectStat` are ROOT's switch for its object table, which no table here
+keeps, so a threaded program sets it and reads it back.
+
 `f->WriteObject(&obj, "name")`, `obj.Write()` and `TBufferFile` write such an
 object byte for byte as ROOT does - numbers, `Double32_t` and `Float16_t`
 packed by their comment, fixed and counted arrays, `std::string` and

@@ -27,7 +27,7 @@ QUALIFIERS = frozenset(
 
 #: The words among those that say something the translation keeps.
 KEPT = frozenset({"const", "constexpr", "consteval", "static", "thread_local",
-                  "virtual", "friend", "explicit", "extern"})
+                  "virtual", "friend", "explicit", "extern", "inline"})
 
 
 @dataclass

@@ -25,7 +25,7 @@ from ...pycxx.errors import CxxError
 from ..dialect import LIBRARY as DIALECT
 from . import checks
 from .manifest import SUFFIX, Library, read, write
-from .selection import requested
+from .selection import requested, selected
 from .translate import Declared, digest, translated_unit
 
 __all__ = [
@@ -147,6 +147,7 @@ def build_dictionary(
     warnings = _unused(requested(linkdef, selection), found)
     _warned(warnings + checks.io_targets(parsed, found.members), strict.fail_on_warnings)
     library.kind, library.rootmap = "dictionary", rootmap
+    library.selected = selected(linkdef, selection)
     library.libraries = _joined(existing, libraries)
     return write(library, place)
 

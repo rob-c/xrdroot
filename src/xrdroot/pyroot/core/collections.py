@@ -78,10 +78,14 @@ def _looked_up(name: Any) -> str | None:
     A ``std::string`` is taken as the name it holds, which a C++ program writes as
     ``s.c_str()``: the translator emits that call as the string itself, since a ``std::string``
     is Python's ``str`` here - and roottest's ``execEnumsTest`` looks a constant up with one.
+    An object with a name is looked up by that name too, as ROOT's ``TCollection::FindObject``
+    hands a ``TObject`` argument to the lookup by its name.
     """
     if isinstance(name, str):
         return name
-    return str(name) if isinstance(name, StdString) else None
+    if isinstance(name, StdString):
+        return str(name)
+    return name.GetName() if hasattr(name, "GetName") else None
 
 
 def _named_by(obj: Any, option: str) -> None:
@@ -769,6 +773,10 @@ class THashTable(TCollection):
     """``THashTable``: a collection found by hash - held in order here, which finds the same."""
 
     CLASS_TITLE = "A hash table"
+
+    def Empty(self) -> bool:
+        """``Empty``: does the table hold nothing? - ROOT's name for it, beside ``IsEmpty``."""
+        return self.IsEmpty()
 
 
 def _text(other: Any) -> str | None:

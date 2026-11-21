@@ -64,6 +64,12 @@ class Library:
     #: The enumerations it declares, as ROOT's interpreter knows them once it is loaded: each
     #: by its qualified name, with its constants' values (:class:`.translate.EnumNote`).
     enums: list[dict[str, Any]] = field(default_factory=list)
+    #: What a dictionary was asked to select - a LinkDef's ``#pragma link`` lines, a genreflex
+    #: selection file's classes - which are the classes it gives a dictionary to. A header's
+    #: other classes are translated with it but have none, as ROOT's dictionary has none of
+    #: them. Empty when the selection names classes by pattern, and so selects whatever of the
+    #: header matches: then every class the dictionary was built from has one.
+    selected: list[str] = field(default_factory=list)
     #: Whether autoloading finds it by the names it provides, as ROOT's rootmap file does.
     rootmap: bool = True
     #: The libraries to load before it.

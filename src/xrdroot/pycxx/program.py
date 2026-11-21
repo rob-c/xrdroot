@@ -78,6 +78,10 @@ class ClassInfo:
     fields: dict[str, VarDecl] = field(default_factory=dict)
     statics: dict[str, VarDecl] = field(default_factory=dict)
     methods: dict[str, list[Function]] = field(default_factory=dict)
+    #: Every function the class declares, one an overload - which a const function of the same
+    #: parameters is - of another: what a reflection dictionary lists, and what the translation
+    #: of a method's name alone cannot tell apart.
+    overloads: dict[tuple[Any, ...], Function] = field(default_factory=dict)
     constants: dict[str, str] = field(default_factory=dict)
     #: The classes declared inside it, which are classes of the program like any other.
     types: list[ClassDecl] = field(default_factory=list)
@@ -89,6 +93,7 @@ class ClassInfo:
         return self.decl.name
 
     def add_method(self, func: Function) -> None:
+        self._overload(func)
         found = self.methods.setdefault(func.name, [])
         for index, other in enumerate(found):
             if _same_signature(other, func):
@@ -96,6 +101,28 @@ class ClassInfo:
                     found[index] = _merged(other, func)
                 return
         found.append(func)
+
+    def _overload(self, func: Function) -> None:
+        """Note ``func`` as one of the class's overloads, or - the same one declared and then
+        defined outside the class - add what its definition says to what was declared."""
+        key = _overload_key(func)
+        known = self.overloads.get(key)
+        if known is None:
+            self.overloads[key] = func
+            return
+        known.inlined = known.inlined or func.inlined
+        known.static = known.static or func.static
+        known.virtual = known.virtual or func.virtual
+
+
+def _overload_key(func: Function) -> tuple[Any, ...]:
+    """What tells one overload of a name from another: its parameters, its constness, its kind."""
+    return (func.name, tuple(_same_type_key(param.ctype) for param in func.params),
+            func.const, func.kind)  # fmt: skip
+
+
+def _same_type_key(ctype: CType) -> tuple[str, int, bool]:
+    return (ctype.name, ctype.pointer, ctype.reference)
 
 
 def _same_signature(one: Function, other: Function) -> bool:
@@ -105,7 +132,7 @@ def _same_signature(one: Function, other: Function) -> bool:
 
 
 def _same_type(one: CType, other: CType) -> bool:
-    return (one.name, one.pointer, one.reference) == (other.name, other.pointer, other.reference)
+    return _same_type_key(one) == _same_type_key(other)
 
 
 def _merged(declared: Function, defined: Function) -> Function:
@@ -117,6 +144,7 @@ def _merged(declared: Function, defined: Function) -> Function:
             mine.name = theirs.name
     defined.static = defined.static or declared.static
     defined.virtual = defined.virtual or declared.virtual
+    defined.inlined = defined.inlined or declared.inlined
     defined.constant_evaluation |= declared.constant_evaluation
     return defined
 

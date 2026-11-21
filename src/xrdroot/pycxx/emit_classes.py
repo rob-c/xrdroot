@@ -162,6 +162,7 @@ class ClassEmitter(FunctionEmitter):
         spellings = self.program.templates.spellings
         values = _enumerators(self._lineage(info))
         self.out.line(f"_cxx_layout_ = {_layout(info, spellings, values)!r}", info.decl.where)
+        self.out.line(f"_cxx_methods_ = {_methods_layout(info, spellings)!r}", info.decl.where)
         self.out.line("_cxx_destroyed = False", info.decl.where)
         self.out.line("_cxx_released = False", info.decl.where)
         for name, var in info.statics.items():
@@ -415,6 +416,44 @@ def _constant(value: Expr) -> int | None:
 #: What a class tells a tree about itself: its C++ name, its bases', and each data member's
 #: name, type as written, trailing comment and array dimensions, in declaration order.
 Layout = tuple[str, tuple[str, ...], tuple[tuple[str, str, str, tuple[int | None, ...]], ...]]
+
+
+#: One function a class declares, as a reflection dictionary describes it: its C++ name, its
+#: return type as written, each parameter's type, and whether it is const, static, inline and
+#: virtual, a template, and its kind - ``function``, ``constructor``, ``destructor``, ``operator``.
+Method = tuple[str, str, tuple[str, ...], bool, bool, bool, bool, bool, str]
+
+
+def _methods_layout(info: ClassInfo, spellings: dict[str, str]) -> tuple[Method, ...]:
+    """A class's functions as a reflection dictionary describes them, so that the ``TMethod``
+    made from one knows its signature - what a program searching the class by prototype and
+    reading a method's return type asks about. A constructor returns the class it makes and a
+    destructor nothing, as ROOT's ``TMethod`` says of them."""
+    found: list[Method] = []
+    for func in info.overloads.values():
+        found.append((
+            func.name, _function_return(info, func, spellings),
+            tuple(_declared_type(param.ctype, spellings) for param in func.params),
+            bool(func.const), bool(func.static), bool(func.inlined),
+            bool(func.virtual), func.template is not None, func.kind,
+        ))
+    return tuple(found)
+
+
+def _function_return(info: ClassInfo, func: Function, spellings: dict[str, str]) -> str:
+    """What a function returns, as a signature writes it: the class a constructor builds."""
+    if func.kind == "constructor":
+        return spellings.get(info.name, info.name)
+    if func.kind == "destructor":
+        return "void"
+    return _declared_type(func.returns, spellings)
+
+
+def _declared_type(ctype: CType, spellings: dict[str, str]) -> str:
+    """A type as a function's signature spells it: the typedef it was written as, a ``&`` and a
+    leading ``const`` kept - which is what a ``TMethod`` reports its return type as."""
+    text = _spelled(ctype, spellings) + "&" * int(ctype.reference)
+    return f"const {text}" if ctype.const and not text.startswith("const ") else text
 
 
 def _layout(info: ClassInfo, spellings: dict[str, str], values: dict[str, int]) -> Layout:

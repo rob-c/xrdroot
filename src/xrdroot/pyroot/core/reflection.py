@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 import sys
 from typing import Any, ClassVar
+from weakref import WeakKeyDictionary
 
 from ...wdeclared import ROOT_TYPEDEFS as TYPEDEFS
 from ...winfo import INFOS, Element
@@ -52,7 +53,96 @@ __all__ = [
     "TStreamerLoop",
     "TDataMember",
     "TBaseClass",
+    "TMethod",
+    "TFunctionTemplate",
+    "kIsClass",
+    "kIsStruct",
+    "kIsUnion",
+    "kIsEnum",
+    "kIsTypedef",
+    "kIsFundamental",
+    "kIsAbstract",
+    "kIsVirtual",
+    "kIsPureVirtual",
+    "kIsUnionMember",
+    "kIsPublic",
+    "kIsProtected",
+    "kIsPrivate",
+    "kIsPointer",
+    "kIsArray",
+    "kIsStatic",
+    "kIsDefault",
+    "kIsReference",
+    "kIsDirectInherit",
+    "kIsCCompiled",
+    "kIsCPPCompiled",
+    "kIsCompiled",
+    "kIsNotReacheable",
+    "kIsConstant",
+    "kIsVirtualBase",
+    "kIsConstPointer",
+    "kIsScopedEnum",
+    "kIsConstexpr",
+    "kIsExplicit",
+    "kIsNamespace",
+    "kIsConstMethod",
+    "kIsUsing",
+    "kIsDefinedInStd",
+    "kIsConstructor",
+    "kIsConversion",
+    "kIsDestructor",
+    "kIsOperator",
+    "kIsInlined",
+    "kIsTemplateSpec",
+    "kExactMatch",
+    "kConversionMatch",
 ]
+
+#: ``TDictionary::EProperty`` and ``EFunctionProperty``, and ``ROOT::EFunctionMatchMode``: the
+#: bits and modes ``TMethod::ExtraProperty`` and ``TClass::GetMethodWithPrototype`` answer
+#: with. C++ declares them twice - the two enums overlap on purpose - so the ones both name
+#: have one value here, and each is a name of the namespace, as ``ROOT::kIsInlined`` is.
+kIsClass = 0x00000001
+kIsStruct = 0x00000002
+kIsUnion = 0x00000004
+kIsEnum = 0x00000008
+kIsTypedef = 0x00000010
+kIsFundamental = 0x00000020
+kIsAbstract = 0x00000040
+kIsVirtual = 0x00000080
+kIsPureVirtual = 0x00000100
+kIsUnionMember = 0x00000100
+kIsPublic = 0x00000200
+kIsProtected = 0x00000400
+kIsPrivate = 0x00000800
+kIsPointer = 0x00001000
+kIsArray = 0x00002000
+kIsStatic = 0x00004000
+kIsDefault = 0x00008000
+kIsReference = 0x00010000
+kIsDirectInherit = 0x00020000
+kIsCCompiled = 0x00040000
+kIsCPPCompiled = 0x00040000
+kIsCompiled = 0x00040000
+kIsNotReacheable = 0x00080000
+kIsConstant = 0x00100000
+kIsVirtualBase = 0x00200000
+kIsConstPointer = 0x00400000
+kIsScopedEnum = 0x00800000
+kIsConstexpr = 0x02000000
+kIsExplicit = 0x04000000
+kIsNamespace = 0x08000000
+kIsConstMethod = 0x10000000
+kIsUsing = 0x20000000
+kIsDefinedInStd = 0x40000000
+kIsConstructor = 0x00000001
+kIsConversion = 0x00000002
+kIsDestructor = 0x00000004
+kIsOperator = 0x00000008
+kIsInlined = 0x00000010
+kIsTemplateSpec = 0x00000020
+kExactMatch = 0
+kConversionMatch = 1
 
 #: One layout of one class: its checksum, version and elements.
 Layout = tuple[int, int, tuple[Element, ...]]
@@ -75,10 +165,23 @@ NUMBERS = frozenset({
 #: names: their classes have a ``TClass`` bootstrap from then on, as a loaded library's would.
 GENERATED: set[str] = set()
 
+#: The ``TMethod`` objects made for each class of a program's, by the class, and its member
+#: function templates: made once, so the one a search answers with is still the one its list
+#: holds after a ``GenerateDictionary`` replaces what the interpreter described of it.
+METHODS: WeakKeyDictionary[type, list[Any]] = WeakKeyDictionary()
+TEMPLATES: WeakKeyDictionary[type, list[Any]] = WeakKeyDictionary()
+
 #: The functions looked up in a class only the interpreter describes, by class: ROOT asks the
 #: interpreter for the one a program names and keeps the ``TMethod`` it made, which is what lets
 #: a program hold that method across the dictionary that replaces the interpreter's description.
 INTERPRETED_METHODS: dict[str, list[TNamed]] = {}
+
+#: What a class's translation says of each of its functions, by position - which is what
+#: ``TMethod`` is made of: the name, the return type as written, each parameter's type, whether
+#: it is const, static, inline, virtual and a template, and its kind (``function``,
+#: ``constructor``, ``destructor`` or ``operator``). A kit class that knows nothing of its C++
+#: signatures keeps none, and its methods are found only where no prototype is asked for.
+Signature = tuple[str, str, tuple[str, ...], bool, bool, bool, bool, bool, str]
 
 #: The standard containers, whose classes ROOT knows without a dictionary of their own.
 CONTAINERS = ("vector", "list", "deque", "map", "multimap", "set", "multiset",
@@ -878,48 +981,176 @@ class TClass(TNamed):
         return next((m for m in self.GetListOfAllPublicDataMembers() if m.GetName() == wanted),
                     None)
 
+    def GetMissingDictionaries(self, result: Any, recurse: bool = False) -> None:
+        """``GetMissingDictionaries``: fill ``result`` - a ``THashTable`` - with the ``TClass``es
+        of the classes no dictionary describes.
+
+        The class itself where nothing describes it, and the class of each of its data
+        members - a member of ``std::vector<Elem>`` adds ``vector<Elem>`` and, a standard
+        container's elements being what the interpreter describes of it, ``Elem``. With
+        ``recurse`` those classes' own members are walked too; without it a class it found is
+        listed and not walked, as ROOT lists what a class refers to and leaves the descent to
+        the walk into it. A class a dictionary here describes - ROOT's own, or one a built
+        dictionary was loaded for - is not among them.
+        """
+        self._missing_into(result, bool(recurse), set(), members=True)
+
+    def _missing_into(self, result: Any, recurse: bool, seen: set[str], members: bool) -> None:
+        """Add the classes ``self`` refers to that no dictionary describes, walking their
+        members when ``members`` - or a recursion, or a description - says to."""
+        if self._name in seen:
+            return
+        seen.add(self._name)
+        described = not self._dictless()
+        if not described:
+            result.Add(self)  # ``seen`` has each class once, however many members are of it
+            for base in self._base_names():
+                TClass(base)._missing_into(result, recurse, seen, members=False)
+        if recurse or members or described:
+            for klass in self._referenced(recurse):
+                klass._missing_into(result, recurse, seen, members=recurse)
+
+    def _referenced(self, recurse: bool) -> list[TClass]:
+        """The classes the class's data members are, as ``GetMissingDictionaries`` walks them:
+        each member's own class, a standard container's elements', and with ``recurse`` the
+        arguments of any template instance.
+
+        An instance of a standard container or of a wrapper has no data members to read here -
+        the interpreter describes ``vector<Elem>`` from its element - so what it refers to is
+        what it holds.
+        """
+        if _template(self._name) or _wrapper(self._name):
+            return _classes_of(_arguments(self._name))
+        found = self._member_classes(recurse)
+        if recurse:
+            found.extend(_classes_of(_arguments(self._name)))
+        return found
+
+    def _member_classes(self, recurse: bool) -> list[TClass]:
+        """Each data member's class, and - a standard container's or a wrapper's, whose
+        elements the interpreter describes as its members - the classes it holds."""
+        found: list[TClass] = []
+        for _, spelled, _, _ in self._fields():
+            name = _class_spelling(str(spelled))
+            if name is None:
+                continue
+            found.append(TClass(name))
+            if recurse or _template(name) or _wrapper(name):
+                found.extend(_classes_of(_arguments(name)))
+        return found
+
+    def _dictless(self) -> bool:
+        """Is this a class no dictionary describes?
+
+        ROOT's own classes are described by the kit's layouts, and one a loaded dictionary
+        selected is described by it - a dictionary's other classes, translated with it, have
+        no dictionary of their own. A standard container is described where ROOT's own
+        dictionaries instantiate it, for the built-in types, and otherwise only where one was
+        generated for it: a member of ``std::vector<Elem>`` is ``vector<Elem>`` even when
+        ``Elem`` itself has a dictionary. A wrapper that streams what it holds -
+        ``std::unique_ptr<T>``, ``std::array<T, N>``, ``std::tuple<...>`` - is described by
+        what it holds, and is never itself a class a dictionary is missing for.
+        """
+        name = self._name
+        if name in INFOS or name in GENERATED or _last(name) in GENERATED:
+            return False
+        if _instance(name):
+            if _wrapper(name):
+                return False
+            if _template(name):
+                return not all(_built_in(each) for each in _arguments(name))
+            return True
+        return _declared(name) is not None or _class_named(name) is None
+
     def GetListOfMethods(self, load: bool = True) -> Any:
         """``GetListOfMethods``: the class's own functions, by name.
 
-        A class only the interpreter describes lists the functions a search has made so far,
-        as ROOT's list of them holds what the interpreter has been asked for.
+        A class C++ declared lists the functions its translation describes, and after them the
+        ones only the namespace's class carries - ``Class``, ``IsA``, the ``ClassDef`` helpers.
+        A class only the interpreter describes lists the functions a search has made so far, as
+        ROOT's list of them holds what the interpreter has been asked for.
         """
         from .collections import TList
 
         made = TList()
-        cls = self._class()
-        for found in sorted(vars(cls) if cls is not None else ()):
-            if callable(getattr(cls, found)) and not found.startswith("_"):
-                made.Add(TNamed(found, ""))
-        if cls is None:
-            for looked_up in INTERPRETED_METHODS.get(self._name, ()):
-                made.Add(looked_up)
+        for method in self._methods():
+            made.Add(method)
         return made
+
+    def _methods(self) -> list[Any]:
+        """The class's functions as :meth:`GetListOfMethods` lists them.
+
+        A class's are made once and kept, so the ``TMethod`` a search answers with is still the
+        list's after - and whatever a dictionary does to the class later.
+        """
+        cls = self._class()
+        if cls is None:
+            return INTERPRETED_METHODS.get(self._name, [])
+        kept = METHODS.get(cls)
+        if kept is None:
+            kept = METHODS[cls] = self._made_methods(cls)
+        return kept
+
+    def _made_methods(self, cls: type) -> list[Any]:
+        """The ``TMethod`` of each function ``cls`` describes, then one a Python name alone made."""
+        found: list[Any] = []
+        spelled: set[str] = set()
+        for signature in cls.__dict__.get("_cxx_methods_", ()):
+            found.append(TMethod(signature[0], self, tuple(signature)))
+            spelled.add(_python_name(signature[0]))
+        for name in sorted(vars(cls)):
+            if name in spelled or name.startswith("_") or not callable(getattr(cls, name)):
+                continue
+            found.append(TMethod(name, self))
+        return found
 
     def GetMethodAny(self, name: Any) -> Any:
         return next((m for m in self.GetListOfMethods() if m.GetName() == str(name)), None)
 
     GetMethodAllAny = GetMethodAny
 
-    def GetMethodWithPrototype(self, name: Any, proto: Any = "", isconst: bool = False,
-                               mode: int = 0) -> Any:  # fmt: skip
-        """``GetMethodWithPrototype``: the function called ``name`` with the prototype
-        ``proto``, or ``nullptr`` when the class has none.
+    def GetMethod(self, method: Any, params: Any = "", isconst: bool = False) -> Any:
+        """``GetMethod``: the function called ``method`` that ``params`` - its parameters'
+        types, comma separated - can be given, as ``GetMethodWithPrototype`` finds it."""
+        return self.GetMethodWithPrototype(method, params, isconst, kConversionMatch)
 
-        A function looked up in a class only the interpreter describes is made here and stays
-        in its list, as ROOT asks the interpreter for it and keeps the ``TMethod`` it made: that
-        is what lets a program hold the method across the dictionary a later
-        ``GenerateDictionary`` gives the class (roottest's ``ReuseMethod``), where the
-        dictionary would otherwise have replaced the interpreter's description.
+    def GetMethodWithPrototype(self, name: Any, proto: Any = "", isconst: bool = False,
+                               mode: int = kConversionMatch) -> Any:  # fmt: skip
+        """``GetMethodWithPrototype``: the function called ``name`` that ``proto`` - its
+        parameters' types - can be given, or ``nullptr`` when the class has none.
+
+        ``isconst`` asks for one a const object can call: a const member or a static one. A
+        non-const object prefers the non-const overload, as C++ overload resolution does. A
+        function looked up in a class only the interpreter describes is made here and stays in
+        its list, as ROOT asks the interpreter for it and keeps the ``TMethod`` it made: that is
+        what lets a program hold the method across the dictionary a later
+        ``GenerateDictionary`` gives the class (roottest's ``ReuseMethod``).
         """
-        for found in self.GetListOfMethods(False):
-            if found.GetName() == str(name) and found.GetTitle() == str(proto):
-                return found
+        wanted = _parameters(proto)
+        candidates = [
+            found for found in self._methods()
+            if found.GetName() == str(name) and found._given(wanted, int(mode), bool(isconst))
+        ]  # fmt: skip
+        if candidates:
+            return _preferred(candidates, bool(isconst))
         if not self._made_here(str(name), str(proto)):
             return None
-        made = TNamed(str(name), str(proto))
+        made = TMethod(str(name), self)
         INTERPRETED_METHODS.setdefault(self._name, []).append(made)
         return made
+
+    def GetFunctionTemplate(self, name: Any) -> Any:
+        """``GetFunctionTemplate``: the member function template called ``name``, or ``nullptr``."""
+        cls = self._class()
+        if cls is None:
+            return None
+        kept = TEMPLATES.get(cls)
+        if kept is None:
+            kept = TEMPLATES[cls] = [
+                TFunctionTemplate(each[0], self, tuple(each))
+                for each in cls.__dict__.get("_cxx_methods_", ()) if each[7]
+            ]
+        return next((each for each in kept if each.GetName() == str(name)), None)
 
     def _made_here(self, name: str, proto: str) -> bool:
         """Is the function one this kit makes for a class only the interpreter describes - a
@@ -1315,3 +1546,212 @@ def element_of(element: Element) -> TStreamerElement:
     if element[0] in ("TStreamerSTL", "TStreamerSTLstring") and element[3] == 500:
         element = (*element[:3], 300, *element[4:])
     return ELEMENT_CLASSES.get(element[0], TStreamerElement)(element)
+
+
+#: The ``EFunctionProperty`` bit each kind of C++ function is, as ``TDictionary`` numbers them.
+FUNCTION_KINDS = {"constructor": kIsConstructor, "destructor": kIsDestructor,
+                  "operator": kIsOperator}  # fmt: skip
+
+
+def _parameters(proto: Any) -> tuple[str, ...]:
+    """``GetMethod``'s parameter list as the types it is made of: ``"int, char*"`` is two.
+
+    ``""`` is a function taking none, and a ``void`` written out is taken as none, as C++
+    takes it. A type is compared with its spaces and its ``std::`` out - the spellings a
+    caller may differ in - and a default it wrote out is not part of the type.
+    """
+    text = str(proto).strip()
+    if not text:
+        return ()
+    found = tuple(_squashed(part) for part in _split_parameters(text))
+    return () if found == ("void",) else found
+
+
+def _split_parameters(text: str) -> list[str]:
+    """``text`` split at the commas outside brackets, so ``map<int, char>, bool`` is two."""
+    parts: list[str] = []
+    depth, start = 0, 0
+    for at, letter in enumerate(text):
+        if letter in "<([":
+            depth += 1
+        elif letter in ">)]":
+            depth -= 1
+        elif letter == "," and not depth:
+            parts.append(text[start:at])
+            start = at + 1
+    parts.append(text[start:])
+    return parts
+
+
+def _squashed(one: str) -> str:
+    """A type as two spellings of it are compared: no spaces, no ``std::``, no default."""
+    text = one.split("=", 1)[0]
+    return text.replace(" ", "").replace("std::", "")
+
+
+def _matches(wanted: str, declared: str, mode: int) -> bool:
+    """Can an argument of type ``wanted`` be passed to a parameter declared ``declared``?
+
+    An exact match takes the type as declared; a conversion match also takes the ones C++
+    would - a ``char*`` for a ``const char*``, which is a pointer to more than it promises.
+    """
+    if wanted == declared:
+        return True
+    return mode == kConversionMatch and wanted == declared.replace("const", "")
+
+
+def _preferred(candidates: list[Any], isconst: bool) -> Any:
+    """The overload of ``candidates`` a search answers with.
+
+    A const object's is a const - or a static - function; a non-const object's is the non-const
+    overload, as C++ prefers it, and a const one where that is all the class declares.
+    """
+    def rank(found: Any) -> int:
+        signature = found._signature
+        const = signature is not None and signature[3]
+        static = signature is not None and signature[4]
+        if isconst:
+            return 0 if const else (2 if static else 1)
+        return 2 if const else (3 if static else 0)
+
+    return min(candidates, key=rank)
+
+
+def _python_name(name: str) -> str:
+    """The Python attribute a C++ function's name is written as in a class of the kit's."""
+    from ...pycxx.symbols import member_name
+
+    return member_name(name)
+
+
+def _instance(name: str) -> bool:
+    """Is ``name`` a template made a class by its arguments - ``vector<Elem>``, ``Tmplt<int>``?"""
+    return "<" in name and name.endswith(">")
+
+
+def _wrapper(name: str) -> bool:
+    """Is ``name`` an instance of one of the standard ways of holding one thing?"""
+    return name.split("<", 1)[0] in WRAPPERS
+
+
+def _arguments(name: str) -> list[str]:
+    """The template arguments ``name`` is an instance with: ``map<int,char>`` gives two."""
+    if "<" not in name or not name.endswith(">"):
+        return []
+    inside = name[name.index("<") + 1 : -1]
+    return [part.strip() for part in _split_parameters(inside)]
+
+
+def _class_spelling(spelled: str) -> str | None:
+    """The class a member's type as written names - ``TNamed*`` is ``TNamed`` - or none for a
+    type that is no class: a number, a pointer to nothing, the ``void`` of a member that is
+    not there."""
+    text = re.sub(r"\[[^\]]*\]", "", spelled).strip()
+    while text.endswith(("*", "&")):
+        text = text[:-1].strip()
+    text = text.removeprefix("const ").strip()
+    if not text or text in FUNDAMENTAL or text in NUMBERS or text == "void":
+        return None
+    if text[0].isdigit() or text[0] == "-":  # ``std::array<Elem, 4>``'s length
+        return None
+    return _known_as(text)
+
+
+#: The standard ways of holding one thing that ROOT streams by what they hold - no dictionary
+#: of their own describes them, and one is never a class a dictionary is missing for.
+WRAPPERS = frozenset({"unique_ptr", "shared_ptr", "array", "tuple", "optional", "variant",
+                      "atomic", "weak_ptr"})  # fmt: skip
+
+
+def _classes_of(spellings: list[str]) -> list[TClass]:
+    """The classes the template arguments ``spellings`` name, the ones that name a class."""
+    return [TClass(name) for name in map(_class_spelling, spellings) if name is not None]
+
+
+def _built_in(spelled: str) -> bool:
+    """Is a template argument one ROOT's own container dictionaries instantiate - a built-in
+    number or a string - rather than a class of a program's own that needs one of its own?"""
+    text = _squashed(spelled)
+    while text.endswith("*"):
+        text = text[:-1]
+    return text in NUMBERS or text in ("string", "bool", "char")
+
+
+
+class TMethod(TNamed):
+    """``TMethod``: one function of a class, as ``GetListOfMethods`` lists it.
+
+    A class C++ declared describes its functions in its translation, so a method made for it
+    knows its signature - what ``GetReturnTypeName``, ``GetPrototype`` and ``ExtraProperty``
+    answer with. One made from a Python name alone knows none of that, and is found only where
+    no prototype is asked for.
+    """
+
+    CLASS_TITLE = "Method or function descriptor"
+
+    def __init__(self, name: Any, owner: TClass | None = None,
+                 signature: Signature | None = None) -> None:  # fmt: skip
+        TNamed.__init__(self, str(name), "")
+        self._owner = owner
+        self._signature = signature
+
+    def GetClass(self) -> TClass | None:
+        """``GetClass``: the class the function is a member of."""
+        return self._owner
+
+    def GetReturnTypeName(self) -> str:
+        """``GetReturnTypeName``: the type it returns, as it was declared - ``int&``, ``void``."""
+        return "" if self._signature is None else self._signature[1]
+
+    def GetPrototype(self) -> str:
+        """``GetPrototype``: the declaration ROOT prints it as, ``int Holder::data() const``."""
+        if self._signature is None:
+            return f"{self.GetName()}(...)"
+        returns, params, const = self._signature[1], self._signature[2], self._signature[3]
+        owner = self._owner.GetName() if self._owner is not None else ""
+        spelled = ", ".join(params)
+        return f"{returns} {owner}::{self.GetName()}({spelled})" + (" const" if const else "")
+
+    def ExtraProperty(self) -> int:
+        """``ExtraProperty``: the ``EFunctionProperty`` bits the function is - an inlined one,
+        a constructor, a destructor, an operator, a conversion."""
+        if self._signature is None:
+            return 0
+        inlined, template, kind = self._signature[5], self._signature[7], self._signature[8]
+        bits = FUNCTION_KINDS.get(kind, 0)
+        if kind == "operator" and self._converts():
+            bits = kIsConversion  # a conversion is no operator to ROOT, but a cast
+        if inlined:
+            bits |= kIsInlined
+        if template:
+            bits |= kIsCompiled
+        return bits
+
+    def _converts(self) -> bool:
+        """Is it a conversion operator - ``operator int``, and not ``operator+``?"""
+        spelled = self.GetName()[len("operator") :].strip()
+        return bool(spelled) and (spelled[0].isalpha() or spelled[0] == "_")
+
+    def _given(self, wanted: tuple[str, ...], mode: int, isconst: bool) -> bool:
+        """Can it be called with arguments of ``wanted`` on a const object, or not?"""
+        if self._signature is None:
+            return not wanted
+        const, static = self._signature[3], self._signature[4]
+        declared = tuple(_squashed(each) for each in self._signature[2])
+        kind = self._signature[8]
+        if isconst and not (const or static) and kind not in ("constructor", "destructor"):
+            return False
+        if len(declared) != len(wanted):
+            return False
+        return all(_matches(one, other, mode)
+                   for one, other in zip(wanted, declared, strict=True))  # fmt: skip
+
+
+class TFunctionTemplate(TMethod):
+    """``TFunctionTemplate``: a member function template, as ``GetFunctionTemplate`` finds it.
+
+    No instance of it is made here, so what it says of its parameters is what the template
+    declared them as; that it is inline and a template is what a search of it asks.
+    """
+
+    CLASS_TITLE = "Template function descriptor"

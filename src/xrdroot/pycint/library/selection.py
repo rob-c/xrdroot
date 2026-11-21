@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-__all__ = ["requested", "linkdef_rules", "xml_rules"]
+__all__ = ["requested", "patterned", "selected", "linkdef_rules", "xml_rules"]
 
 #: ``#pragma link C++ class Foo+;``: the kind of thing selected and its name.
 LINK = re.compile(
@@ -54,6 +54,36 @@ def xml_rules(text: str) -> list[str]:
         if found is not None:
             names.append(found["double"] if found["double"] is not None else found["single"])
     return names
+
+
+#: A genreflex element's ``pattern`` attribute, ``pattern="myTyped*"``, which selects whatever
+#: of the headers matches it rather than the one name the attribute a list can be read from is.
+PATTERN = re.compile(r"""\bpattern\s*=\s*["']""")
+
+
+def patterned(linkdef: Path | None, selection: Path | None) -> bool:
+    """Does the selection name classes by pattern, so that what it selects is not its list?
+
+    A LinkDef's ``#pragma link C++ class geo::*;`` and a genreflex element's
+    ``pattern="secondOrderType*"`` select every class the headers declare that matches, so a
+    dictionary built from one describes more than the names such a file can be read for.
+    """
+    if linkdef is not None and any("*" in rule for rule in linkdef_rules(
+            linkdef.read_text(encoding="utf-8", errors="replace"))):  # fmt: skip
+        return True
+    if selection is not None:
+        text = selection.read_text(encoding="utf-8", errors="replace")
+        return PATTERN.search(IGNORED.sub("", text)) is not None
+    return False
+
+
+def selected(linkdef: Path | None, selection: Path | None) -> list[str]:
+    """The classes a selection gives a dictionary to, by name.
+
+    None where it names them by pattern, because then it selects whatever of the headers
+    matches and every class the dictionary was built from has one.
+    """
+    return [] if patterned(linkdef, selection) else requested(linkdef, selection)
 
 
 def requested(linkdef: Path | None, selection: Path | None) -> list[str]:

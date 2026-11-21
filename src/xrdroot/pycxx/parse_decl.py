@@ -504,6 +504,7 @@ class Parser(StmtParser):
             func.static, func.variadic = spec.static, variadic
             func.virtual = "virtual" in spec.words
             func.constant_evaluation = bool(spec.words & {"constexpr", "consteval"})
+            func.inlined = bool(spec.words & {"inline"})
             self._qualifiers(func)
             if self.accept("="):
                 func.special = self.take().text
@@ -515,6 +516,7 @@ class Parser(StmtParser):
                 raise self.refuse("a function-try-block, a try around a whole function body")
             if not self.accept(";"):
                 func.body = self.block()
+                func.inlined = func.inlined or not scope
         finally:
             self.pop()
         return func

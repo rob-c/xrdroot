@@ -420,6 +420,8 @@ class Function(Stmt):
     const: bool = False
     static: bool = False
     virtual: bool = False
+    #: Defined where it is declared - in its class's body - and so inline, as C++ makes it.
+    inlined: bool = False
     variadic: bool = False
     inits: list[tuple[str, list[Expr]]] = field(default_factory=list)
     template: list[str] | None = None

@@ -91,3 +91,50 @@ def test_a_template_argument_written_as_a_number_is_the_number_in_the_layout():
     text = translate("struct S { std::array<int,4> a; std::array<float,2*3> b; };", "t.C")
     assert "('a', 'std::array<int, 4>', '', ())" in text
     assert "('b', 'std::array<float, ?>', '', ())" in text
+
+
+#: A class with the functions a reflection dictionary describes: two overloads of one name
+#: that differ only in constness, a constructor, a destructor, a conversion, a member
+#: function template, and functions declared inline in the class and out of it.
+FUNCTIONS = r"""
+class Holder {
+   int fValue;
+public:
+   Holder(int &n) { fValue = n; }
+   ~Holder() {}
+   int data() const { return fValue; }
+   int& data() { return fValue; }
+   operator int() const { return 0; }
+   template <typename T> int templated() { return fValue; }
+   inline int declared();
+   int outOfLine();
+};
+inline int Holder::declared() { return 1; }
+int Holder::outOfLine() { return 2; }
+"""
+
+
+def test_a_class_carries_its_functions_as_a_dictionary_describes_them():
+    """A ``TMethod`` made from a class's translation says its return type, each parameter's
+    type and whether it is const, static, inline and a template - which is what a program
+    searching the class by prototype, and reading what an overload returns, asks about."""
+    text = translate(FUNCTIONS, "t.C")
+    assert (
+        "_cxx_methods_ = (('Holder', 'Holder', ('int&',), False, False, True, False, "
+        "False, 'constructor'), ('~Holder', 'void', (), False, False, True, False, False, "
+        "'destructor'), ('data', 'int', (), True, False, True, False, False, 'function'), "
+        "('data', 'int&', (), False, False, True, False, False, 'function'), "
+        "('operator int', 'auto', (), True, False, True, False, False, 'operator'), "
+        "('templated', 'int', (), False, False, True, False, True, 'function'), "
+        "('declared', 'int', (), False, False, True, False, False, 'function'), "
+        "('outOfLine', 'int', (), False, False, False, False, False, 'function'))"
+    ) in text
+
+
+def test_a_class_with_no_functions_says_so_where_its_bases_say_otherwise():
+    """``_cxx_methods_`` is on every class, so that a class of no functions is not answered
+    with the ones its base declares."""
+    text = translate("struct Base { void f() {} };\nstruct Empty : Base {};", "t.C")
+    assert "class Empty(Base):" in text
+    assert "_cxx_layout_ = ('Empty', ('Base',), ())" in text
+    assert "_cxx_methods_ = ()" in text

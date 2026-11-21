@@ -318,6 +318,25 @@ class TObject:
     def SetUniqueID(self, uid: int) -> None:
         self._unique_id = int(uid)
 
+    #: ``TObject::fgObjectStat``: whether ROOT enters every object made in its object table.
+    #: No table is kept here, so the flag is only ROOT's to set and read back: a threaded
+    #: program turns it off before it starts so that the table is not a shared bottleneck.
+    _object_stat = False
+
+    @staticmethod
+    def GetObjectStat() -> bool:
+        """``GetObjectStat``: whether ROOT enters each object made in its object table."""
+        return TObject._object_stat
+
+    @staticmethod
+    def SetObjectStat(stat: Any) -> None:
+        """``SetObjectStat``: have ROOT keep every object in its table, or stop keeping them.
+
+        A program that makes objects on several threads sets this false, as ROOT's table
+        is one shared list that every construction would otherwise lock.
+        """
+        TObject._object_stat = bool(stat)
+
     # -- copies -----------------------------------------------------------------
 
     def Copy(self, obj: Any) -> None:

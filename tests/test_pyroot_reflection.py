@@ -849,3 +849,208 @@ def test_an_emulated_classs_second_layout_takes_the_next_number():
     _evo("int", "one.root")
     ROOT.TFile("one.root")
     assert _free_version("Evo", 1, {1}) == 2
+
+
+#: A class with what a program searching it by prototype has to tell apart: two overloads of
+#: one name that differ only in constness, a constructor, a destructor, a conversion, a
+#: member function template, and functions declared inline in the class and out of it.
+OVERLOADED = r"""
+class Holder {
+   int fValue;
+   static const int fConfig;
+public:
+   Holder(const char *name) { fValue = 0; }
+   Holder() { fValue = 0; }
+   ~Holder() {}
+   int data() const { return fValue; }
+   int& data() { return fValue; }
+   int value() { return fValue; }
+   static const int& config() { return fConfig; }
+   operator int() const { return 0; }
+   template <typename T> int templated() { return fValue; }
+   inline int declared() const;
+   int outOfLine();
+   int two(int a, const char *b) const { return fValue + a; }
+   int mapped(std::map<int, double> m) const { return fValue; }
+};
+const int Holder::fConfig = 3;
+inline int Holder::declared() const { return fValue; }
+int Holder::outOfLine() { return fValue; }
+"""
+
+
+def _holder():
+    run_source(OVERLOADED, "holder.C", call=False)
+    return ROOT.TClass.GetClass("Holder")
+
+
+def test_a_declared_class_lists_each_overload_its_translation_describes():
+    """A const function and a non-const one of the same parameters are two overloads, and a
+    function declared in the class and defined outside it is one - listed once."""
+    holder = _holder()
+    names = [method.GetName() for method in holder.GetListOfMethods()]
+    assert names == ["Holder", "Holder", "~Holder", "data", "data", "value", "config",
+                     "operator int", "templated", "declared", "outOfLine", "two",
+                     "mapped"]  # fmt: skip
+    assert holder.GetListOfMethods().At(0) is holder.GetListOfMethods().At(0)
+
+
+def test_a_method_is_found_by_name_and_prototype_and_says_what_it_returns():
+    holder = _holder()
+    nonconst = holder.GetMethodWithPrototype("data", "")
+    assert (nonconst.GetName(), nonconst.GetReturnTypeName()) == ("data", "int&")
+    assert (nonconst.GetPrototype(), nonconst.GetClass()) == (
+        "int& Holder::data()", holder
+    )
+    const = holder.GetMethodWithPrototype("data", "", True)
+    assert const.GetReturnTypeName() == "int"
+    assert holder.GetMethodWithPrototype("data", "int&") is None  # a parameter, not a return
+    assert holder.GetMethod("value", "", True) is None  # no const overload to find
+    assert holder.GetMethod("nothing", "") is None
+
+
+def test_an_exact_search_wants_the_type_as_it_is_declared_and_a_conversion_does_not():
+    holder = _holder()
+    assert holder.GetMethodWithPrototype("Holder", "char*", False) is not None
+    assert holder.GetMethodWithPrototype("Holder", "char*", False, ROOT.kExactMatch) is None
+    exact = holder.GetMethodWithPrototype("Holder", "const char*", False, ROOT.kExactMatch)
+    assert exact is not None
+
+
+def test_a_constructor_a_destructor_and_a_conversion_say_what_they_are():
+    holder = _holder()
+    constructor = holder.GetMethod("Holder", "", True)
+    assert constructor.ExtraProperty() & ROOT.kIsConstructor
+    assert constructor.GetReturnTypeName() == "Holder"
+    destructor = holder.GetMethodWithPrototype("~Holder", "", True)
+    assert destructor.ExtraProperty() & ROOT.kIsDestructor
+    conversion = holder.GetMethodWithPrototype("operator int", "", True)
+    assert conversion.ExtraProperty() == ROOT.kIsConversion | ROOT.kIsInlined
+    assert holder.GetMethod("data", "") is not None
+
+
+def test_a_function_defined_in_its_class_is_inline_and_one_defined_out_of_it_is_not():
+    holder = _holder()
+    assert holder.GetMethod("declared", "").ExtraProperty() & ROOT.kIsInlined
+    assert not holder.GetMethod("outOfLine", "").ExtraProperty() & ROOT.kIsInlined
+
+
+def test_a_parameter_list_is_split_at_the_commas_no_bracket_holds():
+    """``GetMethod``'s prototype is a list of types, and a type of its own may hold commas -
+    ``map<int, double>`` - which do not start the next parameter."""
+    holder = _holder()
+    assert holder.GetMethodWithPrototype("two", "int, char*") is not None
+    assert holder.GetMethodWithPrototype("mapped", "map<int, double>") is not None
+    assert holder.GetMethodWithPrototype("mapped", "map<int, double>, int") is None
+
+
+def test_a_member_function_template_is_found_as_one():
+    holder = _holder()
+    found = holder.GetFunctionTemplate("templated")
+    assert found is not None and found.GetName() == "templated"
+    assert found.ExtraProperty() & ROOT.kIsInlined
+    assert found.ExtraProperty() & ROOT.kIsCompiled  # ROOT's bit for a template's function
+    assert holder.GetFunctionTemplate("data") is None
+    # a class of no templates has none, and a class only the interpreter describes neither
+    assert ROOT.TClass.GetClass("Base").GetFunctionTemplate("templated") is None
+    assert ROOT.TClass("vector<int>").GetFunctionTemplate("templated") is None
+
+
+def test_a_function_only_a_python_name_gives_says_nothing_of_its_prototype():
+    """ROOT's own classes have no signatures here, so one is found where no prototype is
+    asked for and it answers no bits - which is where ``TObject::Print`` is."""
+    printed = ROOT.TObject.Class().GetMethodAny("Print")
+    assert printed.GetName() == "Print"
+    assert (printed.ExtraProperty(), printed.GetReturnTypeName()) == (0, "")
+    assert printed.GetPrototype() == "Print(...)"
+    assert ROOT.TObject.Class().GetMethod("Print", "int") is None
+
+
+#: A class of one member of a class, one of a container of it, and a number.
+HOLDING = r"""
+#include <vector>
+class Element { public: int x; };
+class Container { public: std::vector<Element> items; Element one; int n; };
+"""
+
+
+def test_the_classes_no_dictionary_describes_are_a_class_and_what_its_members_are():
+    run_source(HOLDING, "holding.C", call=False)
+    found = ROOT.THashTable()
+    ROOT.TClass.GetClass("Container").GetMissingDictionaries(found)
+    assert sorted(item.GetName() for item in found) == ["Container", "Element", "vector<Element>"]
+
+
+def test_a_class_a_dictionary_describes_is_not_missing_and_its_members_still_are():
+    run_source(HOLDING, "holding.C", call=False)
+    reflection.GENERATED.add("Container")
+    found = ROOT.THashTable()
+    ROOT.TClass.GetClass("Container").GetMissingDictionaries(found)
+    assert sorted(item.GetName() for item in found) == ["Element", "vector<Element>"]
+    assert not ROOT.TClass("TList")._dictless()  # one of ROOT's own is described
+
+
+def test_a_recursion_walks_into_the_classes_it_found_and_a_wrapper_holds_what_it_is_of():
+    run_source(HOLDING, "holding.C", call=False)
+    held = ROOT.THashTable()
+    ROOT.TClass.GetClass("std::unique_ptr<Element>").GetMissingDictionaries(held, True)
+    assert [item.GetName() for item in held] == ["Element"]
+    assert ROOT.TClass("array<long, 4>")._dictless() is False
+    assert ROOT.TClass("vector<int>")._dictless() is False  # a dictionary instantiates it
+    assert ROOT.TClass("vector<Element>")._dictless() is True
+
+
+#: A class deriving from one no dictionary describes, holding one made by a program's own
+#: template, a pointer to a class - two of them - and members that name no class at all.
+DERIVED_HOLDING = r"""
+#include <array>
+#include <map>
+template <typename T> class Box { T held; };
+class Base { public: int b; };
+class Element { public: int x; };
+class Derived : public Base {
+public:
+   Box<Element> box;
+   Element *ptr;
+   Element *other;
+   std::array<Element, 4> arr;
+   std::vector<char*> words;
+   int counts[3];
+   double d;
+};
+"""
+
+
+def test_a_base_and_a_pointer_to_a_class_are_missing_and_a_number_is_no_class():
+    """A class no dictionary describes is reported with its base, the class a pointer member
+    is of - once, however many members are of it - and the class a program's own template
+    makes; a number, an array of them and what a wrapper holds where it is no class are not."""
+    run_source(DERIVED_HOLDING, "derived.C", call=False)
+    found = ROOT.THashTable()
+    ROOT.TClass.GetClass("Derived").GetMissingDictionaries(found)
+    assert sorted(item.GetName() for item in found) == [
+        "Base", "Box<Element>", "Derived", "Element"]
+
+
+def test_a_hash_table_finds_its_object_by_the_name_an_object_argument_has():
+    """ROOT's ``TCollection::FindObject(TObject*)`` looks the object up by its name, which is
+    what lets a program holding a ``TClass`` of a missing class find it in the table."""
+    first, second = ROOT.TClass("Container"), ROOT.TClass("Container")
+    held = ROOT.THashTable()
+    held.Add(first)
+    assert (held.FindObject(second), held.Empty()) == (first, False)
+    held.Clear()
+    assert held.Empty()
+
+
+def test_object_stat_is_a_flag_the_namespace_sets_and_reads_back():
+    """``TObject::SetObjectStat`` is ROOT's switch for entering each made object in its object
+    table; a threaded program turns it off, and every class of the namespace answers it."""
+    was = ROOT.TObject.GetObjectStat()
+    try:
+        ROOT.TObject.SetObjectStat(False)
+        assert ROOT.TObject.GetObjectStat() is False
+        ROOT.TObject.SetObjectStat(True)
+        assert ROOT.TH1F("h", "h", 1, 0, 1).GetObjectStat() is True
+    finally:
+        ROOT.TObject.SetObjectStat(was)

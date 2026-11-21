@@ -285,13 +285,19 @@ def _dictionaried(loaded: Loaded) -> None:
     """Tell ROOT's class table which classes this library's dictionary describes.
 
     A program asks ``TClassTable::GetDict("Event")`` to decide whether it must load the
-    library first, which under ROOT is answered by the dictionary the library carries.
+    library first, which under ROOT is answered by the dictionary the library carries. A
+    dictionary describes the classes it was asked to select, and no other class of a header
+    it read: the table holds those, under both the qualified name a LinkDef writes and the
+    plain one the class is declared by here.
     """
-    classes = [
+    declared = [
         name
         for name, value in loaded.module.items()
         if isinstance(value, type) and getattr(value, "__module__", None) == MODULE
     ]
+    selected = loaded.library.selected
+    wanted = {each.split("::")[-1].split("<")[0].strip() for each in selected}
+    classes = [*selected, *(name for name in declared if not wanted or name in wanted)]
     if not classes:
         return
     from ...pyroot.core.reflection import note_generated_dictionary
