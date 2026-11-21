@@ -44,6 +44,17 @@ def test_cell_item_and_attribute_references_write_the_storage_they_capture() -> 
         number[1] = 4
 
 
+def test_a_taken_element_address_is_a_pointer_over_the_containers_own_elements() -> None:
+    values = [1.5, 2.5, 3.5]
+    pointer = cells.ItemRef(values, 1)
+    assert len(pointer) == 2 and list(pointer) == [2.5, 3.5]
+    assert pointer[1:2] == [3.5] and pointer[:] == [2.5, 3.5]
+    pointer[0:1] = [7.0]
+    assert values == [1.5, 7.0, 3.5]
+    pointer[1:] = [8.0]
+    assert values == [1.5, 7.0, 8.0]
+
+
 def test_generic_assignment_updates_held_containers_and_keeps_the_return_contract() -> None:
     target, source = [1], [2, 3]
     assert references.assign_into(target, source) is source and target == [2, 3]

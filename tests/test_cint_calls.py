@@ -66,6 +66,31 @@ def body(source: str) -> str:
             "3.5\n",
         ),
         ('double w[3] = {1, 2, 3}; printf("%g\\n", std::accumulate(w, w + 2, 10.0));', "13\n"),
+        (
+            'double a[4] = {3, 1, 2, 0}; std::sort(&a[0], &a[0] + 3);'
+            'printf("%g %g\\n", a[0], a[3]);',
+            "1 0\n",
+        ),
+        (
+            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+            'std::sort(&v[0], &v[0] + 2); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "1 3 2\n",
+        ),
+        (
+            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+            'std::sort(&v.front(), &v.front() + 2); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "1 3 2\n",
+        ),
+        (
+            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+            'int *p = &v[0]; std::reverse(p, p + 3); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "2 1 3\n",
+        ),
+        (
+            'double a[3] = {1, 2, 3}; double b[3] = {0, 0, 0};'
+            'std::copy(&a[0], &a[3], &b[0]); printf("%g %g %g\\n", b[0], b[1], b[2]);',
+            "1 2 3\n",
+        ),
         ('printf("%d %d %d\\n", abs(-3), std::max(2, 5), std::min(1.5, 0.5) < 1);', "3 5 1\n"),
         ('long big = 5; unsigned char c = 260; printf("%ld %d\\n", big, c);', "5 4\n"),
         ('int x; x = {3}; printf("%d\\n", x);', "3\n"),
