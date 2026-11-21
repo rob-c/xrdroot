@@ -1104,7 +1104,24 @@ def _column(
 
 
 def _each_row(label: str, step: Step) -> Fill:
-    """A member every object has in turn, each read the way one object's is."""
+    """A member every object has in turn, each read the way one object's is.
+
+    A member that is one number is read for every object in one go: the objects' numbers
+    follow one another with nothing between them, so one struct covers them all - a
+    collection of six hundred objects of fourteen numbers was eight thousand reads of one
+    number, and is fourteen reads of six hundred.
+    """
+    if type(step) is _Plain and not step.shaped:
+        code = step.code  # narrowed to _Plain by the test above
+
+        def run(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+            if not rows:
+                return
+            values = buf.scalars(_form(f"{len(rows)}{code}"))
+            for row, value in zip(rows, values, strict=True):
+                row[label] = value
+
+        return run
 
     def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
         for row in rows:
