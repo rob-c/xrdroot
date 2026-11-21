@@ -419,3 +419,29 @@ def test_add_bin_content_takes_one_bin_number_per_axis_then_the_weight():
     )
     h1.AddBinContent(2)  # one number per axis and no weight: one entry
     assert h1.GetBinContent(2) == 1.0
+
+
+def test_the_static_smooth_array_leaves_a_smooth_array_as_it_was_and_writes_in_place():
+    """``TH1::SmoothArray(nn, yy[, ntimes])`` is HBOOK's ``hsmoof`` over a raw array - the
+    static a program calls with ``v.data()`` - and what it writes lands in the array itself.
+    ROOT's ``TH1.SmoothArrayCrossCheck`` case asks for a ramp and one repeated value to come
+    back unchanged; a single wild value is stepped over rather than smeared, and ``ntimes``
+    at zero smooths nothing."""
+    ramp = ROOT.std.vector["double"]([0.0, 1.0, 2.0, 3.0, 4.0])
+    ROOT.TH1.SmoothArray(ramp.size(), ramp.data())
+    flat = ROOT.std.vector["double"]([1.0] * 5)
+    ROOT.TH1.SmoothArray(5, flat.data())
+    expect(
+        (list(ramp), [0.0, 1.0, 2.0, 3.0, 4.0]),
+        (list(flat), [1.0] * 5),
+    )
+    wild = np.array([0.0, 1.0, 99.0, 3.0, 4.0])
+    ROOT.TH1.SmoothArray(5, wild)
+    # A running median steps over a single wild value rather than smearing it: the 99 is
+    # gone and the values beside it are near what they were.
+    assert 99.0 not in wild.tolist()
+    assert abs(wild[1] - 1.0) <= 1.0 and abs(wild[3] - 3.0) <= 1.0
+    untouched = np.array([0.0, 5.0, 0.0])
+    ROOT.TH1.SmoothArray(3, untouched, 0)
+    assert untouched.tolist() == [0.0, 5.0, 0.0]
+    assert ROOT.TH1D("s", "", 5, 0, 5).Smooth(1) is None  # the in-place twin still there

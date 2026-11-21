@@ -90,6 +90,22 @@ class TH1(
         self._xrd.set_stat_overflows(int(value))
 
     @staticmethod
+    def SmoothArray(nn: Any, yy: Any, ntimes: Any = 1) -> None:
+        """``TH1::SmoothArray(nn, yy[, ntimes])``: HBOOK's ``hsmoof`` - J. Friedman's 353QH
+        twice, ``ntimes`` over - over the ``nn`` values of ``yy``, in place.
+
+        ``yy`` is a C array a program hands over as a pointer, so it is written where it lies:
+        an array of numbers in place, or a view a ``std::vector`` gave up. An array already
+        smooth - a ramp, or one value repeated - comes back as it went in, which is what
+        ROOT's own ``TH1.SmoothArrayCrossCheck`` case asserts.
+        """
+        from ...stats import smooth_array
+
+        target = np.asarray(yy) if not isinstance(yy, np.ndarray) else yy
+        values = smooth_array(target[: int(nn)], int(ntimes))
+        target[: len(values)] = values
+
+    @staticmethod
     def StatOverflows(value: Any) -> None:
         """``TH1::StatOverflows(on)``: the global flag, which a ``kNeutral`` histogram asks."""
         TH1._stat_overflows = bool(value)
