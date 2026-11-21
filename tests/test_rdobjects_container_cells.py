@@ -1,9 +1,11 @@
 """A member that is a container of objects, read back with the class of the things in it.
 
 ``roottest/root/io/bigevent``'s ``Event`` holds ``vector<TObject> *fVectorTobject`` (line 99)
-and ``vector<TNamed> *fVectorTnamed`` (line 100), and the bytes of such a member are a record, a
+and ``vector<TNamed> *fVectorTnamed[6]`` (line 100), and the bytes of such a member are a record, a
 count and then one object's members after another - none of them saying which class they are,
-because the declaration already did. So what the reader hands back for the lot is a list of
+because the declaration already did. The second is an array of them: ROOT writes the whole array
+into one record, so what it reads as is one such list per position, and the class is named of
+every item of every one of them. So what the reader hands back for the lot is a list of
 dictionaries of members, and an item of it has no class to be asked anything on:
 ``event->GetVectorTobject()->at(0)->GetUniqueID()`` has nothing to be read off.
 
@@ -23,9 +25,12 @@ from xrdroot.buffer import Buffer
 from xrdroot.pycint.execute import run_source
 from xrdroot.pyroot.core.declared import catalogue_of, find_class
 from xrdroot.rdobjects import (
+    ARRAY_OFFSET,
+    STL_POINTER,
     STREAMER,
     DescribedSource,
     Members,
+    _cell_members,
     _cell_of,
     _cells_of,
     reader_for,
@@ -45,6 +50,11 @@ def _read(source: DescribedSource, classname: str, value: dict[str, object]) -> 
     catalogue = source.catalogue
     payload = DeclaredObject(Instance(classname, value), catalogue).root_payload(0)[0]
     return reader_for(classname, catalogue)(Buffer(payload))
+
+
+def _members(source: DescribedSource, classname: str) -> dict[str, Member]:
+    """The members one class is described with, by name."""
+    return source.streamers()[classname]
 
 
 #: A ``TNamed`` as a macro makes one: the base every ROOT object has, and the two strings.
@@ -85,9 +95,10 @@ def test_an_empty_container_holds_no_item_to_name():
 
 def test_the_class_a_container_member_holds_is_the_one_the_description_names():
     """Which members of a class hold a container of ROOT objects by value, and which class each
-    of them holds - the one place a reader can learn it, since the bytes say nothing."""
+    of them holds - the one place a reader can learn it, since the bytes say nothing - and that
+    such a member stands for one container and not for an array of them."""
     source, _text = _described(NAMED_HOLDER, "NamedHolder")
-    assert _cells_of(source, "NamedHolder") == (("fNamed", "TNamed"),)
+    assert _cells_of(source, "NamedHolder") == (("fNamed", "TNamed", False),)
 
 
 def test_a_container_of_pointers_names_no_class_of_its_items():
@@ -111,6 +122,68 @@ class Mines { public: vector<Mine> fM; ClassDef(Mines, 1) };
         "Mines",
     )
     assert _cells_of(source, "Mines") == ()
+
+
+#: A class with an array of pointers to containers beside a plain one - the two shapes ROOT
+#: gives the bigevent ``Event``'s ``fVectorTnamed`` and ``fVectorTobject``.
+NAMED_ARRAY = r"""
+class NamedArray {
+public:
+   Int_t fN;
+   vector<TNamed> *fNamed[2];
+   vector<TNamed> *fGrid[2][3];
+   ClassDef(NamedArray, 1)
+};
+"""
+
+
+@pytest.mark.parametrize("member", ["fNamed", "fGrid"])
+def test_an_array_of_pointers_to_containers_names_the_class_of_every_item(member: str):
+    """``vector<TNamed> *fVectorTnamed[6]`` - ``Event.h:100`` - is type 91, the container
+    pointed at *and* a fixed-size array, and it names the same ``vector<TNamed>`` its neighbour
+    ``fVectorTobject`` does: so the class of every item of every container of it is the one the
+    description names, which is what the reader hands each of them back as."""
+    source, _text = _described(NAMED_ARRAY, "NamedArray")
+    cell = _members(source, "NamedArray")[member]
+    assert cell.stype == STL_POINTER + ARRAY_OFFSET
+    assert _cell_of(cell) == "TNamed"
+
+
+def test_an_array_of_containers_is_the_one_shape_the_reader_hands_back_a_row_of():
+    """The third thing a container member's description is read for: whether it is one container
+    or one per position of an array, which decides how deep the name of the class goes - ROOT
+    writes the whole array into a single record, so what comes back is a list of them."""
+    source, _text = _described(NAMED_ARRAY, "NamedArray")
+    assert _cells_of(source, "NamedArray") == (
+        ("fNamed", "TNamed", True),
+        ("fGrid", "TNamed", True),
+    )
+
+
+def test_the_array_a_member_of_containers_is_declared_as_is_the_length_it_is_read_by():
+    """Nothing about such a member is dropped on the way to the reader: the type keeps its
+    star, so the container is still spelled and the item's class is still named; the length is
+    the dimension of the array, which is the count the one record begins with - a plain
+    container member has none, which is why only an arrayed one is read as more than one - and
+    a shape of more than one dimension is in ``dims``, the same as it is for a file's own
+    description of the member."""
+    source, _text = _described(NAMED_ARRAY, "NamedArray")
+    members = _members(source, "NamedArray")
+    assert (members["fNamed"].length, members["fNamed"].dims) == (2, ())
+    assert (members["fGrid"].length, members["fGrid"].dims) == (6, (2, 3))
+
+
+def test_each_container_of_an_array_of_them_comes_back_with_the_class_of_its_own_items():
+    """What the reader makes of the value the array member reads as: one list of items per
+    container, each item handed back as the members of the class the description names - where
+    a member that is one container gives one list of them."""
+    rows = [[{"fName": "a", "fTitle": ""}], [{"fName": "b", "fTitle": ""}]]
+    arrayed = _cell_members(rows, "TNamed", True)
+    assert [item["fName"] for held in arrayed for item in held] == ["a", "b"]
+    assert all(isinstance(item, Members) for held in arrayed for item in held)
+    plain = _cell_members(rows[1], "TNamed", False)
+    assert [item["fName"] for item in plain] == ["b"]
+    assert all(isinstance(item, Members) and item.classname == "TNamed" for item in plain)
 
 
 @pytest.mark.parametrize(

@@ -39,6 +39,12 @@ STREAMER = 500
 #: no tag in front of it to say a pointer was there at all.
 STL_POINTER = 71
 
+#: ROOT's offset for a member declared as a fixed array of what the type names - ``kOffsetL``,
+#: added to the type of the thing arrayed. ``vector<TNamed> *fVectorTnamed[6]`` is
+#: :data:`STL_POINTER` plus this, and ROOT writes such a member into one record for the whole
+#: array: the count, then each pointer's container.
+ARRAY_OFFSET = 20
+
 #: The two streamer types of a member that is one object written where it stands - ROOT's
 #: ``kObject`` and ``kObjectAny``. The record goes where the member is with no class name in
 #: front of it, so the description the class is laid out by is the only place that says what
@@ -62,6 +68,15 @@ def _member(element: Element) -> Member:
     roottest's ``Event::fVectorTobject`` is a ``vector<TObject> *`` whose three objects come
     after a record and a count, with nothing saying the pointer was there, so the pointer is
     taken off the type and the container read where the pointer stands.
+
+    An array of pointers to containers - ``vector<TNamed> *fVectorTnamed[6]``, the member
+    beside it - is the one container that keeps its type, because the count the reader needs
+    is the array's and not the container's. Everything the reading of it takes is in the
+    member as it stands: the type still spells the container and so the class of its items,
+    :data:`~.streamers.Member.length` is the dimension of the array (nothing else gives a
+    container member a length, which is why a plain one carries zero), and a shape with more
+    than one dimension is in ``dims``. So the type is left alone here and the member's own
+    length is what says how many containers the one record holds.
     """
     kind, name, title, stype, _size, length, _dims, _maxidx, typename, extras = element
     if kind in ("TStreamerSTL", "TStreamerSTLstring") and stype in (300, STL_POINTER):
@@ -204,8 +219,13 @@ def _cell_of(member: Member) -> str | None:
     a pointer, whose item names its own class in the bytes and may well be of a subclass. Only
     the first is a class the declaration can name, so only it is named here; a map is none of
     them, its items being the pairs its two types make.
+
+    An array of pointers to containers - ``vector<TNamed> *fVectorTnamed[6]`` - names the same
+    container a member beside it would, so the class of its items is named the same way; what
+    is more about it is only that the member stands for one container per position of the
+    array, which is :func:`_cells_of`'s to say.
     """
-    if member.stype != STREAMER:
+    if member.stype not in (STREAMER, STL_POINTER + ARRAY_OFFSET):
         return None
     found = parse_type(member.typename)
     if found.name in MAPS or found.name not in STL_KINDS or len(found.args) != 1:
@@ -214,19 +234,28 @@ def _cell_of(member: Member) -> str | None:
     return content.name if not content.stars and content.name in INFOS else None
 
 
-def _cells_of(source: Any, classname: str) -> tuple[tuple[str, str], ...]:
-    """Which of a class's members are a container of one of ROOT's own classes by value, and
-    the class each of them holds - the ``vector<TObject> *fVectorTobject`` of the bigevent
-    roottest's ``Event``, whose three objects the bytes give as three rows of numbers.
+def _cells_of(source: Any, classname: str) -> tuple[tuple[str, str, bool], ...]:
+    """Which of a class's members are a container of one of ROOT's own classes by value, the
+    class each of them holds, and whether the member is a fixed-size array of such containers -
+    the ``vector<TObject> *fVectorTobject`` of the bigevent roottest's ``Event``, whose three
+    objects the bytes give as three rows of numbers, and beside it the ``vector<TNamed>
+    *fVectorTnamed[6]``, which the same reader meets as six of them.
 
     Nothing in the bytes says which class an item is, since the container was declared as one:
     what the reader hands back for the lot is dictionaries of members, and the description is
     the only place where the class of them is written down - so a macro asking an item for what
     its class has has nothing to ask.
+
+    The third says which of the two shapes the containers come in, because the reader hands
+    back one list of items for a container and one for each position of an array of them: ROOT
+    writes the array into a single record, and to the reader that is a row of containers rather
+    than one.
     """
     layout = source.streamers().get(classname) or {}
     return tuple(
-        (name, cell) for name, member in layout.items() if (cell := _cell_of(member)) is not None
+        (name, cell, member.stype == STL_POINTER + ARRAY_OFFSET)
+        for name, member in layout.items()
+        if (cell := _cell_of(member)) is not None
     )
 
 
@@ -252,8 +281,9 @@ def _array_read(
     """A class's record read, with each member that is one of ROOT's arrays handed back as the
     members that class is described with, each that is one of ROOT's own objects handed back as
     those members and the name of their class, and each that is a container of them - every
-    item of it so - or ``read`` itself, for a class holding none of the three, which is every
-    class but the few that keep a ROOT array, object or container of them in them."""
+    item of it so, and every item of every container of an array of them - or ``read`` itself,
+    for a class holding none of the three, which is every class but the few that keep a ROOT
+    array, object or container of them in them."""
     names = _array_members(source, classname)
     held = _class_of(source, classname)
     cells = _cells_of(source, classname)
@@ -270,13 +300,26 @@ def _array_read(
             members = row.get(name)
             if isinstance(members, dict):  # a member that streams itself is no dict - a TDatime
                 row[name] = Members(members, of_class)
-        for name, of_class in cells:
+        for name, of_class, arrayed in cells:
             items = row.get(name)
             if items:  # a container that was never made holds nothing to name
-                row[name] = [Members(item, of_class) for item in items]
+                row[name] = _cell_members(items, of_class, arrayed)
         return row
 
     return value
+
+
+def _cell_members(items: list[Any], of_class: str, arrayed: bool) -> list[Any]:
+    """A container member's items handed back with the class the description names for them -
+    or, for a member that is an array of containers, one such list per container the record
+    held, in the order the array has them.
+
+    The two differ only in how deep the class goes, which is what the member's own shape says
+    and what the reader is spared working out again from the values it has just read.
+    """
+    if arrayed:
+        return [[Members(item, of_class) for item in held] for held in items]
+    return [Members(item, of_class) for item in items]
 
 
 def flat_reader_for(
