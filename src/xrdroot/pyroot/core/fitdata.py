@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 
 from ...fit import cost
-from ...fit.data import VALUE_ERROR, FitData, from_histogram
+from ...fit.data import ASYM_ERROR, COORD_ERROR, NO_ERROR, VALUE_ERROR, FitData, from_histogram
 from ...fit.data import DataOptions as _Options
 
 __all__ = ["BinData", "Chi2Function", "DataOptions", "DataRange", "FillData", "WrappedMultiTF1"]
@@ -32,6 +32,19 @@ class WrappedMultiTF1:
 
     def NDim(self) -> int:
         return self._dim
+
+    def Parameters(self) -> Any:
+        """``Parameters()``: the ``TF1``'s parameters, which the wrapper holds by reference."""
+        return np.array(
+            [self._function.GetParameter(i) for i in range(int(self._function.GetNpar()))],
+            dtype=np.float64,
+        )
+
+    def SetParameters(self, params: Any) -> None:
+        """``SetParameters(p)``: the ``TF1``'s parameters set, since it is the ``TF1`` that
+        is evaluated and so the one whose parameters the fit moves."""
+        for at in range(int(self._function.GetNpar())):
+            self._function.SetParameter(at, float(params[at]))
 
     def NPar(self) -> int:
         return int(self._function.GetNpar())
@@ -114,6 +127,25 @@ class BinData:
 
     def NDim(self) -> int:
         return 0 if self._data is None else int(self._data.ndim)
+
+    #: ``BinData::ErrorType``, in ROOT's order: which errors the points carry, and what a
+    #: ``printData`` has to read off each one to print it.
+    kNoError, kValueError, kCoordError, kAsymError = NO_ERROR, VALUE_ERROR, COORD_ERROR, ASYM_ERROR
+
+    def GetErrorType(self) -> int:
+        """``GetErrorType``: one of the ``k...`` above - that each point has a value and no
+        error before any is given, as ROOT's own empty ``BinData`` has."""
+        return NO_ERROR if self._data is None else int(self._data.kind)
+
+    def Coords(self, index: int) -> Any:
+        """``Coords(i)``: the ``i``-th point's coordinates, as many as ``NDim``."""
+        return np.asarray(self._data.x[int(index)], dtype=np.float64)
+
+    def Value(self, index: int) -> float:
+        return float(self._data.y[int(index)])
+
+    def Error(self, index: int) -> float:
+        return float(self._data.error[int(index)])
 
 
 def FillData(data: BinData, histogram: Any, function: Any = None) -> None:

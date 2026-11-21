@@ -317,3 +317,71 @@ def test_a_cleared_minimizer_keeps_its_variables_and_has_no_minimum():
     minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 4) ** 2, 1))
     assert minimizer.Minimize()
     assert minimizer.X()[0] == pytest.approx(4.0, abs=1e-3)
+
+
+def test_the_chi_square_named_as_a_template_makes_the_same_chi_square():
+    """``ROOT::Fit::Chi2FCN<IMultiGenFunction>``: C++'s argument written out, and dropped."""
+    data = ROOT.Fit.BinData()
+    data.Add(1.0, 2.0, 0.5)
+    function = ROOT.Math.WrappedMultiTF1(ROOT.TF1("f", "[0]*x", 0, 1))
+    made = ROOT.Fit.Chi2FCN[ROOT.Math.IMultiGenFunction](data, function)
+    assert isinstance(made, ROOT.Fit.Chi2Function)
+    assert made.NDim() == 1
+
+
+def test_the_genetic_minimizer_finds_a_minimum_inside_the_limits():
+    minimizer = ROOT.Math.GeneticMinimizer()
+    minimizer.SetFunction(
+        ROOT.Math.Functor(lambda v: (v[0] - 2.0) ** 2 + (v[1] + 1.0) ** 2, 2)
+    )
+    minimizer.SetLimitedVariable(0, "a", 0.0, 0.1, -10.0, 10.0)
+    minimizer.SetLimitedVariable(1, "b", 0.0, 0.1, -10.0, 10.0)
+    assert minimizer.Minimize()
+    assert list(minimizer.X()) == pytest.approx([2.0, -1.0], abs=0.5)
+    assert minimizer.MinValue() < 0.5
+    assert minimizer.NCalls() > 0
+    expect((minimizer.Edm(), 0.0), (minimizer.Status(), 0), (minimizer.NDim(), 2))
+
+
+def test_the_genetic_minimizer_searches_around_an_unbounded_variables_start():
+    """A variable given no limits is searched within the spread of its step of its start."""
+    minimizer = ROOT.Math.GeneticMinimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: v[0] ** 2, 1))
+    minimizer.SetVariable(0, "a", 3.0, 0.5)
+    assert minimizer.Minimize()
+    assert 2.5 <= minimizer.X()[0] <= 3.5
+    assert minimizer.X()[0] == pytest.approx(2.5, abs=0.1)
+
+
+def test_the_genetic_minimizers_settings_are_its_own_and_its_minimum_is_dropped():
+    parameters = ROOT.Math.GeneticMinimizerParameters()
+    parameters.fPopSize, parameters.fNsteps, parameters.fSeed = 4, 2, 7
+    minimizer = ROOT.Math.GeneticMinimizer()
+    minimizer.SetParameters(parameters)
+    assert minimizer.Parameters() is parameters
+    expect((minimizer.MinValue(), 0.0), (minimizer.Status(), 3), (list(minimizer.X()), []))
+    # No function at all, then a function but no variable: nothing to minimise either way.
+    assert not minimizer.Minimize()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: v[0] ** 2, 1))
+    assert not minimizer.Minimize()
+    minimizer.SetVariable(0, "a", 1.0, 0.1)
+    assert minimizer.Minimize()
+    minimizer.Clear()
+    expect((minimizer.MinValue(), 0.0), (minimizer.NCalls(), 0), (minimizer.Status(), 3),
+           (list(minimizer.X()), []))  # fmt: skip
+
+
+def test_a_fit_handed_its_function_starts_where_that_functions_parameters_stand():
+    """``Fit(d, f)``: the model given with the data, as ROOT's own fit programs call it."""
+    data = ROOT.Fit.BinData(1, 1)
+    for x in (-2.0, -1.0, 0.0, 1.0, 2.0):
+        data.Add(x, 1.0 + 2.0 * x, 0.1)
+    fitter = ROOT.Fit.Fitter()
+    assert fitter.Fit(data, ROOT.Math.WrappedMultiTF1(ROOT.TF1("g", "[0] + [1]*x", -3, 3)))
+    result = fitter.Result()
+    assert (result.Parameter(0), result.Parameter(1)) == pytest.approx((1.0, 2.0), abs=1e-4)
+
+
+def test_a_fit_with_neither_a_model_nor_a_function_says_which_it_wants():
+    with pytest.raises(ValueError, match="fits the model SetFunction gave it"):
+        ROOT.Fit.Fitter().Fit(ROOT.Fit.BinData())

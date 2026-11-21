@@ -29,6 +29,8 @@ __all__ = [
     "Fitter",
     "Fit",
     "Minimizer",
+    "GeneticMinimizer",
+    "GeneticMinimizerParameters",
     "Factory",
 ]
 
@@ -363,8 +365,14 @@ class Fitter:
             one.SetName(tf.GetParName(i))
         return True
 
-    def Fit(self, data: Any, *rest: Any) -> bool:
-        """``Fit(data)``: the model's chi-square over the data minimised."""
+    def Fit(self, data: Any, function: Any = None, *rest: Any) -> bool:
+        """``Fit(data)``, or ``Fit(data, function)``: the model's chi-square over the data
+        minimised, from the parameters the model stands at - which ROOT's ``Fit(d, f)``
+        takes from the function it is handed, so a fit follows a ``SetParameters``."""
+        if function is not None:
+            self.SetFunction(function)
+        elif "_model" not in self.__dict__:
+            raise ValueError("Fit() fits the model SetFunction gave it, and none was given")
         chi2 = fitdata.Chi2Function(data, self.__dict__["_model"])
         return self.FitFCN(chi2.NDim(), chi2, None, data.Size(), True)
 
@@ -418,6 +426,24 @@ def _minimised(fcn: Any, settings: list[ParameterSettings]) -> Any:
     return core._result(made, names, False, int(made.nfcn))
 
 
+class _Template:
+    """A ROOT class template whose argument a macro writes out, as ``Chi2FCN<IMultiGenFunction>``.
+
+    In C++ the argument says what the template is instantiated over; here it says
+    nothing a reader of the object needs, so naming it gives the class back and
+    the call makes the object, which is what the macro's next line does.
+    """
+
+    def __init__(self, make: Callable[..., Any]) -> None:
+        self._make = make
+
+    def __getitem__(self, argument: Any) -> _Template:
+        return self
+
+    def __call__(self, *args: Any) -> Any:
+        return self._make(*args)
+
+
 class _FitNamespace:
     """``ROOT.Fit``: the ``ROOT::Fit`` namespace."""
 
@@ -426,6 +452,9 @@ class _FitNamespace:
     ParameterSettings = ParameterSettings
     BinData = fitdata.BinData
     Chi2Function = fitdata.Chi2Function
+    #: ``ROOT::Fit::Chi2FCN``: the same chi-square under the name ROOT's own fit code
+    #: gives it, a class template whose argument a macro has to write out.
+    Chi2FCN = _Template(fitdata.Chi2Function)
     DataOptions = fitdata.DataOptions
     DataRange = fitdata.DataRange
     FillData = staticmethod(fitdata.FillData)
@@ -588,3 +617,137 @@ class Factory:
     @staticmethod
     def CreateMinimizer(name: Any = "Minuit2", algorithm: Any = "") -> Minimizer:
         return Minimizer(str(name), str(algorithm))
+
+
+class GeneticMinimizerParameters:
+    """``ROOT::Math::GeneticMinimizerParameters``: the genetic algorithm's own settings.
+
+    ROOT starts from a population of 30 over 30 steps, at a mutation rate of
+    0.1 and a spread of 1 around a variable's start; the search here reads the
+    population's size, its steps, that rate, the seed and the spread, since
+    those alone decide how much of the box it covers.
+    """
+
+    def __init__(self) -> None:
+        self.fPopSize = 30
+        self.fNsteps = 30
+        self.fCycles = 3
+        self.fSC = 2
+        self.fCrossoverType = 0
+        self.fCrossoverSize = 1.0
+        self.fMutationRate = 0.1
+        self.fMutationSize = 1.0
+        self.fSeed = 0
+        self.fSpread = 1.0
+
+
+class GeneticMinimizer(Minimizer):
+    """``ROOT::Math::GeneticMinimizer``: a function minimised by a genetic algorithm.
+
+    Where Minuit follows the gradient down from one point, this searches a box
+    at once: a population of points inside each variable's limits - or, for a
+    variable without limits, around its start by the spread the parameters
+    give, a genetic algorithm having no way to search an unbounded space - of
+    which the better half begets the next generation and the best is kept as it
+    is. A fixed number of generations is what it costs, and it needs no
+    derivative, which makes it the search to run before Minuit on a fit whose
+    starting point is far from the minimum, as ``GAMinTutorial`` does.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Genetic", "GA")
+        self._parameters = GeneticMinimizerParameters()
+        self._best: Any = None
+        self._calls = 0
+
+    def SetParameters(self, parameters: GeneticMinimizerParameters) -> None:
+        """``SetParameters(params)``: the population's size, its steps, its seed and rate."""
+        self._parameters = parameters
+
+    def Parameters(self) -> GeneticMinimizerParameters:
+        return self._parameters
+
+    def Clear(self) -> None:
+        """``Clear``: the function and the minimum dropped, as Minuit2's ``Clear`` does."""
+        super().Clear()
+        self._best, self._calls = None, 0
+
+    def Minimize(self) -> bool:
+        """``Minimize``: the generations run, and whether a finite minimum was found."""
+        order = sorted(self._variables)
+        if self._fcn is None or not order:
+            return False
+        rng = np.random.default_rng(int(self._parameters.fSeed))
+        low, high = _ga_bounds(self._variables, order, float(self._parameters.fSpread))
+        selected = _ga_population(self._parameters, rng, low, high)
+        selected[0] = np.clip([self._variables[at][1] for at in order], low, high)
+        values = np.array([self._evaluate(point) for point in selected])
+        rate = float(self._parameters.fMutationRate)
+        for _ in range(int(self._parameters.fNsteps)):
+            selected = _ga_next(selected, values, low, high, rng, rate)
+            values = np.array([self._evaluate(point) for point in selected])
+        best = int(np.argmin(values))
+        self._best = (selected[best], float(values[best]))
+        return bool(np.isfinite(values[best]))
+
+    def _evaluate(self, point: np.ndarray[Any, Any]) -> float:
+        """The function at ``point``, counted: ``NCalls`` is what the search cost."""
+        self._calls += 1
+        return float(self._fcn(point))
+
+    def MinValue(self) -> float:
+        return 0.0 if self._best is None else self._best[1]
+
+    def X(self) -> np.ndarray[Any, Any]:
+        return np.array([]) if self._best is None else np.array(self._best[0])
+
+    def NCalls(self) -> int:
+        return self._calls
+
+    def Edm(self) -> float:
+        return 0.0
+
+    def Status(self) -> int:
+        return 0 if self._best is not None else 3
+
+
+def _ga_bounds(variables: dict[int, list[Any]], order: list[int], spread: float,
+               ) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:  # fmt: skip
+    """Each variable's box: its own limits, or its start less and more the spread of its step.
+
+    A genetic algorithm searches a finite box and nothing else, so a variable
+    given no limits is searched within that spread of where it starts - the
+    reading ROOT gives a standard deviation it cannot use otherwise.
+    """
+    low, high = [], []
+    for at in order:
+        _, value, step, limits = variables[at]
+        span = abs(float(step)) * spread or spread
+        pair = limits if limits is not None else (value - span, value + span)
+        low.append(float(pair[0]))
+        high.append(max(float(pair[1]), float(pair[0]) + span * 1e-3))
+    return np.array(low), np.array(high)
+
+
+def _ga_population(parameters: GeneticMinimizerParameters, rng: Any,
+                   low: np.ndarray[Any, Any], high: np.ndarray[Any, Any],
+                   ) -> np.ndarray[Any, Any]:  # fmt: skip
+    """The first population: points spread evenly over the box, each variable searched as
+    widely as the others, and never fewer than the two a generation needs."""
+    size = max(4, int(parameters.fPopSize) // 2 * 2)
+    return low + rng.random((size, len(low))) * (high - low)
+
+
+def _ga_next(selected: np.ndarray[Any, Any], values: np.ndarray[Any, Any],
+             low: np.ndarray[Any, Any], high: np.ndarray[Any, Any], rng: Any, rate: float,
+             ) -> np.ndarray[Any, Any]:  # fmt: skip
+    """One generation: the better half kept as they stand and bred from, each child a blend
+    of two of them, and a gene of it mutated now and then - which is what lets it leave the
+    box the first population happened to cover."""
+    keeper = selected[np.argsort(values)][: max(2, len(selected) // 2)]
+    parents = keeper[rng.integers(0, len(keeper), size=(len(selected) - len(keeper), 2))]
+    blend = rng.random((len(parents), 1))
+    children = parents[:, 0] + blend * (parents[:, 1] - parents[:, 0])
+    mutated = rng.random(children.shape) < rate
+    step = rng.normal(0.0, 0.1, children.shape) * (high - low)
+    return np.vstack([keeper, np.clip(np.where(mutated, children + step, children), low, high)])
