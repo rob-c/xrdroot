@@ -1172,6 +1172,38 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - ruff, mypy (1019 files), maintainability (31 028 functions), components (0 undeclared) and `mkdocs --strict` all pass;
   the six test files the commits touch report **355 passed**.
 
+## Round 42's close (recorded here for the next iteration)
+
+- Base `4dad0dad`, closed at `938d9faf`. **Three commits, +1 roottest PASS**, and the round had no worker fan-out:
+  the load average opened at **76** and never went under 14, so `W0-103`/`W0-109` meant code and unit tests only.
+- **`W0-99` is closed and `io/json` is one test from finished.** `4e5436ff`: `TBufferJSON::FromJSON(T *&obj, json)`
+  makes an object of the class the *declared* pointer names, and a cell carried only a number's width - so a null
+  pointer cell could not say which class, and a bare JSON array was refused. `pycxx/emit_vars.py::cell_type` now carries
+  an object pointer's class too (`void *` stays bare). **`roottest/root/io/json/ArrayCompress` PASSES** - all six of
+  its arrays, in ROOT's four compressed forms - and the area is **11 PASS / 0 FAIL / 0 DIFF / 1 UNSUPPORTED**
+  (`/tmp/r42/json`, from 10/0/0/2). `W0-114` is the last one: `RootClasses` needs a `TH1I`'s JSON, which is a
+  feature and not a fix.
+- **ROOT's iterator family landed** (`a2ef7d77`): `TIterator`, `TCollectionIter`, `TListIter`, `TObjArrayIter`,
+  `THashTableIter`, `TMapIter`, each collection making its own, and a `TIter` that owns the one it holds and deletes it
+  in `_destruct` - which made `TIter` a dialect *guard*, so a macro's scoped `TIter` is destroyed where its scope ends.
+  `gtest/core/cont/coreconttestUnit`'s two `TIter` cases pass.
+- **That exposed a translator bug of the general kind**: `Bool_t dir = kIterForward` is answered through
+  `inherited(self, ...)`, and Python builds a default list as the class is defined, where there is no `self` - so the
+  emitted `def __init__(self, ..., dir=inherited(self, ...))` raised `NameError: name 'self' is not defined`. A default
+  that mentions `self` is now put off to the body, as a non-constant default already was (`emit_funcs._put_off`).
+- **`W0-112` is the round's process finding, and it is about *my own* verification**: `next_permutation`'s successor
+  search (`cppstd/objects.py:321`) and `TCollection.MakeIterator` had **no test**, and round 41 shipped the first with
+  the gate unmeasurable. Part 1 of the two-command decomposition reports **99.73%** no matter what the tree does (the
+  ignored files' code), so only **part 2's report names the misses**, and it is the command that has to be read.
+  Both now have tests (`938d9faf`).
+- **`938d9faf`** also lands `RootFinder::Name`/`Iterations` with ROOT's names, verified against the oracle
+  (`BrentRootFinder`, `bisection`, `falsepos`, `brent`, `newton`, `secant`, `steffenson`). It moves no PASS and the
+  round says so: `other/math`'s `testGSLRootFinder` prints its four solver blocks and stops at `ROOT::Math::Roots`,
+  which is `W0-116`.
+- ruff (clean), mypy (1019 files), maintainability (31 064 functions), components (1018 modules, 0 undeclared) all pass.
+  `mkdocs --strict` was not run this round. The pytest gate was started three times at load 22-59; see
+  "Final verification" for what it said at this commit.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1389,6 +1421,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 39 | `ebd7485f` | **one commit**: both of the trainer's optimisers, and the coverage gate measurable again (`4f7ddee5`, `W0-107`) | **the gate is green**: `TOTAL 118830 0 29826 0 100%` by the two-command decomposition (12 925 pass, then 44 with `--cov-append`); **`other` +1**: `other/math` **21 -> 22 PASS** (`/tmp/r39/other`, `mathcore-testSpecFuncBeta`), 0 FAIL, 45 -> 41 UNSUPPORTED, one new TIMEOUT (`mathcore-stdsort` runs now); `io/tree/read` **4 lines** from PASS (`/tmp/r39/read`) | 1: `W0-108` (**`mathcore-stdsort` times out at 300 s** - the translated `std::sort` needs one NumPy pass); `W0-102` sharpened to its two-part fix; `W0-107` closed |
 | 40 | `17c9a7fa` | **two commits**: a class ROOT has a dictionary for is no warning, by name as well as by layout (`82001fb0`, `W0-102` closed after three rounds); the declared-class accessors' fall-backs (`de1e9cac`) | **roottest +1: `io/tree/read` PASSES** - `roottest/root/io/tree/*` is **18 PASS / 0 FAIL / 0 DIFF / 2 UNSUPPORTED** (`/tmp/r40/tree`) | 2: `W0-108` (**`mathcore-stdsort` is a benchmark** - 10^7 comparator calls, 4 min without finishing the first size: a decision, not a fix), `W0-109` (**the gate needs a load under ~20 again** - 99.5% at 34-54 with every test passing); `W0-102` closed |
 | 41 | `54ff9563` | **two commits**: a qualified static call fills the local handed to it by reference (`9acf40db`, half of `W0-99`); `std::generate`/`shuffle`/`next_permutation`, the ostream formatting state and `ROOT::Math::Random<T>`'s engine kinds (`e008ab0b`, worker 02's uncommitted work taken from its tree) | **no harness PASS measured** - the load average reached **144**, so `io/json` and `other/math` were not measured and `roottest/root/math/*`'s 0/4/TIMEOUT is unproven (`W0-103`) | 3: `W0-99` sharpened (**`FromJSON` reading a `TArrayI`** is the next gap), `W0-110` (w02's work landed, w03's patch not taken - UNSUPPORTED → TIMEOUT), `W0-111` (**check the worktrees at the halfway point**) |
+| 42 | `4dad0dad` | **no fan-out** (the load average opened at 76 and never went under 14): the cell's class for an object pointer (`4e5436ff`, `W0-99` closed), ROOT's iterator family and a `TIter` that owns one (`a2ef7d77`), `RootFinder::Name`/`Iterations` plus the two tests round 41's unmeasurable gate hid (`938d9faf`) | **roottest +1**: `io/json/ArrayCompress` PASSES, `io/json` **11 PASS / 0 FAIL / 0 DIFF / 1 UNSUPPORTED** (`/tmp/r42/json`); gtest `coreconttestUnit`'s two `TIter` cases pass | 4: `W0-112` (a branch shipped with no test while the gate was unmeasurable), `W0-113` (`TRangeStaticCast` and ROOT's static `Class()`), `W0-114` (`RootClasses` needs a `TH1I`'s JSON), `W0-115` (`RActionImpl`, `TQObject`), `W0-116` (`Roots::Newton`/`Brent` for `testGSLRootFinder`) |
 
 ## Notes
 
