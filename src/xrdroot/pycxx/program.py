@@ -322,12 +322,17 @@ class Program:
         self._buffers()
 
     def _buffers(self) -> None:
-        """The names handed to a method the dialect says writes into a buffer it is given."""
-        methods = active().buffer_methods
+        """The names handed to a method - or to one of the dialect's ``buffer_functions`` - that
+        the dialect says writes into a buffer it is given."""
+        methods, functions = active().buffer_methods, active().buffer_functions
         for _, _, body in self.bodies():
             self.buffers |= {arg.last for node in walk(body) if isinstance(node, Call)
                              and isinstance(node.func, Member) and node.func.name in methods
                              for arg in node.args if isinstance(arg, Name)}  # fmt: skip
+            self.buffers |= {node.args[0].last for node in walk(body)
+                             if isinstance(node, Call) and isinstance(node.func, Name)
+                             and node.func.last in functions and node.args
+                             and isinstance(node.args[0], Name)}  # fmt: skip
 
     def analyse(self, func: Function) -> None:
         """A function made after the rest were looked over - an instance of a template - looked

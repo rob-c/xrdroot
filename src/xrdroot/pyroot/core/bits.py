@@ -71,7 +71,18 @@ class TBits(TObject):
 
     def Get(self, array: Any) -> None:
         """``Get(array)``: this bitset's bytes copied into ``array``, which C++ writes into
-        the memory the pointer names."""
+        the memory the pointer names.
+
+        ROOT has an overload per element type and each fills ``GetNbytes()`` *bytes*: an
+        array of ``Short_t`` takes them two at a time, one of ``Int_t`` four, as the memory
+        an array of that width is. So the copy is over the bytes, not one element per byte.
+        """
+        import numpy as np
+
+        if isinstance(array, np.ndarray):
+            room = min(self.GetNbytes(), array.nbytes)
+            array.view(np.uint8)[:room] = np.frombuffer(bytes(self._bytes[:room]), dtype=np.uint8)
+            return
         for at, byte in enumerate(self._bytes):
             array[at] = byte
 

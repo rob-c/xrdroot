@@ -208,3 +208,19 @@ def test_a_bitset_is_set_from_the_bytes_of_an_array_and_given_back_as_bytes():
         (short_bits.TestBitNumber(22), False),
         (short_bits.TestBitNumber(31), False),
     )
+
+
+def test_a_bitsets_bytes_go_into_an_array_of_any_element_width() -> None:
+    """ROOT's ``TBits::Get`` has an overload per element type and each fills ``GetNbytes()``
+    *bytes*, so an array of ``Short_t`` takes them two at a time and one of ``Int_t`` four -
+    the memory an array of that width is, not one element per byte."""
+    import numpy as np
+
+    bits = ROOT.TBits()
+    bits.Set(32, np.array([7, 3, 63, 3], dtype=np.int8))
+    shorts = np.zeros(2, dtype=np.int16)
+    bits.Get(shorts)
+    assert shorts.tolist() == [0x0307, 0x033F]
+    as_list = [0, 0, 0, 0]
+    bits.Get(as_list)
+    assert as_list == [7, 3, 63, 3]

@@ -285,3 +285,21 @@ int main() {
 }
 """
     assert run(tmp_path, capsys, body) == "1 2 one two!\n"
+
+
+def test_a_char_array_of_bytes_is_a_buffer_where_an_array_of_text_is_a_string() -> None:
+    """A ``char`` array is text when its braced list spells a C string - printable
+    characters, then NUL padding - and the bytes of an array when it does not:
+    ``const char bits[] = {0, 1, 3, 7}`` is data a program indexes and does arithmetic with,
+    which a ``str`` cut at its first NUL has nothing of. ROOT's ``test/testbits.cxx`` reads
+    its bit patterns out of exactly such an array."""
+    bytes_array = translation("void f() { const char bits[] = {0, 1, 3, 127}; }", "t.cxx").python
+    assert "bits = array('char', 4, [0, 1, 3, 127])" in bytes_array
+    text = translation("void f() { char name[8] = {'a', 'b', 0}; }", "t.cxx").python
+    assert "name = 'ab'" in text
+    padded = translation("void f() { char name[4] = {'a', 0, 0, 0}; }", "t.cxx").python
+    assert "name = 'a'" in padded
+    control = translation("void f() { char odd[2] = {'a', 1}; }", "t.cxx").python
+    assert "odd = array('char', 2, [97, 1])" in control
+    spaces = translation("void f() { char line[3] = {'a', '\\n', 0}; }", "t.cxx").python
+    assert "line = 'a\\n'" in spaces

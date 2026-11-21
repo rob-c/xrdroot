@@ -380,7 +380,13 @@ class VariableEmitter(StmtEmitter):
         if init is None:
             return "''"
         if isinstance(init, InitList):
-            return repr(_characters(init, decl, self.refuse))
+            codes = _codes(init, decl, self.refuse)
+            if _spells_text(codes):
+                return repr(_characters(init, decl, self.refuse))
+            # A braced list that is no C string - ``const char bits[] = {0, 1, 3, 7}`` -
+            # is an array of bytes, which C++ indexes and does arithmetic with; a ``str``
+            # truncated at its first NUL would have nothing to index.
+            return f"array('char', {self._dimensions(decl, ctype, init)}, {codes})"
         return self.value(init)
 
     def static_local(self, decl: VarDecl) -> None:
@@ -425,12 +431,35 @@ def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
     return not any(isinstance(node, (Name, Call, New, Lambda, This)) for node in walk(decl))
 
 
-def _characters(init: InitList, decl: VarDecl, refuse: Any) -> str:
-    """``char s[8] = {'a', 'b', 0}``: the C string the characters spell, to the first NUL."""
+def _codes(init: InitList, decl: VarDecl, refuse: Any) -> list[int]:
+    """The numbers a braced list of characters gives a ``char`` array, one each."""
     if not all(isinstance(item, Literal) and item.kind in ("char", "int") for item in init.items):
         why = f"the character array {decl.name} initialised one char at a time from variables"
         raise refuse(why, decl)
-    text = "".join(chr(int(item.value)) for item in init.items)  # type: ignore[attr-defined]
+    return [int(item.value) for item in init.items]  # type: ignore[attr-defined]
+
+
+def _spells_text(codes: list[int]) -> bool:
+    """Does a ``char`` array of these values spell a C string - printable characters, then
+    NULs to the end - rather than hold bytes?
+
+    ``{'a', 'b', 0}`` is a string and ``{0, 1, 3, 7}`` is not: what follows its first NUL is
+    not padding, so the array is data a program indexes and does arithmetic with, as C++ lets
+    it. A translation that kept it as text would cut it off at that first NUL.
+    """
+    joined = "".join(chr(code) for code in codes)
+    head, _, tail = joined.partition("\0")
+    return _printable(head) and all(char == "\0" for char in tail)
+
+
+def _printable(text: str) -> bool:
+    """Are these characters a C string's own - printable, or one of C's white-space escapes?"""
+    return all(char.isprintable() or char in "\t\n\r\f\v" for char in text)
+
+
+def _characters(init: InitList, decl: VarDecl, refuse: Any) -> str:
+    """``char s[8] = {'a', 'b', 0}``: the C string the characters spell, to the first NUL."""
+    text = "".join(chr(code) for code in _codes(init, decl, refuse))
     return text.split("\0", 1)[0]
 
 

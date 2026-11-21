@@ -176,6 +176,10 @@ class Dialect:
     #: The library's methods a ``char`` array handed to is memory to write into, or read from
     #: as it changes: such an array is a buffer (``cppstd.buffers``), not text.
     buffer_methods: frozenset[str] = frozenset()
+    #: The library's *free* functions whose first ``char`` array is memory to write into, not
+    #: text to read: ``memset(buffer, 0, sizeof(buffer))`` is what a C++ program says when the
+    #: array is a buffer it will fill, and one a ``str`` here cannot be filled in place.
+    buffer_functions: frozenset[str] = frozenset()
     #: The library's members of a ``std::string`` - a string class's that one converts to.
     string_methods: Mapping[str, Callable[[str, list[str]], str]] = field(default_factory=dict)
     #: The classes whose objects do something as their scope ends.

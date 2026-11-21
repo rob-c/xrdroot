@@ -304,6 +304,7 @@ ROOT = Dialect(
     layouts=LAYOUTS,
     string_classes=frozenset({"TString"}),
     buffer_methods=frozenset({"Branch", "SetBranchAddress", "DecodeNameCycle"}),
+    buffer_functions=frozenset({"memset", "memcpy"}),
     string_methods={"Data": _data},
     guards=frozenset({"TFile", "TMemFile", "FileRaii", "ROOT::TestSupport::FileRaii",
                      "TIter"}),  # TIter deletes the iterator it holds
