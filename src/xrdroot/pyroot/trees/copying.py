@@ -123,11 +123,23 @@ def _process_of(obj: Any, number: int) -> Any:
 
 def _process_index(pid: Any) -> int:
     """The index the file being written gives ``pid``'s record, or ``-1`` for a file that is
-    not being written."""
+    not being written.
+
+    The index is left on the process, because an identifier and a ``TRef`` written after it
+    name the same record and nothing else can say which one the file made: a reference's
+    ``fPID`` is an index among the file's ``ProcessID`` records, not among the session's
+    processes, and the two differ as soon as the file wrote another process's record first -
+    which a clone's carrying the records of the file it copies does
+    (roottest/root/io/tree/test-rcr2, where the session numbers the copied file's process
+    first and the file being written numbers it second).
+    """
     from ..core.directories import current_file
 
     file = current_file()
-    return -1 if file is None or pid is None else int(file.WriteProcessID(pid))
+    index = -1 if file is None or pid is None else int(file.WriteProcessID(pid))
+    if index >= 0:
+        pid._file_index = index
+    return index
 
 
 def _carried_records(source: Any) -> None:

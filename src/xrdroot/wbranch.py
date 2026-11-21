@@ -709,9 +709,29 @@ def tref_record(ref: Any) -> bytes:
     index of the process record that numbered that object, which a file writes before
     the trees that refer to it. Checked byte for byte against the 6.40 oracle.
     """
+    return _ref_bytes(int(ref.GetUniqueID()), int(ref._bitword()), _record_index(ref))
+
+
+def _record_index(ref: Any) -> int:
+    """The index, among the records of the file being written, of the process that numbered
+    the object ``ref`` names - which is what ``fPID`` holds, and what
+    :func:`tref_record` cannot take from the process itself.
+
+    A process has no index of its own: ``TProcessID`` numbers the session's processes, while
+    a file numbers the records it writes, in the order it meets the processes that have
+    objects in it. The two are the same number only while the file's first record is the
+    session's first process - and a clone carries the records of the file it copies ahead of
+    its own, so they are not (roottest/root/io/tree/test-rcr2). Only ``TFile::WriteProcessID``
+    can say which index a process has, and the clone that asks it leaves the answer on the
+    process for the references written after it; a process no file has numbered keeps the
+    index it has in the session, which is the one a file whose own process comes first gives
+    it too.
+    """
     process = getattr(ref, "_pid", None)
-    who = 0 if process is None else int(process.GetUniqueID())
-    return _ref_bytes(int(ref.GetUniqueID()), int(ref._bitword()), who)
+    if process is None:  # a reference that names no object is in no process's numbering
+        return 0
+    written = getattr(process, "_file_index", None)
+    return int(process.GetUniqueID()) if written is None else int(written)
 
 
 def _ref_bytes(number: int, bits: int, process: int) -> bytes:
