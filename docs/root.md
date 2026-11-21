@@ -1904,6 +1904,7 @@ trains iteratively, a library does, with TMVA's options mapped onto it.
 | `Category` | its sub-methods, each over its own data set | as its sub-methods |
 | `CrossValidation` | its folds' methods | as they |
 | `PyRandomForest`, `PyAdaBoost`, `PyGTB` | scikit-learn, as TMVA's PyMVA wraps it | - |
+| `PyTorch` | the user's own `TorchScript` model, trained by the user's own loop | - |
 
 The mapping onto scikit-learn: a BDT's `MaxDepth`, `MinNodeSize` (as
 `min_weight_fraction_leaf`), `SeparationType` (`GiniIndex` and `CrossEntropy`; the other
@@ -1923,9 +1924,19 @@ TMVA's ROC integral of an output with many equal values depends on how its C++ l
 method's options again, so a PDERS read back evaluates with the box kernel, whatever was
 booked - xrdroot does the same, since that is what TMVA's test outputs are.
 
+**PyMVA's `PyTorch`** trains nothing itself, as ROOT's does not: `UserCode=<file>` names a
+Python script that builds a `TorchScript` model, saves it, and leaves `load_model_custom_objects`
+holding its training loop, loss, prediction function and (optionally) optimiser. xrdroot runs
+that script, loads `FilenameModel`, hands the loop the training events as dataloaders - one-hot
+targets for a classification or a multiclass, the targets themselves for a regression, the last
+`ValidationSize` of them held back to validate on - and writes the best model, or the last one,
+to `FilenameTrainedModel`. The weight file holds no weights, only those options, exactly as
+ROOT's writes none, so a `Reader` loads the trained model on its first evaluation. It needs
+`pip install 'xrdroot[pymva]'`.
+
 **What it refuses.** A method this engine does not have is refused by name when booked or
 read: `HMatrix`, `CFMlpANN`, `TMlpANN`, `BoostedFisher` (TMVA's generalised boosting),
-`PyKeras` and `PyTorch` (a user's own model file), and SOFIE. So are the options that need
+`PyKeras` (a user's Keras model, which needs TensorFlow), and SOFIE. So are the options that need
 what is not here: `FitMethod=SA` and `MINUIT` and a MINUIT `Converger`, RuleFit's
 `RFFriedman`, the `Spline3`, `Spline5` and `KDE` PDFs, PDEFoam's decision-tree cell splitting and kernels, and the DL layers other
 than dense (`CONV`, `MAXPOOL`, `RNN`, `LSTM`, `GRU`, `BNORM`...). PDE-Foam writes its foams

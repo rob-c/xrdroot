@@ -21,7 +21,7 @@ from .linear import MethodFisher, MethodLD
 from .mlp import MethodMLP
 from .pdefoam import MethodPDEFoam
 from .pders import MethodPDERS
-from .pymva import MethodPyAdaBoost, MethodPyGTB, MethodPyRandomForest
+from .pymva import MethodPyAdaBoost, MethodPyGTB, MethodPyRandomForest, MethodPyTorch
 from .rulefit import MethodRuleFit
 from .svm import MethodSVM
 
@@ -50,5 +50,6 @@ REGISTRY: dict[str, type[Method]] = {
         MethodPyRandomForest,
         MethodPyAdaBoost,
         MethodPyGTB,
+        MethodPyTorch,
     )
 }
