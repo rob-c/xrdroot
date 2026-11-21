@@ -1118,9 +1118,14 @@ def test_the_rvec_an_rdataframe_writes_reads_back_as_the_vector_it_is():
         assert tree.unreadable == {}
         momenta = tree["MC_px"].array(0, 1)
         assert momenta.lengths() == [192]
-        assert [round(value, 5) for value in momenta[0][6:9]] == [0.0, 30.39946, -30.39946]
+        # The three numbers of the last Lorentz vector read back out of an RVEC column, to
+        # the five decimals the reference gives. `round(x, 5) == 30.39946` compares two
+        # floats through their decimal spelling, which agrees only where the arithmetic
+        # rounds as ROOT's own machine does; this machine's differs in the sixth decimal.
+        assert list(momenta[0][6:9]) == pytest.approx([0.0, 30.39946, -30.39946], abs=1e-5)
         assert tree["MC_pdg"].array(0, 1)[0][:5].tolist() == [11.0, -11.0, 11.0, -11.0, 23.0]
-        assert round(tree["EVT_thrust_x"].array(0, 1)[0], 5) == -5.89043
+        # The same five-decimal reading of a plain branch; see the note above.
+        assert tree["EVT_thrust_x"].array(0, 1)[0] == pytest.approx(-5.89043, abs=1e-5)
 
 
 def test_a_bitset_is_a_byte_a_bit_with_the_lowest_bit_first():
