@@ -6,7 +6,10 @@ it - at a colon, before the line would pass column 77, the next line
 starting ``*         |``. ``Show`` is ``TTree::Show``'s: a leaf's name in
 fifteen columns, at most twenty of its values, and the line broken after the
 first value and then every five (for floating point and text) or ten (for
-integers) - ROOT's own arithmetic, kept exactly.
+integers) - ROOT's own arithmetic, kept exactly. A leaf of a split branch is
+the exception, because ``TTree::Show`` hands it to ``TLeafElement::PrintValue``:
+its branch prints the whole line itself, so a collection's own leaf is one line
+of how many objects it holds and a split member's values are never broken.
 
 The byte counts are this reader's: the baskets' sizes as the file records
 them, which for a tree written here are the sizes this writer's baskets
@@ -193,18 +196,62 @@ def _values(value: Any) -> list[Any]:
     return list(np.asarray(value).reshape(-1)[:SHOW_MAX])
 
 
+def _per_line(leaf: LeafInfo) -> int:
+    """How many values of one leaf go to a line, zero for a leaf that does not break lines.
+
+    A leaf of a split branch - a ``TLeafElement`` - is printed by
+    ``TLeafElement::PrintValue``, which hands the work to its branch: a
+    ``TBranchElement`` prints a collection's member value after value with
+    nothing but a comma between them, whatever their type. Only
+    ``TTree::Show``'s own loop breaks a line, after the first value and then
+    every five for floating point and text, every ten for integers.
+    """
+    if leaf.classname == "TLeafElement":
+        return 0
+    return 5 if leaf.classname in FIVE_A_LINE or leaf.vector else 10
+
+
 def _joined(leaf: LeafInfo, value: Any) -> str:
     if leaf.text:
         return str(value)
     if leaf.vector:  # ROOT prints where the vector is, not what is in it
         return f"({leaf.typename}*)0x{id(value):x}"
-    per_line = 5 if leaf.classname in FIVE_A_LINE or leaf.vector else 10
+    per_line = _per_line(leaf)
     text = ""
     for at, each in enumerate(_values(value)):
         if at:  # after every value but the last, and a new line after the first and each run
-            text += ", " + ("\n" + " " * 18 if (at - 1) % per_line == 0 else "")
+            broke = per_line and (at - 1) % per_line == 0
+            text += ", " + ("\n" + " " * 18 if broke else "")
         text += _printed(leaf, each)
     return text
+
+
+def _count_leaf(leaf: LeafInfo) -> bool:
+    """Is this leaf the count ``ROOT`` keeps in a branch of objects?
+
+    A branch of a ``TClonesArray`` - or of any other collection - has one leaf that
+    stands for the whole collection and is named after its branch with an
+    underscore (``TLeafElement::GetFullName`` makes that name), whose value is
+    the members of every object in it. ROOT prints that leaf as the branch's name
+    and the number of objects, and nothing else: the members come on the leaves of
+    the branches split out of it.
+    """
+    return leaf.name == f"{leaf.branch}_"
+
+
+def _objects_in(record: Mapping[str, Any]) -> int:
+    """How many objects of a collection a count leaf's own record holds.
+
+    Every member of it holds one value per object, so the first member's outer length is
+    the count; a member that is one object's member rather than every object's says
+    nothing about it.
+    """
+    for held in record.values():
+        if isinstance(held, (str, bytes, Mapping)):
+            continue
+        shape = np.shape(held)
+        return int(shape[0]) if shape else 1
+    return 0  # a collection with nothing in it holds no member to count
 
 
 def show_lines(entry: int, leaves: Sequence[tuple[LeafInfo, Any]]) -> list[str]:
@@ -212,6 +259,9 @@ def show_lines(entry: int, leaves: Sequence[tuple[LeafInfo, Any]]) -> list[str]:
     lines = [f"======> EVENT:{entry}"]
     for leaf, value in leaves:
         if isinstance(value, Mapping):
+            if _count_leaf(leaf):  # a collection: ROOT prints how many objects it holds
+                lines.append(f" {leaf.branch:<15} = {_objects_in(value)}")
+                continue
             # A branch that holds a whole object with nothing split out of it hands back the
             # object's members, not a number: ROOT prints the object's members, one a line.
             lines += _record_lines(leaf, value)
