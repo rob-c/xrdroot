@@ -17,7 +17,7 @@ from typing import Any
 from .base import Out, P
 from .ctype import CType
 from .dialect import active
-from .emit_vars import Context, VariableEmitter, addressable
+from .emit_vars import Context, VariableEmitter, _mentions, addressable
 from .labels import lower
 from .nodes import Capture, Expr, Function, InitList, Lambda, Literal, Name, Param, Unary, VarDecl
 from .nrvo import candidate
@@ -68,11 +68,21 @@ class FunctionEmitter(VariableEmitter):
             default = self._default(name, param) if param.default is not None else None
             cell = by_reference(param.ctype) or (name in cells and addressable(param.ctype))
             symbol = self.declare(name, "param", param.ctype.value(), cell=cell)
-            if default is not None and not self._constant(param.default):
+            if default is not None and self._put_off(param, default):
                 self.deferred.append((symbol.py, default, param))
                 default = "UNGIVEN"
             items.append(symbol.py + ("" if default is None else "=" + default))
         return items
+
+    def _put_off(self, param: Param, default: str) -> bool:
+        """Is a default given in the body rather than in the list?
+
+        One C++ works out at each call is - a call, an increment, a variable, an object.
+        So is one ROOT's inheritance chain answers with ``self``, ``kIterForward`` being a
+        name a macro's class inherits: the list is built as the class is defined, where
+        there is no ``self`` to ask, and C++ reads the default in the class's own scope.
+        """
+        return not self._constant(param.default) or _mentions(default, "self")
 
     def _constant(self, node: Expr | None) -> bool:
         """Is a default the same at every call: a literal, or a name of a constant?"""

@@ -36,6 +36,12 @@ __all__ = [
     "TClonesArray",
     "TOrdCollection",
     "TIter",
+    "TIterator",
+    "TCollectionIter",
+    "TListIter",
+    "TObjArrayIter",
+    "TMapIter",
+    "THashTableIter",
     "TObjString",
     "TObjLink",
     "THashTable",
@@ -315,8 +321,9 @@ class TCollection(TObject):
     def IsOwner(self) -> bool:
         return self._owner
 
-    def MakeIterator(self, dir: bool = True) -> TIter:
-        return TIter(self, dir)
+    def MakeIterator(self, dir: bool = True) -> TIterator:
+        """``MakeIterator(dir)``: a walk over the objects this holds, forward or back."""
+        return TCollectionIter(self, dir)
 
     def Print(self, option: str = "", *rest: Any) -> None:
         """``Print``: ROOT's ``Collection name=...`` header, then each entry one level in."""
@@ -510,6 +517,11 @@ class TList(TSeqCollection):
 
     CLASS_TITLE = "Doubly linked list"
 
+    def MakeIterator(self, dir: bool = True) -> TIterator:
+        """``MakeIterator``: ROOT's ``TList`` makes a ``TListIter``, where a plain collection
+        makes the one that walks its objects in order."""
+        return TListIter(self, dir)
+
     def FirstLink(self) -> TObjLink | None:
         return TObjLink(self, 0) if self._items else None
 
@@ -601,6 +613,10 @@ class TObjArray(TSeqCollection):
     def __init__(self, size: int = 16, lower: int = 0) -> None:
         super().__init__()
         self._lower = int(lower)
+
+    def MakeIterator(self, dir: bool = True) -> TIterator:
+        """``MakeIterator``: an array's walk leaves its empty slots out, as ROOT's does."""
+        return TObjArrayIter(self, dir)
 
     def AddAt(self, obj: Any, index: int) -> None:
         """``AddAt``: into slot ``index``, growing the array with empty slots to reach it."""
@@ -716,25 +732,150 @@ class TObjLink:
         return ""
 
 
-class TIter:
-    """``TIter``: ``next()`` through a collection, ``None`` at the end, as ROOT's is."""
+class TIterator(TObject):
+    """``TIterator``: ROOT's iterator protocol - ``Next()`` hands out the objects one at a
+    time and ``None`` past the last, ``operator*`` reads the one just handed out, and
+    ``Reset`` walks them again.
 
-    def __init__(self, collection: Any, dir: bool = True) -> None:
+    ROOT's iterators keep the collection and a cursor into it; one here keeps the objects
+    themselves, taken when the iterator was made, which walks the same and cannot trip over
+    the collection changing under it. A collection says which iterator it makes: a
+    ``TList`` a :class:`TListIter`, an array a :class:`TObjArrayIter`, a map the pairs of a
+    :class:`TMapIter`.
+    """
+
+    CLASS_TITLE = "Iterator abstract base class"
+
+    def __init__(self, collection: Any = None, items: Any = (), forward: bool = True) -> None:
+        super().__init__()
         self._collection = collection
-        self._forward = bool(dir)
-        self.Reset()
+        self._forward = bool(forward)
+        self._items = list(items)[:: 1 if self._forward else -1]
+        self._at = -1
+
+    def Next(self) -> Any:
+        """The next object, or ``None`` once there are no more - where the walk stays, so
+        that ``operator*`` asks for one past the end and gets nothing."""
+        self._at += 1
+        return self._items[self._at] if self._at < len(self._items) else None
+
+    def __call__(self) -> Any:
+        """``operator*``: the object the walk is at, which is the one ``Next`` gave last."""
+        return self._items[self._at] if 0 <= self._at < len(self._items) else None
 
     def Reset(self) -> None:
-        items = list(self._collection) if self._collection is not None else []
-        self._items = items if self._forward else items[::-1]
-        self._at = 0
+        """``Reset``: back to before the first object, so that the walk hands them all out
+        again."""
+        self._at = -1
+
+    def Skip(self, count: int = 1) -> None:
+        """``Skip(n)``: ``Next`` n times without keeping what it gives."""
+        for _ in range(max(int(count), 0)):
+            self.Next()
+
+    def GetCollection(self) -> Any:
+        return self._collection
+
+    def GetOption(self) -> str:
+        return ""
+
+    def __iter__(self) -> Iterator[Any]:
+        return self
+
+    def __next__(self) -> Any:
+        found = self.Next()
+        if found is None:
+            raise StopIteration
+        return found
+
+    def __eq__(self, other: object) -> bool:
+        """``operator==``: two walks are the same when they are at the same place."""
+        if not isinstance(other, TIterator):
+            return NotImplemented
+        return self._items == other._items and self._at == other._at
+
+    def __ne__(self, other: object) -> bool:
+        same = self.__eq__(other)
+        return same if same is NotImplemented else not same
+
+    __hash__ = TObject.__hash__
+
+    def _destruct(self) -> None:
+        """``~TIterator``: a walk holds nothing of its own to release."""
+
+
+class TCollectionIter(TIterator):
+    """``TCollectionIter``: a walk over any collection, the one it makes when it has no
+    iterator of its own."""
+
+    CLASS_TITLE = "Collection iterator"
+
+    def __init__(self, collection: Any = None, dir: bool = True) -> None:
+        held = [] if collection is None else list(collection)
+        super().__init__(collection, held, dir)
+
+
+class TListIter(TCollectionIter):
+    """``TListIter``: a walk over a linked list, forward or back."""
+
+    CLASS_TITLE = "Linked list iterator"
+
+
+class TObjArrayIter(TCollectionIter):
+    """``TObjArrayIter``: a walk over an array's objects, which leaves its empty slots out
+    as ROOT's does."""
+
+    CLASS_TITLE = "Object array iterator"
+
+    def __init__(self, collection: Any = None, dir: bool = True) -> None:
+        held = [] if collection is None else [item for item in collection if item is not None]
+        super(TCollectionIter, self).__init__(collection, held, dir)
+
+
+class THashTableIter(TCollectionIter):
+    """``THashTableIter``: a walk over a hash table's objects."""
+
+    CLASS_TITLE = "Iterator of hash table"
+
+
+class TMapIter(TIterator):
+    """``TMapIter``: a walk over a map, which hands out its ``TPair``s."""
+
+    CLASS_TITLE = "Iterator of map"
+
+    def __init__(self, collection: Any = None, dir: bool = True) -> None:
+        held = [] if collection is None else [pair for pair in collection]
+        super().__init__(collection, held, dir)
+
+    def GetValue(self) -> Any:
+        """``GetValue``: the value of the pair the walk is at, which is the last it gave."""
+        pair = self.__call__()
+        return None if pair is None else pair.Value()
+
+
+class TIter:
+    """``TIter``: ``Next()`` through a collection, ``None`` at the end, as ROOT's is.
+
+    ROOT's ``TIter`` is a wrapper that owns the ``TIterator`` its collection made, deletes
+    it when the wrapper is destroyed, and replaces it - deleting the one it held - when
+    another iterator is assigned to it. So does this one: ``_destruct`` deletes what it
+    holds, which is what ``delete p`` on one of ROOT's iterators does, and the wrapper is
+    what a macro's ``TIter iter(&lst)`` holds.
+
+    A Python list, dict or ``None`` is wrapped in a walk over the objects it has, which is
+    how a walk of things that are not a collection is spelled here.
+    """
+
+    def __init__(self, collection: Any, dir: bool = True) -> None:
+        self._iterator = _held_iterator(collection, dir)
+
+    def Reset(self) -> None:
+        if self._iterator is not None:
+            self._iterator.Reset()
 
     def Next(self) -> Any:
         """The next object, or ``None`` once there are no more."""
-        if self._at >= len(self._items):
-            return None
-        self._at += 1
-        return self._items[self._at - 1]
+        return None if self._iterator is None else self._iterator.Next()
 
     def __call__(self) -> Any:
         return self.Next()
@@ -743,18 +884,48 @@ class TIter:
         return self
 
     def __next__(self) -> Any:
-        if self._at >= len(self._items):
+        found = self.Next()
+        if found is None:
             raise StopIteration
-        return self.Next()
+        return found
 
     def GetCollection(self) -> Any:
-        return self._collection
+        return None if self._iterator is None else self._iterator.GetCollection()
+
+    def _destruct(self) -> None:
+        """``~TIter``: the iterator this wrapper holds is deleted with it."""
+        from ...pycxx.runtime.objects import delete
+
+        held, self._iterator = self._iterator, None
+        if held is not None:
+            delete(held)
+
+    def __del__(self) -> None:
+        if not getattr(self, "_cxx_released", False) and not getattr(self, "_torn", False):
+            self._torn = True
+            self._destruct()
+
+
+def _held_iterator(collection: Any, dir: bool = True) -> TIterator | None:
+    """The iterator a ``TIter`` holds for what it was given: a collection's own, an
+    iterator's as it is, and anything else wrapped in a walk over its objects."""
+    if isinstance(collection, TIterator):
+        return collection
+    if isinstance(collection, TCollection):
+        return collection.MakeIterator(dir)
+    if collection is None:
+        return None
+    return TIterator(None, list(collection), dir)
 
 
 class THashTable(TCollection):
     """``THashTable``: a collection found by hash - held in order here, which finds the same."""
 
     CLASS_TITLE = "A hash table"
+
+    def MakeIterator(self, dir: bool = True) -> TIterator:
+        """``MakeIterator``: ROOT's hash table makes a ``THashTableIter``."""
+        return THashTableIter(self, dir)
 
 
 def _text(other: Any) -> str | None:
@@ -887,6 +1058,10 @@ class TMap(THashTable):
             self._included(pair)
         else:
             found.SetValue(opt)
+
+    def MakeIterator(self, dir: bool = True) -> TIterator:
+        """``MakeIterator``: a map's walk hands out its ``TPair``s, as ROOT's does."""
+        return TMapIter(self, dir)
 
     def Put(self, key: Any, value: Any) -> None:
         """``Put``: ROOT's old name for ``Add``, which it keeps as the same call."""

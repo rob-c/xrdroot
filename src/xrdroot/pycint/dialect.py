@@ -305,7 +305,8 @@ ROOT = Dialect(
     string_classes=frozenset({"TString"}),
     buffer_methods=frozenset({"Branch", "SetBranchAddress", "DecodeNameCycle"}),
     string_methods={"Data": _data},
-    guards=frozenset({"TFile", "TMemFile", "FileRaii", "ROOT::TestSupport::FileRaii"}),
+    guards=frozenset({"TFile", "TMemFile", "FileRaii", "ROOT::TestSupport::FileRaii",
+                     "TIter"}),  # TIter deletes the iterator it holds
     value_readers=frozenset({"TTreeReaderValue"}),
     array_readers=frozenset({"TTreeReaderArray"}),
     held_results=frozenset({"RResultPtr", "RDF::RResultPtr", "ROOT::RDF::RResultPtr"}),
