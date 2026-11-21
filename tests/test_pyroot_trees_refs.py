@@ -332,3 +332,70 @@ def test_the_reference_of_a_member_read_back_names_the_process_of_the_file_it_ca
     assert isinstance(made.GetPID(), TProcessID)
     assert made.GetObject() is None  # the object itself was never read into this session
     read.Close()
+
+
+def test_an_object_filed_in_a_file_that_names_its_process_is_found_by_its_number():
+    """The other half of the filing: a file that *has* a ``ProcessID`` record, so the object
+    read beside a reference is filed in it and ``GetObjectWithID`` gives it back."""
+    from xrdroot.pyroot.core.references import (
+        IS_REFERENCED,
+        TProcessID,
+        filed_object,
+    )
+
+    pid = TProcessID.AddProcessID()
+    out = ROOT.TFile("filed.root", "RECREATE")
+    assert out.WriteProcessID(pid) == 0
+    out.Close()
+    read = ROOT.TFile("filed.root")
+    named = ROOT.TNamed("N", "N")
+    named.SetBit(IS_REFERENCED)
+    named.SetUniqueID(7)
+    filed_object(named, read)  # filed in the process the file's ProcessID0 names
+    assert pid.GetObjectWithID(7) is named
+    read.Close()
+
+
+def test_a_clones_slot_reads_its_source_trees_own_objects_when_it_was_given_them():
+    """A clone shares its collection's address with the tree it copies, so the objects that
+    address holds are the entry - and they are the ones a ``TRef`` numbered."""
+    from types import SimpleNamespace
+
+    from xrdroot.pyroot.trees.objects import ClonedSlot
+    from xrdroot.wclasses import Layout, Member
+
+    layout = Layout("Plain", 1, 0, (Member("fName", 65, "TString", "a name", 0),))
+    slot = ClonedSlot("r1", layout, 1, ["r1.fName"], [])
+    held = [SimpleNamespace(fName="N_0_0"), SimpleNamespace(fName="N_0_1")]
+    tree = SimpleNamespace(_addresses={"r1": SimpleNamespace(get=lambda: held)})
+    slot._follows = [SimpleNamespace(tree=tree)]
+    assert slot.read() == [("N_0_0",), ("N_0_1",)]  # one row per object of the live collection
+
+
+def test_a_clones_slot_reads_the_values_when_its_collection_holds_whole_objects():
+    """A collection holding a ``TRef`` per object is copied from the values read, which the
+    writer streams itself: its rows are the objects, not members of the objects the tree was
+    given - so there is nothing to take from that tree's address."""
+    from types import SimpleNamespace
+
+    from xrdroot.pyroot.trees.objects import ClonedSlot
+    from xrdroot.wclasses import Layout, Member
+
+    layout = Layout("Referring", 1, 0, (Member("fRef", 61, "TRef", "a reference", 0),))
+    slot = ClonedSlot("r1", layout, 1, ["r1.fRef"], [])
+    tree = SimpleNamespace(_addresses={"r1": SimpleNamespace(get=lambda: ["an object"])})
+    slot._follows = [SimpleNamespace(tree=tree)]
+    assert slot._live() is None
+
+
+def test_a_clones_slot_with_no_address_to_read_is_read_from_its_columns():
+    from types import SimpleNamespace
+
+    from xrdroot.pyroot.trees.objects import ClonedSlot
+    from xrdroot.wclasses import Layout, Member
+
+    layout = Layout("Plain", 1, 0, (Member("fName", 65, "TString", "a name", 0),))
+    slot = ClonedSlot("r1", layout, 1, ["r1.fName"], [])
+    assert slot._live() is None  # no source tree at all
+    slot._follows = [SimpleNamespace(tree=SimpleNamespace(_addresses={}))]
+    assert slot._live() is None  # a tree with no address for this collection

@@ -277,3 +277,19 @@ def test_a_member_of_whole_objects_is_printed_as_the_class_or_the_pointer_it_is(
     leaf = SimpleNamespace(name="r1.fRef", text=False, vector=False, classname="")
     lines = show_lines(0, [(leaf, [{"TObject": {"fUniqueID": 1}}])])
     assert lines[-1] == " r1.fRef         = ->"
+
+
+def test_a_leaf_that_is_text_prints_the_text_it_holds():
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="N.fType", text=True, vector=False, classname="")
+    lines = show_lines(0, [(leaf, np.array([1, 2]))])
+    assert lines[-1] == " N.fType         = [1 2]"
+
+
+def test_a_member_of_a_record_that_is_one_string_per_object_prints_them_joined():
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="r1", text=False, vector=False, classname="")
+    lines = show_lines(0, [(leaf, {"fName": np.array(["N_0_0", "N_0_1"])})])
+    assert lines[-1] == " fName           = N_0_0, N_0_1"
