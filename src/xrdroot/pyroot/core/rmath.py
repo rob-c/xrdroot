@@ -12,6 +12,8 @@ import cmath
 import math
 from typing import Any, ClassVar
 
+import numpy as np
+
 from ...fit.defaults import DEFAULTS, minimizer_algo, minimizer_type, set_minimizer
 from ...function.rootmath import *  # noqa: F403 - scalar ROOT::Math compatibility exports
 from ...function.rootmath import __all__ as _scalars
@@ -30,11 +32,11 @@ from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools
     Functor1D,
     GradFunctor,
     GradFunctor1D,
-    Integrator,
     IntegratorOneDim,
     Minimizer,
     RootFinder,
 )
+from .mathtools import Integrator as _Integrator
 
 #: The fraction of an interval a golden-section search keeps: ``(3 - sqrt 5) / 2``, as
 #: GSL's ``GSL_MIN_GOLDEN_RATIO`` and ROOT's ``GSLMinimizer1D`` use it.
@@ -92,6 +94,173 @@ class IGenFunction:
     def NDim(self) -> int:
         """``NDim()``: one, this being the one-dimensional interface."""
         return 1
+
+
+class Util:
+    """``ROOT::Math::Util``: ``ToString``, which ROOT's minimisers name their variables with.
+
+    ``ToString`` is a template over anything an output stream takes, so what it answers is
+    what ``std::ostream`` would print: a string as itself, a float in C++'s default six
+    significant digits, anything else in its own ``str``.
+    """
+
+    @staticmethod
+    def ToString(value: Any) -> str:
+        """``ToString(value)``: ``value`` as a C++ output stream writes it."""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, float):
+            return f"{value:g}"
+        return str(value)
+
+
+class IMultiGenFunction:
+    """``ROOT::Math::IMultiGenFunction``: a function of ``n`` numbers, as a minimiser takes it.
+
+    A macro's own class overrides ``DoEval(x)`` - the point as an array of ``n`` numbers -
+    and ``NDim()``; calling the object evaluates it, as ROOT's ``operator()`` does, which
+    is ``DoEval``.
+    """
+
+    def __call__(self, x: Any) -> float:
+        return float(self.DoEval(np.asarray(x, dtype=float)))
+
+    def DoEval(self, x: Any) -> float:
+        """``DoEval(x)``: the function at the point ``x``, which a subclass says."""
+        raise NotImplementedError(
+            "IMultiGenFunction is the interface ROOT's minimisers call a function of several "
+            "numbers through; derive from it and override DoEval and NDim."
+        )
+
+    def NDim(self) -> int:
+        """``NDim()``: how many numbers the function takes, which a subclass says."""
+        raise NotImplementedError(
+            "IMultiGenFunction is the interface ROOT's minimisers call a function of several "
+            "numbers through; derive from it and return the dimension from NDim."
+        )
+
+
+class IMultiGradFunction(IMultiGenFunction):
+    """``ROOT::Math::IMultiGradFunction``: a function of ``n`` numbers, and each partial
+    derivative, which a minimiser using the gradient takes.
+
+    A macro's own class overrides ``DoEval``, ``Derivative(x, icoord)`` and ``NDim``.
+    """
+
+    def Derivative(self, x: Any, icoord: int = 0) -> float:
+        """``Derivative(x, icoord)``: the partial derivative along ``icoord`` there."""
+        raise NotImplementedError(
+            "IMultiGradFunction is the interface ROOT's gradient minimisers call a function "
+            "through; derive from it and override Derivative, DoEval and NDim."
+        )
+
+    def Gradient(self, x: Any, grad: Any) -> None:
+        """``Gradient(x, grad)``: every partial derivative at ``x``, into ``grad``."""
+        for icoord in range(int(self.NDim())):
+            grad[icoord] = self.Derivative(x, icoord)
+
+
+class IParamMultiFunction(IMultiGenFunction):
+    """``ROOT::Math::IParamMultiFunction``: a function of ``n`` numbers, with parameters.
+
+    A macro's own class overrides ``DoEvalPar(x, p)``, ``Parameters``, ``SetParameters``
+    and ``NPar``; calling the object evaluates it at the parameters it holds.
+    """
+
+    def __call__(self, x: Any) -> float:
+        return float(self.DoEvalPar(np.asarray(x, dtype=float), self.Parameters()))
+
+    def DoEvalPar(self, x: Any, params: Any) -> float:
+        """``DoEvalPar(x, p)``: the function at the point ``x`` with parameters ``p``."""
+        raise NotImplementedError(
+            "IParamMultiFunction is the interface ROOT's fitters call a function of several "
+            "numbers with parameters through; derive from it and override DoEvalPar, "
+            "Parameters, SetParameters and NPar."
+        )
+
+    def Parameters(self) -> Any:
+        """``Parameters()``: the parameters it holds, which a subclass says."""
+        raise NotImplementedError(
+            "IParamMultiFunction is the interface ROOT's fitters call a function of several "
+            "numbers with parameters through; derive from it and return the parameters "
+            "from Parameters."
+        )
+
+    def SetParameters(self, params: Any) -> None:
+        """``SetParameters(p)``: replace the parameters it holds, which a subclass says."""
+        raise NotImplementedError(
+            "IParamMultiFunction is the interface ROOT's fitters call a function of several "
+            "numbers with parameters through; derive from it and store the parameters in "
+            "SetParameters."
+        )
+
+    def NPar(self) -> int:
+        """``NPar()``: how many parameters it takes, which a subclass says."""
+        raise NotImplementedError(
+            "IParamMultiFunction is the interface ROOT's fitters call a function of several "
+            "numbers with parameters through; derive from it and return their count from NPar."
+        )
+
+
+class IParamMultiGradFunction(IMultiGradFunction):
+    """``ROOT::Math::IParamMultiGradFunction``: a function of ``n`` numbers, its parameters,
+    and each partial derivative with respect to a parameter.
+
+    A macro's own class overrides ``ParameterGradient(x, p, grad)``, which is what a
+    fitter's gradient step reads.
+    """
+
+    def ParameterGradient(self, x: Any, params: Any, grad: Any) -> None:
+        """``ParameterGradient(x, p, grad)``: each derivative w.r.t. a parameter there."""
+        raise NotImplementedError(
+            "IParamMultiGradFunction is the interface ROOT's fitters call a function with "
+            "parameters and their gradient through; derive from it and override "
+            "ParameterGradient, DoEvalPar, Parameters, SetParameters and NPar."
+        )
+
+
+class IParamFunction(IGenFunction):
+    """``ROOT::Math::IParamFunction``: a function of one number, given a set of parameters.
+
+    A macro's own class overrides ``DoEvalPar(x, p)``, ``Parameters``, ``SetParameters``
+    and ``NPar``; calling the object evaluates it at the parameters it holds, as ROOT's
+    ``operator()`` - which is ``DoEvalPar(x, Parameters())`` - does.
+    """
+
+    def __call__(self, x: Any) -> float:
+        return float(self.DoEvalPar(float(x), self.Parameters()))
+
+    def DoEval(self, x: float) -> float:
+        """``DoEval(x)``: the function at ``x``, at the parameters it holds."""
+        return float(self.DoEvalPar(float(x), self.Parameters()))
+
+    def DoEvalPar(self, x: float, params: Any) -> float:
+        """``DoEvalPar(x, p)``: the function at ``x`` with parameters ``p``."""
+        raise NotImplementedError(
+            "IParamFunction is the interface ROOT's fitters call a function with parameters "
+            "through; derive from it and override DoEvalPar, Parameters, SetParameters and NPar."
+        )
+
+    def Parameters(self) -> Any:
+        """``Parameters()``: the parameters it holds, which a subclass says."""
+        raise NotImplementedError(
+            "IParamFunction is the interface ROOT's fitters call a function with parameters "
+            "through; derive from it and return the parameters from Parameters()."
+        )
+
+    def SetParameters(self, params: Any) -> None:
+        """``SetParameters(p)``: replace the parameters it holds, which a subclass says."""
+        raise NotImplementedError(
+            "IParamFunction is the interface ROOT's fitters call a function with parameters "
+            "through; derive from it and store the parameters in SetParameters()."
+        )
+
+    def NPar(self) -> int:
+        """``NPar()``: how many parameters it takes, which a subclass says."""
+        raise NotImplementedError(
+            "IParamFunction is the interface ROOT's fitters call a function with parameters "
+            "through; derive from it and return their count from NPar()."
+        )
 
 
 class Polynomial(IGenFunction):
@@ -229,6 +398,155 @@ def cosint(x: Any) -> float:
     if magnitude < _SICI_SERIES_LIMIT:
         return _ci_series(magnitude)
     return -_e1_of_ix(magnitude).real
+
+
+class Integrator(_Integrator):
+    """``ROOT::Math::Integrator``: ROOT's ``Integral`` overloads as well as the engine's rule.
+
+    ``Integral(a, b)`` integrates the function ``SetFunction`` was given; ROOT's second
+    overload, ``Integral(f, a, b)``, integrates a function handed to the call itself, and
+    a macro that wraps a ``TF1`` per integral uses that one, so it sets the function and
+    then integrates as the first overload does.
+    """
+
+    def Integral(self, *args: Any) -> float:
+        """``Integral(a, b)`` or ``Integral(f, a, b)``: the integral over ``[a, b]``."""
+        if len(args) == 3:
+            self.SetFunction(args[0])
+            args = args[1:]
+        return super().Integral(*args)
+
+
+class IntegrationOneDim:
+    """``ROOT::Math::IntegrationOneDim``: which rule ``Integrator`` integrates with."""
+
+    kGAUSS, kLEGENDRE, kADAPTIVE, kADAPTIVESINGULAR, kNONADAPTIVE = range(5)
+
+
+class IntegrationMultiDim:
+    """``ROOT::Math::IntegrationMultiDim``: which rule ``IntegratorMultiDim`` integrates with."""
+
+    kADAPTIVE, kVEGAS, kMISER, kPLAIN = range(4)
+
+
+#: The points a multi-dimensional integral is sampled at over all its dimensions together,
+#: so that the lattice grows with the dimension as ``dim``-th root: two dimensions get 256 a
+#: side, seven get five, and none spends more time than a two-dimensional one of 65536 calls.
+_MULTIDIM_POINTS = 65536
+
+
+def _lattice(low: Any, high: Any, per_axis: int) -> np.ndarray:
+    """The centres of a ``per_axis``-a-side lattice over the box from ``low`` to ``high``,
+    one row per point, which is the shape a function of several numbers is called with.
+
+    The centres rather than the corners: a midpoint rule is exact for a polynomial of the
+    first degree in each dimension, which is the whole of what a smooth integrand looks
+    like over one cell of a lattice this dense.
+    """
+    steps = (np.arange(per_axis) + 0.5) / per_axis
+    axes = [lo + (hi - lo) * steps for lo, hi in zip(low, high, strict=True)]
+    return np.stack([axis.ravel() for axis in np.meshgrid(*axes, indexing="ij")], axis=-1)
+
+
+class IntegratorMultiDim:
+    """``ROOT::Math::IntegratorMultiDim``: the integral of a function of ``n`` numbers over a box.
+
+    ROOT sends ``kADAPTIVE`` to Cernlib's rule and ``kVEGAS``, ``kMISER`` and ``kPLAIN``
+    to GSL's three Monte Carlos - four samplings of two libraries, which agree to the
+    tolerance they are asked for and not to the last digit. One deterministic lattice
+    answers all four here, at the midpoints :func:`_lattice` gives, so the same integral
+    twice is the same number; the error is the standard error of the lattice's own
+    spread, which is what a caller's tolerance is compared against.
+    """
+
+    def __init__(self, *args: Any) -> None:
+        self._fn: Any = next((arg for arg in args if callable(arg)), None)
+        kind = next((arg for arg in args if not callable(arg)), IntegrationMultiDim.kADAPTIVE)
+        self._kind = int(kind)
+        self._result = math.nan
+        self._error = math.nan
+        self._neval = 0
+        self._status = 0
+
+    def SetFunction(self, fn: Any, *rest: Any) -> None:
+        """``SetFunction(f)``: the function to integrate, a function of an array of numbers."""
+        self._fn = fn
+
+    def Integral(self, a: Any, b: Any) -> float:
+        """``Integral(a, b)``: the integral over the box whose lower corners are ``a`` and
+        whose upper corners are ``b``, one number each."""
+        low = np.asarray(a, dtype=float).ravel()
+        high = np.asarray(b, dtype=float).ravel()
+        if low.shape != high.shape or low.size == 0:
+            raise ValueError(
+                "the box to integrate over takes as many lower corners as upper ones, at "
+                f"least one of each; got {low.size} and {high.size}."
+            )
+        per_axis = max(2, round(_MULTIDIM_POINTS ** (1.0 / low.size)))
+        volume = float(np.prod(high - low))
+        values = np.array([float(self._fn(point)) for point in _lattice(low, high, per_axis)])
+        self._neval = int(values.size)
+        self._result = volume * float(values.mean())
+        self._error = volume * float(values.std()) / math.sqrt(values.size)
+        return self._result
+
+    def Result(self) -> float:
+        """``Result()``: the integral ``Integral`` last found."""
+        return self._result
+
+    def Error(self) -> float:
+        """``Error()``: the standard error of the points that integral was summed over."""
+        return self._error
+
+    def NEval(self) -> int:
+        """``NEval()``: how many points the function was called at."""
+        return self._neval
+
+    def Status(self) -> int:
+        """``Status()``: 0, a fixed lattice having nothing to fail to converge."""
+        return self._status
+
+    def SetRelTolerance(self, tolerance: float) -> None:
+        """``SetRelTolerance``: accepted, and nothing to do - see :meth:`SetAbsTolerance`."""
+
+    def SetAbsTolerance(self, tolerance: float) -> None:
+        """``SetAbsTolerance``: accepted, and nothing to do.
+
+        GSL's Monte Carlos stop when their running estimate moves less than the tolerance
+        asked for; a lattice of fixed size is summed once, so the tolerance is a number a
+        caller may set and read back through ``Error()`` instead.
+        """
+
+    def SetMaxPts(self, points: int) -> None:
+        """``SetMaxPts``: accepted, and nothing to do - the lattice's size is the dimension's."""
+
+
+class AdaptiveIntegratorMultiDim(IntegratorMultiDim):
+    """``ROOT::Math::AdaptiveIntegratorMultiDim``: Cernlib's adaptive rule, by name.
+
+    The arguments are ``(function, absTol, relTol, maxPts)``; they are ROOT's to accept,
+    and the lattice above is what answers, as it answers ``kADAPTIVE``.
+    """
+
+
+class WrappedTF1(IGenFunction):
+    """``ROOT::Math::WrappedTF1``: a ``TF1`` as the function of one number ROOT's tools take.
+
+    ROOT's own wrapper holds the ``TF1`` by reference and hands on its parameters; here
+    ``Eval`` and ``Derivative`` are reached through the object itself, so a ``TF1``
+    whose parameters are set after the wrapping is integrated with those, as in ROOT.
+    """
+
+    def __init__(self, function: Any) -> None:
+        self._function = function
+
+    def DoEval(self, x: float) -> float:
+        """``DoEval(x)``: what the ``TF1`` is at ``x``."""
+        return float(self._function.Eval(float(x)))
+
+    def Derivative(self, x: float) -> float:
+        """``Derivative(x)``: the ``TF1``'s own derivative there."""
+        return float(self._function.Derivative(float(x)))
 
 
 class GSLMinimizer1D:
@@ -377,7 +695,6 @@ __all__ = sorted(
         "Functor1D",
         "GradFunctor",
         "GradFunctor1D",
-        "Integrator",
         "IntegratorOneDim",
         "LFSR",
         "WrappedMultiTF1",
