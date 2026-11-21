@@ -793,14 +793,19 @@ class TFile(TDirectoryFile):
 
     def WriteProcessID(self, pid: Any) -> int:
         """``WriteProcessID``: the file's index for the process ``pid`` - its ``ProcessID``
-        record written now if the file has none - or -1 for a file not being written."""
+        record written now if the file has none - or -1 for a file not being written.
+
+        ``pid`` is the process itself, or the UUID another file titled its record with: a
+        clone copies references whose process the new file has only ever seen from that
+        side, and what it has to write is the record the reference was numbered against.
+        """
         writer = self._writable()
         if writer is None:
             return -1
         from .references import TProcessID
 
         held = pid if pid is not None else TProcessID.GetPID()
-        return int(writer.process_index(held.GetTitle()))
+        return int(writer.process_index(held if isinstance(held, str) else held.GetTitle()))
 
     def ReadProcessID(self, index: int) -> Any:
         """``ReadProcessID``: the process the file's ``ProcessID{index}`` names, as the session

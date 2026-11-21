@@ -375,6 +375,19 @@ def _members(top: str, element: str, leaves: dict[str, Any]) -> list[Any]:
     return [leaves[name] for name in names]
 
 
+def _directory(backing: Any) -> Any:
+    """The open file a clone's rows were read out of, or ``None`` for one read from memory.
+
+    A ``TRef`` among those rows is the record its source file wrote, and a record names its
+    process only by the index of a ``ProcessID`` record in that file; a tree keeps the bytes
+    it read through rather than the file, so the session's own list of open files has both.
+    """
+    from ...session import gROOT
+
+    source = getattr(backing, "_source", None)
+    return next((file for file in gROOT.files if file._source is source), None)
+
+
 def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[str]]:
     """A slot for each leaf the clone fills, and the split collections' top branches.
 
@@ -384,6 +397,7 @@ def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[s
     together - is the only one of the two that is read.
     """
     elements = {leaf.column: _element(leaf, backing) for leaf in leaves}
+    source = _directory(backing)
     by_column = {leaf.column: leaf for leaf in leaves}
     slots: list[Any] = []
     grouped: set[str] = set()
@@ -399,7 +413,7 @@ def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[s
         members = _members(leaf.column, element, by_column)
         follows = [Follow(tree, one.column, one.vector, one.text) for one in members]
         sources = [one.column for one in members]
-        slots.append(ClonedSlot(leaf.column, element, split, sources, follows))
+        slots.append(ClonedSlot(leaf.column, element, split, sources, follows, source))
         grouped.add(leaf.column)
         inside |= {one.column for one in members}
     return _count_slots(slots) + slots, grouped

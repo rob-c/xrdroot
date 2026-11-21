@@ -498,3 +498,82 @@ def test_a_class_nobody_declared_is_made_by_the_part_of_the_kit_that_knows_it():
     assert _member("TNamed", {"fName": "n", "fTitle": ""}) is None
     assert _member("Nowhere", {"fName": "n"}) is None
     assert _member("TNamed", ["n"]) is None  # not a row of members at all
+
+
+def _written_refs(path: str) -> None:
+    """A tree whose objects hold a whole ``TRef`` apiece, referring to a named object of a
+    collection beside them: ``roottest``'s ``create-r`` stage, which writes the file it reads."""
+    run_source(TREF_PID, "tref_test_pid.C", call=False)
+    made_class = find_class("tref_test_pid")
+    counted = ROOT.TProcessID.GetObjectCount()  # the numbers made here are this file's alone
+    out = ROOT.TFile(path, "RECREATE")
+    tree = ROOT.TTree("T", "T")
+    names = ROOT.TClonesArray("TNamed")
+    tree.Branch("N", names)
+    refs = ROOT.TClonesArray("tref_test_pid")
+    tree.Branch("r1", refs)
+    for at in range(2):
+        names.Clear()
+        picked = ROOT.TNamed(f"N_{at}", f"N_{at}")
+        names.AddAt(picked, 0)
+        refs.Clear()
+        made = made_class()
+        made.SetName(f"r1_N_{at}")
+        made.fRef = ROOT.TRef(picked)
+        refs.AddAt(made, 0)
+        tree.Fill()
+    tree.Write()
+    out.Close()
+    ROOT.TProcessID.SetObjectCount(counted)
+
+
+def test_a_clone_of_a_reference_carries_the_process_record_its_file_knew(tmp_path):
+    """A clone copies a ``TRef``'s record as its source file wrote it, so its ``fPID`` names an
+    index among *that* file's ``ProcessID`` records - which the file the clone goes into has
+    never seen. ROOT writes those records into the clone as it copies the entries, and a
+    reader of the clone finds both the object a reference names and the process to look it
+    up in; without them a reference reads back as nothing at all
+    (roottest/root/io/tree/test-rc).
+    """
+    path = str(tmp_path / "refs.root")
+    _written_refs(path)
+    with xrdroot.open_root(path) as before:
+        recorded = before["ProcessID0"]["TNamed"]["fTitle"]
+    source = ROOT.TFile(path)
+    upstream = source.Get("T")
+    clone = upstream.CloneTree()
+    made = str(tmp_path / "clone.root")
+    out = ROOT.TFile(made, "RECREATE")  # the source file stays open while the clone is written
+    clone.SetDirectory(out)
+    clone.Write()
+    out.Close()
+    source.Close()
+    with xrdroot.open_root(made) as after:
+        assert after.keys() == ["ProcessID0", "T"]
+        assert after["ProcessID0"]["TNamed"]["fTitle"] == recorded
+    back = ROOT.TFile(made)
+    read = back.Get("T")
+    held = ROOT.TClonesArray(read.GetBranch("r1").GetClonesName())
+    read.SetBranchAddress("r1", held)
+    read.GetEntry(0)
+    assert held[0].fRef.GetObject().GetName() == "N_0"
+    back.Close()
+
+
+def test_a_clone_with_no_file_to_say_which_process_keeps_the_index_it_read():
+    """A tree read of no file at all - one a clone copied from memory - has no ``ProcessID``
+    record to carry, so a reference keeps the index its own record has. Every other index
+    written here would name a process nothing could look up.
+    """
+    member = CloneMember("tref_test_pid", 0, "fRef", 61, "a reference")
+    described = {"TObject": {"fUniqueID": 3, "fBits": 0}, "fPID": 0}
+    columns = {"r1.fRef": [[described]]}
+    objects._carried_processes(["r1.fRef"], [member], columns, None)
+    # nor has a file nothing is being written to: the index is left as it was read, whatever
+    # process the source files named
+    objects._carried_processes(
+        ["r1.fRef"], [member], columns, {"ProcessID0": {"TNamed": {"fTitle": "a-uuid"}}}
+    )
+    assert columns["r1.fRef"] == [[described]]
+    assert objects._source_uuid({"ProcessID1": {}}, 0) is None  # a file that recorded no process
+    assert objects._source_uuid({"ProcessID0": {"TNamed": {"fTitle": "a-uuid"}}}, 0) == "a-uuid"

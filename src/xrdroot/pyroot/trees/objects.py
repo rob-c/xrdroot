@@ -269,9 +269,7 @@ class Clones(_Whole):
     """A ``TClonesArray``, unsplit: its objects whole, or member by member when bypassing."""
 
     def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
-        return Whole(
-            "TClonesArray", object=True, holds=(obj._class,), split=0, basket_size=bufsize
-        )
+        return Whole("TClonesArray", object=True, holds=(obj._class,), split=0, basket_size=bufsize)
 
     def entry(self, obj: Any) -> bytes:
         getters = [_members_of(item) for item in obj]
@@ -324,8 +322,18 @@ def _objects(member: Any, rows: list[Any]) -> bytes:
             f"writer streams no {member.typename} into a tree entry yet; write that member "
             f"as a number instead, or leave the branch out"
         )
+    if rows and isinstance(rows[0], dict):  # a clone's rows: the source file described them
+        return b"".join(_described_record(ref) for ref in rows)
     _named_processes(rows)
     return b"".join(tref_record(ref) for ref in rows)
+
+
+def _described_record(ref: dict[str, Any]) -> bytes:
+    """A reference as the source file described it, written back as that same record: a clone
+    copies the entry's bytes, so nothing of it may change but the index of its process."""
+    from ...wbranch import _ref_record
+
+    return _ref_record(ref)
 
 
 def _named_processes(rows: list[Any]) -> None:
@@ -342,6 +350,50 @@ def _named_processes(rows: list[Any]) -> None:
     file = current_file()
     for ref in rows if file is not None else ():
         file.WriteProcessID(getattr(ref, "_pid", None))
+
+
+def _carried_processes(
+    keys: list[str], members: list[Any], columns: dict[str, Any], source: Any
+) -> None:
+    """The file being written given a record for each process a copied reference names, and
+    each reference's own record naming the index that file gave it.
+
+    A clone copies a ``TRef``'s bytes as its source file wrote them, so the ``fPID`` in one
+    is the index of a ``ProcessID`` record of *that* file, which the new file need not have
+    at all - and then a reader finds neither the object a reference names nor the process to
+    look it up in, though the entry beside it holds the object (roottest/root/io/tree/test-rc).
+    The index is rewritten because a file numbers its ``ProcessID`` records as it writes them.
+    """
+    from ..core.directories import current_file
+
+    file = current_file()
+    for key, member in zip(keys, members, strict=True):
+        if member.stype == OBJECT_TYPE:
+            columns[key] = [
+                [_renumbered(ref, source, file) for ref in refs] for refs in columns[key]
+            ]
+
+
+def _renumbered(ref: dict[str, Any], source: Any, file: Any) -> dict[str, Any]:
+    """A reference read out of its file, naming the index the file being written gives the
+    process it named - the index it had when nothing here can say what that process was, or
+    when nothing is being written at all."""
+    uuid = _source_uuid(source, ref["fPID"])
+    index = -1 if uuid is None or file is None else int(file.WriteProcessID(uuid))
+    return ref if index < 0 else {**ref, "fPID": index}
+
+
+def _source_uuid(source: Any, index: int) -> str | None:
+    """The UUID the file a clone copies from titled its ``ProcessID{index}`` record with, or
+    ``None`` when nothing here knows the file, or it recorded no process at that index."""
+    if source is None:
+        return None
+    try:
+        members = source[f"ProcessID{int(index)}"]
+    except KeyError:  # a reference one file wrote to another's numbering that is not here
+        return None
+    named = members.get("TNamed", members)
+    return str(named.get("fTitle", ""))
 
 
 def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:
@@ -632,7 +684,13 @@ class ClonedSlot:
     code = ""
 
     def __init__(
-        self, name: str, element: str, split: int, sources: list[str], follows: list[Any]
+        self,
+        name: str,
+        element: str,
+        split: int,
+        sources: list[str],
+        follows: list[Any],
+        source: Any = None,
     ) -> None:
         self.name = self.branch = self.title = name
         self._kind = SplitArray(element)
@@ -640,6 +698,9 @@ class ClonedSlot:
         #: What the tree this copies calls each member's column, in ROOT's order.
         self.sources = sources
         self._follows = follows
+        #: The directory of the file these rows were read from: what a ``TRef`` among them
+        #: names only by the index of a ``ProcessID`` record, which only that file holds.
+        self._source = source
         #: The names the writer keeps the count and each member's rows under.
         self.keys = column_keys(name, self._spec.build(name, 32000))
         self.pending: list[Any] = []
@@ -696,7 +757,9 @@ class ClonedSlot:
         """How many objects each entry holds, and each member's rows, as ROOT writes them."""
         self.seal()
         rows = [row for chunk in self.chunks for row in chunk]
-        return self._kind.columns(self.keys, rows)
+        columns = self._kind.columns(self.keys, rows)
+        _carried_processes(self.keys[1:], self._kind.members, columns, self._source)
+        return self._kind.written(self.keys, columns)
 
     def spec(self) -> Spec:
         return self._spec
