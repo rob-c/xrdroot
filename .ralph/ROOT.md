@@ -774,6 +774,24 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   their worktrees. Nothing was copied into the tree, but a brief must say plainly that `docs/` is not
   theirs, and a round should look for stray `docs/` before taking a worktree's files.
 
+## Round 23's close (recorded here for the next iteration)
+
+- Base `21ab15c4`, closed at `4fa05128`. Three commits, **one feature**, and **the first PASS since round
+  17**: `io/bigevent/write` passes (`4913f410`, `2c123241`, `9da8ee08`).
+- **The feature was the third wall of the same group**: a ROOT class's member that is itself one of ROOT's
+  classes - `TLorentzVector::fP` is a `TVector3`, and `root_row` gave **a float** where a dict of members
+  was needed. One-line diagnosis in the brief (`root_row(R.TLorentzVector(1,2,3,4), "TLorentzVector")["fP"]`),
+  three files, one commit each.
+- `io/bigevent` now measures **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r23/ev`). `read`'s last wall is named
+  in `W0-60`: a `vector<TObject> *` member is a kind the *reader* does not decode inside an entry - the
+  writer already lays it out. That is one feature, and it would close the group.
+- **Three features, three rounds, and this one paid**: the first two moved walls without a PASS (rounds 21,
+  22), this one moved a wall *and* flipped a test. The difference is that this wall was in a *row*, not in a
+  layout - the cheap kind `W0-52` predicted, one file deep.
+- **`W0-61`:** the main worktree keeps receiving another session's stray files (`dot.C`, `h.h`, `mkroot.py`,
+  `test.root` this round). Every one was caught by `git status` before the gate; a round should also
+  `git clean -n` before it commits.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -812,6 +830,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 23's result of it, at `4fa05128`: `TOTAL 117308 0 29330 0 100%`, `12725 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
+  maintainability 30 367 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 22's result of it, at `356d077f`: `TOTAL 117152 0 29290 0 100%`, `12704 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1017 files,
   maintainability 30 323 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -913,6 +934,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 20 | `1000afdd` | **four** targets, each one change round 19 had named: the ACLiC `NameError` (24 cases of `roottest/python`), `TClass::GetClassVersion` for a file-only layout (11 `io/tree` tests), `TBufferJSON`'s `MEMBERS` entries, and the pad's PostScript counts | **0 gained, 0 lost**: three commits, and both groups measured unchanged in PASS (`/tmp/r20/areas`, `/tmp/r20/tree`) - each fix revealed the group's next wall | 2: `W0-54`, `W0-55` |
 | 21 | `57940f19` | **one feature in four files** (`W0-55`'s rule): `Event::fTemplateMember`, the `template2<template1<int>>` member of `io/bigevent`'s class - `winfo.py`, `wdeclared.py`, `wdobjects.py`, `rdobjects.py` | **0 PASS, and the wall is gone**: `io/bigevent` builds and measures **2 PASS / 0 FAIL / 2 UNSUPPORTED** (`/tmp/r21/ev2`), its refusal moved to `a TArrayI is not something this writer puts in a ROOT file` | 2: `W0-56` (stale-cache ImportError), `W0-57` (`TArrayI` as a member) |
 | 22 | `249dce34` | **one feature in three files** (`W0-55`'s rule): `TArrayF`/`TArrayI` as a *member* of a class (`W0-57`), which serves `io/bigevent` and `double32` - `winfo.py`, `wdobjects.py`, `rdobjects.py` | **0 PASS, the wall gone**: `io/bigevent` still **2 PASS / 0 FAIL / 2 UNSUPPORTED** with its refusal moved to `a TVector3 here is a float rather than the dict of ...`; `io/double32` **3 PASS / 1 FAIL** (`/tmp/r22/ev`, `/tmp/r22/d32`) | 2: `W0-58` (the `TVector3` member), `W0-59` (stray `docs/` in worktrees) |
+| 23 | `21ab15c4` | **one feature in three files**: a ROOT class's member that is itself one of ROOT's classes (`TLorentzVector::fP` is a `TVector3`) - `pyroot/core/declared.py`, `wdobjects.py`, `rdobjects.py` | **roottest +1: `io/bigevent/write` PASSES** - the group is **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r23/ev`), its `read` side walled by `a vector<TObject> * member ... that this reader does not decode inside an entry` | 2: `W0-60`, `W0-61` |
 
 ## Notes
 
