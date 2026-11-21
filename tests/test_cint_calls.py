@@ -66,6 +66,31 @@ def body(source: str) -> str:
             "3.5\n",
         ),
         ('double w[3] = {1, 2, 3}; printf("%g\\n", std::accumulate(w, w + 2, 10.0));', "13\n"),
+        (
+            'double a[4] = {3, 1, 2, 0}; std::sort(&a[0], &a[0] + 3);'
+            'printf("%g %g\\n", a[0], a[3]);',
+            "1 0\n",
+        ),
+        (
+            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+            'std::sort(&v[0], &v[0] + 2); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "1 3 2\n",
+        ),
+        (
+            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+            'std::sort(&v.front(), &v.front() + 2); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "1 3 2\n",
+        ),
+        (
+            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+            'int *p = &v[0]; std::reverse(p, p + 3); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "2 1 3\n",
+        ),
+        (
+            'double a[3] = {1, 2, 3}; double b[3] = {0, 0, 0};'
+            'std::copy(&a[0], &a[3], &b[0]); printf("%g %g %g\\n", b[0], b[1], b[2]);',
+            "1 2 3\n",
+        ),
         ('printf("%d %d %d\\n", abs(-3), std::max(2, 5), std::min(1.5, 0.5) < 1);', "3 5 1\n"),
         ('long big = 5; unsigned char c = 260; printf("%ld %d\\n", big, c);', "5 4\n"),
         ('int x; x = {3}; printf("%d\\n", x);', "3\n"),
@@ -133,3 +158,68 @@ def test_a_class_deriving_from_roots_reaches_roots_members_through_self() -> Non
     assert "self.fChain.GetEntry(entry)" in text
     assert "self.fInput.Print()" in text
     assert "ROOT.fOther = 2" in text
+
+
+def test_an_element_taken_by_at_is_a_pointer_into_the_container(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``&v.at(i)`` handed to something other than a range - an initialiser here - is a pointer
+    into the vector's own buffer: what it points at is that element."""
+    source = (
+        "std::vector<double> v; v.push_back(1.5); v.push_back(2.5);"
+        "double *q = &v.at(1);"
+        'printf("%g\\n", *q);'
+    )
+    assert printed(capsys, "void t() {" + source + "}") == "2.5\n"
+
+
+def test_an_element_taken_by_front_is_a_pointer_into_the_container(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``&v.front()`` likewise: element zero of the vector, reached through a pointer."""
+    source = (
+        "std::vector<double> v; v.push_back(2.5); v.push_back(3.5);"
+        "double *r = &v.front();"
+        'printf("%g\\n", *r);'
+    )
+    assert printed(capsys, "void t() {" + source + "}") == "2.5\n"
+
+
+def test_the_address_of_a_call_that_names_no_element_is_not_a_pointer_into_it() -> None:
+    """``&v.size()`` is a call whose name is neither ``front`` nor ``at``, so it names no
+    element: the address taken is the member's own, not a pointer into the vector."""
+    assert "ItemRef" not in body("std::vector<int> v; auto *p = &v.size(); (void)p;")
+
+
+def test_a_range_whose_ends_are_elements_taken_by_at_sorts_those_elements(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``std::sort(&v.at(0), &v.at(2))``: a range end taken by ``at`` is the same vector and
+    index a range end taken by ``[i]`` is, so the algorithm sorts inside the vector."""
+    source = (
+        "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
+        "std::sort(&v.at(0), &v.at(2));"
+        'printf("%d %d %d\\n", v[0], v[1], v[2]);'
+    )
+    assert printed(capsys, "void t() {" + source + "}") == "1 3 2\n"
+
+
+def test_the_address_of_a_member_call_or_a_plain_name_is_not_an_element_of_a_vector() -> None:
+    """``&v.size()`` names no element and ``&d`` of a plain ``double`` is no vector at all:
+    neither becomes the vector-and-offset a range end is."""
+    source = (
+        "std::vector<int> v; int *p = &v.size(); (void)p;"
+        "double d = 1.; double *q = &d; (void)q;"
+    )
+    text = body(source)
+    assert "ItemRef(v" not in text
+
+
+def test_a_range_end_that_names_no_element_is_refused_by_name() -> None:
+    """``std::sort(&v.size(), …)``: a call whose name is neither ``front`` nor ``at``, and a
+    plain name's address, are no vector element, so the iterator form is refused - not guessed."""
+    with pytest.raises(Refusal, match="an iterator this translator cannot follow back"):
+        body("std::vector<int> v; std::sort(&v.size(), &v.size() + 1);")
+    # A plain name's address is no vector element either, but it *is* a pointer this
+    # translator can follow: the array form takes it, which is what the check is for.
+    assert "sort_range(d, 0, 1)" in body("double d = 1.; std::sort(&d, &d + 1);")

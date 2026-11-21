@@ -32,10 +32,12 @@ from .nodes import (
     Call,
     Expr,
     Function,
+    Index,
     InitList,
     Literal,
     Member,
     Name,
+    Unary,
 )
 from .operators import conversion
 from .symbols import Symbol
@@ -359,12 +361,42 @@ class CallEmitter(ExprEmitter):
         if ends is not None:
             return ends
         if isinstance(it, Binary) and it.op == "+":
-            base, _ = self._iterator(it.left, node, end)
-            return base, self.value(it.right)
+            base, start = self._iterator(it.left, node, end)
+            moved = self.value(it.right)
+            return base, moved if start == "0" else f"{start} + {moved}"
+        addressed = self._element_pointer(it)
+        if addressed is not None:
+            return addressed
         found = self.typeof(it)
         if found is not None and (found.is_array or found.is_pointer):
             return self.value(it), "0"
         raise self.refuse("an iterator this translator cannot follow back to its container", node)
+
+    def _element_pointer(self, it: Expr) -> tuple[str, str] | None:
+        """``&v[i]`` and ``&v.front()`` as the range end they are: the vector, and the offset.
+
+        C++ hands an algorithm the pointer into the vector's own buffer, and the
+        algorithm writes back through it, so the range names the vector and an
+        index rather than a copy of the elements from there on.
+        """
+        if not isinstance(it, Unary) or it.op != "&":
+            return None
+        target = it.operand
+        if isinstance(target, Index):
+            return self.value(target.obj), self.value(target.index)
+        if isinstance(target, Call) and isinstance(target.func, Member):
+            return self._element_call_end(target)
+        return None
+
+    def _element_call_end(self, call: Call) -> tuple[str, str] | None:
+        """``&v.front()`` as ``(v, 0)`` and ``&v.at(i)`` as ``(v, i)``."""
+        assert isinstance(call.func, Member)
+        first = self.value(call.func.obj)
+        if call.func.name == "front" and not call.args:
+            return first, "0"
+        if call.func.name == "at" and len(call.args) == 1:
+            return first, self.value(call.args[0])
+        return None
 
     def _container_end(self, it: Expr) -> tuple[str, str] | None:
         """``v.begin()`` as ``(v, 0)`` and ``v.end()`` as ``(v, None)``: where a range starts."""
