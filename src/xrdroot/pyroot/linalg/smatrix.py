@@ -31,6 +31,7 @@ __all__ = [
     "SMatrix",
     "SMatrixIdentity",
     "SVector",
+    "AssignSym",
     "Cross",
     "Dot",
     "Mag",
@@ -55,6 +56,12 @@ def _text(value: Any) -> str:
 def _is_number(value: Any) -> bool:
     """Whether ``value`` is a number rather than something a vector can be filled from."""
     return isinstance(value, (int, float, np.integer, np.floating))
+
+
+def _is_dimension(value: Any) -> bool:
+    """Whether ``value`` is a dimension a subscript gave, rather than the element type or the
+    representation - which are names, and travel as C++ text."""
+    return isinstance(value, (int, np.integer))
 
 
 def _upto(first: Any, last: Any) -> list[Any]:
@@ -188,6 +195,68 @@ class MatRepSym(_Shape):
     """``MatRepSym<T, D>``: a matrix that stores one triangle and mirrors the other."""
 
     _kind = "sym"
+
+
+#: The representations a fourth template argument names, by the C++ name a macro writes.
+_REPRESENTATIONS: dict[str, type[_Shape]] = {"MatRepSym": MatRepSym, "MatRepStd": MatRepStd}
+
+
+def _declared_shape(dims: list[Any]) -> _Shape:
+    """The shape a subscript's dimensions name: ``[3]`` ROOT's symmetric 3 by 3, ``[2, 3]``
+    a full 2 by 3, and either followed by the ``MatRepSym``/``MatRepStd`` a macro's type gives
+    as its fourth template argument."""
+    sizes, representation = _dimensions_and_representation(dims)
+    fitted = _representation(representation, sizes[0], sizes[-1])
+    if fitted is not None:
+        return fitted
+    return MatRepSym(sizes[0], sizes[-1]) if len(sizes) == 1 else MatRepStd(sizes[0], sizes[-1])
+
+
+def _dimensions_and_representation(dims: list[Any]) -> tuple[list[int], Any]:
+    """ROOT's ``SMatrix<T, D1, D2, R>`` read off a subscript, whose dimensions come as numbers
+    and whose representation comes as the C++ text of a type: ``'MatRepStd<double,2,3>'``."""
+    sizes: list[int] = []
+    named: list[Any] = []
+    for each in dims:
+        if _is_dimension(each):
+            sizes.append(int(each))
+        else:
+            named.append(each)
+    if not 1 <= len(sizes) <= 2 or len(named) > 1:
+        raise TypeError(
+            "an SMatrix is named by one or two dimensions and at most one MatRepSym or "
+            f"MatRepStd, not {list(dims)!r}"
+        )
+    return sizes, named[0] if named else None
+
+
+def _representation(named: Any, rows: int, cols: int) -> _Shape | None:
+    """The ``MatRepSym``/``MatRepStd`` a fourth template argument names, or nothing when the
+    type leaves it to ROOT's default; a symmetric one has to be square, as ROOT refuses to
+    compile one that is not."""
+    if named is None:
+        return None
+    fitted = named if isinstance(named, _Shape) else _named_representation(named, rows, cols)
+    if fitted._kind == "sym" and fitted.rows != fitted.cols:
+        raise TypeError(
+            f"MatRepSym needs a square matrix, and {fitted.rows} by {fitted.cols} is not one"
+        )
+    return fitted
+
+
+def _named_representation(text: Any, rows: int, cols: int) -> _Shape:
+    """The representation the C++ text of a fourth template argument names, which is how a
+    translated macro hands its type over - ``'MatRepSym<double,3>'`` - carrying the size it
+    names, or else the shape the rest of the subscript already gave."""
+    name, _, inside = str(text).partition("<")
+    made = _REPRESENTATIONS.get(name.rpartition(":")[2].strip())
+    if made is None:
+        raise TypeError(
+            "an SMatrix's fourth template argument is MatRepSym or MatRepStd, and "
+            f"{text!r} is neither"
+        )
+    sizes = [int(part) for part in inside.partition(">")[0].split(",") if part.strip().isdigit()]
+    return made(sizes[0], sizes[-1]) if sizes else made(rows, cols)
 
 
 #: The classes subscripting has made so far, by ``(base name, element, dimensions)``.
@@ -348,17 +417,8 @@ class SMatrix:
         if not isinstance(spec, tuple):
             raise TypeError(f"SMatrix needs an element type and its dimensions, not {spec!r}")
         element, *dims = spec
-        first, second = int(dims[0]), dims[1] if len(dims) > 1 else None
-        if isinstance(second, _Shape):
-            if second._kind == "sym" and second.rows != second.cols:
-                raise TypeError(
-                    f"MatRepSym needs a square matrix, and {second.rows} by {second.cols} is not "
-                    "one"
-                )
-            rows, cols, symmetric = second.rows, second.cols, second._kind == "sym"
-        else:
-            rows, cols, symmetric = first, first if second is None else int(second), second is None
-        return _matrix(element, rows, cols, symmetric)
+        shape = _declared_shape(dims)
+        return _matrix(element, shape.rows, shape.cols, shape._kind == "sym")
 
     def __init__(self, *values: Any) -> None:
         self._values = [0] * (self.kRows * self.kCols)
@@ -625,6 +685,27 @@ class SMatrix:
             for r in range(self.kRows)
         ]
         return "[ " + "\n  ".join(rows) + " ]"
+
+
+class AssignSym:
+    """``AssignSym::Evaluate(sym, product)``: a symmetric matrix given the one triangle a
+    product ROOT knows is symmetric - what ``Similarity`` returns and a Kalman fit writes as
+    ``H*Cp*Transpose(H)``, which is only symmetric up to rounding, so ROOT fills the triangle
+    it stores and mirrors it rather than checking the other half."""
+
+    @staticmethod
+    def Evaluate(lhs: Any, rhs: Any) -> None:
+        """Write ``rhs``'s lower triangle into ``lhs``, which is the triangle ROOT's
+        ``MatRepSym`` keeps, and mirror it - the rest of ``rhs`` is not looked at."""
+        if not isinstance(lhs, SMatrix) or not lhs._symmetric:
+            raise TypeError(
+                "AssignSym::Evaluate takes a symmetric SMatrix, SMatrix<T,N,MatRepSym<T,N>> "
+                "or SMatrix<T,N> of one dimension, as its result; pass a matrix of that shape "
+                "or assign element by element"
+            )
+        for row in range(lhs.kRows):
+            for col in range(row + 1):
+                lhs[row, col] = rhs[row, col]
 
 
 def Transpose(matrix: SMatrix) -> SMatrix:

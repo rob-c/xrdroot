@@ -30,6 +30,7 @@ from .matrices import (
     values_of,
 )
 from .smatrix import (
+    AssignSym,
     Cross,
     Dot,
     Mag,
@@ -68,7 +69,7 @@ __all__ = [
     "TMatrixDColumn_const", "TMatrixDDiag_const", "TMatrixTRow", "TMatrixTColumn",
     "TMatrixTDiag", "TDecompLU", "TDecompChol", "TDecompBK", "TDecompSVD", "TDecompQRH",
     "NormalEqn", "VerifyVectorIdentity", "VerifyMatrixIdentity",
-    "SVector", "SMatrix", "MatRepStd", "MatRepSym", "Dot", "Transpose", "Similarity",
+    "SVector", "SMatrix", "MatRepStd", "MatRepSym", "AssignSym", "Dot", "Transpose", "Similarity",
     "SMatrixIdentity",
     "SimilarityT", "Mag", "Mag2", "Cross", "Unit", "Square", "Times",
 ]  # fmt: skip

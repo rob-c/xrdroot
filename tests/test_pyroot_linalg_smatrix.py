@@ -287,3 +287,46 @@ def test_a_vector_of_the_wrong_width_is_refused_by_name():
         Cross(SVector["double", 2](1, 2), x)
     with pytest.raises(TypeError, match="has to name that variable's class here"):
         SMatrixIdentity()
+
+
+def test_a_translated_type_names_the_representation_it_stores():
+    from xrdroot.pyroot.linalg.smatrix import SMatrix as _SMatrix
+
+    sym = _SMatrix["double", 2, 2, "MatRepSym<double,2>"]()
+    assert sym._symmetric and (sym.kRows, sym.kCols) == (2, 2)
+    sym[1, 0] = 3
+    assert sym(0, 1) == 3.0
+    std = _SMatrix["double", 2, 3, "MatRepStd<double,2,3>"]()
+    assert not std._symmetric and std.kSize == 6
+    # a dimension a template parameter names is not in the text, so the subscript's wins
+    assert _SMatrix["double", 3, "MatRepSym<double,NDIM1>"]._dims == (3, 3, 1)
+    assert _SMatrix["double", 3, "ROOT::Math::MatRepSym<double,3>"]._dims == (3, 3, 1)
+
+
+def test_a_representation_the_type_does_not_name_is_refused_by_name():
+    from xrdroot.pyroot.linalg.smatrix import SMatrix as _SMatrix
+
+    with pytest.raises(TypeError, match="is MatRepSym or MatRepStd, and 'Foo<double,3>' is"):
+        _SMatrix["double", 3, "Foo<double,3>"]
+    with pytest.raises(TypeError, match="one or two dimensions and at most one MatRepSym"):
+        _SMatrix["double", 3, 4, 5]
+    with pytest.raises(TypeError, match="one or two dimensions and at most one MatRepSym"):
+        _SMatrix[("double",)]
+
+
+def test_a_product_root_knows_is_symmetric_fills_one_triangle_of_a_symmetric_matrix():
+    from xrdroot.pyroot.linalg.smatrix import AssignSym
+
+    product = SMatrix["double", 2, 2](1, 9, 2, 4)  # only the lower triangle is used
+    sym = SMatrix["double", 2]()
+    AssignSym.Evaluate(sym, product)
+    assert [sym(i, j) for i in range(2) for j in range(2)] == [1.0, 2.0, 2.0, 4.0]
+
+
+def test_a_result_that_is_not_a_symmetric_matrix_is_refused_by_name():
+    from xrdroot.pyroot.linalg.smatrix import AssignSym
+
+    with pytest.raises(TypeError, match="takes a symmetric SMatrix"):
+        AssignSym.Evaluate(SMatrix["double", 2, 2](), SMatrix["double", 2, 2]())
+    with pytest.raises(TypeError, match="takes a symmetric SMatrix"):
+        AssignSym.Evaluate(SVector["double", 2](1, 2), SMatrix["double", 2, 2]())
