@@ -1031,6 +1031,24 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
 - Gates: `12942 passed`, `TOTAL 118743 0 29788 0 100%`, ruff/mypy (1019 files)/maintainability (30 946
   functions)/components/`mkdocs --strict` clean, `XRDROOT_TEST_OTHER_MACHINE=1` the same.
 
+## Round 36's close (recorded here for the next iteration)
+
+- Base `59744112`, closed at `630618f8`. **Two commits, +3 PASS** - and the `TRef` family is finished.
+- **`W0-95` closed and the family with it.** `a17cb476` (a reference written after a clone names the file's process record) is
+  the clone-of-a-clone level, and it closed `test-rcr2`, `test-rcrr2`, `test-rcrr123`: `io/tree` is **17 PASS / 0 FAIL /
+  1 DIFF / 2 UNSUPPORTED** (`/tmp/r36/tree`). Four rounds ago the same group was 11 PASS / 7 DIFF; the whole path
+  `W0-66` -> `W0-83` -> `W0-91` -> `W0-95` is closed.
+- **`W0-96` is bucketed**, and the table is the round's other product: a worker read all 43 `other/math` refusals (its own
+  `--jobs 1` run was the only measurement of round 35, so it re-used it) and reduced them to **22 causes** with a file and
+  a first step each (`/tmp/r36/w03/R36-math-buckets.md`). **Its top row is `W0-98`: the translator's refusal of the address
+  of a vector element (`&v[0]`, `&v.front()`, `&v[i]`) blocks 10 of the 43 by itself** - `pycxx/emit_calls.py:354`, `:367`.
+- `W0-99`: `io/json`'s last two refusals did not move with `f0c859a9` (which added ROOT's own array-compression forms as
+  unit tests, not a fix). `W0-100`: `io/tree/read` is the group's last DIFF.
+- **The round ran under a load average of 15-45** (another session): every harness measurement was `--jobs 1`, the gates
+  `-n 2`, and no worker was asked to run more than one measurement (`W0-44`, `W0-45`, `W0-47`).
+- Gates: `12949 passed`, `TOTAL 118750 0 29792 0 100%`, ruff/mypy (1019 files)/maintainability (30 962
+  functions)/components/`mkdocs --strict` clean, `XRDROOT_TEST_OTHER_MACHINE=1` the same.
+
 ## Checklist (per round)
 
 - [ ] `git status` clean; the gates green at the round's base commit
@@ -1069,6 +1087,9 @@ For the round's work, the evidence is, in this order:
 
 - Exact monitor-rerunnable command:
   `cd /Users/rcurrie/src/xrdroot && PYTHONPATH=$PWD/src .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 --cov=xrdroot`
+- Round 36's result of it, at `630618f8`: `TOTAL 118750 0 29792 0 100%`, `12949 passed, 1 skipped,
+  46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1019 files,
+  maintainability 30 962 functions, components 0 undeclared, `mkdocs build --strict` built.
 - Round 35's result of it, at `4a9eb5ce`: `TOTAL 118743 0 29788 0 100%`, `12942 passed, 1 skipped,
   46 xfailed`; `XRDROOT_TEST_OTHER_MACHINE=1` the same; `ruff` clean, `mypy` 1019 files,
   maintainability 30 946 functions, components 0 undeclared, `mkdocs build --strict` built.
@@ -1222,6 +1243,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 33 | `91bf694c` | **two commits**: a `Minimizer` that can be cleared and asked for its MINOS errors (`88fa5527`); ROOT::Math's `SVector`/`SMatrix`, subscripted as the macro writes them (`e3838fad`) | **`other` +1**: `other/math/mathcore-testMinim` PASSES - `other/math` **19 PASS / 0 FAIL / 45 UNSUPPORTED / 1 TIMEOUT** (`/tmp/r33/other`); `roottest/root/math/*` still **0 PASS / 4 FAIL / 1 UNSUPPORTED** (`/tmp/r33/rmath`) but all five now *run* | 4: `W0-90` (`roottest/root/math`'s five named walls), `W0-91` (**`W0-79`'s root cause, measured byte for byte** - a clone's new `ProcessID` record and the file index in both the reference and the identifier), `W0-92` (no `TRefTable` is written, so a collision resolves by branch order); `W0-87`/`W0-89` partly taken |
 | 34 | `8997cd97` | **three commits**: ROOT::Math's free functions on `SVector`/`SMatrix` (`efa5f946`); a split `TObject`'s identifier keeps the process byte the file carries (`6bd0d6ba`); the SMatrix test split to stay inside the CCN limit (`c5962455`) | **0 PASS**: `io/tree` stays **11 / 7 / 2** (`/tmp/r34/tree`) and `roottest/root/math/*` stays **0 / 4 / 1** (`/tmp/r34/rmath`); both groups' failures moved but none closed | 4: `W0-93` (**a worker's test with CCN 14 failed the maintainability gate** - every gate after every cherry-pick, not coverage alone), `W0-94` (**two of four workers produced nothing at all**); `W0-91` partly taken (two of three pieces), `W0-90` re-queued |
 | 35 | `1c25bcff` | **five commits**: ROOT::Math's `AssignSym` and the `MatRepSym` a translated type names as text (`84e15c0f`); **a clone writes the identifiers its objects were numbered with** (`920dfe4c`, round 33's two edits at last); a `TObject` read member at a time carries the two words its object has (`dee7d185`); ROOT::Math's genetic minimiser and its seed (`3e2588d0`, `e67c9a79`) | **roottest +3**: `io/tree` **11 -> 14 PASS**, 7 -> **4 DIFF**, **0 FAIL** (`/tmp/r35/tree`: `test-rcr`, `test-rcrr`, `test-rcrr3`); **`other` +2**: `other/math` **19 -> 21 PASS** (`/tmp/r35/other`: `genetic-testGAMinimizer`, `genetic-GAMinTutorial`); `roottest/root/math/*` 0 / 4 / 1 (`/tmp/r35/rmath`) | 3: `W0-95` (**the same feature one level deeper** - a clone of a clone still names the base object, three tests, 180 identical-count lines each), `W0-96` (`other/math`'s 43 UNSUPPORTED bucketed), `W0-97` (`roottest/root/math`, take all five macros at once); `W0-91`, `W0-85`, `W0-87` closed |
+| 36 | `59744112` | **two commits**: a reference written after a clone names the file's process record (`1b2ae9d5`, `W0-95`); ROOT's own array-compression forms in JSON (`f0c859a9`) | **roottest +3**: `io/tree` **14 -> 17 PASS**, 4 -> **1 DIFF**, **0 FAIL** (`/tmp/r36/tree`: `test-rcr2`, `test-rcrr2`, `test-rcrr123`) - **the whole `TRef` family is closed**; `io/json` unchanged at 10 / 0 / 0 / 2 (`/tmp/r36/json`) | 3: `W0-98` (**the translator's `&v[0]`/`&v.front()` refusal blocks 10 of `other/math`'s 43** - the top of round 36's 22-cause bucket table), `W0-99` (`io/json`'s last two refusals), `W0-100` (`io/tree/read`'s last DIFF); `W0-95` and `W0-96` closed |
 
 ## Notes
 
