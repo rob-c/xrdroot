@@ -161,6 +161,9 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     ("GetParameter", 3): (1, 2),
     ("GetBinXYZ", 4): (1, 2, 3),
     ("GetObject", 2): (1,),
+    # ``TBufferJSON::FromJSON(T*& obj, json)`` fills the pointer the macro hands it, so the
+    # local is a cell - which is what makes ``arr2`` hold the array the JSON described.
+    ("FromJSON", 2): (0,),
     ("DecodeNameCycle", 3): (2,),
     ("DecodeNameCycle", 4): (2,),
     ("HLS2RGB", 6): (3, 4, 5),

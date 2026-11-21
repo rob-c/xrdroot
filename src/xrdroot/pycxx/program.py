@@ -376,10 +376,17 @@ class Program:
             if known is not None:
                 return known
             return self._user_positions(self._methods(func.name), len(call.args))
-        if isinstance(func, Name) and len(func.parts) == 1:
-            if func.last in self.classes:
-                return self.constructor_positions(func.last, len(call.args))
-            return self._user_positions(self.overloads(func.last), len(call.args))
+        if isinstance(func, Name):
+            # ``TBufferJSON::FromJSON(obj, json)``: a qualified static call takes its first
+            # argument by reference just as ``obj.FromJSON(...)`` does, and ROOT's table is
+            # keyed by the name either way.
+            known = active().out_parameters.get((func.last, len(call.args)))
+            if known is not None:
+                return known
+            if len(func.parts) == 1:
+                if func.last in self.classes:
+                    return self.constructor_positions(func.last, len(call.args))
+                return self._user_positions(self.overloads(func.last), len(call.args))
         return ()
 
     def _methods(self, name: str) -> list[Function]:

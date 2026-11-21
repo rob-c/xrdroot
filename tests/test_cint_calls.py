@@ -223,3 +223,11 @@ def test_a_range_end_that_names_no_element_is_refused_by_name() -> None:
     # A plain name's address is no vector element either, but it *is* a pointer this
     # translator can follow: the array form takes it, which is what the check is for.
     assert "sort_range(d, 0, 1)" in body("double d = 1.; std::sort(&d, &d + 1);")
+
+
+def test_a_qualified_static_call_fills_the_local_handed_to_it_by_reference() -> None:
+    """``TBufferJSON::FromJSON(obj, json)`` takes ``T*&``: the local is a cell the callee writes
+    through, exactly as ``obj.FromJSON(...)`` does - the table is keyed by the name either way."""
+    text = body("int x; TBufferJSON::FromJSON(x, s);")
+    assert "x = Cell(" in text
+    assert "ROOT.TBufferJSON.FromJSON(x," in text
