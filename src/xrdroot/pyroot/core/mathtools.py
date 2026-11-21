@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from . import fitdata
+from .refs import store
 
 __all__ = [
     "Functor1D",
@@ -471,6 +472,14 @@ class Minimizer:
         self._variables[int(index)] = [str(name), float(value), float(step), (low, high)]
         return True
 
+    def Clear(self) -> None:
+        """``Clear``: the function and the minimum of the last ``Minimize`` dropped - the
+        variables kept, as ROOT's ``Minuit2Minimizer::Clear`` keeps its own - so that the same
+        minimiser is given a new function and run again. Every accessor below then gives what
+        ROOT gives with no state: no minimum, and zeros."""
+        self._fcn = None
+        self._found = None
+
     def Minimize(self) -> bool:
         """``Minimize``: MIGRAD from the variables set, and - at print level 1 - ROOT's lines."""
         order = sorted(self._variables)
@@ -497,26 +506,66 @@ class Minimizer:
         for name, value, error in zip(names, found.values, found.errors, strict=False):
             print(f"{name}\t  = {value:g}\t +/-  {error:g}")
 
+    def GetMinosError(self, index: int, errLow: Any = None, errUp: Any = None,
+                      option: int = 0) -> bool:  # fmt: skip
+        """``GetMinosError(i, low, high)``: Minuit2's MINOS errors either side of parameter
+        ``i`` - where the function has risen by the fit's error definition with every other
+        parameter minimised again - put where the references point, and whether MINOS found
+        both. ROOT's ``False``, with both errors zero, when it did not, or when nothing has
+        been minimised; Minuit2 ignores ``option``.
+        """
+        error = self._minos_error(index)
+        pair = (0.0, 0.0) if error is None else (float(error.lower), float(error.upper))
+        _given(errLow, pair[0])
+        _given(errUp, pair[1])
+        return error is not None
+
+    def _minos_error(self, index: int) -> Any:
+        """MINOS' two errors of one parameter, or ``None`` when there is no minimum to start
+        from - none made, or one Minuit2 does not call valid - or when MINOS itself could not
+        find them, which is ROOT's ``false``."""
+        made = self._found
+        if made is None or not made.valid:
+            return None
+        name = str(made.parameters[int(index)])
+        made.minos(name)
+        error = made.merrors.get(name)
+        return error if error is not None and error.is_valid else None
+
     def X(self) -> np.ndarray[Any, Any]:
+        if self._found is None:
+            return np.array([])
         return np.array(self._found.values)
 
     def Errors(self) -> np.ndarray[Any, Any]:
+        if self._found is None:
+            return np.array([])
         return np.array(self._found.errors)
 
     def MinValue(self) -> float:
-        return float(self._found.fval)
+        return 0.0 if self._found is None else float(self._found.fval)
 
     def Edm(self) -> float:
-        return float(self._found.fmin.edm)
+        return 0.0 if self._found is None else float(self._found.fmin.edm)
 
     def NCalls(self) -> int:
-        return int(self._found.nfcn)
+        return 0 if self._found is None else int(self._found.nfcn)
 
     def NDim(self) -> int:
         return len(self._variables)
 
     def Status(self) -> int:
-        return 0 if self._found.valid else 3
+        return 0 if self._found is None or self._found.valid else 3
+
+
+def _given(target: Any, value: float) -> None:
+    """Put ``value`` where an out-argument's reference points, as ``store`` does, and nothing
+    where the caller passed a bare number: a number is handed over as its value rather than as
+    a reference, so the variable it came from stays as it was until the translator declares
+    ``GetMinosError`` among the calls that write through references.
+    """
+    if target is not None and not isinstance(target, (int, float)):
+        store(target, value)
 
 
 def _minuit(fcn: Any, start: Any, names: list[str]) -> Any:

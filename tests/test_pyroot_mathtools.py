@@ -245,3 +245,75 @@ def test_a_fitter_set_up_first_minimises_from_its_parameters_settings():
     assert not config.ParSettings(0).IsFixed()
     config.SetParamsSettings(2)
     assert config.ParSettings(1).Value() == 0.0
+
+
+def test_minos_gives_the_errors_either_side_of_a_parameter():
+    pytest.importorskip("iminuit")
+    minimizer = ROOT.Math.Minimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 1) ** 2 + 2 * (v[1] - 3) ** 2, 2))
+    minimizer.SetVariable(0, "x", -1.0, 0.01)
+    minimizer.SetVariable(1, "y", 1.0, 0.01)
+    assert minimizer.Minimize()
+    low, high = np.zeros(1), np.zeros(1)
+    expect(
+        (bool(minimizer.GetMinosError(0, low, high)), True),
+        (low[0], pytest.approx(-1.0, rel=1e-4)),
+        (high[0], pytest.approx(1.0, rel=1e-4)),
+        # 2*(y-3)^2 rises by one at 1/sqrt(2), as ROOT's MINOS finds.
+        (bool(minimizer.GetMinosError(1, low, high)), True),
+        (high[0], pytest.approx(np.sqrt(0.5), rel=1e-4)),
+    )
+    # A bare number is handed over by value: there is nowhere to write, and nothing is written.
+    assert minimizer.GetMinosError(0, 0.0, 0.0)
+
+
+def test_minos_says_so_when_it_finds_no_error():
+    pytest.importorskip("iminuit")
+    minimizer = ROOT.Math.Minimizer()
+    # A linear direction never converges, so there is no minimum for MINOS to start from.
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 1) ** 2 + 1e-6 * v[1], 2))
+    minimizer.SetVariable(0, "x", 0.0, 0.01)
+    minimizer.SetVariable(1, "y", 0.0, 0.01)
+    assert not minimizer.Minimize()
+    low, high = np.array([7.0]), np.array([7.0])
+    expect(
+        (bool(minimizer.GetMinosError(1, low, high)), False),
+        (low[0], 0.0),
+        (high[0], 0.0),
+    )
+    minimizer._found = types.SimpleNamespace(
+        valid=True,
+        parameters=("a",),
+        merrors={"a": types.SimpleNamespace(is_valid=False, lower=-2.0, upper=2.0)},
+        minos=lambda name: None,
+    )
+    assert not minimizer.GetMinosError(0, low, high)
+    assert (low[0], high[0]) == (0.0, 0.0)
+    minimizer._found.merrors = {}  # MINOS says nothing at all of this parameter
+    assert not minimizer.GetMinosError(0, low, high)
+    # No minimisation done at all - as after Clear - is ROOT's False too, with zeros.
+    minimizer.Clear()
+    assert not minimizer.GetMinosError(0, low, high)
+    assert not minimizer.GetMinosError(0)
+
+
+def test_a_cleared_minimizer_keeps_its_variables_and_has_no_minimum():
+    pytest.importorskip("iminuit")
+    minimizer = ROOT.Math.Minimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 2) ** 2, 1))
+    minimizer.SetVariable(0, "a", 0.0, 0.1)
+    assert minimizer.Minimize()
+    minimizer.Clear()
+    expect(
+        (minimizer.NDim(), 1),
+        (minimizer.MinValue(), 0.0),
+        (minimizer.Edm(), 0.0),
+        (minimizer.NCalls(), 0),
+        (minimizer.Status(), 0),
+        (list(minimizer.X()), []),
+        (list(minimizer.Errors()), []),
+    )
+    # The same minimiser takes a new function and runs again, as ROOT's test programs reuse one.
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 4) ** 2, 1))
+    assert minimizer.Minimize()
+    assert minimizer.X()[0] == pytest.approx(4.0, abs=1e-3)
