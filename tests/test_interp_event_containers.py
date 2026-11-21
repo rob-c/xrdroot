@@ -27,6 +27,7 @@ from xrdroot.interp import (
     _container_step,
     _held_container,
     _loop_step,
+    _object_step,
     _pair_map,
 )
 from xrdroot.rdobjects import _member
@@ -168,3 +169,36 @@ def test_a_pointer_to_a_map_of_objects_reads_as_the_map_it_points_at() -> None:
     step = _container_step(member, _File({"pair<K,int>": PAIR, "K": {}}), ())
     assert step is not None
     assert step(Buffer(bytes.fromhex(ONE_PAIR)), {}) == [({}, 7)]
+
+
+def test_an_array_of_tstrings_reads_one_string_per_position() -> None:
+    """``TString fNames[12]`` is described as the one string element with the array offset on
+    its type, exactly as ``vector<double> f[4]`` is, and its twelve strings go where the
+    declaration said. A ``TString`` is a length byte and its characters with no record round
+    a run of them, so reading the single string the element looks like leaves the rest of the
+    array - and every member after it - eleven bytes out of step.
+    """
+    member = _element("TStreamerSTLstring", "fNames", 85, "TString", 3)
+    step = _container_step(member, _File({}), ())
+    assert step is not None
+    assert step(Buffer(bytes.fromhex("0161 00 026262")), {}) == ["a", "", "bb"]
+
+
+def test_an_array_of_pointers_reads_one_pointer_per_position() -> None:
+    """``TAxis *fVaxis[3]`` is described with the array's N as the pointer element's length
+    and no array offset on its type, and ROOT writes a pointer per element. Read as the one
+    pointer such an element otherwise is, two elements and everything after them are lost.
+    """
+    member = _element("TStreamerObjectPointer", "fVaxis", 64, "TAxis*", 3)
+    step = _object_step(member, _File({}), ())
+    found = step(Buffer(bytes.fromhex("40000006ffffffff4b00  00000000  40000006ffffffff4b00")), {})
+    assert found == ["K", None, "K"]
+
+
+def test_one_pointer_is_the_object_and_not_a_list_of_one() -> None:
+    """A pointer a declaration gave no N to is the single object, and ROOT describes one with
+    a length of one - its maximum index - so a list would put a container where every reader
+    of the member expects the object itself."""
+    member = _element("TStreamerObjectPointer", "fPaxis", 64, "TAxis*", 1)
+    step = _object_step(member, _File({}), ())
+    assert step(Buffer(bytes.fromhex("40000006ffffffff4b00")), {}) == "K"

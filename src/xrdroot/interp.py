@@ -1552,8 +1552,29 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
         # pointing at another of its own kind - a list of lists - is finite
         # as far as the bytes go, which is as far as a reader ever goes.
         classes = _Described(source, ())
-        return _plainly(lambda buf: buf.any(classes))
+        return _plainly(_pointers(classes, member.length))
     return None
+
+
+def _pointers(classes: dict[str, Any], length: int) -> Callable[[Buffer], Any]:
+    """The pointers one element of ``kObjectP`` stands for: ``TAxis *fVaxis[3]``.
+
+    ROOT describes an array of pointers as that same pointer element with the N its array
+    holds as its length and no array offset on its type - the length is the only sign of the
+    array - and writes one pointer per element, a null one as the zero it is. Read as the
+    single pointer such an element otherwise is, the array stops after its first element and
+    every member after it is read from the wrong place.
+
+    A lone pointer is described with a length of one - ROOT's maximum index, counted in
+    elements - so only a length past one is the array the declaration gave an N to.
+    """
+
+    def read(buf: Buffer) -> Any:
+        if length > 1:
+            return [buf.any(classes) for _ in range(length)]
+        return buf.any(classes)
+
+    return read
 
 
 #: The streamer type ROOT gives a member that points at a container: ``kSTLp``.
@@ -1627,6 +1648,20 @@ def _containers_held(
     return _array_of_members(columns, length, name)
 
 
+def _strings(length: int) -> Callable[[Buffer], list[str]]:
+    """The ``length`` ``TString``s an array member holds, one after another.
+
+    A ``TString`` is a length byte and its characters with no record to introduce a run of
+    them, so an array of them is read where the declaration says it is - and reading it as
+    the single string it looks like leaves the rest of the entry eleven bytes out of step.
+    """
+
+    def read(buf: Buffer) -> list[str]:
+        return [buf.string() for _ in range(length)]
+
+    return read
+
+
 def _counted_items(item: Any) -> Callable[[Buffer], Any]:
     """One container of numbers or strings written inside another's record: how many, then
     the items, with no record of its own."""
@@ -1678,6 +1713,28 @@ def _array_of_members(
     return read
 
 
+def _parsed_step(member: Member, node: Any, named: str) -> Step:
+    """How a member whose type name parses into a string or a container reads.
+
+    A name that says one container is one container, unless the declaration gave it an
+    array, and then the whole array stands in one record: ``vector<double> f[4]`` is four
+    counts and their items in turn, where ``TString fNames[12]`` is twelve strings - a
+    ``TString`` being a length byte with no record round a run of them, while a
+    ``std::string`` carries one and is written one string to the record. A member that is
+    no array at all is described with a length of one, ROOT's maximum index, or none.
+    """
+    if isinstance(node, Str) and member.length > 1 and not node.record:
+        # ``TString fNames[12]``: ROOT describes an array of strings as the one string
+        # element with the array offset on its type, exactly as it describes
+        # ``vector<double> f[4]``, and writes the twelve where the declaration said.
+        return _plainly(_strings(member.length))
+    if member.stype == STL_ARRAY and isinstance(node, Seq):
+        # ``vector<double> f[4]``: the whole array in one record, each element's count
+        # and items in turn - which is one reading per element and not one for the lot.
+        return _plainly(_array_of(_counted_items(node.item), member.length, named))
+    return _plainly(_reader(node))
+
+
 def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step | None:
     """How a string or container member reads, or ``None`` if it is neither.
 
@@ -1703,11 +1760,7 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
         return _plainly(_objects(lambda buf: buf.any(classes)))
     node = parse(named)
     if node is not None:
-        if member.stype == STL_ARRAY and isinstance(node, Seq):
-            # ``vector<double> f[4]``: the whole array in one record, each element's count
-            # and items in turn - which is one reading per element and not one for the lot.
-            return _plainly(_array_of(_counted_items(node.item), member.length, named))
-        return _plainly(_reader(node))
+        return _parsed_step(member, node, named)
     if held is None:
         return _pointer_map(named, source, seen) or _pair_map(named, source, seen)
     name, _pointed = held
