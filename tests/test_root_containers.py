@@ -489,6 +489,42 @@ def test_a_vector_of_bool_is_a_byte_an_element_not_a_bit():
         assert tree["SliceBool"].array(0, 3).tolist() == [[], [0], [1, 1]]
 
 
+class Held:
+    """A source describing one class, ``Held``, as a file's streamer information does."""
+
+    name = "held.root"
+
+    def streamers(self) -> dict[str, dict[str, Member]]:
+        return {"Held": {"fX": Member("fX", "", 3, "int", 1)}}
+
+
+def test_a_container_a_member_points_at_reads_as_the_container_it_names():
+    """ROOT describes ``vector<Held> *fHeld`` with ``kSTLp`` and the container's own type,
+    because it writes the container where the pointer stands; the bigevent roottest's
+    ``Event::fVectorTobject`` is the member that asks for it. A container of objects is a
+    record of its class's version and count and then each member as a column, which is the
+    reading a container held by value already has."""
+    from xrdroot import interp
+
+    step = interp._container_step(Member("fHeld", "", 71, "vector<Held>*", 0), Held(), ())
+    assert step is not None
+    body = struct.pack(">hi", 1, 3) + struct.pack(">iii", 1, 2, 3)
+    buf = Buffer(record(interp.MEMBER_WISE, body))
+    assert step(buf, {}) == [{"fX": 1}, {"fX": 2}, {"fX": 3}]
+    assert buf.pos == len(buf.data)
+
+
+def test_a_pointer_to_a_container_of_numbers_still_reads_by_the_type_it_names():
+    """``vector<int> *fNumbers`` is still the container its type parses into, so the
+    pointer is taken off by the type's own reading and the count of items follows."""
+    from xrdroot import interp
+
+    step = interp._container_step(Member("fNumbers", "", 71, "vector<int>*", 0), Held(), ())
+    assert step is not None
+    buf = Buffer(record(10, struct.pack(">iiii", 3, 1, 2, 3)))
+    assert [int(item) for item in step(buf, {})] == [1, 2, 3]
+
+
 # -- refusing, by name ----------------------------------------------------
 
 

@@ -1516,6 +1516,25 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
     return None
 
 
+#: The streamer type ROOT gives a member that points at a container: ``kSTLp``.
+STL_POINTER = 71
+
+
+def _held_container(member: Member) -> str:
+    """The container a member holds: the one it names, or the one it points at.
+
+    ``vector<TObject> *fVectorTobject`` - the bigevent roottest's ``Event`` - is described
+    with ``kSTLp``, and ROOT writes the container where the pointer stands with nothing to
+    say a pointer was there, so the member reads as a container held by value does. The one
+    that keeps its type is an array of pointers to containers, ``vector<TNamed> *f[6]`` -
+    ``kSTLp`` plus the array offset - which ROOT writes into one record for the whole array
+    and this reader has no reading for.
+    """
+    if member.stype == STL_POINTER and member.typename.endswith("*"):
+        return member.typename.rstrip("*").strip()
+    return member.typename
+
+
 def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step | None:
     """How a string or container member reads, or ``None`` if it is neither.
 
@@ -1526,9 +1545,10 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
     node = parse(member.typename)
     if node is not None:
         return _plainly(_reader(node))
-    held = _class_held(member.typename)
+    named = _held_container(member)
+    held = _class_held(named)
     if held is None:
-        return _pointer_map(member.typename, source, seen)
+        return _pointer_map(named, source, seen)
     name, pointed = held
     if pointed:
         classes = _Described(source, seen)
