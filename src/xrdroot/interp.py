@@ -63,11 +63,17 @@ IS_REFERENCED = 1 << 4
 #: for a file holding ``9``, and ``0`` for an object no process ever numbered.
 UID_MASK = 0x00FFFFFF
 
+#: The byte of ``fUniqueID`` that names the process an object was numbered in, above the
+#: number itself: zero when nothing ever numbered the object.
+PID_MASK = 0xFF000000
+
 #: ``TBufferIO::GetPidOffset``: the byte ROOT's reader adds, the index of the ``ProcessID``
-#: record the object was numbered in plus one. A file holds one record per process that wrote
-#: referenced objects into it, and every file whose ``fUniqueID`` has been compared with the
-#: oracle's holds that one, whose index is 0. It is the index plus one rather than the index
-#: because zero has to mean "no process", which is what an unreferenced object's byte is.
+#: record the object was numbered in plus one. It is the index plus one rather than the index
+#: because zero has to mean "no process", which is what an unreferenced object's byte is. A
+#: file whose objects the reader itself numbers holds one ``ProcessID`` record, index 0, so
+#: this reader stamps ``1`` on an identifier that arrived without a byte; one written where a
+#: second process was at work stores the byte of the process that numbered the object, and
+#: that byte is the file's own answer (see :func:`_numbered`).
 PID_OFFSET = 1
 
 #: The layouts the program's own classes have in memory, by name, as ROOT's dictionary holds
@@ -2380,10 +2386,16 @@ def _numbered(values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     """``values`` with the process's byte on every identifier a process numbered.
 
     Zero is not one of those: an object no reference names is in no process's numbering, and
-    the oracle prints its identifier as ``0``, so only a number in the low bits earns the byte.
+    the oracle prints its identifier as ``0``, so only a number in the low bits earns a byte.
+    An identifier that already carries one keeps it, because the byte is which process
+    numbered the object and the file is the only thing that knows: ROOT's writer stores the
+    byte when the object was numbered in a process other than the file's first, so folding
+    this reader's ``1`` onto a ``0x02000009`` would name a third process no file holds.
     """
     numbered = (values & UID_MASK) != 0
-    return values | ((numbered.astype(values.dtype) << 24) * PID_OFFSET)
+    unstamped = (values & PID_MASK) == 0
+    fresh = numbered & unstamped
+    return values | ((fresh.astype(values.dtype) << 24) * PID_OFFSET)
 
 
 def _as_prim(column: Numeric) -> Prim:

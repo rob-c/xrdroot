@@ -104,3 +104,17 @@ def test_another_class_member_named_funiqueid_is_not_an_identifier() -> None:
     """Only a ``TObject`` base's identifier is one a process numbers."""
     column = a_member("Hit", "fUniqueID")
     assert not isinstance(column, NumberedRows) and isinstance(column, Rows)
+
+
+def test_an_identifier_the_file_already_stamped_keeps_its_own_process() -> None:
+    """A file written where a second process was at work stores that process's byte itself, so
+    the reader must not fold its own on top: byte 2 stays byte 2, and not the byte 3 that ORing
+    would name - a third process no file holds."""
+    stamped = np.array([0x02000009, 0x03000009, 0x00000009, 0, 0x02000000], dtype=np.uint32)
+    assert _numbered(stamped).tolist() == [
+        0x02000009,
+        0x03000009,
+        (PID_OFFSET << 24) | 9,
+        0,
+        0x02000000,
+    ]
