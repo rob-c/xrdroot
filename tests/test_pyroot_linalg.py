@@ -79,7 +79,7 @@ def test_a_matrix_does_arithmetic_with_numbers_vectors_and_matrices() -> None:
     assert (2 * a)(1, 1) == 8.0 and (a * 2)(0, 0) == 2.0 and (a + a - a)(0, 1) == -2.0
     assert (-a)(0, 0) == -1.0 and (a * a).ClassName() == "TMatrixT<double>"
     sym = ROOT.TMatrixDSym(2, [2.0, 1.0, 1.0, 2.0])
-    assert type(sym + sym) is ROOT.TMatrixDSym and ROOT.TMatrixT["float"] is ROOT.TMatrixD
+    assert type(sym + sym) is ROOT.TMatrixDSym and ROOT.TMatrixT["float"] is ROOT.TMatrixF
 
 
 def test_a_matrix_changes_by_arithmetic_in_place() -> None:

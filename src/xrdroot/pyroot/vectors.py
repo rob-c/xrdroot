@@ -135,6 +135,13 @@ class TVectorD(TObject):
     def Norm1(self) -> float:
         return float(np.abs(self._v).sum())
 
+    def Apply(self, action: Any) -> TVectorD:
+        """``Apply(f)``: ``f.Operation`` run on every element, giving itself back."""
+        from .linalg.actions import applied_to_vector
+
+        applied_to_vector(self._v, action, self._lwb)
+        return self
+
     def NormInf(self) -> float:
         return float(np.abs(self._v).max())
 

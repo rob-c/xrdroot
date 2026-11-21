@@ -1012,6 +1012,7 @@ class ExprEmitter(NameEmitter):
     def class_expr(self, ctype: CType) -> str:
         """The Python that builds a ``ctype``: the program's class, ``str``, or the library's."""
         name = "::".join(self._unqualified(ctype.name.split("::")))
+        name = self.nested(name) or name
         if name in self.program.classes:
             symbol = self.class_symbols.get(name) or self.lookup(name)
             return symbol.py if symbol is not None else name

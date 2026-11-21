@@ -47,6 +47,7 @@ TYPE_NAMESPACES = frozenset({"ROOT", "RooFit", "RooStats", "TMVA", "Math", "RDF"
 #: ROOT's templates, which begin a template argument list after them whatever else is known.
 TEMPLATES = frozenset(
     """RVec TMatrixT TMatrixTSym TVectorT TMatrixTSparse TParameter TTreeReaderValue
+    TElementActionT TElementPosActionT
     TTreeReaderArray RResultPtr RNode TArrayT RVecOps TNDArrayT THnT THnSparseT RHist RTensor
     TMatrixTRow TMatrixTColumn TMatrixTDiag dynamic_range_cast static_range_cast""".split()
 )
@@ -229,7 +230,8 @@ VIEWS = ("Row", "Column", "Diag", "Sub", "Flat", "Row_const", "Column_const", "D
 #: ``operator=`` writes into the reference, so the action numbered in its bits survives
 #: ``fReference = obj`` (roottest/root/io/references/actions).
 ASSIGNED = re.compile(
-    rf"^(?:TRef|TMatrix.*(?:{'|'.join(VIEWS)})|RooRealVar|RooCategory)$", re.S
+    rf"^(?:TRef|TMatrix.*(?:{'|'.join(VIEWS)})|TMatrix[DFS](?:Sym)?|RooRealVar|RooCategory)$",
+    re.S,
 )
 
 #: ``ROOT::RVecF`` and its kind: ``RVec``s whose element type their name gives.

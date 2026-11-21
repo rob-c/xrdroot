@@ -1,7 +1,8 @@
 """ROOT's linear algebra: dense matrices, views of them, decompositions, and the checks on them.
 
 ``TMatrixD``, ``TMatrixDSym`` and ``THilbertMatrixD`` (:mod:`.matrices`), the
-row, column and diagonal views (:mod:`.views`), and ``TDecompLU``,
+element actions a macro derives from to fill one (:mod:`.actions`), the row,
+column and diagonal views (:mod:`.views`), and ``TDecompLU``,
 ``TDecompChol``, ``TDecompBK``, ``TDecompSVD`` and ``TDecompQRH``
 (:mod:`.decompositions`), all over NumPy. ``VerifyVectorIdentity`` and
 ``VerifyMatrixIdentity`` say whether two agree to within a deviation, and
@@ -15,17 +16,34 @@ from typing import Any
 import numpy as np
 
 from ..core.messages import message
+from .actions import (
+    TElementActionD,
+    TElementActionF,
+    TElementActionT,
+    TElementPosActionD,
+    TElementPosActionF,
+    TElementPosActionT,
+)
 from .decompositions import NormalEqn, TDecompBK, TDecompChol, TDecompLU, TDecompQRH, TDecompSVD
 from .matrices import (
+    THaarMatrixD,
+    THaarMatrixF,
     THilbertMatrixD,
     THilbertMatrixDSym,
     THilbertMatrixF,
+    TMatrix,
     TMatrixD,
+    TMatrixDLazy,
     TMatrixDSym,
+    TMatrixDSymLazy,
     TMatrixF,
+    TMatrixFLazy,
     TMatrixFSym,
+    TMatrixFSymLazy,
     TMatrixT,
+    TMatrixTLazy,
     TMatrixTSym,
+    TMatrixTSymLazy,
     values_of,
 )
 from .views import (
@@ -49,7 +67,10 @@ __all__ = [
     "TMatrixDDiag", "TMatrixFRow", "TMatrixFColumn", "TMatrixFDiag", "TMatrixDRow_const",
     "TMatrixDColumn_const", "TMatrixDDiag_const", "TMatrixTRow", "TMatrixTColumn",
     "TMatrixTDiag", "TDecompLU", "TDecompChol", "TDecompBK", "TDecompSVD", "TDecompQRH",
-    "NormalEqn", "VerifyVectorIdentity", "VerifyMatrixIdentity",
+    "NormalEqn", "VerifyVectorIdentity", "VerifyMatrixIdentity", "TElementActionT",
+    "TElementPosActionT", "TElementActionD", "TElementActionF", "TElementPosActionD",
+    "TElementPosActionF", "TMatrixTLazy", "TMatrixTSymLazy", "TMatrixDLazy", "TMatrixFLazy",
+    "TMatrixDSymLazy", "TMatrixFSymLazy", "THaarMatrixD", "THaarMatrixF", "TMatrix",
 ]  # fmt: skip
 
 

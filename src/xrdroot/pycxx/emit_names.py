@@ -138,6 +138,18 @@ class NameEmitter(Inference):
     def _own_namespace(self, name: str) -> bool:
         return name in self.namespaces
 
+    def nested(self, name: str) -> str | None:
+        """``Outer::Inner`` of a class the macro declares, as the name that class has here.
+
+        A nested class is a class of the program like any other, written at the top level
+        under its own name - C++ spells it ``Outer::Inner``, and both spellings are it.
+        """
+        parts = name.split("::")
+        owner = self.program.classes.get(parts[-2]) if len(parts) > 1 else None
+        if owner is None or parts[-1] not in self.program.classes:
+            return None
+        return parts[-1] if any(member.name == parts[-1] for member in owner.types) else None
+
     #: The namespaces the macro declares.
     namespaces: set[str]
 

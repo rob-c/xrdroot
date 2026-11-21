@@ -69,6 +69,12 @@ def _tuple(items: list[str]) -> str:
     return f"({items[0]},)" if len(items) == 1 else f"({', '.join(items)})"
 
 
+def _not_by_value(ctype: CType) -> bool:
+    """Is ``ctype`` anything but a class held by value - a pointer, a reference, a callable?"""
+    held = ctype.pointer or ctype.is_smart or ctype.reference or ctype.callable
+    return bool(held or not ctype.is_class or ctype.dims or ctype.is_auto)
+
+
 def _plain(node: Expr) -> bool:
     """An argument evaluated twice to the same effect: a name, a literal, arithmetic on them."""
     if isinstance(node, Binary):
@@ -530,17 +536,12 @@ class CallEmitter(ExprEmitter):
         return self._object_store(ctype, node)
 
     def _object_store(self, ctype: CType, node: Expr) -> str:
-        """``node`` stored into an object: a string class made of a C string, built from a
-        pointer, copied - which Python would otherwise share - or shared as it is; a pointer
+        """``node`` stored into an object: a string class made of a C string, built to be
+        converted, copied - which Python would otherwise share - or shared as it is; a pointer
         to an object set to ``0`` is null, which ``if (p)`` then finds it to be."""
-        if ctype.pointer and _is_null(node):
-            # ``char *p = 0`` is the null pointer as much as ``TObject *o = 0`` is: ROOT's own
-            # MainEvent.C leaves an unused argument null and asks ``if (arg)`` before using it.
-            return "None"
-        if self._made_string(ctype, node):
-            return f"{self.host_name(ctype.name.split('::'))}({self.value(node)})"
-        if self._converted_from_pointer(ctype, node):
-            return f"{self.class_expr(ctype)}({self.value(node)})"
+        built = self._built_from(ctype, node)
+        if built is not None:
+            return built
         if self._copied(ctype, node):
             return f"value_copy({self.value(node)})"
         if ctype.is_object_pointer and isinstance(node, Name) and self.symbol(node) is None:
@@ -548,6 +549,18 @@ class CallEmitter(ExprEmitter):
             # that follows what is current.
             return f"pointer_now({self.value(node)})"
         return self.value(node)
+
+    def _built_from(self, ctype: CType, node: Expr) -> str | None:
+        """``node`` as the object ``ctype`` builds of it, or ``None`` when it builds none."""
+        if ctype.pointer and _is_null(node):
+            # ``char *p = 0`` is the null pointer as much as ``TObject *o = 0`` is: ROOT's own
+            # MainEvent.C leaves an unused argument null and asks ``if (arg)`` before using it.
+            return "None"
+        if self._made_string(ctype, node):
+            return f"{self.host_name(ctype.name.split('::'))}({self.value(node)})"
+        if self._converted_from_pointer(ctype, node) or self._converted_from_class(ctype, node):
+            return f"{self.class_expr(ctype)}({self.value(node)})"
+        return None
 
     def _made_string(self, ctype: CType, node: Expr) -> bool:
         """Is a C string stored into one of the dialect's string classes - ``TString s;
@@ -560,11 +573,40 @@ class CallEmitter(ExprEmitter):
     def _converted_from_pointer(self, ctype: CType, node: Expr) -> bool:
         """Is ``T x = p`` - or ``x = p`` - an object built from a pointer by ``T``'s converting
         constructor or assignment? A pointer can be nothing else to an object held by value."""
-        held = ctype.pointer or ctype.is_smart or ctype.reference or ctype.callable
-        if held or not ctype.is_class or ctype.dims or ctype.is_auto:
+        if _not_by_value(ctype):
             return False
         found = self.typeof(node)
         return found is not None and found.is_object_pointer and not found.is_smart
+
+    def _converted_from_class(self, ctype: CType, node: Expr) -> bool:
+        """Is ``T x = v`` a ``T`` built out of a class that is neither ``T`` nor one of its bases?
+
+        C++ copy-initialisation of a ``T`` from another class type is ``T``'s converting
+        constructor - ``TMatrixD m = THaarMatrixD(order)``, which forces the lazy matrix into
+        the one built here - or no C++ at all, so building the ``T`` is what the macro meant;
+        sharing the object, which Python would do, is neither.
+        """
+        if _not_by_value(ctype):
+            return False
+        found = self.typeof(node)
+        if found is None or found.pointer or not found.is_class:
+            return False
+        return not self._same_class(ctype, found)
+
+    def _same_class(self, ctype: CType, found: CType) -> bool:
+        """Is ``found`` the class ``ctype`` names, or one the program derives from it?"""
+        seen = set()
+        name = found.name
+        while name not in seen:
+            if name.split("::")[-1] == ctype.name.split("::")[-1]:
+                return True
+            seen.add(name)
+            info = self.program.classes.get(name.split("::")[-1])
+            bases = [base.ctype.name for base in info.decl.bases] if info is not None else []
+            if not bases:
+                return False
+            name = bases[0]
+        return False
 
     def _copied(self, ctype: CType, node: Expr) -> bool:
         """Is ``T b = a`` a copy of an object - which Python would otherwise share, not copy?"""

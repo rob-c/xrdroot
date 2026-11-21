@@ -16,10 +16,12 @@ from typing import Any
 
 import numpy as np
 
+from ...errors import UnsupportedFeatureError
 from ..core.objects import TObject
 
-__all__ = ["TMatrixT", "TMatrixTSym", "TMatrixD", "TMatrixF", "TMatrixDSym", "TMatrixFSym",
-           "THilbertMatrixD", "THilbertMatrixDSym", "THilbertMatrixF", "hand_back"]  # fmt: skip
+__all__ = ["TMatrix", "TMatrixT", "TMatrixTSym", "TMatrixD", "TMatrixF", "TMatrixDSym",
+           "TMatrixFSym", "TMatrixTLazy", "TMatrixTSymLazy", "THilbertMatrixD",
+           "THilbertMatrixDSym", "THilbertMatrixF", "hand_back"]  # fmt: skip
 
 #: The one-matrix operations a matrix can be made by: ``EMatrixCreatorsOp1``.
 kZero, kUnit, kTransposed, kInverted, kAtA = range(5)
@@ -55,6 +57,10 @@ def hand_back(det: Any, value: Any) -> None:
     when the caller gave one."""
     if det is not None and hasattr(det, "value"):
         det.value = value
+
+
+#: The element type a matrix has unless its name says ``Float_t``.
+FLOAT64 = np.dtype(np.float64)
 
 
 def _counted(args: tuple[Any, ...]) -> bool:
@@ -104,11 +110,71 @@ def _filled(rows: int, cols: int, data: tuple[Any, ...]) -> np.ndarray[Any, Any]
     return flat.reshape((cols, rows)).T.copy() if by_column else flat.reshape(rows, cols).copy()
 
 
+class TMatrixTLazy(TObject):
+    """``TMatrixTLazy<Element>``: a matrix promised, and made only when one is needed.
+
+    Its bounds are the matrix it stands for - ``TMatrixTLazy(nrows, ncols)`` or
+    ``TMatrixTLazy(row_lwb, row_upb, col_lwb, col_upb)`` - and ``FillIn``, which a macro's
+    own class overrides, is what writes the elements into the matrix built from it. A
+    ``TMatrixD m = promise(...)`` builds ``m`` and calls ``promise.FillIn(m)``.
+    """
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__()
+        row_lwb, row_upb, col_lwb, col_upb = _promised(type(self), args)
+        self.fRowLwb, self.fRowUpb = row_lwb, row_upb
+        self.fColLwb, self.fColUpb = col_lwb, col_upb
+
+    def GetRowLwb(self) -> int:
+        return self.fRowLwb
+
+    def GetRowUpb(self) -> int:
+        return self.fRowUpb
+
+    def GetColLwb(self) -> int:
+        return self.fColLwb
+
+    def GetColUpb(self) -> int:
+        return self.fColUpb
+
+    def FillIn(self, matrix: Any) -> None:
+        raise UnsupportedFeatureError(
+            f"{type(self).__name__} was forced into a matrix with no FillIn, which is the "
+            "method ROOT calls to write the matrix's elements; give the class a FillIn."
+        )
+
+
+class TMatrixTSymLazy(TMatrixTLazy):
+    """``TMatrixTSymLazy<Element>``: the same promise, of a symmetric matrix."""
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__(*args)
+
+    def FillIn(self, matrix: Any) -> None:
+        raise UnsupportedFeatureError(
+            f"{type(self).__name__} was forced into a symmetric matrix with no FillIn, which "
+            "is the method ROOT calls to write its elements; give the class a FillIn."
+        )
+
+
+def _promised(kind: type[TMatrixTLazy], args: tuple[Any, ...]) -> tuple[int, int, int, int]:
+    """A promise's four bounds: ``(nrows, ncols)``, or the four it is given exactly."""
+    if kind is TMatrixTSymLazy or len(args) < 3:
+        rows, cols = int(args[0]), int(args[1] if len(args) > 1 else args[0])
+        return 0, rows - 1, 0, cols - 1
+    row_lwb, row_upb, col_lwb, col_upb = (int(each) for each in args[:4])
+    return row_lwb, row_upb, col_lwb, col_upb
+
+
 class TMatrixT(TObject):
     """``TMatrixT<double>``: a dense matrix, counted from its lower bounds."""
 
     #: Whether this is a symmetric matrix, ``TMatrixTSym``, made square.
     SYMMETRIC = False
+    #: How ROOT keeps the elements: ``Double_t``, or ``Float_t`` for the ``F`` matrices.
+    DTYPE: Any = FLOAT64
+    #: The instance of this template over ``Float_t``, which ``TMatrixT<float>`` is.
+    FLOAT: type[TMatrixT]
     CPP = "TMatrixT<double>"
     kZero, kUnit, kTransposed, kInverted, kAtA = kZero, kUnit, kTransposed, kInverted, kAtA
     kMult, kTransposeMult, kInvMult = kMult, kTransposeMult, kInvMult
@@ -116,11 +182,23 @@ class TMatrixT(TObject):
 
     def __init__(self, *args: Any) -> None:
         super().__init__()
+        if len(args) == 1 and isinstance(args[0], TMatrixTLazy):
+            self._promised_by(args[0])
+            return
         self.values, self.rowlwb, self.collwb = _made(type(self), args)
+        self.values = self.values.astype(self.DTYPE)
+
+    def _promised_by(self, lazy: TMatrixTLazy) -> None:
+        """``TMatrixT(const TMatrixTLazy &)``: the bounds promised, then the promise forced."""
+        rows = lazy.GetRowUpb() - lazy.GetRowLwb() + 1
+        cols = lazy.GetColUpb() - lazy.GetColLwb() + 1
+        self.values = np.zeros((rows, cols), dtype=self.DTYPE)
+        self.rowlwb, self.collwb = lazy.GetRowLwb(), lazy.GetColLwb()
+        lazy.FillIn(self)
 
     def __class_getitem__(cls, kind: Any) -> type:
-        """``TMatrixT<double>`` and ``TMatrixT<float>``: the same matrix of doubles here."""
-        return cls
+        """``TMatrixT<double>``, or ``TMatrixT<float>`` - the ``F`` matrices of 32-bit floats."""
+        return cls.FLOAT if str(kind) in _FLOAT_KINDS else cls
 
     def ClassName(self) -> str:
         return self.CPP
@@ -158,7 +236,7 @@ class TMatrixT(TObject):
         """``ResizeTo(n, m)``, or to another matrix's shape: what fits kept, the rest zero."""
         rows, cols = (nrows.GetNrows(), nrows.GetNcols()) if isinstance(nrows, TMatrixT) else (
             int(nrows), int(nrows if ncols is None else ncols))  # fmt: skip
-        grown = np.zeros((rows, cols))
+        grown = np.zeros((rows, cols), dtype=self.DTYPE)
         keep = (min(rows, self.GetNrows()), min(cols, self.GetNcols()))
         grown[: keep[0], : keep[1]] = self.values[: keep[0], : keep[1]]
         self.values = grown
@@ -199,9 +277,16 @@ class TMatrixT(TObject):
         return made.copy() if copy else made
 
     def _assign(self, value: Any) -> None:
-        """``m = other``: the other's elements copied in; ``m = 0.`` every element set."""
-        self.values = values_of(value).copy() if np.ndim(value) else np.full_like(
-            self.values, float(value))  # fmt: skip
+        """``m = other``: the other's elements copied in; ``m = 0.`` every element set.
+
+        A promise - a ``TMatrixTLazy``, or a macro's class derived from one - is forced, as
+        ``TMatrixT::operator=(const TMatrixTLazy &)`` forces it, into this matrix.
+        """
+        if isinstance(value, TMatrixTLazy):
+            value.FillIn(self)
+            return
+        self.values = values_of(value).astype(self.DTYPE) if np.ndim(value) else (
+            np.full_like(self.values, float(value)))  # fmt: skip
 
     def Print(self, option: Any = "") -> None:
         """``TMatrixTBase::Print``: sheets of five columns (ten for a narrow ``f=`` format),
@@ -214,7 +299,7 @@ class TMatrixT(TObject):
     # -- in place, giving itself back -------------------------------------------------------
 
     def _became(self, values: Any) -> TMatrixT:
-        self.values = np.array(values, dtype=np.float64)
+        self.values = np.array(values, dtype=self.DTYPE)
         return self
 
     def Invert(self, det: Any = None) -> TMatrixT:
@@ -247,6 +332,40 @@ class TMatrixT(TObject):
     def UnitMatrix(self) -> TMatrixT:
         return self._became(np.eye(*self.values.shape))
 
+    def Apply(self, action: Any) -> TMatrixT:
+        """``Apply(f)``: ``f.Operation`` run on every element, row by row, giving itself back.
+
+        A ``TElementPosActionT`` is told where each element is, in ``fI`` and ``fJ``, and
+        writes the element it is given; a symmetric matrix acts on its upper triangle only
+        and mirrors the result, as ``TMatrixTSym::Apply`` does.
+        """
+        from .actions import applied, applied_symmetric
+
+        (applied_symmetric if self.SYMMETRIC else applied)(self, action)
+        return self
+
+    def GetSub(self, row_lwb: Any, row_upb: Any, col_lwb: Any, col_upb: Any,
+               option: Any = "") -> TMatrixT:  # fmt: skip
+        """``GetSub(rl, ru, cl, cu[, opt])``: the submatrix given by those bounds.
+
+        Its lower bounds are the ones asked for, or ``0`` with ``"S"`` in the option, which
+        shifts them to the origin.
+        """
+        rows = slice(int(row_lwb) - self.rowlwb, int(row_upb) - self.rowlwb + 1)
+        cols = slice(int(col_lwb) - self.collwb, int(col_upb) - self.collwb + 1)
+        found = type(self)(self.values[rows, cols])
+        shift = "S" in str(option).upper()
+        found.rowlwb, found.collwb = (0, 0) if shift else (int(row_lwb), int(col_lwb))
+        return found
+
+    def SetSub(self, row_lwb: Any, col_lwb: Any, source: Any) -> TMatrixT:
+        """``SetSub(rl, cl, source)``: ``source``'s elements written in from there."""
+        given = values_of(source)
+        row, col = int(row_lwb) - self.rowlwb, int(col_lwb) - self.collwb
+        rows, cols = given.shape
+        self.values[row: row + rows, col: col + cols] = given
+        return self
+
     # -- what it is ---------------------------------------------------------------------------
 
     def Determinant(self, d1: Any = None, d2: Any = None) -> float:
@@ -273,9 +392,15 @@ class TMatrixT(TObject):
         """The largest sum of a row's absolute values."""
         return float(np.abs(self.values).sum(axis=1).max())
 
+    RowNorm = NormInf
+    """``RowNorm``: the norm induced by the infinity vector norm, which is ``NormInf``."""
+
     def Norm1(self) -> float:
         """The largest sum of a column's absolute values."""
         return float(np.abs(self.values).sum(axis=0).max())
+
+    ColNorm = Norm1
+    """``ColNorm``: the norm induced by the 1 vector norm, which is ``Norm1``."""
 
     def IsSymmetric(self) -> bool:
         return bool(self.values.shape[0] == self.values.shape[1] and
@@ -338,11 +463,100 @@ class TMatrixTSym(TMatrixT):
     CPP = "TMatrixTSym<double>"
 
 
-#: ``TMatrixD``, ``TMatrixF`` and their symmetric kinds: of doubles here, all four.
+#: The template arguments that name ``Float_t``: ``TMatrixT<float>`` is ``TMatrixF``.
+_FLOAT_KINDS = frozenset({"float", "Float_t", "float32", "np.float32"})
+
+
+class TMatrixTF(TMatrixT):
+    """``TMatrixT<Float_t>``: the matrix whose elements are ``Float_t``, kept as 32-bit floats.
+
+    ROOT's ``Real_t`` and ``Float_t`` are the same 32-bit float, and a matrix of them stores
+    what fits in one - ``m(i, j) = x`` rounds ``x`` on the way in, and so does an element
+    action's ``element = ...``, which is what makes the two agree.
+    """
+
+    DTYPE = np.dtype(np.float32)
+    CPP = "TMatrixT<float>"
+
+
+class TMatrixTFSym(TMatrixTSym):
+    """``TMatrixTSym<Float_t>``: the symmetric matrix of 32-bit floats."""
+
+    DTYPE = np.dtype(np.float32)
+    CPP = "TMatrixTSym<float>"
+
+
+#: ``TMatrixD`` and ``TMatrixF``, and their symmetric kinds: ``F`` keeps ``Float_t``.
 TMatrixD = TMatrixT
-TMatrixF = TMatrixT
+TMatrixF = TMatrixTF
 TMatrixDSym = TMatrixTSym
-TMatrixFSym = TMatrixTSym
+TMatrixFSym = TMatrixTFSym
+TMatrixT.FLOAT = TMatrixTF
+TMatrixTSym.FLOAT = TMatrixTFSym
+
+#: ``TMatrix``, ROOT's ``TMatrixT<Float_t>``: the default element type of ``TMatrix.h``.
+TMatrix = TMatrixTF
+
+#: ``TMatrixTLazy<Double_t>`` and its kind: one promise, of the one number Python has.
+TMatrixDLazy = TMatrixTLazy
+TMatrixFLazy = TMatrixTLazy
+TMatrixDSymLazy = TMatrixTSymLazy
+TMatrixFSymLazy = TMatrixTSymLazy
+
+
+def haar_values(no_rows: int, no_cols: int, kind: Any = FLOAT64) -> np.ndarray[Any, Any]:
+    """The ``2**order`` by ``no_cols`` Haar (sub)matrix, as ``MakeHaarMat`` builds it.
+
+    The columns are Haar's functions: the first is the constant, and each family after it a
+    step of one width, half as wide as the family before. They are orthogonal and each of
+    unit length, which is what the test of them checks to 1e-15.
+    """
+    if no_rows < no_cols or no_cols <= 0:
+        raise ValueError(f"a Haar matrix of {no_rows} rows cannot have {no_cols} columns")
+    transposed = np.zeros((no_cols, no_rows), dtype=kind)
+    element = kind.type
+    norm = element(1.0 / np.sqrt(no_rows))
+    transposed[0, :] = norm
+    written = 1
+    step = no_rows // 2
+    while written < no_cols and step > 0:
+        for position in range(0, no_rows, 2 * step):
+            if written == no_cols:
+                break
+            transposed[written, position: position + step] = norm
+            transposed[written, position + step: position + 2 * step] = -norm
+            written += 1
+        step //= 2
+        norm = element(norm * np.sqrt(2.0))
+    return transposed.T.copy()
+
+
+class THaarMatrixD(TMatrixTLazy):
+    """``THaarMatrixD(order[, no_cols])``: the Haar matrix of ``2**order`` rows, promised.
+
+    The matrix is made when one is built from this, as ROOT's lazy matrix is, so that a macro
+    that only passes it on pays nothing for it.
+    """
+
+    #: The element type the Haar matrix is made in, ROOT's ``Element``.
+    DTYPE: Any = FLOAT64
+
+    def __init__(self, order: Any, no_cols: Any = 0) -> None:
+        rows = 1 << int(order)
+        super().__init__(rows, int(no_cols) if int(no_cols) else rows)
+        self._rows, self._cols = rows, int(no_cols) if int(no_cols) else rows
+
+    def FillIn(self, matrix: Any) -> None:
+        matrix._became(haar_values(self._rows, self._cols, self.DTYPE))
+
+
+class THaarMatrixF(THaarMatrixD):
+    """``THaarMatrixF``: the same Haar matrix of ``Float_t``."""
+
+    DTYPE = np.dtype(np.float32)
+
+
+THaarMatrixF.__name__ = "THaarMatrixF"
 
 
 def _hilbert(rows: int, cols: int) -> np.ndarray[Any, Any]:

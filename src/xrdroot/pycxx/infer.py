@@ -320,7 +320,17 @@ class Inference(EmitterBase):
         if name == "abs" and node.args:
             return self.typeof(node.args[0])
         found = RETURNS.get(name)
-        return found if found is not None else active().returns.get(name)
+        return found if found is not None else self._class_or_return(name, node)
+
+    def _class_or_return(self, name: str, node: Call) -> CType | None:
+        """What a name the program did not declare is: the dialect's known return, or - a name
+        ROOT spells as a class - the class whose object the call makes, which is what an
+        initialisation from it then converts."""
+        named = active().returns.get(name)
+        if named is not None or not active().class_pattern.match(name):
+            return named
+        targs = list(node.func.targs or []) if isinstance(node.func, Name) else []
+        return CType(name, targs)
 
     def reader_element(self, ctype: CType | None, kind: str) -> CType | None:
         """What a dialect's reader reads, by ``kind``: ``*r`` of a value reader ``R<T>``, or

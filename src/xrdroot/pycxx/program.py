@@ -79,7 +79,8 @@ class ClassInfo:
     statics: dict[str, VarDecl] = field(default_factory=dict)
     methods: dict[str, list[Function]] = field(default_factory=dict)
     constants: dict[str, str] = field(default_factory=dict)
-    types: list[Stmt] = field(default_factory=list)
+    #: The classes declared inside it, which are classes of the program like any other.
+    types: list[ClassDecl] = field(default_factory=list)
     #: The class template this class is an instance of, if it is one.
     origin: str | None = None
 
