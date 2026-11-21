@@ -64,9 +64,11 @@ def test_a_field_an_rntuple_model_makes_is_a_pointer_to_its_type() -> None:
     source = """auto n = model->MakeField<float>("n"); auto s = model->MakeField<std::string>("s");
     std::istringstream in("2 x"); in >> *n >> *s; auto *q = get(); in >> *q; *n = 1;"""
     text = body(source)
-    assert "n[0] = in_.extract('float')" in text
-    assert "store_through(s, in_.extract('std::string'))" in text
-    assert "store_through(q, in_.extract('double'))" in text
+    # A read now goes through ``extracted``, which leaves the target as it was where the
+    # stream has failed rather than storing the empty text a failed extraction gives.
+    assert "n[0] = extracted(in_, n[0], 'float')" in text
+    assert "store_through(s, extracted(in_, deref(s), 'std::string'))" in text
+    assert "store_through(q, extracted(in_, deref(q), 'double'))" in text
     assert "    n[0] = f32(1)\n" in text
 
 
