@@ -160,3 +160,20 @@ def test_a_deep_layout_without_an_output_function_or_activations_is_read_as_line
     net = dl_from_xml(ET.fromstring(text))
     assert net.output == "linear" and net.activations == ["linear"]
     assert net(np.array([[1.0, 1.0]]))[0, 0] == 3.5
+
+
+def test_the_numpy_trainer_takes_its_adam_step_whether_or_not_torch_is_installed():
+    """xrdroot trains a net itself when PyTorch is absent, so both trainers must be exercised
+    here: with torch installed every DL test reaches ``_trainer()`` and takes the torch path,
+    which left this trainer's ADAM step covered only on a machine without torch."""
+    rng = np.random.default_rng(11)
+    values = rng.normal(size=(32, 2))
+    data = (values, (values[:, :1] > 0).astype(float), np.ones(32))
+    net = nettrain.initial_network([2, 3, 1], ["tanh", "linear"], "sigmoid")
+    start = net.layers[0][0].copy()
+    settings = nettrain.Descent(learning_rate=1e-2, batch_size=8, max_epochs=2,
+                                convergence_steps=100)  # fmt: skip
+    assert settings.optimizer == "ADAM"  # TMVA DL's default, which is this step
+    best = nettrain.train_descent(net, data, data, "ce", settings)
+    assert best.layers[0][0].shape == start.shape
+    assert not np.allclose(best.layers[0][0], start)  # the step moved the weights

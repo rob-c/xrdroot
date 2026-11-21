@@ -30,7 +30,8 @@ from . import refdiff
 from .model import Test
 from .process import Result
 
-__all__ = ["Verdict", "judge", "refusal", "first_failure", "declared_failure", "STATUSES"]
+__all__ = ["Verdict", "judge", "refusal", "missing_package", "first_failure", "declared_failure",
+           "STATUSES", "OPTIONAL"]
 
 #: Every status a test can end with, in the order reports list them.
 STATUSES = ("PASS", "FAIL", "DIFF", "UNSUPPORTED", "OUT-OF-SCOPE", "SKIP", "TIMEOUT")
@@ -91,6 +92,49 @@ def _said(text: str) -> list[str]:
             if _SAYS_UNSUPPORTED.search(what)]
     return said + [f"It imports ROOT's Python module {name}, {ROOT_PYTHON_MODULES[name]}."
                    for name in _NO_MODULE.findall(text) if name in ROOT_PYTHON_MODULES]
+
+
+#: Where pyproject.toml is, and the packages its extras declare as optional - read from it once.
+PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
+
+
+def _optional() -> frozenset[str]:
+    """The package names the project's optional extras declare, as importable names.
+
+    A test that needs one of these is skipped when it is not installed, as ROOT's own CMake gates
+    such a test on the package being there; a test that needs anything *else* has found a real
+    dependency of xrdroot and fails, which is the difference worth keeping.
+    """
+    try:
+        text = PYPROJECT.read_text(encoding="utf-8")
+    except OSError:
+        return frozenset()
+    section = text.partition("[project.optional-dependencies]")[2].partition("\n[")[0]
+    names = re.findall(r'"([A-Za-z][\w.-]*)', section)
+    return frozenset(IMPORTED.get(name, name) for name in names)
+
+
+#: The extras written under one name and imported under another.
+IMPORTED = {"scikit-learn": "sklearn", "pyarrow": "pyarrow"}
+
+OPTIONAL = _optional()
+
+#: A module that a run could not import: the top-level name is the package to install.
+_MISSING_MODULE = re.compile(r"ModuleNotFoundError: No module named '([\w.]+)'")
+
+
+def missing_package(result: Result) -> str:
+    """The optional package a run needed and could not import, or ``""``.
+
+    ROOT's own tests import their training framework in the test's own Python, so a suite with the
+    extra uninstalled cannot run them at all: that is a skip, not a failure of xrdroot.
+    """
+    text = result.stdout + "\n" + result.stderr
+    for found in _MISSING_MODULE.finditer(text):
+        top = found.group(1).split(".")[0]
+        if top in OPTIONAL:
+            return f"needs Python package {top}"
+    return ""
 
 
 def refusal(result: Result) -> str:
@@ -166,6 +210,9 @@ def judge(test: Test, result: Result, root: Path, cwd: Path,
     refused = refusal(result)
     if refused:
         return Verdict("UNSUPPORTED", refused)
+    missing = missing_package(result)
+    if missing:
+        return Verdict("SKIP", missing)
     verdict = _driver(test, result, root, cwd, post)
     verdict = _regexes(test, result, verdict)
     return declared_failure(verdict) if test.will_fail else verdict

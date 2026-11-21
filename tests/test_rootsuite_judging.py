@@ -311,3 +311,20 @@ def test_the_reason_quotes_a_diagnosis_rather_than_clings_echo_of_the_return_val
     assert status(roottest(outref="a/t.ref"), result("(int) 1", code=1), root) == "FAIL"
     assert judge(roottest(outref="a/t.ref"), result("(int) 1", code=1), root, root).reason == (
         "exit 1, expected 0: (int) 1")
+
+
+def test_a_test_whose_own_script_lacks_an_optional_package_is_skipped(root):
+    """ROOT's PyMVA tests import their training framework in the test's own Python, so a checkout
+    with the extra uninstalled cannot run them: that is a skip naming the package, not a failure of
+    xrdroot - which is what the tutorials harness already says ("needs Python package torch")."""
+    from tools.rootsuite.judge import OPTIONAL, missing_package
+
+    assert "tensorflow" in OPTIONAL and "torch" in OPTIONAL and "sklearn" in OPTIONAL
+    assert "numpy" not in OPTIONAL  # a hard dependency is never an excuse to skip
+    missing = result(stderr="ModuleNotFoundError: No module named 'tensorflow'", code=1)
+    assert missing_package(missing) == "needs Python package tensorflow"
+    assert judge(roottest(), missing, root, Path(".")) == Verdict(
+        "SKIP", "needs Python package tensorflow")
+    # a package the project does not declare is a real failure, and no import error is no skip
+    assert missing_package(result(stderr="ModuleNotFoundError: No module named 'zuper'" )) == ""
+    assert missing_package(result(stdout="all good")) == ""
