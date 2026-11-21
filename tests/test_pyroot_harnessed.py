@@ -130,6 +130,39 @@ def test_a_two_dimensional_histogram_fills_at_random_as_root_does():
     assert g.GetEntries() == 500
 
 
+def test_a_sequence_is_walked_by_c_plus_plus_s_random_access_iterator():
+    """``ROOT::TSeq``'s ``begin()``/``end()`` are C++ random-access iterators: ``+``/``-`` by
+    a count, the difference of two for how far apart they are, ``--``/``-=`` in place,
+    ``it[n]`` a value n further on, and ``*it`` the value it is at - which a ``TSeq`` works
+    out rather than looks up, so ``c[3]`` is the fourth value on from ``c``."""
+    seq = ROOT.TSeqI(0, 6, 2)
+    start = seq.begin()
+    expect(
+        (seq.end() - start, 3),
+        (seq.end() - start, int(seq.size())),
+        ((start + 3).value, 6),
+        ((start + 3)[0], 6),
+        ((start + 3)[-1], 4),
+        (start[3], 6),
+        ((start + 1) == start + 1, True),
+        ((start + 1) == seq.begin() + 1, True),
+        ((start + 1) != start, True),
+        ((start + 1) > start, True),
+        (start < start + 1, True),
+        (start >= start, True),
+        (start <= start, True),
+        (bool(start == "a place that is no place"), False),
+        (repr(start), "<TSeq iterator at 0>"),
+    )
+    moved = start + 2
+    moved -= 1
+    expect((moved == start + 1, True), ((moved - 1).value, 0))
+    moved += 1
+    expect((moved.value, 4), (moved - start, 2))
+    expect((ROOT.TSeqI([7, 8, 9]).value_at(2), 2), (ROOT.TSeqI(3).value_at(2), 2))
+    expect((ROOT.TSeqUL(0, 4).size(), 4), (ROOT.TSeqU(0, 4).begin().value, 0))
+
+
 def test_sequences_classes_by_name_and_thread_safety_as_root_names_them():
     seq = ROOT.TSeqI(2, 8, 2)
     ROOT.EnableThreadSafety()
