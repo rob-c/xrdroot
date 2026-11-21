@@ -590,3 +590,10 @@ def test_an_object_that_cannot_say_its_name_yet_is_indexed_when_it_can():
     held.Add(late)
     late.GetName = lambda: "late"
     assert held.FindObject("late") is late
+
+
+def test_an_obj_strings_string_is_a_tstring_that_adds_and_answers_data():
+    """ROOT's ``String()`` is a ``const TString &``, which ROOT's own ``Tokenize`` loop
+    relies on: ``(osBranch->String() + "*").Data()`` is the branch-status wildcard."""
+    text = ROOT.TObjString("r1")
+    assert (text.String() + "*").Data() == "r1*"

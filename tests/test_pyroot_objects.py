@@ -6,7 +6,8 @@ import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
-from xrdroot.pyroot.core import hooks
+from xrdroot.pyroot.core import hooks, objects
+from xrdroot.pyroot.core.declared import root_row
 from xrdroot.pyroot.core.objects import TAttLine, TAttMarker, TAttText, attribute_home
 
 
@@ -229,4 +230,99 @@ def test_attributes_of_a_histogram_are_its_members():
     expect(
         (h._xrd._core["TAttFill"]["fFillColor"], ROOT.kYellow),
         (h._xrd._core["TAttLine"]["fLineWidth"], 3),
+    )
+
+
+def test_a_named_objects_name_and_title_are_members_that_are_read_as_they_stand():
+    named = ROOT.TNamed("a", "b")
+    expect(
+        (str(named.fName), "a"),
+        (named.fName.Data(), "a"),
+        (named.fName, "a"),
+        (str(named.fTitle), "b"),
+        (named.fTitle.IsNull(), False),
+    )
+
+
+def test_a_name_and_a_title_assigned_as_members_rename_the_object_itself():
+    """C++ hands a macro the member, so ``fTitle = "x"`` is the title the file is written
+    with - not an instance attribute of the wrapper that nothing else ever reads."""
+    named = ROOT.TNamed("a", "b")
+    named.fTitle = "z"
+    named.fName = "renamed"
+    named.fTitle = ROOT.TString("and again")
+    expect(
+        (named.GetName(), "renamed"),
+        (named.GetTitle(), "and again"),
+        (root_row(named, "TNamed")["fName"], "renamed"),
+        (root_row(named, "TNamed")["fTitle"], "and again"),
+    )
+
+
+def test_form_on_a_name_member_formats_into_the_object_it_belongs_to():
+    """``fName.Form("%s_%d", name, GetID())`` in a macro's constructor: ROOT's own
+    ``tref_test_pid`` does it, and the name of every object of it comes from there."""
+    named = ROOT.TNamed("x", "")
+    marks = objects.RENAMED
+    named.fName.Form("%s_%d", "a", 7)
+    named.fTitle.Form("%s %d", "t", 3)
+    named.fName += "_tail"
+    named.fName.ReplaceAll("a_7", "B_7")
+    expect(
+        (named.GetName(), "B_7_tail"),
+        (named.GetTitle(), "t 3"),
+        (objects.RENAMED > marks, True),
+    )
+
+
+def test_a_named_object_made_with_no_name_has_two_empty_members_that_can_be_filled():
+    named = ROOT.TNamed()
+    expect(
+        (str(named.fName), ""),
+        (named.fName.IsNull(), True),
+        (named.fTitle.IsNull(), True),
+    )
+    named.fTitle = ""
+    named.fName.Form("%s", "filled")
+    expect(
+        (named.GetName(), "filled"),
+        (named.GetTitle(), ""),
+    )
+
+
+class Held(ROOT.TNamed):
+    """A class a macro declares, described as the translator describes one: a ``TNamed``
+    whose own member of the description is one number."""
+
+    _cxx_layout_ = ("Held", ("TNamed",), (("fNumber", "int", "a number", ()),))
+
+    def __init__(self) -> None:
+        ROOT.TNamed.__init__(self)
+        self.fNumber = 0
+
+
+def test_a_class_of_a_macros_answers_the_members_its_description_names():
+    held = Held()
+    held.fName.Form("held_%d", 1)
+    held.fNumber = 3
+    expect(
+        (held.GetName(), "held_1"),
+        (held.fNumber, 3),
+        (root_row(held, "TNamed")["fName"], "held_1"),
+    )
+
+
+def test_a_class_keeping_its_name_elsewhere_answers_the_same_members():
+    """A ``TAxis`` keeps its name in the ``TNamed`` row of its xrdroot object and a
+    ``TObjString`` its string in its name: the member is the object's either way."""
+    axis = ROOT.TAxis()
+    axis.fName.Form("axis_%d", 2)
+    axis.fTitle.Form("%s %s", "an", "axis")
+    text = ROOT.TObjString("hello")
+    text.fName.Form("%s!", "bye")
+    expect(
+        (axis.GetName(), "axis_2"),
+        (axis.GetTitle(), "an axis"),
+        (axis._row["TNamed"]["fTitle"], "an axis"),
+        (text.String(), "bye!"),
     )
