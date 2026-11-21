@@ -413,3 +413,66 @@ def test_the_genetic_minimizers_seed_and_its_cycles_are_the_search_it_makes():
         runs.append((list(minimizer.X()), minimizer.MinValue()))
     assert runs[0] == runs[1]
     assert runs[0][0] == pytest.approx([1.0, 0.0], abs=0.2)
+
+
+def test_the_gsl_solvers_take_a_c_function_and_the_pointer_gsl_hands_it():
+    """``ROOT::Math::Roots::Brent`` and its siblings are GSL's own algorithms: each takes a
+    ``GSLFuncPointer`` - ``double f(double x, void *p)`` - with the ``void *p`` GSL passes
+    to every call, and answers ``Name`` with the name GSL gives that algorithm."""
+    def root(x, params):
+        return x - params
+
+    for kind, name in ((ROOT.Math.Roots.Brent, "brent"),
+                       (ROOT.Math.Roots.Bisection, "bisection"),
+                       (ROOT.Math.Roots.FalsePos, "falsepos")):
+        solver = kind()
+        solver.SetFunction(root, 0.25, 0.0, 1.0)
+        expect(
+            (bool(solver.Solve()), True),
+            (solver.Root(), pytest.approx(0.25)),
+            (solver.Name(), name),
+            (bool(solver.Iterations() > 0), True),
+        )
+
+
+def test_a_gsl_solver_that_takes_the_derivative_uses_it_or_the_pair_that_gives_both():
+    """``Roots::Newton``/``Secant``/``Steffenson`` are ``GSLRootFinderDeriv``: they take the
+    function, its derivative, and the ``fdf`` GSL can be given instead - a function that
+    writes both through the two pointers it is handed."""
+    def square(x, params):
+        return x * x - 5
+
+    def slope(x, params):
+        return 2 * x
+
+    def both(x, params, y, dy):
+        y[0], dy[0] = x * x - 5, 2 * x
+
+    for kind in (ROOT.Math.Roots.Newton, ROOT.Math.Roots.Secant, ROOT.Math.Roots.Steffenson):
+        solver = kind()
+        solver.SetFunction(square, slope, None, None, 5.0)
+        expect(
+            (bool(solver.Solve()), True),
+            (solver.Root(), pytest.approx(np.sqrt(5.0))),
+            (solver.Name(), kind.algorithm),
+        )
+    paired = ROOT.Math.Roots.Newton()
+    paired.SetFunction(square, None, both, None, 5.0)
+    assert paired.Solve()
+    assert paired.Root() == pytest.approx(np.sqrt(5.0), rel=1e-12)
+    # ``exp`` has no root, so Newton's step never shrinks: it takes the steps it is given.
+    stuck = ROOT.Math.Roots.Secant()
+    stuck.SetFunction(np.exp, np.exp, None, None, 1.0)
+    assert stuck.Solve(3)
+    assert stuck.Iterations() == 3
+
+
+def test_the_gsl_solver_base_is_root_maths_own_named_class():
+    """``GSLRootFinder`` and ``GSLRootFinderDeriv`` are ``ROOT::Math``'s, not only the
+    namespace ``Roots`` holds, because ROOT's own macros name them there."""
+    assert ROOT.Math.Roots is not None
+    assert issubclass(ROOT.Math.Roots.Brent, ROOT.Math.GSLRootFinder)
+    assert issubclass(ROOT.Math.Roots.Newton, ROOT.Math.GSLRootFinderDeriv)
+    assert ROOT.Math.GSLRootFinder().Name() == "GSL"
+    assert issubclass(ROOT.Math.GSLRootFinder, ROOT.Math.IRootFinderMethod)
+    assert issubclass(ROOT.Math.GSLRootFinderDeriv, ROOT.Math.IRootFinderMethod)

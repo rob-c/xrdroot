@@ -26,6 +26,10 @@ __all__ = [
     "Integrator",
     "IntegratorOneDim",
     "RootFinder",
+    "IRootFinderMethod",
+    "GSLRootFinder",
+    "GSLRootFinderDeriv",
+    "Roots",
     "Fitter",
     "Fit",
     "Minimizer",
@@ -235,6 +239,162 @@ def _bisected(fn: Callable[[float], float], low: float, high: float
         middle = 0.5 * (low + high)
         steps += 1
     return middle, steps
+
+
+class IRootFinderMethod:
+    """``ROOT::Math::IRootFinderMethod``: what every solver of ROOT's answers - the root it
+    found, how many steps it took, and the name of the algorithm."""
+
+    def __init__(self) -> None:
+        self._root = math.nan
+        self._iterations = 0
+
+    def Root(self) -> float:
+        return self._root
+
+    def Iterations(self) -> int:
+        return self._iterations
+
+    def Name(self) -> str:
+        """``Name``: the algorithm's, as GSL spells it for its own algorithms."""
+        return "GSL"
+
+
+class GSLRootFinder(IRootFinderMethod):
+    """``ROOT::Math::GSLRootFinder``: one of GSL's bracketing solvers over a C function.
+
+    GSL calls a ``GSLFuncPointer`` - ``double f(double x, void *p)`` - with the ``void *p``
+    it is handed, which is why ROOT's solver takes the function and its parameters apart. A
+    macro translated here holds the function itself as a Python callable of two arguments,
+    and the parameters as whatever the C++ stored in the pointer, usually nothing.
+    """
+
+    #: The name GSL answers with, which ``Name`` gives - ``bisection``, ``brent``, ...
+    algorithm = "GSL"
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__()
+        self._fn: Any = None
+        self._params: Any = None
+        self._bounds: tuple[float, ...] = ()
+
+    def SetFunction(self, fn: Any, params: Any = None, low: float = 0.0,
+                    high: float = 0.0) -> bool:  # fmt: skip
+        """``SetFunction(f, p, low, high)``: the function, the pointer GSL hands it, and the
+        bracket its root is looked for in."""
+        self._fn, self._params = fn, params
+        self._bounds = (float(low), float(high))
+        return True
+
+    def _called(self, x: float) -> float:
+        """``f(x, p)``: GSL's call, with the pointer it was given at ``SetFunction``."""
+        return float(self._fn(x, self._params))
+
+    def Solve(self, maxIter: int = 100, absTol: float = 1e-8, relTol: float = 1e-10) -> bool:
+        """``Solve``: the bracket's sign change, to the last bit."""
+        self._root, self._iterations = _bisected(self._called, *self._bounds)
+        return not math.isnan(self._root)
+
+    def Name(self) -> str:
+        return self.algorithm
+
+
+class GSLRootFinderDeriv(IRootFinderMethod):
+    """``ROOT::Math::GSLRootFinderDeriv``: a solver that also takes the derivative, and the
+    coupled function-and-derivative GSL can be given instead.
+
+    ROOT keeps this a base of its own rather than a ``GSLRootFinder``, because the two are
+    handed different functions: GSL's derivative solvers call ``f`` and ``df``, or one
+    ``fdf`` that writes both through the two pointers it is given.
+    """
+
+    #: The name GSL answers with: ``newton``, ``secant``, ``steffenson``.
+    algorithm = "GSLDeriv"
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__()
+        self._fn: Any = None
+        self._derivative: Any = None
+        self._fdf: Any = None
+        self._params: Any = None
+        self._start = 0.0
+
+    def SetFunction(self, fn: Any, derivative: Any = None, fdf: Any = None,
+                    params: Any = None, start: float = 0.0) -> bool:  # fmt: skip
+        """``SetFunction(f, df, fdf, p, x0)``: the function, its derivative (or the pair
+        ``fdf`` that gives both), the pointer, and where to start."""
+        self._fn, self._derivative, self._fdf, self._params = fn, derivative, fdf, params
+        self._start = float(start)
+        return True
+
+    def _called(self, x: float) -> float:
+        return float(self._fn(x, self._params))
+
+    def _slope(self, x: float) -> float:
+        if self._derivative is not None:
+            return float(self._derivative(x, self._params))
+        y, dy = _pair_out()
+        self._fdf(x, self._params, y, dy)
+        return float(dy[0])
+
+    def Solve(self, maxIter: int = 100, absTol: float = 1e-8, relTol: float = 1e-10) -> bool:
+        """``Solve``: Newton's method from the start given."""
+        wanted = float(absTol)
+        x = self._start
+        for step_at in range(int(maxIter)):
+            self._iterations = step_at + 1
+            step = self._called(x) / self._slope(x)
+            x -= step
+            if abs(step) <= wanted:
+                break
+        self._root = x
+        return not math.isnan(x)
+
+    def Name(self) -> str:
+        return self.algorithm
+
+
+def _pair_out() -> tuple[list[float], list[float]]:
+    """The two cells a ``void f(double, void *, double *y, double *dy)`` writes through."""
+    return [0.0], [0.0]
+
+
+class Roots:
+    """``ROOT::Math::Roots``: GSL's root-finding algorithms by name, each a solver of its own.
+
+    ROOT spells them ``ROOT::Math::Roots::Brent`` and so on, rather than naming a kind to
+    one ``RootFinder``, so a macro that wants Brent's method exactly writes its own class.
+    """
+
+    class Brent(GSLRootFinder):
+        """Brent's method, which GSL answers to ``brent``."""
+
+        algorithm = "brent"
+
+    class Bisection(GSLRootFinder):
+        """Bisection, which GSL answers to ``bisection``."""
+
+        algorithm = "bisection"
+
+    class FalsePos(GSLRootFinder):
+        """The regula falsi, which GSL answers to ``falsepos``."""
+
+        algorithm = "falsepos"
+
+    class Newton(GSLRootFinderDeriv):
+        """Newton's method, which GSL answers to ``newton``."""
+
+        algorithm = "newton"
+
+    class Secant(GSLRootFinderDeriv):
+        """The secant method, which GSL answers to ``secant``."""
+
+        algorithm = "secant"
+
+    class Steffenson(GSLRootFinderDeriv):
+        """Steffenson's method, which GSL answers to ``steffenson``."""
+
+        algorithm = "steffenson"
 
 
 class _FCNResult:

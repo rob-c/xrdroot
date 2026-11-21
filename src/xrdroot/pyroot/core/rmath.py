@@ -34,9 +34,13 @@ from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools
     GeneticMinimizerParameters,
     GradFunctor,
     GradFunctor1D,
+    GSLRootFinder,
+    GSLRootFinderDeriv,
     IntegratorOneDim,
+    IRootFinderMethod,
     Minimizer,
     RootFinder,
+    Roots,
 )
 from .mathtools import Integrator as _Integrator
 
