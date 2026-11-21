@@ -13,7 +13,13 @@ import pytest
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
 from xrdroot.pycint import runtime as rt
-from xrdroot.pyroot.core.rangecast import TRangeDynCast, TRangeStaticCast, TypedElement
+from xrdroot.pyroot.core.rangecast import (
+    RangeDynCast,
+    RangeStaticCast,
+    TRangeDynCast,
+    TRangeStaticCast,
+    TypedElement,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -95,3 +101,38 @@ def test_the_wrapper_is_the_object_for_everything_the_macro_asks_of_it():
     )
     del one.marker
     expect((hasattr(named, "marker"), False))
+
+
+def test_a_cast_naming_a_pointer_type_casts_to_the_class_the_pointer_names():
+    base = ROOT.TBaseClass("b", ROOT.TNamed.Class())
+    expect(
+        (RangeStaticCast["const TBaseClass *"]([base])[0].Class().GetName(), "TBaseClass"),
+        (RangeDynCast["TClass *"]([base]), [None]),
+    )
+
+
+def test_a_class_the_program_declared_is_found_by_the_name_a_cast_gives(monkeypatch):
+    from xrdroot.pycxx.runtime.namespace import DECLARED
+
+    class DeclaredByAProgram:
+        pass
+
+    monkeypatch.setitem(DECLARED, "DeclaredByAProgram", DeclaredByAProgram)
+    one = DeclaredByAProgram()
+    items = RangeDynCast["const DeclaredByAProgram *"]([one, object()])
+    expect(
+        (bool(items[0] == one), True),
+        (isinstance(items[0], DeclaredByAProgram), True),
+        (items[1], None),
+    )
+
+
+def test_a_c_array_of_pointers_is_cast_as_the_range_the_two_root_forms_declare():
+    base = ROOT.TBaseClass("b", ROOT.TNamed.Class())
+    held_by_a_c_array = [base, base, base]
+    statically = RangeStaticCast["const TBaseClass *"](held_by_a_c_array)
+    dynamically = RangeDynCast["const TBaseClass *"](held_by_a_c_array)
+    expect(
+        ([item.Class().GetName() for item in statically], ["TBaseClass"] * 3),
+        ([item == base for item in dynamically], [True] * 3),
+    )

@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["TypedElement", "TRangeStaticCast", "TRangeDynCast", "Detail"]
+__all__ = ["TypedElement", "TRangeStaticCast", "TRangeDynCast", "RangeStaticCast",
+           "RangeDynCast", "Detail"]
 
 
 class TypedElement:
@@ -84,13 +85,24 @@ def elements_of(collection: Any, static: Any) -> list[TypedElement]:
 
 
 def _class_named(name: str) -> Any:
-    """The class ROOT has by that name, as the namespace offers it - else the refusal."""
+    """The class ROOT has by that name - else the refusal.
+
+    The template argument is the class itself (``TRangeStaticCast<TBaseClass>``) or, in
+    the ``ROOT::`` pair that works on any range, a pointer type - ``RangeStaticCast<const
+    ClassB *>`` - whose class is the one the pointer names. A class the program declared
+    is not in the namespace, so the interpreter's own table is asked second.
+    """
+    bare = name.strip().removeprefix("const ").strip().rstrip("* ").strip()
     import xrdroot.pyroot as namespace  # asked for a name, it gathers the module holding it
 
-    found = getattr(namespace, name, None)
+    found = getattr(namespace, bare, None)
+    if not isinstance(found, type):
+        from .declared import find_class
+
+        found = find_class(bare)
     if not isinstance(found, type):
         raise TypeError(
-            f"ROOT::Detail::TRangeStaticCast<{name}> names no class this namespace has; "
+            f"ROOT::RangeStaticCast<{name}> names no class this namespace has; "
             f"name a ROOT class, such as TBaseClass, that it declares"
         )
     return found
@@ -125,6 +137,13 @@ TRangeStaticCast = _RangeCast(checked=False)
 #: ``ROOT::Detail::TRangeDynCast<T>(c)``: ``c``'s objects that are a ``T``, ``None`` for the
 #: rest, as ``dynamic_cast`` gives ``nullptr``.
 TRangeDynCast = _RangeCast(checked=True)
+
+#: ``ROOT::RangeStaticCast<T *>(r)``: any range's elements as ``T *``, unchecked - what the
+#: ``Detail`` pair is to a collection, and the one a C array of pointers is cast with.
+RangeStaticCast = _RangeCast(checked=False)
+
+#: ``ROOT::RangeDynCast<T *>(r)``: the elements that really are a ``T``, ``None`` for the rest.
+RangeDynCast = _RangeCast(checked=True)
 
 
 class Detail:
