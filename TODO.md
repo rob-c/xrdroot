@@ -1063,6 +1063,10 @@ cheap to maintain and impossible to reconstruct.
 | W0-62 | todo | | 1 | **`fVectorTnamed` is not a stype to teach.** It is `vector<TNamed> *fVectorTnamed[6]` - a pointer to a container *and* an array (`Event.h:100`, stype 91 = `STL_POINTER + 20`) - which ROOT writes into one record for the whole array. This round tried treating 91 as 71 and the harness's refusal moved on, but by **misreading the bytes**: the existing test `test_an_array_of_pointers_to_containers_leaves_the_type_as_the_file_describes_it` failed with `DID NOT RAISE`, which is why the change was reverted. A future round must write the array-of-pointers reading, not relabel the kind |
 | W0-63 | todo | | 1 | the harness's own lesson from `W0-62`: a one-line change that moves a refusal *further* is not progress until the full suite agrees. The unit tests caught this in 0.3 s; the harness alone would have called it a gain |
 
+| **Round 25: an array of pointers to containers** (`W0-62`), the wall round 24 identified and reverted | `23be66d4` (interp.py), `b25b54a4` (rdobjects.py) | 0 PASS: `io/bigevent` stays **3 PASS / 0 FAIL / 1 UNSUPPORTED** (`/tmp/r25/ev`) and `read`'s refusal moved from `fVectorTnamed` to `fMapTNamedp` - two members further than round 24 managed, and this time with the full suite agreeing |
+| W0-64 | todo | | 1 | `io/bigevent/read`'s next wall, named: `fMapTNamedp` is `map<TNamed*,int>` (stype 500 = `kSTLp`, extras `(4, 61)`) and the reader refuses it as **a class with a streamer of its own** - so a `std::map` whose *key* is a ROOT class needs the class-stored-map reading, not the plain one. The writer already lays this member out |
+| W0-65 | done | - | 0 | round 24's one-line revert (`W0-62`) was the right call and round 25 is the proof: the *feature* (an array of pointers to containers read out of one record, each item named) removed the wall and left every gate green, where relabelling the stype had removed the refusal and broken a unit test |
+
 
 **Totals, measured.** Four rounds of work took the suite from 1185 to 1231 passing tests:
 
