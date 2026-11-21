@@ -1536,6 +1536,35 @@ new — in the loop's task file (`.ralph/<name>.md`), which is where the next it
   handed), **`W0-131`** (round 44's gtest bucket table is eight rounds stale; re-measure the kind whole before working
   from it), **`W0-132`** (`test_THBinIterator`: 20 cases in 64 s, 7 failing - a bin iterator's cost and fidelity).
 
+## Round 53's close (recorded here for the next iteration)
+
+- Base `6f1b71a9`, closed at **`f93144fd`**. **Two commits, +2 gtest PASS (56 -> 58)**, and the round's second
+  product is the gtest ranking made current, which answers round 44's open question.
+- **`W0-131` is closed and it says "no name cluster"**. The kind measured whole against a worktree of HEAD
+  (`--xrdroot-src /tmp/r53/head/src`, so a commit landing mid-run cannot move the answer) at `--jobs 3`: **56 PASS /
+  216 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 in **573 s** - far cheaper than the hour it was budgeted at. The 218
+  that are not PASS reduce to 216 distinct first failures, so each failing program is its own feature. **The counting
+  that matters is the other one**: gtest prints a failing case twice, and counted once **47 programs have exactly one
+  failing case** - one feature each from a PASS - listed with its message in `/tmp/r53/one-case.md` (45 after this
+  round's two). That is the list the next rounds should work down.
+- **`ROOT::RangeStaticCast`/`RangeDynCast`** (`7f90083d`): `ROOT/RRangeCast.hxx`'s pair takes a *pointer* type and works
+  on any range - `ROOT::RangeStaticCast<const ClassB *>(arr)` over a C array of pointers - where round 52's `Detail`
+  pair takes a class and a collection. `_class_named` now strips a template argument's `const` and `*`, and asks the
+  interpreter's own table (`declared.find_class`) for a class the *program* declared, which a namespace lookup cannot
+  see. `gtest/core/foundation/testRRangeCast` PASSES, both cases.
+- **`TDataType::GetType`** (`f93144fd`) answers the `EDataType` code a `typeid` is, which is how a streamer, a leaf and
+  a branch say what they hold. The codes were already `collectionproxy.EDataType`'s; this is the lookup from the
+  Itanium name and the codes under the bare global names a macro writes (`kInt_t`, `kBool_t`). The mapping is ROOT's,
+  measured (`/tmp/r53/dtype4.C`): `-1` for `const char *` as for every class, `7` for `char *`.
+  `gtest/core/meta/testTDataType` PASSES.
+- **`W0-133` is a fidelity bug the work surfaced**: `gInterpreter->Calc(...)` prints nothing in ROOT 6.40
+  (`/tmp/r53/calc.C` measures it beside `ProcessLine`'s `(int) 5`), and `TInterpreter.Calc` here is
+  `gROOT.ProcessLine` verbatim, so `testTDataType` writes `(int) 3` ROOT does not. Two existing tests pin the echo, so
+  the fix corrects both in one commit.
+- Gates: **`TOTAL 119666 0 30000 0 100%`** by the two-command decomposition (13 009 passed, then 44) at a load
+  average of 20-42; ruff clean, mypy 1022 files, maintainability 31 252 functions, components 1021 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1594,6 +1623,10 @@ For the round's work, the evidence is, in this order:
 - Round 52's result of them, at `5f58c997`: **`TOTAL 119625 0 29998 0 100%`** - 12 990 passed then 44 passed - at a
   load average of 24-33; ruff clean, mypy 1021 files, maintainability 31 245 functions, components 1020 modules /
   0 undeclared. `/tmp/r52/gate1.log` is the first command's output.
+- Round 53's result of them, at `f93144fd`: **`TOTAL 119666 0 30000 0 100%`** - 13 009 passed then 44 passed - at a
+  load average of 20-42; ruff clean, mypy 1022 files, maintainability 31 252 functions, components 1021 modules /
+  0 undeclared, `mkdocs --strict` built. `/tmp/r53/gate1.log` is the first command's output (the tree was committed
+  exactly as measured, in the two commits above).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -1807,6 +1840,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 50 | `a21ec264` | **one commit**: `TAxis` reports the binning it cannot use, as ROOT's `TAxis::Set` does, and `TAxis(edges)` is ROOT's constructor from a vector of edges (`2e10bb4d`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **10 -> 9 failing cases** (`TAxis.EqualBinEdges` now OK) | 0 new: `W0-129` re-stated as the handover item, with each of `testTH1`'s nine cases and what it needs |
 | 51 | `b9570d8d` | **one commit**: `TH1::SmoothArray`, the static 353QH-twice smoother over a raw array a program hands as a pointer (`4227df45`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **9 -> 8 failing cases** (`TH1.SmoothArrayCrossCheck` now OK) | 0 new: `W0-129` down to eight cases, each measured, with `SetBufferedSumw2` and `DumpOutput` named as the expensive two |
 | 52 | `0537d989` | **one commit**: a collection's element carries the type C++'s range gives it (`TypedElement`), `iterate` hands a `TCollection`'s objects out as the `TObject *` C++ iterates, and `ROOT::Detail::TRangeStaticCast<T>`/`TRangeDynCast<T>` (`5f58c997`) | **gtest +2: `gtest/core/cont/coreconttestUnit` and `gtest/core/cont/testTypedIteration` PASS** (`/tmp/r52/cont`), the kind **54 -> 56**; nothing lost in `io/tree` (18/0/0/2), `io/json` (11/0/0/1) or 66 `io`/`hist`/`graf2d` gtest programs (`/tmp/r52/gtest-iohist`) | 3: `W0-130` (a wrapper a macro can keep - `TCollection` should unwrap), `W0-131` (the round-44 gtest bucket table is eight rounds stale), `W0-132` (`test_THBinIterator`: 64 s for 20 cases, 7 failing); `W0-113` closed |
+| 53 | `6f1b71a9` | **two commits**: `ROOT::RangeStaticCast`/`ROOT::RangeDynCast` over any range, a C array of pointers included, with a class the program declared found in the interpreter's table (`7f90083d`); `TDataType::GetType(typeid(T))` over `EDataType`'s codes, with them under the bare names a macro writes (`f93144fd`) | **gtest +2: `gtest/core/foundation/testRRangeCast` and `gtest/core/meta/testTDataType` PASS** (`/tmp/r53/corefm`), the kind **56 -> 58**; **the gtest kind measured whole at HEAD** (`/tmp/r53/gtest`): 56 / 216 / 76 / 2 of 350, nothing lost | 2: `W0-131` closed (the ranking is current and has no name cluster; `/tmp/r53/one-case.md` names the 47 programs one failing case from a PASS), `W0-133` (`Calc` echoes where ROOT is silent) |
 
 ## Notes
 
