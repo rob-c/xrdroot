@@ -518,19 +518,40 @@ def _root_member(obj: Any, member: str, kind: str = "", typename: str = "") -> A
     return value if kept is None else root_row(kept, typename)
 
 
+#: How a member of one of ROOT's classes comes off the object - its getter, its own name, or
+#: the row the object keeps - by the class of the object and the member. Kept because which
+#: of them answers is a property of the class: a file of two million vectors asked it, and
+#: built the getter's name from the member's, two million times over.
+_ACCESSORS: dict[tuple[type, str], Callable[[Any], Any]] = {}
+
+
 def _member_value(obj: Any, member: str) -> Any:
     """What ``obj`` answers for the member ``member``: its getter's, its own of that name, or
     the one the row it keeps its members in holds."""
+    key = (type(obj), member)
+    found = _ACCESSORS.get(key)
+    if found is None:
+        found = _ACCESSORS[key] = _probed(obj, member)
+    return found(obj)
+
+
+def _probed(obj: Any, member: str) -> Callable[[Any], Any]:
+    """The way ``obj``'s class answers ``member``, for every object of that class after it."""
     getter = getattr(obj, "Get" + member[1:], None)
     if callable(getter):
-        return getter()
+        return lambda held: getattr(held, "Get" + member[1:])()
     terse = getattr(obj, member[1:], None)
     if callable(terse):
-        return terse()
-    held = getattr(obj, "_row", None)
-    if isinstance(held, Mapping) and member in held:
-        return held[member]
-    return getattr(obj, member, None)
+        return lambda held: getattr(held, member[1:])()
+    if isinstance(getattr(obj, "_row", None), Mapping):
+        def from_row(held: Any) -> Any:
+            row = getattr(held, "_row", None)
+            if isinstance(row, Mapping) and member in row:
+                return row[member]
+            return getattr(held, member, None)
+
+        return from_row
+    return lambda held: getattr(held, member, None)
 
 
 def _of_class(value: Any, typename: str) -> bool:
