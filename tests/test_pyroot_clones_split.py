@@ -11,7 +11,7 @@ this was written); here it is read back by xrdroot both ways.
 from __future__ import annotations
 
 import struct
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -20,7 +20,7 @@ import xrdroot.pyroot as ROOT
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pycint.execute import run_source
 from xrdroot.pyroot.core.declared import find_class
-from xrdroot.pyroot.trees import objects
+from xrdroot.pyroot.trees import copying, objects
 from xrdroot.pyroot.trees.objectinfo import object_info
 from xrdroot.wbranch import CloneMember, SplitClones, clones_members, tref_record
 from xrdroot.wclasses import declared
@@ -577,3 +577,126 @@ def test_a_clone_with_no_file_to_say_which_process_keeps_the_index_it_read():
     assert columns["r1.fRef"] == [[described]]
     assert objects._source_uuid({"ProcessID1": {}}, 0) is None  # a file that recorded no process
     assert objects._source_uuid({"ProcessID0": {"TNamed": {"fTitle": "a-uuid"}}}, 0) == "a-uuid"
+
+
+def _cloned_live_refs(tmp_path) -> tuple[str, list[int]]:
+    """``roottest``'s ``create-rcr``: a clone of a collection whose objects are numbered *after*
+    they were read, and what each of them was numbered as.
+
+    ``addref`` binds the source's ``r1`` branch to a ``TClonesArray`` and makes a ``TRef`` from
+    every object it read, which is ``TProcessID::AssignID`` numbering them in the session - so
+    the numbers are not the ones the entry holds, and the clone has to copy the objects.
+    """
+    path = str(tmp_path / "refs.root")
+    _written_refs(path)
+    # the file was written by a process that is not this session's, as ``create-rc``'s was: a
+    # session reading it files its ``ProcessID0`` beside its own, at index 1
+    ROOT.TProcessID._pids[0].SetTitle("another session")
+    source = ROOT.TFile(path)
+    upstream = source.Get("T")
+    clone = upstream.CloneTree(0)
+    out = ROOT.TFile(str(tmp_path / "clone.root"), "RECREATE")
+    clone.SetDirectory(out)
+    held = ROOT.TClonesArray(upstream.GetBranch("r1").GetClonesName())
+    upstream.SetBranchAddress("r1", held)
+    numbers: list[int] = []
+    counted = ROOT.TProcessID.GetObjectCount()
+    for entry in range(upstream.GetEntries()):
+        upstream.GetEntry(entry)
+        for at in range(len(held)):
+            ROOT.TRef(held[at])  # what a ``tref_test_pid`` constructor does to its object
+            numbers.append(held[at].GetUniqueID())
+        clone.Fill()
+        ROOT.TProcessID.SetObjectCount(counted)
+    clone.Write()
+    out.Close()
+    source.Close()
+    return str(tmp_path / "clone.root"), numbers
+
+
+def test_a_clone_writes_the_identifiers_its_objects_got_after_they_were_read(tmp_path):
+    """An identifier is not a value ``GetEntry`` settles: ``AssignID`` numbers an object when a
+    ``TRef`` is made to it, and nothing writes that number back into the entry. A clone of a
+    collection the tree was handed copies the objects, so its ``fUniqueID`` carries the number
+    and its ``fBits`` says a reference may point at the object; the byte above the number is
+    the index of the ``ProcessID`` record holding it, plus one - the session's own process is
+    the second record here, because the source file's has to keep the index it was read with
+    (roottest/root/io/tree/test-rcr).
+    """
+    made, numbers = _cloned_live_refs(tmp_path)
+    with xrdroot.open_root(made) as found:
+        written = found["T"].arrays(["r1.fUniqueID", "r1.fBits"])
+    assert written["r1.fUniqueID"].tolist() == [
+        [(2 << 24) | (number & 0xFFFFFF)] for number in numbers
+    ]
+    assert written["r1.fBits"].tolist() == [[0x03000018] for _ in numbers]
+
+
+def test_a_collection_the_tree_holds_no_objects_of_reads_its_identifiers_from_the_entry(
+    tmp_path,
+):
+    """Nothing bound to the branch: the entry is all there is to copy, and its identifiers as
+    well as its names are the clone's."""
+    path = str(tmp_path / "refs.root")
+    _written_refs(path)
+    source = ROOT.TFile(path)
+    upstream = source.Get("T")
+    clone = upstream.CloneTree()
+    with xrdroot.create(str(tmp_path / "clone.root")) as out:  # the source's baskets are read
+        clone.SetDirectory(out)
+        clone.Write()
+    source.Close()
+    with xrdroot.open_root(str(tmp_path / "clone.root")) as found:
+        copied = found["T"].arrays(["r1.fUniqueID", "r1.fBits", "r1.fName"])
+    assert copied["r1.fUniqueID"].tolist() == [[0], [0]]
+    assert copied["r1.fBits"].tolist() == [[0x03000000], [0x03000000]]
+    assert copied["r1.fName"] == [["r1_N_0"], ["r1_N_1"]]
+
+
+def test_an_object_nothing_numbered_keeps_the_identifier_it_has():
+    """An object no process numbered has no record to name, so its identifier is written as it
+    stands - a number with no byte above it, which is what makes the byte mean "a process"."""
+    plain = ROOT.TNamed("n", "n")
+    plain.SetUniqueID(7)
+    assert copying._identifier(plain) == 7
+
+
+def test_an_identifier_numbered_with_no_file_to_write_keeps_the_number_it_has():
+    """Nothing is being written, so there is no record to number the object into: the number
+    stays the object's own rather than naming a process the file would not hold."""
+    numbered = ROOT.TNamed("n", "n")
+    ROOT.TProcessID.AssignID(numbered)
+    assert copying._identifier(numbered) == numbered.GetUniqueID()
+    copying._carried_records({"ProcessID0": {"TNamed": {"fTitle": "a-uuid"}}})
+
+
+class _HeldNumber:
+    """An address a number was bound to, which is no collection to read objects from."""
+
+    def get(self, count: int | None = None) -> int:
+        return 0
+
+
+class _Bound:
+    """A tree holding one address, as ``SetBranchAddress`` leaves it."""
+
+    _addresses: ClassVar[dict[str, Any]]
+
+    def __init__(self) -> None:
+        self._addresses = {"r1": _HeldNumber()}
+
+
+def test_an_address_holding_a_number_is_no_collection_of_objects():
+    assert copying._live_objects(_Bound(), "r1") is None
+    assert copying._live_objects(_Bound(), "nothing bound") is None
+
+
+def test_a_source_file_that_recorded_no_process_gives_the_clone_none_to_carry(tmp_path):
+    """Nothing to carry means nothing written: a file a clone goes into has a ``ProcessID``
+    record for the processes its references name and no others."""
+    path = str(tmp_path / "none.root")
+    out = ROOT.TFile(path, "RECREATE")
+    copying._carried_records({})  # a source file of no reference at all
+    out.Close()
+    with xrdroot.open_root(path) as found:
+        assert [key for key in found.keys() if key.startswith("ProcessID")] == []
