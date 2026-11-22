@@ -214,6 +214,7 @@ RETURNED = {
     **{(kind, "str"): "std::string" for kind in ("HijackMessageStream",
                                                   "RooHelpers::HijackMessageStream")},
     **{(kind, "Invert"): "TMatrixDSym" for kind in ("TDecompChol", "TDecompBK")},
+    **{("RNTupleWriter", name): "RNTupleWriter" for name in ("Recreate", "Append")},
 }
 
 #: ROOT's getters, whose call leaves the object as it was: a loop bound using them is fixed.
@@ -307,7 +308,7 @@ ROOT = Dialect(
     buffer_functions=frozenset({"memset", "memcpy"}),
     string_methods={"Data": _data},
     guards=frozenset({"TFile", "TMemFile", "FileRaii", "ROOT::TestSupport::FileRaii",
-                     "TIter"}),  # TIter deletes the iterator it holds
+                     "TIter", "RNTupleWriter"}),  # TIter deletes the iterator it holds
     value_readers=frozenset({"TTreeReaderValue"}),
     array_readers=frozenset({"TTreeReaderArray"}),
     held_results=frozenset({"RResultPtr", "RDF::RResultPtr", "ROOT::RDF::RResultPtr"}),

@@ -297,7 +297,10 @@ class Inference(EmitterBase):
                 return self._overloaded(node)
             return INT if parts[1] in integers else DOUBLE
         if len(parts) != 1:
-            return None
+            # ``T::f(...)``, a static call written through its class, asks the same question
+            # as ``t.f(...)`` on one of its objects - what the class gives back by value.
+            kept = active().method_returns.get((parts[-2], parts[-1]))
+            return CType(kept) if kept is not None else None
         name = parts[0]
         smart = SMART_MAKERS.get(name)
         if smart is not None:
