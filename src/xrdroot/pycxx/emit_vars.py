@@ -251,6 +251,8 @@ class VariableEmitter(StmtEmitter):
             raise self.refuse(f"a variable of the template parameter type {ctype.name}", decl)
         if ctype.callable:
             return "None"
+        if _is_iterator(ctype):
+            return "None"  # unset, as C++ leaves it: it means an element once a container is
         return f"{self.class_expr(ctype)}()"
 
     def constructed(self, ctype: CType, args: list[Expr], decl: VarDecl) -> str:
@@ -415,6 +417,18 @@ class VariableEmitter(StmtEmitter):
 
     #: The module-level lines the static locals of the declaration being written become.
     module_statics: list[tuple[str, Any]]
+
+
+def _is_iterator(ctype: CType) -> bool:
+    """Is this a library container's iterator type - ``std::list<T>::iterator``?
+
+    Such an iterator is no object a library makes here: a container's ``begin`` hands out one
+    that stands for a place in it, so a variable of the type declared with nothing to start
+    from holds no place at all until one is assigned - as C++'s default-constructed iterator
+    names no element either.
+    """
+    owner, _, last = ctype.name.rpartition("::")
+    return bool(owner) and last in ("iterator", "const_iterator")
 
 
 def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:

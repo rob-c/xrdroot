@@ -346,3 +346,25 @@ def test_a_reference_bound_to_the_object_it_names_builds_nothing(capsys) -> None
         }
         """, "t.C")  # fmt: skip
     assert capsys.readouterr().out == "4 4\n3 1.5\n"
+
+
+def test_a_container_iterator_declared_with_nothing_to_point_at_holds_no_place(capsys) -> None:
+    """``std::vector<int>::iterator it;`` names no element until a container gives it one, and
+    a translation has no container to give it: the variable starts as nothing, and the loop
+    that assigns it its ``begin()`` works - what roottest's ``io/tree/run.C`` does.
+    """
+    source = r"""
+    #include <cstdio>
+    #include <vector>
+    void it() {
+       std::vector<int> v;
+       v.push_back(7);
+       v.push_back(8);
+       std::vector<int>::iterator at;
+       for (at = v.begin(); at != v.end(); at += 1)
+          printf("%d\n", v[at - v.begin()]);
+    }
+    """
+    assert "at = None" in translate(source, "it.C")
+    run_source(source, "it.C")
+    assert capsys.readouterr().out == "7\n8\n"

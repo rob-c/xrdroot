@@ -3032,8 +3032,12 @@ A class a macro, a library or ACLiC declares is a ROOT class here. One derived
 from `TObject`, `TNamed` or `TAttLine` has its base's members and calls them
 unqualified (`GetName()`, `TNamed::Print(opt)`), an override called through a
 base pointer takes the base's default arguments, and `ClassDef` gives it a
-version, `Class()` and `Class_Name()`. `TClass::GetClass("MyClass")` describes
-it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
+version, `Class()` and `Class_Name()`. A `TNamed`'s name and title are the
+`TString` members `fName` and `fTitle`, which a derived class writes in place -
+`fName.Form("%s_%d", name, GetID())` renames the object, as roottest's
+`tref_test_pid` does - and `TObjString::String()` is the `TString` it holds.
+`TClass::GetClass("MyClass")` describes it as ROOT's dictionary would: `GetClassVersion`
+(-1 without a `ClassDef`),
 `GetCheckSum`, `GetListOfDataMembers` (`//!` transient, `//[n]` counted),
 `GetListOfBases`, `GetBaseClass`, `New`, and `GetStreamerInfo()`, whose `ls()`
 lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
