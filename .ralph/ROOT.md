@@ -1924,27 +1924,63 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   cherry-pick or by copying files, and **nothing pushed** - `W0-138` remains the operator's decision.
 - Evidence kept: `/tmp/r62/{gtest,truth2,ele,tree65,roofit,areas,hf-base,hfp,pmf2,probe,head,gate1.log,gate1b.log,w01*,w02*,w0?-brief.md}`.
 
+## Round 63's close (recorded here for the next iteration)
+
+- Base `86001091`, closed at **`1300854d`** (code at `564bbb88`). **Two gtest PASSes, the kind 67 -> 69**, and the whole
+  kind measured at the tip: **69 PASS / 202 FAIL / 77 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r63/gtest`, `--jobs 3`,
+  `--xrdroot-src /tmp/r63/head/src` frozen at `564bbb88`) - the two gained, **none lost and not one other row moved**.
+- **`64cf43ae` is the round's general fix, and it came from reading the oracle instead of guessing**: `TFile::Write` in
+  ROOT calls `TDirectoryFile::Write`, `WriteStreamerInfo`, `WriteFree` and `WriteHeader` (`io/io/src/TFile.cxx:2489`,
+  fetched into the sparse checkout this round), so a file is on disk and readable the moment it is written. Ours wrote
+  nothing until the close, so a program that writes a file and reads it back in the same run read one that was not
+  there: ROOT's own `w.C` probe answers `open=1 tree=1` and we answered `open=0 tree=0`. **`WritableFile.checkpoint`**
+  is that sequence, made repeatable - `_finish_containers` writes each tree's and ntuple's record once, and the streamer
+  info only when a class new since the last record has been used. The round's own gate caught a 105-test break on the
+  first attempt (`UpdatedFile` has no `_start`-set attributes; a memory directory has no file), the NPath limit caught
+  `_assemble` at 256 (split into `_finish_containers`), and part 2 named two uncovered branches (`checkpoint`'s
+  `_closed` guard, which no caller can reach, and the ntuple loop, which an RNTuple in a `TFile` now covers).
+- **The two worker targets were both priced from ROOT's own source before a brief was written**, and both landed:
+  - **`85fb85eb` (w01): GDML names.** `GetMaterial("Iron")` found nothing because a GDML file names its materials
+    `Iron0xccc` for XML uniqueness and ROOT strips the trailing `0x…` when it registers them; and ROOT names an element
+    by its **formula** (`GetElement(0)->GetName()` is `"FE"`). `TGeoMixture` now keeps its elements, so `GetWmixt()` and
+    `GetElement(i)` answer as ROOT does. **`gtest/geom/gdml_material_name_collision` PASSES.**
+  - **`d28fcf12` (w02): `TMultiGraph::GetHistogram`'s log frame.** ROOT pads a log axis by *the logarithm of the ratio* -
+    `min/(1+0.5*log10(r))`, `max*(1+0.2*log10(r))` (`hist/hist/src/TMultiGraph.cxx:1035`) - and `TGraph::ComputeRange`
+    takes the smallest **positive** minimum on a log axis (`TGraph.cxx:759`). The test's numbers (0.65234 and 79.9602)
+    are now ours to 1e-3, where the round began at 1.08468 and 65.5672. **`testTMultiGraphGetHistogram` PASSES.**
+- **`W0-160` is the moved wall**: with the file written, `testTChainSaveAsCxx` reaches the macro its `SaveAs` wrote and
+  stops on our own sentence `'testtree' was read from a file, and WriteObject adds to a tree being filled; CloneTree(0)
+  makes one with its branches to fill` - the wall is now a feature the kit names rather than a file that was not there.
+- **`W0-161` records what the `Write` checkpoint does to the bytes**, because the file-size work of rounds 3-6 depends
+  on it: ROOT's file grows by 274 bytes for one `Write` and 399 for two, ours by 442 and 489 (`/tmp/r63/probe/size1.C`).
+  The *shape* is ROOT's - a second cycle per object per write, which ROOT does too (`/tmp/r63/probe/keys.C` lists `h`
+  at cycles 3, 2, 1) - but the sizes differ, and the streamer-info record is the first suspect.
+- **Measured areas, before and after**: 38 programs of `gtest/geom/*` + `gtest/hist/hist/*` give **11 PASS / 25 FAIL /
+  2 UNSUPPORTED** (`/tmp/r63/areas`), the two gains and nothing else moved; 31 programs of `gtest/io/io/*` +
+  `gtest/tree/tree/*` give **7 / 18 / 5 / 1 TIMEOUT** (`/tmp/r63/io`), unchanged, so the checkpoint costs no PASS.
+- Worktree discipline (`W0-138`): two worktrees, both **detached** (`git worktree add -d`, `W0-153`), integrated by
+  cherry-pick `-x`, and **nothing pushed** - `W0-138` remains the operator's decision.
+- Evidence kept: `/tmp/r63/{gtest,areas,io,t-gdml,t-mg,chainsave,probe,head,gate1.log,gate2.log,gate3.log,w01*,w02*,w0?-brief.md}`.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
-- [x] the queue read and the failures ranked by cause, **from the freshest whole-kind run** (`/tmp/r61/gtest`): the
-      39 programs with exactly one failing case were priced against ROOT's own sources before anything was chosen
-- [x] **four targets, disjoint files, each with a measured "before"**: the smart-pointer destructor (`pycxx/emit_vars.py`,
-      found by pricing `testHistFactoryPlotting`), `gROOT`'s name (`pycint/`, worker w01), `DecayType` (`roofit/pdfs/`),
-      and `baseline --merge` (`tools/rootsuite/`, worker w02)
-- [x] two worktrees created **detached** (`git worktree add -d`, `W0-153`) and two briefs launched with `pi -p`
-- [x] **w01 taken from its working tree** after 45 minutes with no commit, its five files copied and its work credited
-      in `0b11a27c` (`W0-111`); w02's two commits cherry-picked `-x`
-- [x] **every branch that loses a PASS rejected**, with the refusal to relax recorded - none lost; the whole gtest kind
-      re-measured at the tip (67 / 204 / 77 / 2, `/tmp/r62/gtest`)
-- [x] the areas the round touched measured before and after (`/tmp/r62/{areas,roofit,tree65,truth2,ele}`), and
-      `W0-158` recorded when a subset run disagreed with a whole-kind one
-- [x] every ROOT number claimed here measured on the oracle first (`/tmp/r62/probe/{p,own,sock.C}`, the PyROOT enum table)
-- [x] `TODO.md` §0 and the ledger rows updated in one commit at the close, and the **baseline rows raised from a real
-      run** with the round's own new tool (`14b61d71`)
-- [x] **every extra thing the round found added to §4's queue**, with file, message and first step (`W0-155`…`W0-159`)
+- [x] the queue read and the failures ranked from the freshest whole-kind run (`/tmp/r62/gtest`): the 37 programs with
+      one failing case were priced by **reading ROOT's own source** for each (the `io/io/src` and `hist/hist/src`
+      paths were sparse-checkout additions this round)
+- [x] **three targets, disjoint files, each with a measured "before"**: `TFile::Write`'s checkpoint (found by probing
+      ROOT's `w.C` shape), GDML name normalisation (worker w01), `TMultiGraph::GetHistogram`'s log rule (worker w02)
+- [x] two worktrees created **detached** (`git worktree add -d`, `W0-153`) and two briefs, each quoting ROOT's source
+- [x] both workers' commits cherry-picked `-x`, their targets re-measured here (`/tmp/r63/t-gdml`, `/tmp/r63/t-mg`)
+- [x] **every branch that loses a PASS rejected** - none lost; the whole gtest kind at the tip (69 / 202 / 77 / 2,
+      `/tmp/r63/gtest`), and the 69 programs of the two areas plus `io/io`+`tree/tree` measured on their own
+      (`/tmp/r63/areas`, `/tmp/r63/io`)
+- [x] every ROOT number claimed measured on the oracle first (`/tmp/r63/probe/{w,w2,chain,size1,keys,tkeys,g}.C`)
+- [x] `TODO.md` §0 and the ledger row in one commit at the close, and the **baseline rows raised from the round's own
+      whole-kind run** with `rootsuite baseline --merge` (`1300854d`, `ratchet` 0 regressions on the same run)
+- [x] **every extra thing the round found added to §4's queue** (`W0-160`, `W0-161`)
 - [x] the round's summary written into the loop's task file (`.ralph/<name>.md`)
-- [x] gates re-run at the round's final commit
+- [x] gates re-run at the round's final commit (three runs: the first two named the round's own breakages)
 - [x] commits made; nothing pushed unless asked
 - [x] the round directory kept (its `results.json` files are the evidence)
 
@@ -2019,6 +2055,7 @@ For the round's work, the evidence is, in this order:
   0 undeclared. `/tmp/r60/gate1.log` is the first command's output, run in the round's own worktree
   (`/tmp/ralph-round-202611220414/main`, since removed - the commit is on `feat/root-testsuite`).
 - Round 61's result of them, at `1a7e31ca` (the code; `efe8b9de` adds only `TODO.md`): **`TOTAL 119899 0 30046 0 100%`** - 13 073 passed then 44 passed - at a load average of 13-16; ruff clean, mypy 1026 files, maintainability 31 351 functions, components 1025 modules / 0 undeclared, `mkdocs --strict` built. `/tmp/r61/gate1b.log` is the first command's output (an earlier run, `/tmp/r61/gate1.log`, named round 61's own two regressions: `_wrap_parameters` at CCN 11 and `KNNDensity` at CCN 14 / cognitive 25 / NPath 2192, plus the 53 batched-call tests the prologue conversion broke). Run in the main tree, which is `feat/root-testsuite` itself (`W0-138`: nothing is pushed).
+- Round 63's result of them, at `564bbb88` (the code; the docs commits follow): **`TOTAL 120003 0 30060 0 100%`** - 13 094 passed then 44 passed - at a load average of 16-28; ruff clean, mypy 1026 files, maintainability 31 394 functions, components 1025 modules / 0 undeclared. `/tmp/r63/gate3.log` is the first command's output (earlier runs named round 63's own breakages: `/tmp/r63/gate1.log` the NPath 256 in `_assemble`, `/tmp/r63/gate2.log` the two uncovered branches). Run in the main tree, which is `feat/root-testsuite` itself (`W0-138`: nothing is pushed).
 - Round 62's result of them, at `9fe62239` (the code; `78252929` and `14b61d71` add the ledger and the baseline rows): **`TOTAL 119943 0 30054 0 100%`** - 13 085 passed then 44 passed - at a load average of 13-22; ruff clean, mypy 1026 files, maintainability 31 370 functions, components 1025 modules / 0 undeclared, `mkdocs --strict` built. `/tmp/r62/gate1b.log` is the first command's output (an earlier run, `/tmp/r62/gate1.log`, named the translator's fake `TFile` missing `_destruct` - fixed in `9fe62239` - and seven dask `LocalCluster` errors that pass alone). Run in the main tree, which is `feat/root-testsuite` itself (`W0-138`: nothing is pushed).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
@@ -2243,6 +2280,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 60 | `0e88415c` | **one commit**: `TServerSocket`, `TInetAddress` and `ESocketBindOption` over Python's `socket`, with the socket as a dialect guard (`6e981a56`) | **gtest +1: `gtest/net/net/nettests` PASSES**, the kind **62 -> 63**; nothing lost in 71 `gtest/net/*` + `gtest/core/*` + `gtest/tree/tree/*` programs (`/tmp/r60/net`). Gate `TOTAL 119809 0 30022 0 100%` | 4: `W0-146` (`ntuple_largefile2` writes 268 M entries - a large-file test), `W0-147` (`Delaunay2D::Interpolate` is not barycentric interpolation), `W0-148` (`gROOT`'s name is `PyROOT` here and `root` in a compiled program), `W0-149` (a null stored into a class-typed local, with the shape of its two-part fix) |
 | 61 | `24cfc1ea` | **two targets, one worker and the round's own hands**: `RooExtendedBinding` in `roofit/pdfs/extend.py`, its registry entry, a test file and a docs line (`730bb942`, worker w01 - a `RooAbsReal` whose value is `pdf.expectedEvents(normSet)`, 1.0 un-normalised and the density's integral with a set); `std::span` and `TMath::KNNDensity` (`618f5a98` - a span holds what `&x` makes here, a `Cell`, so `result[i] = ...` reaches the caller's variable, and the density is ROOT's own walk outwards, bit for bit against the oracle); and two translator behaviours (`9d380d3f`: a std typedef written as a call is the scalar cast, and a braced list becomes its container in a *lambda's* body; `a006df48`: the same conversion in every function's prologue broke 53 batched-call contracts, so it was narrowed) | **gtest +2, the kind 63 -> 65**: `gtest/roofit/roofitcore/testRooExtendedBinding` PASSES (`/tmp/r61/reb`) and `gtest/math/mathcore/testKNNDensity` PASSES (`/tmp/r61/knn2`), and **the whole kind measured at `1a7e31ca`: 65 PASS / 206 FAIL / 77 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r61/gtest`) - four gained over round 58's 61, **none lost**. Gate `TOTAL 119899 0 30046 0 100%` (13 073 + 44, `/tmp/r61/gate1b.log`), ruff, mypy 1026 files, maintainability 31 351 functions, components 1025 modules, mkdocs | 5: `W0-150` (**`baseline.json` understates by every PASS since round 43** - `write_baseline` refuses a partial baseline, so no round can record a gain; the shape of the merge mode is named), `W0-151` (a braced list into a *function's* container parameter - belongs at the call site), `W0-152` (**the two walls `TServerSocket` removed moved on**: `RCurlConnection`, and a UNIX-socket path read as a port), `W0-153` (**a worker must not check out the main tree's branch** - `git worktree add -d`), `W0-154` (`testRooRombergIntegrator` FAIL -> UNSUPPORTED already at the base: a header's refusal now comes first) |
 | 62 | `62c38856` | **four targets, two workers and the round's own hands, all provable in a probe first**: `_owned` answers the *pointee* of a single-object smart pointer, so `std::unique_ptr<TFile> f{TFile::Open(...)}` writes its file where its scope ends (`a911f526`); `xrdroot run FILE` names `gROOT` `root` as a compiled program's is while the prompt's `TRint` session keeps `Rint` (`0b11a27c`, worker r-62-w01 - `entrylist_enter` asks for `GetEntryList("root/t1","")`); `RooBDecay::DecayType::SingleSided` and its kin on ROOT's five decay classes (`35a387d1`, `8652fbcb`); `TServerSocket` binds a local socket path with the oracle's own answers (`085bc619`); `TBuffer::ResetMap` (`72614fe5`); and `rootsuite baseline --merge`, which records only the PASSes a real run saw (`2d350cdd`, `4e58cf7f`, `c3e7a67b`, `14b61d71` - worker r-62-w02, and `W0-150` is closed) | **gtest +2, the kind 65 -> 67**: `gtest/roofit/roofitcore/testRooTruthModel` PASSES (`/tmp/r62/truth2`) and `gtest/tree/tree/entrylist_enter` PASSES all four cases (`/tmp/r62/ele`), and **the whole kind at `9fe62239`: 67 PASS / 204 FAIL / 77 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r62/gtest`) - two gained, **none lost, no other row moved**. Gate `TOTAL 119943 0 30054 0 100%` (13 085 + 44, `/tmp/r62/gate1b.log`), ruff, mypy 1026 files, maintainability 31 370 functions, components 1025 modules, mkdocs | 5: `W0-155` (`testHistFactoryPlotting`'s next wall: `RooCurve.GetPoint` and the component-sum invariant), `W0-156` (`Accept`/`TSocket`/`TMonitor` for the local-socket family), `W0-157` (a `TF1` read back out of a buffer), `W0-158` (**a `--only` run is not a whole-kind run**: the working copy lacks a sibling test directory's header), `W0-159` (`cintfake` must answer `_destruct` for every guard) |
+| 63 | `86001091` | **three targets, two workers and the round's own hands, each priced against ROOT's own source first**: `TFile::Write` now writes the file - a new `WritableFile.checkpoint` running ROOT's `WriteStreamerInfo`/`WriteFree`/`WriteHeader` sequence, repeatable because each tree's record is written once (`64cf43ae`, `30897365`, `b212331b`, `b92d587e`, `564bbb88`); a GDML name's trailing `0x…` is dropped and an element is named by its formula, with `TGeoMixture.GetWmixt`/`GetElement` (`85fb85eb`, worker r-63-w01); and `TMultiGraph::GetHistogram` pads a log frame by ROOT's own rule, with `TGraph::ComputeRange`'s smallest-positive minimum on a log axis (`d28fcf12`, `7a777e90`, worker r-63-w02) | **gtest +2, the kind 67 -> 69**: `gtest/geom/gdml_material_name_collision` PASSES (`/tmp/r63/t-gdml`) and `gtest/hist/hist/testTMultiGraphGetHistogram` PASSES (`/tmp/r63/t-mg`), and **the whole kind at `564bbb88`: 69 PASS / 202 FAIL / 77 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r63/gtest`) - two gained, **none lost, no other row moved**. Gate `TOTAL 120003 0 30060 0 100%` (13 094 + 44, `/tmp/r63/gate3.log`), ruff, mypy 1026 files, maintainability 31 394 functions, components 1025 modules | 2: `W0-160` (`testTChainSaveAsCxx` now reaches the macro `SaveAs` wrote - our own `WriteObject` sentence is the wall), `W0-161` (**a `Write`'s bytes**: ROOT 3642/3916/4315 against our 3617/4059/4548 for no/one/two writes - the shape is ROOT's, the sizes are not) |
 
 ## Notes
 
