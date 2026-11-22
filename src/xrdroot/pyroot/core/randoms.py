@@ -1,10 +1,15 @@
-"""``TRandom``, ``TRandom1``, ``TRandom2``, ``TRandom3`` and ``gRandom``, by ROOT's names.
+"""``TRandom``, ``TRandom1``, ``TRandom2``, ``TRandom3``, ``TRandomMixMax`` and
+``gRandom``, by ROOT's names.
 
 Beneath each is the generator of the same name in :mod:`xrdroot.random`,
 which is ROOT's to the bit: the same seed gives the same ``Rndm()``,
 ``Gaus()`` and ``Poisson()`` in the same order as ROOT. ``gRandom`` stands
 over :data:`xrdroot.random.gRandom`, so a histogram's ``FillRandom`` and a
 script's ``gRandom.Gaus()`` take their draws from one stream, as in ROOT.
+
+``TRandomMixMax`` is the exception, and says so itself: ROOT's MIXMAX numbers
+are not reproduced here (see :class:`TRandomMixMax`). Its distributions are
+ROOT's, over another uniform stream.
 
 Each method takes an extra ``n`` - not ROOT's - for an array of ``n`` draws
 at once, the same numbers ``n`` calls would give.
@@ -18,7 +23,15 @@ from ... import random as xrandom
 from .objects import TNamed
 from .refs import store, store_many
 
-__all__ = ["TRandom", "TRandom1", "TRandom2", "TRandom3", "gRandom", "current_generator"]
+__all__ = [
+    "TRandom",
+    "TRandom1",
+    "TRandom2",
+    "TRandom3",
+    "TRandomMixMax",
+    "gRandom",
+    "current_generator",
+]
 
 
 def _number(value: Any) -> Any:
@@ -141,6 +154,34 @@ class TRandom3(TRandom):
     NAME = ("Random3", "Random number generator: Mersenne Twister")
 
     def __init__(self, seed: int = 4357, *, engine: Any = None) -> None:
+        super().__init__(seed, engine=engine)
+
+
+class TRandomMixMax(TRandom):
+    """``TRandomMixMax``: ROOT's interface with MIXMAX 240's engine, over a Mersenne stream.
+
+    **The numbers are not MIXMAX's.** ROOT's ``TRandomMixMax`` is
+    ``TRandomGen<MixMaxEngine<240,0>>``, and its ``SetSeed`` seeds by
+    ``seed_uniquestream``, which skips a huge number of steps through the
+    128-by-240 table of coefficients in ROOT's ``mixmax_skip_N240.icc``; that
+    table is not transcribed here, so the numbers ROOT draws from this class
+    cannot be reproduced and are not claimed to be. What is ROOT's is the
+    class: its name and title, its default seed of 1, ``SetSeed`` and the
+    whole ``TRandom`` interface above it - ``Gaus``, ``Poisson`` and the rest
+    run ROOT's own algorithms - over a ``TRandom3`` stream instead.
+
+    That is enough for a histogram filled from it: the bin contents a test
+    asks about are the ones the test sets, and the draws only have to be a
+    deterministic stream of the right shape. A test that pins a *number*
+    drawn from MIXMAX cannot be satisfied by this class, which is why the
+    substitution is said here - and the name and title are ROOT's, so
+    nothing else about the object tells on it.
+    """
+
+    ENGINE = xrandom.TRandom3
+    NAME = ("Random_MixMax240", "Random number generator: MixMax240")
+
+    def __init__(self, seed: int = 1, *, engine: Any = None) -> None:
         super().__init__(seed, engine=engine)
 
 

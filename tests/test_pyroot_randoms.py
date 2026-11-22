@@ -142,3 +142,45 @@ def test_a_translated_float_filled_by_reference_is_rounded_as_cpp_rounds_it():
     # Rannor(Float_t&, Float_t&) draws in double and rounds as it stores, as ROOT's does.
     assert (px.value, py.value) == (float(np.float32(x)), float(np.float32(y)))
     assert px.value != x and wide.value == x
+
+
+def test_mixmax_is_root_interface_over_a_stream_that_is_not_mixmaxs():
+    """ROOT's ``TRandomMixMax`` is ``TRandomGen<MixMaxEngine<240,0>>``, and its numbers come
+    from seeding that ROOT does with a table of skip coefficients this does not carry, so the
+    class says in its docstring that the stream is a Mersenne twister's instead. This pins the
+    substitution: the same seed gives ``TRandom3``'s stream, under ROOT's name and title."""
+    made, beneath = ROOT.TRandomMixMax(11), ROOT.TRandom3(11)
+    expect(
+        (made.ClassName(), "TRandomMixMax"),
+        (str(made.GetName()), "Random_MixMax240"),
+        (str(made.GetTitle()), "Random number generator: MixMax240"),
+        (made.Rndm(), beneath.Rndm()),
+        (made.Gaus(-3, 1.5), beneath.Gaus(-3, 1.5)),
+        ("not MIXMAX's" in type(made).__doc__, True),
+    )
+
+
+def test_mixmax_starts_at_root_seed_one_and_restarts_with_the_same_numbers():
+    r = ROOT.TRandomMixMax()
+    first = (r.Rndm(), r.Gaus(2, 2.5))
+    r.SetSeed(1)
+    expect(
+        ((r.Rndm(), r.Gaus(2, 2.5)), first),
+        (ROOT.TRandomMixMax().Rndm(), ROOT.TRandomMixMax().Rndm()),
+        (bool(isinstance(r.Poisson(3.0), int)), True),
+        (len(r.Gaus(0, 1, 4)), 4),
+        (bool(r.GetSeed() > 0), True),
+    )
+
+
+def test_mixmax_is_a_generator_a_histogram_can_be_filled_from():
+    """What it is for: a deterministic stream to fill a histogram with, exactly as ROOT's own
+    is used - the same seed fills the same bins the same way twice."""
+    def filled():
+        r = ROOT.TRandomMixMax()
+        h = ROOT.TH1D("h", "h", 20, -5, 5)
+        for _ in range(1000):
+            h.Fill(r.Gaus(0, 2))
+        return [h.GetBinContent(at) for at in range(0, 22)]
+
+    expect((filled(), filled()), (sum(filled()), 1000.0))
