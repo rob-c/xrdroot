@@ -13,6 +13,8 @@ from __future__ import annotations
 import socket as _socket
 from typing import Any
 
+from ...errors import UnsupportedFeatureError
+
 __all__ = ["TServerSocket", "TInetAddress", "ESocketBindOption"]
 
 
@@ -66,6 +68,11 @@ class TInetAddress:
 #: The name a loopback address has, which ROOT answers for one bound to ``127.0.0.1``.
 LOOPBACK_NAME = "localhost"
 
+#: What a local socket answers for the address it has none of - measured on ROOT 6.40.
+EMPTY_ADDRESS = "0.0.0.0"
+UNKNOWN_HOST = "UnknownHost"
+LOCAL_PORT = -1
+
 
 class TServerSocket:
     """``TServerSocket``: a TCP port this program holds open, and the address it is bound to.
@@ -93,10 +100,13 @@ class TServerSocket:
         self._address = TInetAddress("")
         self._option = ESocketBindOption.kInaddrAny if option is None else int(option)
         self._windowsize = int(windowsize)
+        backlog = self.kDefaultBacklog if backlog is None else int(backlog)
+        if isinstance(port, str):
+            self._bind_path(port, backlog, windowsize)
+            return
         wanted = int(port)
         if wanted < 0:
             return  # ROOT's own: a server socket that binds nothing
-        backlog = self.kDefaultBacklog if backlog is None else int(backlog)
         loopback = self._option == ESocketBindOption.kInaddrLoopback
         made = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
         if reuse:
@@ -107,6 +117,27 @@ class TServerSocket:
         bound, taken = made.getsockname()[:2]
         name = LOOPBACK_NAME if loopback else _hostname()
         self._address = TInetAddress(bound, taken, name, valid=True)
+
+    def _bind_path(self, path: str, backlog: int, windowsize: Any) -> None:
+        """``TServerSocket(const char *path)``: a local socket, which has no address of its own.
+
+        ROOT binds ``AF_UNIX`` for the name and answers the empty address for it - port ``-1``,
+        host ``0.0.0.0``, name ``UnknownHost``, and a window size of 0 unless one was asked for -
+        which is what the oracle gives for ``TServerSocket("/tmp/x")``. Its peer connects to the
+        path, and the path stays on disk until someone unlinks it, as ROOT's does.
+        """
+        if "/" not in path:
+            raise UnsupportedFeatureError(
+                f"TServerSocket({path!r}) is neither a port number nor a path to bind: "
+                "xrdroot binds a TCP port from a number and a local socket from a path that has "
+                'a / in it, so pass one of those - as TServerSocket(0) or TServerSocket("/tmp/x").'
+            )
+        made = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+        made.bind(path)
+        made.listen(backlog)
+        self._socket = made
+        self._address = TInetAddress(EMPTY_ADDRESS, LOCAL_PORT, UNKNOWN_HOST, valid=True)
+        self._windowsize = 0 if windowsize is None or int(windowsize) < 0 else int(windowsize)
 
     def GetLocalInetAddress(self) -> TInetAddress:
         """The address this socket is bound to - the empty one where it binds nothing."""

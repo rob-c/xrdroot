@@ -9,12 +9,15 @@ kit answers with are ROOT 6.40's own, measured against it: ``kDefaultBacklog`` i
 
 from __future__ import annotations
 
+import os
 import socket
+import tempfile
 
 import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect
+from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.core.net import ESocketBindOption, TInetAddress, TServerSocket
 
 
@@ -98,3 +101,45 @@ def test_a_quiet_close_is_the_only_thing_a_socket_without_a_port_does(option):
     nothing = TServerSocket(-1, False, None, -1, option)
     nothing._destruct()
     expect((nothing.GetOption(), option), (nothing.GetTcpWindowSize(), -1))
+
+
+def _short_path(name: str) -> str:
+    """A socket path under the temporary directory: ``AF_UNIX`` allows 104 bytes, and pytest's
+    own ``tmp_path`` is longer than that on macOS."""
+    return os.path.join(tempfile.gettempdir(), f"xrdroot-sock-{os.getpid()}-{name}")
+
+
+def test_a_path_binds_a_local_socket_that_answers_the_empty_address():
+    """ROOT's ``TServerSocket("/tmp/x")`` is an ``AF_UNIX`` socket: it is valid, and the address
+    it reports is the one it has none of - port ``-1``, ``0.0.0.0``, ``UnknownHost``, a window
+    size of 0 - which is what the 6.40 oracle answers for the same program."""
+    path = _short_path("local")
+    socket = TServerSocket(path)
+    try:
+        expect(
+            (socket.IsValid(), True),
+            (socket.GetLocalPort(), -1),
+            (socket.GetLocalInetAddress().GetHostAddress(), "0.0.0.0"),
+            (socket.GetLocalInetAddress().GetHostName(), "UnknownHost"),
+            (socket.GetTcpWindowSize(), 0),
+        )
+    finally:
+        socket.Close()
+        os.path.exists(path) and os.unlink(path)
+    expect((socket.IsValid(), False))
+
+
+def test_a_local_socket_keeps_the_window_size_it_was_asked_for():
+    path = _short_path("sized")
+    socket = TServerSocket(path, False, None, 4096)
+    try:
+        expect((socket.GetTcpWindowSize(), 4096))
+    finally:
+        socket.Close()
+        os.path.exists(path) and os.unlink(path)
+
+
+def test_a_name_that_is_neither_a_port_nor_a_path_is_refused_by_name():
+    with pytest.raises(UnsupportedFeatureError) as raised:
+        TServerSocket("localhost")
+    assert "neither a port number nor a path to bind" in str(raised.value)
