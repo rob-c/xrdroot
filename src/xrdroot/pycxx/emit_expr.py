@@ -360,8 +360,10 @@ class ExprEmitter(NameEmitter):
         if moved is not None:
             return moved, P.POSTFIX
         if left.is_string and node.op == "+" and not left.dims:
-            # ``slash + 1``: the C string from there on, which is what reading it gives.
-            return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
+            # ``slash + 1``: the C string from there on, which is what reading it gives - or
+            # the object a ``char *`` holds, moved through it as C++ moves it.
+            moved = f"moved_pointer({self.at(node.left, P.POSTFIX)}, {self.value(node.right)})"
+            return moved, P.POSTFIX
         if node.op == "-" or left.is_string or not left.element().scalar:
             raise self.refuse(f"pointer arithmetic on a {_spelled(left)}", node)
         return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
@@ -916,7 +918,10 @@ class ExprEmitter(NameEmitter):
         if target.pointer and _is_null(operand):
             return "None", P.ATOM
         if target.is_string and not target.is_array and self.typeof(operand) is None:
-            return f"cstr({self.value(operand)})", P.POSTFIX
+            # A `char *` of something whose type is unknown: text from a character, or the
+            # object itself - ROOT's `(char *)f.IsA()->New()` names the object's first byte
+            # and is cast back to the class it is.
+            return f"char_pointer({self.value(operand)})", P.POSTFIX
         return self.expr(operand)
 
     def _sizeof(self, node: SizeOf) -> Out:

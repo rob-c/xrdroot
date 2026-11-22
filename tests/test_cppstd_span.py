@@ -64,3 +64,33 @@ def test_writing_through_a_span_of_a_sequence_writes_the_sequence(count: int) ->
     for index in range(count):
         view[index] = 9.0
     assert values == [9.0] * count + [1.0, 2.0, 3.0][count:]
+
+
+def test_a_char_pointer_of_a_character_is_its_text_and_of_an_object_the_object():
+    """``(char *)x``: C++'s ``char *`` is an address, so an object cast to one is still the
+    object - ROOT's ``(char *)f.IsA()->New()`` - while a character is the text it spells."""
+    from xrdroot.cppstd.strings import char_pointer
+
+    class Held:
+        pass
+
+    held = Held()
+    assert char_pointer(65) == "A"
+    assert char_pointer(None) == ""
+    assert char_pointer(held) is held
+    assert char_pointer("text") == "text"
+
+
+def test_a_char_pointer_moved_is_the_text_from_there_or_an_object_at_its_offset():
+    """``p + n``: ``slash + 1`` is the C string from there on; an object's address moved by a
+    base class's offset is the object, which is what ``byte_offset`` answers."""
+    from xrdroot.cppstd.cells import moved_pointer
+
+    class Held:
+        pass
+
+    held = Held()
+    assert moved_pointer("/a/b", 3) == "b"
+    assert moved_pointer(held, 0) is held
+    with pytest.raises(ValueError, match="into the middle"):
+        moved_pointer(held, 8)

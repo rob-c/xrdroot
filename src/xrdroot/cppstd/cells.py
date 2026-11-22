@@ -24,7 +24,7 @@ from collections.abc import Iterator
 from typing import Any
 
 __all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast",
-           "byte_offset", "pointer_now"]
+           "byte_offset", "moved_pointer", "pointer_now"]
 
 
 class Cell:
@@ -204,6 +204,18 @@ def byte_offset(obj: Any, offset: Any) -> Any:
         f"an object's address moved by {int(offset)} bytes, into the middle of it, which "
         "names nothing here: only an offset of 0 - a base at the object's start - is followed"
     )
+
+
+def moved_pointer(value: Any, offset: Any) -> Any:
+    """``p + n`` of a ``char *``: the text from there on, or an object moved by its offset.
+
+    A ``char *`` a macro holds may be a C string - ``slash + 1`` is the path after it - or an
+    object's address (``(char *)obj``), which C++ moves through the object's members. The two
+    are one type, so the move is decided by what is moved.
+    """
+    if isinstance(value, str):
+        return value[int(offset):]
+    return byte_offset(value, offset)
 
 
 def pointer_now(value: Any) -> Any:

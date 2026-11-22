@@ -48,6 +48,7 @@ __all__ = [
     "tolower",
     "toupper",
     "transformed",
+    "char_pointer",
 ]
 
 #: ``std::string::npos``: what ``find`` gives back when there is nothing to find.
@@ -61,6 +62,19 @@ def cstr(value: Any) -> str:
     if isinstance(value, int):
         return chr(value)
     return str(value)
+
+
+def char_pointer(value: Any) -> Any:
+    """``(char *)value``: text from what is a character, and the object itself from an object.
+
+    C++'s ``char *`` is an address, so casting an object to one names the object's first byte
+    and casting back to the object's class gives the object again - ROOT's own
+    ``TDirectory::CloneObject`` makes an object as ``(char *)f.IsA()->New()``, moves it by the
+    base class's offset and casts it back. A ``str`` here is text and stays text.
+    """
+    if value is None or isinstance(value, int):
+        return cstr(value)
+    return value
 
 
 def strlen(text: Any) -> int:
