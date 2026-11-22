@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...roostats.registry import members
-from . import inspector, inverterplot, mcmcplot, plots, sdplot
+from . import inspector, inverterplot, mcmcplot, plots, readback, sdplot  # noqa: F401
 
 __all__ = ["RooStats"]
 
