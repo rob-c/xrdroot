@@ -41,6 +41,7 @@ def test_a_bin_is_the_box_of_the_points_it_counts() -> None:
             inside &= (low_edge <= points[:, axis]) & (points[:, axis] <= high_edge)
         assert found.GetBinContent(bin) <= int(inside.sum())
         assert found.GetBinMinEdges(bin).tolist() == low[bin * 2 : bin * 2 + 2].tolist()
+        assert found.GetBinMaxEdges(bin).tolist() == high[bin * 2 : bin * 2 + 2].tolist()
 
 
 def test_the_data_extremes_are_the_ones_the_data_has() -> None:

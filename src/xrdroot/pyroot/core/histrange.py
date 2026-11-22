@@ -149,8 +149,8 @@ class TBinIterator:
         elif not self._stepped_out(found):
             self._bin = END
             return
-        if self._x == 0:
-            self._x = 1  # only a poly's range starts below 0, and bin 0 is not a bin
+        # ROOT also steps over bin 0 - a poly's range starts below it - but a walk stops at
+        # the -1 sentinel before it can get there, so no such bin is ever visited.
         self._bin = self._global()
 
     def _stepped_out(self, found: _Bounds) -> bool:
