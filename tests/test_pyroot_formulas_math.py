@@ -134,3 +134,29 @@ def test_root_number_types_cast_as_cpp_does_and_titles_and_lists():
         (ROOT.gROOT.GetListOfFunctions().FindObject("unlisted"), None),
         (ROOT.gROOT.GetListOfFunctions().FindObject("listed") is not None, True),
     )
+
+
+@pytest.mark.parametrize(
+    ("expression", "value"),
+    [
+        # ROOT 6.40's own TFormula, measured: a number type written as a function is a cast,
+        # truncated toward zero and wrapped at the type's width.
+        ("UInt_t(3)%UInt_t(2)", 1.0),
+        ("int(3)%int(2)", 1.0),
+        ("UInt_t(3.7)", 3.0),
+        ("int(-2.7)", -2.0),
+        ("Double_t(3)/2", 1.5),
+        ("bool(1)", 1.0),
+        ("UInt_t(-1)", 4294967295.0),
+        ("Short_t(70000)", 4464.0),
+    ],
+)
+def test_a_number_type_written_as_a_function_is_the_cast_root_makes(expression, value):
+    """``UInt_t(x)`` is C++'s cast: ROOT compiles its formula as C++, so the type is real."""
+    expect((ROOT.TFormula("f", expression).Eval(0), value))
+
+
+def test_a_cast_has_no_slope():
+    """A conversion is a step of the number, so ``TF1`` differentiates it to zero."""
+    function = ROOT.TF1("f", "Int_t(x)", 0, 10)
+    expect((function.Derivative(2.5), 0.0))

@@ -121,3 +121,11 @@ def test_a_class_without_weight_is_refused_when_the_fit_starts(session):
     factory.BookMethod(made, FDA, "FDA", f"{MC}:Formula=(0):ParRanges=(0,1)")
     with pytest.raises(TMVAError, match="Troubles in sum of weights"):
         factory.TrainAllMethods()
+
+
+def test_the_default_split_expression_is_a_formula_this_kit_can_evaluate():
+    """TMVA's own default is ``UInt_t([EventNumber])%UInt_t([NumFolds])``, and the ROOT
+    number types are casts in it - without them booking a cross validation refused."""
+    split = compile_fda("UInt_t([0])%UInt_t([1])")
+    events = np.arange(6, dtype=np.float64)
+    assert split([events, np.full(6, 2.0)]).tolist() == [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]

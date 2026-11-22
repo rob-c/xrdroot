@@ -18,12 +18,31 @@ from typing import Any
 
 import numpy as np
 
+from ..formula.functions import CASTS
+from ..formula.ops import cast
+
 __all__ = ["FormulaError", "compile_fda", "tformula_text"]
 
 
 class FormulaError(ValueError):
     """A formula FDA cannot use."""
 
+
+#: ROOT's number types written as functions - ``UInt_t([0])``, ``int([1])``, ``Double_t(x)``,
+#: which ``TFormula`` compiles as C++ casts. TMVA's own split expression is
+#: ``UInt_t([EventNumber])%UInt_t([NumFolds])``, so a formula without them cannot be used.
+def _converted(dtype: Any) -> Any:
+    """A number made the type ``dtype`` names, truncated toward zero and wrapped at its width."""
+    kind = np.dtype(dtype).type
+
+    def apply(values: Any) -> Any:
+        whole, _ = cast(np.asarray(values, dtype=np.float64), kind, "a cast")
+        return whole
+
+    return apply
+
+
+_CASTS = {name: _converted(dtype) for name, dtype in CASTS.items()}
 
 #: The functions a formula may call, by the names ``TFormula`` knows them by.
 FUNCTIONS = {
@@ -61,6 +80,7 @@ FUNCTIONS = {
     "max": np.maximum,
     "Min": np.minimum,
     "Max": np.maximum,
+    **_CASTS,
 }
 #: The operators, by their node types.
 BINARY = {
