@@ -11,6 +11,7 @@ holds a value that ``++``, ``+=`` and ``fetch_add`` change under a lock.
 from __future__ import annotations
 
 import functools
+import os
 import threading
 import time
 from typing import Any
@@ -38,14 +39,40 @@ def ref(value: Any) -> Any:
 cref = ref
 
 
+def _processors() -> int:
+    """How many threads the machine can run at once, or 0 where Python cannot say.
+
+    C++ answers 0 for a machine whose count it cannot work out, and so does this.
+    """
+    return os.cpu_count() or 0
+
+
 class thread:
-    """``std::thread(f, args...)``: ``f(args...)`` running, from the moment it is made."""
+    """``std::thread(f, args...)``: ``f(args...)`` running, from the moment it is made.
+
+    ``f`` is anything C++ accepts as a thread's callable - a free function, a lambda, the
+    ``operator()`` of a function object - which Python calls the same way. C++'s destructor of
+    a thread that is still joinable calls ``std::terminate``, so a forgotten ``join()`` is not
+    a silent detach here either: :meth:`_destruct` refuses, which is what a caller that ends
+    one gets, and :meth:`detach` is how a program says the thread's end is nobody's to wait
+    for. The translator does not yet list ``std::thread`` among the classes whose destructor
+    it runs as a local's scope ends, so a local thread is left to run to its end.
+    """
 
     def __init__(self, function: Any = None, *args: Any) -> None:
         self._thread: threading.Thread | None = None
         if function is not None:
             self._thread = threading.Thread(target=function, args=args, daemon=True)
             self._thread.start()
+
+    @staticmethod
+    def hardware_concurrency() -> int:
+        """``std::thread::hardware_concurrency()``: the threads this machine can run at once.
+
+        It describes the hardware, not the pool ``ROOT::EnableImplicitMT`` would make: C++
+        offers no way to ask for anything else, and programs use it to bound a request.
+        """
+        return _processors()
 
     def join(self) -> None:
         if self._thread is not None:
@@ -60,6 +87,18 @@ class thread:
 
     def get_id(self) -> int:
         return (self._thread.ident or 0) if self._thread is not None else 0
+
+    def _destruct(self) -> None:
+        """The destructor: C++ runs ``std::terminate`` on a thread still joinable here.
+
+        Refusing is the honest reading of that: the program asked for a thread it never
+        accounted for, and carrying on would detach it behind the author's back.
+        """
+        if self._thread is not None:
+            raise RuntimeError(
+                "a std::thread that is still joinable as its scope ends calls std::terminate in "
+                "C++; call join() to wait for the thread or detach() to let it run on"
+            )
 
 
 class mutex:

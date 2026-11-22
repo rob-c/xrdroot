@@ -43,6 +43,7 @@ from . import bitset as _bitset
 from . import random as _random
 from . import span as _span
 from . import stdlib as _stdlib
+from . import threads as _threads
 from .vectorassign import register as _register_vector_assignment
 from .vectorvalue import assigned as _assign_vector_value
 from .vectorvalue import converted as _vector_value
@@ -1800,6 +1801,8 @@ class _Namespace:
     normal_distribution = _random.normal_distribution
     uniform_real_distribution = _random.uniform_real_distribution
     string = string
+    #: ``std::thread``: ``std.thread(f, args...)``, and ``std.thread.hardware_concurrency()``.
+    thread = _threads.thread
     numeric_limits = _stdlib.numeric_limits
     unique_ptr = _stdlib.smart_pointer("unique_ptr")
     shared_ptr = _stdlib.smart_pointer("shared_ptr")
