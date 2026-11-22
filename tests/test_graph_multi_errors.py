@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import pathlib
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -17,6 +18,7 @@ import pytest
 import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
 from xrdroot import Graph, UnsupportedFeatureError, create, open_root
+from xrdroot.pyroot.graphics.multierrors import _attach
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -217,3 +219,45 @@ def test_a_graph_read_back_and_written_again_keeps_its_layers():
     holder.Close()
     with open_root("again.root") as f:
         assert [len(one[0]) for one in f["gme"].layers] == [5, 5]
+
+
+def test_roots_own_file_of_layers_is_the_class_its_colours_and_its_numbers():
+    """``tgme.root`` is C++ ROOT's - read through the class, not through the plain reader."""
+    holder = ROOT.TFile(str(DATA / "tgme.root"), "READ")
+    graph = holder.Get("gme")
+    assert isinstance(graph, ROOT.TGraphMultiErrors)
+    assert (graph.GetN(), graph.GetNYErrors()) == (5, 2)
+    assert [one.GetLineColor() for one in (graph.GetAttLine(0), graph.GetAttLine(1))] == [632, 600]
+    assert graph.GetErrorY(0) == pytest.approx(0.79056941504209488)
+    graph.SetSumErrorsMode(ROOT.TGraphMultiErrors.kSquareSum)
+    assert graph.GetErrorY(1) == pytest.approx(0.97467943448089633)
+    holder.Close()
+
+
+def test_a_point_set_past_the_end_grows_the_graph_as_root_grows_it():
+    graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.3] * 5, *STAT)
+    graph.SetPointEX(9, 1.0, 2.0)
+    assert graph.GetN() == 10
+    assert (graph.GetErrorXlow(9), graph.GetErrorXhigh(9)) == (1.0, 2.0)
+
+
+def test_the_x_error_is_the_mean_of_the_two_sides_squares():
+    graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.6] * 5, *STAT)
+    assert graph.GetErrorX(0) == pytest.approx(float(np.sqrt((0.3**2 + 0.6**2) / 2.0)))
+    assert graph.GetErrorX(99) == -1.0
+
+
+def test_a_key_the_directory_does_not_hold_is_nothing_to_attach_to():
+    graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.3] * 5, *STAT)
+    holder = ROOT.TFile("absent.root", "RECREATE")
+    assert _attach(ROOT.gDirectory, "nothing_by_that_name", graph._xrd) is None
+    assert holder.Get("nothing_by_that_name") is None
+    holder.Close()
+
+
+def test_a_layer_the_file_wrote_no_look_for_keeps_the_ones_it_starts_with():
+    graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.3] * 5, *STAT)
+    graph.AddYError(5, *SYS)
+    held = graph._holds_attributes(SimpleNamespace(members={"fAttFill": None, "fAttLine": None}))
+    assert len(held) == 2
+    assert all(set(layer) == {"TAttFill", "TAttLine"} for layer in held)

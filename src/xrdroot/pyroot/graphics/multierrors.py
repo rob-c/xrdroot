@@ -68,6 +68,17 @@ class _WrittenObject:
         return self._written
 
 
+def _attach(directory: Any, name: str, xrd: Any) -> None:
+    """Keep what was written beside the key it went in under, for a file still open to find.
+
+    A key that is not there is nothing to attach to, which is what a directory the object
+    was kept in none the worse for - ``Get`` then answers as it would for any other class.
+    """
+    key = directory.GetKey(name, 9999)
+    if key is not None:
+        key._key = _WrittenObject(xrd)
+
+
 class TGraphMultiErrors(TGraph):
     """``TGraphMultiErrors(n, x, y, exl, exh, eyl, eyh[, mode])``: a graph of layers.
 
@@ -155,9 +166,7 @@ class TGraphMultiErrors(TGraph):
 
         directory = current_directory()
         count = int(directory.WriteTObject(self, name, option))
-        key = directory.GetKey(str(name) if name else self.GetName(), 9999)
-        if key is not None:
-            key._key = _WrittenObject(self._xrd)
+        _attach(directory, str(name) if name else self.GetName(), self._xrd)
         return count
 
     # -- the layers -------------------------------------------------------------------------

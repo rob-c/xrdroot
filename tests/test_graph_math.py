@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from xrdroot import Graph, open_root
+from xrdroot.graphmath import ONLY_FIRST, SQUARE_SUM, layer_sum
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -95,3 +96,14 @@ def test_sorting_a_graph_of_layered_errors_moves_every_layer():
         assert gme.x.tolist() == [0.0, 1.0, 2.0, 3.0, 4.0]
         again, _ = gme.layers
         assert again[0].tolist() == [stat[0][1], stat[0][0], *stat[0][2:]]
+
+
+def test_a_point_with_no_layers_sums_to_roothas_minus_one():
+    """ROOT answers -1 for a bar it has none of, which is a graph of no layers at all."""
+    assert layer_sum([], 0, ONLY_FIRST, 0) == -1.0
+    assert layer_sum([], 0, SQUARE_SUM, 1) == -1.0
+
+
+def test_a_graph_made_from_x_and_y_of_different_lengths_is_refused():
+    with pytest.raises(ValueError, match="2 x values and 3 y values are not points"):
+        Graph.from_layers("short", [1.0, 2.0], [1.0, 2.0, 3.0])
