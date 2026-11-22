@@ -24,7 +24,7 @@ from collections.abc import Iterator
 from typing import Any
 
 __all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast",
-           "byte_offset", "moved_pointer", "pointer_now"]
+           "byte_offset", "ObjectAddress", "pointer_now"]
 
 
 class Cell:
@@ -206,16 +206,31 @@ def byte_offset(obj: Any, offset: Any) -> Any:
     )
 
 
-def moved_pointer(value: Any, offset: Any) -> Any:
-    """``p + n`` of a ``char *``: the text from there on, or an object moved by its offset.
+class ObjectAddress:
+    """``(char *)obj``: an object's address, which indexing moves through its own bytes.
 
-    A ``char *`` a macro holds may be a C string - ``slash + 1`` is the path after it - or an
-    object's address (``(char *)obj``), which C++ moves through the object's members. The two
-    are one type, so the move is decided by what is moved.
+    C++ casts an object to ``char *`` to move it by a base class's offset and cast it back -
+    ``(T *)((char *)obj + off)``, which is how ``TDirectory::CloneObject`` makes a copy. Python
+    has no address to hand out, so this holds the object and answers the one operation a program
+    performs on the address, ``p[off:]``: the object moved by that offset, which is what
+    :func:`byte_offset` follows (an offset of 0 is the object itself).
     """
-    if isinstance(value, str):
-        return value[int(offset):]
-    return byte_offset(value, offset)
+
+    __slots__ = ("_object",)
+
+    def __init__(self, obj: Any) -> None:
+        self._object = obj
+
+    def __getitem__(self, index: Any) -> Any:
+        offset = index.start if isinstance(index, slice) else index
+        return byte_offset(self._object, 0 if offset is None else offset)
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        raise TypeError("an object's address moved by an offset names the object itself, and a "
+                        "whole object is not written through its address; assign its members")
+
+    def __repr__(self) -> str:
+        return f"ObjectAddress({self._object!r})"
 
 
 def pointer_now(value: Any) -> Any:

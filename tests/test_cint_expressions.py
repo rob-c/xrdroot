@@ -57,7 +57,7 @@ def method(source: str) -> str:
         ("w.import(x);", "getattr(ROOT.w, 'import')(ROOT.x)"),
         ('std::string s = "abc"; int c = s[0];', "c = char_at(s, 0)"),
         ("TH1F *h = dynamic_cast<TH1F *>(o);", "h = dynamic_cast(ROOT.TH1F, ROOT.o)"),
-        ("const char *c = (const char *)ts;", "c = cstr(ROOT.ts)"),
+        ("const char *c = (const char *)ts;", "c = char_pointer(ROOT.ts)"),
         ("double d = Double_t{2};", "d = 2.0"),
         ("int x = y ? 1 : throw 2;", "throw(2)"),
         ('std::string *s = new std::string("x");', "s = str('x')"),

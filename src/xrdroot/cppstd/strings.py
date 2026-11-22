@@ -74,7 +74,11 @@ def char_pointer(value: Any) -> Any:
     """
     if value is None or isinstance(value, int):
         return cstr(value)
-    return value
+    if hasattr(value, "__len__") and hasattr(value, "__getitem__"):
+        return value  # text, or a buffer of characters: indexing it reads them
+    from .cells import ObjectAddress
+
+    return ObjectAddress(value)
 
 
 def strlen(text: Any) -> int:

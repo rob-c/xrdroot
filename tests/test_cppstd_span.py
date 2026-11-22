@@ -77,20 +77,23 @@ def test_a_char_pointer_of_a_character_is_its_text_and_of_an_object_the_object()
     held = Held()
     assert char_pointer(65) == "A"
     assert char_pointer(None) == ""
-    assert char_pointer(held) is held
+    assert char_pointer(held)[0:] is held  # an object's address, which indexes to the object
     assert char_pointer("text") == "text"
+    assert char_pointer([1, 2]) == [1, 2]
 
 
-def test_a_char_pointer_moved_is_the_text_from_there_or_an_object_at_its_offset():
-    """``p + n``: ``slash + 1`` is the C string from there on; an object's address moved by a
-    base class's offset is the object, which is what ``byte_offset`` answers."""
-    from xrdroot.cppstd.cells import moved_pointer
+def test_an_objects_address_answers_the_object_moved_by_its_offset():
+    """``p + n`` of ``(char *)obj``: indexing the address moves through the object, and only an
+    offset of 0 - a base class at the object's start - names the object itself."""
+    from xrdroot.cppstd.strings import char_pointer
 
     class Held:
         pass
 
     held = Held()
-    assert moved_pointer("/a/b", 3) == "b"
-    assert moved_pointer(held, 0) is held
+    address = char_pointer(held)
+    assert address[0:] is held
     with pytest.raises(ValueError, match="into the middle"):
-        moved_pointer(held, 8)
+        address[8:]
+    with pytest.raises(TypeError, match="not written through its address"):
+        address[0:] = held

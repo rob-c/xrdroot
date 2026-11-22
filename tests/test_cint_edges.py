@@ -103,7 +103,7 @@ def test_the_edges_behave_as_cpp_does(
     ("source", "fragment"),
     [
         ("auto *v = (ROOT::Math::XYZVector *)p;", "v = ROOT.p"),
-        ("auto s = (std::string)x;", "s = cstr(ROOT.x)"),
+        ("auto s = (std::string)x;", "s = char_pointer(ROOT.x)"),
         ("auto r = (TMVA::Reader *)q;", "r = ROOT.q"),
         ("auto z = (Foo) 3;", "z = 3"),
         ("auto w = (Foo *) &x;", "w = ROOT.x"),
