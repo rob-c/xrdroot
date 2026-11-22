@@ -1675,7 +1675,10 @@ initializes the available samplers.
   `RooMultiVarGaussian`, `RooFFTConvPdf`, `RooKeysPdf`, and the resolution models and B
   decays. `RooRealSumPdf.expectedEvents` uses its normalization integral, including a
   range selected with `setNormRange`. Updates to HistFactory `FlexibleInterpVar`
-  coefficients are reflected in expected counts.
+  coefficients are reflected in expected counts. `RooExtendedBinding` gives a density's
+  `expectedEvents()` as a function - 1 without the observable set it may be built with, the
+  density's integral over that set with one - so an expected count can be a term in an
+  expression or a parameterisation.
 - **Data**: `RooDataSet` and `RooDataHist` (imported from trees, histograms or slices;
   reduced, appended, binned, tabulated; with global observables) and `createHistogram`.
 - **Generation**: `generate` and `generateBinned`, prototype data (`ProtoData`) included.
