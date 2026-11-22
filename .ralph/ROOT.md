@@ -1834,20 +1834,67 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   average of 13-15; ruff clean, mypy 1024 files, maintainability 31 307 functions, components 1024 modules /
   0 undeclared.
 
+## Round 61's close (recorded here for the next iteration)
+
+- Base `24cfc1ea`, closed at **`efe8b9de`** (code at `1a7e31ca`). **Two gtest PASSes, the kind 63 -> 65**, and the
+  whole gtest kind re-measured at the round's tip: **65 PASS / 206 FAIL / 77 UNSUPPORTED / 2 TIMEOUT** of 350
+  (`/tmp/r61/gtest`, `--jobs 3`, `--xrdroot-src /tmp/r61/head/src` frozen at `1a7e31ca`). Four gained over round 58's
+  61 - `dataframe_take` (r59),`nettests` (r60), and this round's `testRooExtendedBinding` and `testKNNDensity` - and
+  **none lost**.
+- **`730bb942` (worker w01): `RooExtendedBinding`.** A `RooAbsReal` holding one density and optionally a
+  normalisation set; its value is `pdf.expectedEvents(normSet)`, so 1.0 without a set and the density's integral over
+  the observables with one. The numbers were checked in plain Python first (`RooRealSumPdf` of a `RooUniform` answers
+  1.0 and 20.0), which is why this was a forty-minute target rather than a round: the engine already had every part
+  but the class. `gtest/roofit/roofitcore/testRooExtendedBinding` PASSES (`/tmp/r61/reb`).
+- **`618f5a98`: `std::span` and `TMath::KNNDensity`.** ROOT's density takes three spans; here a span holds *what
+  `&x` makes in a translated program*, a `Cell`, so `result[i] = ...` writes the caller's own `double` - which is the
+  whole point of the signature. The k-nearest-neighbour walk is ROOT's own, transcribed from
+  `math/mathcore/src/TMath.cxx` (fetched into the sparse checkout this round), and it agrees with the 6.40 oracle
+  **bit for bit** on six numbers measured with `/tmp/r61/work-knn/knn.C`. `gtest/math/mathcore/testKNNDensity` PASSES
+  (`/tmp/r61/knn2`).
+- **Two translator behaviours came out of the same test, and both were measured against the oracle** (`/tmp/r61/work-knn/tc.C`):
+  `std::size_t(3.7)` is 3, `uint8_t(300)` is 44, `std::size_t(-1)` is 18446744073709551615 - a standard typedef
+  written as a call is the scalar cast, not a name of the runtime (`9d380d3f`); and a braced list handed to a
+  `std::vector` parameter is the container C++'s `initializer_list` constructor makes.
+- **The round's own gate caught the second one being in the wrong place**, which is the round's most useful hour:
+  writing that conversion into *every* function's prologue broke 53 tests in `tests/test_rdf_masked_call.py`, because
+  the batched-call contracts look for a wrapper's single `return` statement. It was narrowed to a **lambda's** body
+  (`a006df48`) - a lambda's call site carries no types, a function's does - and the function case is queued as
+  `W0-151` with the call-site shape named. The gate also named `_wrap_parameters` at CCN 11 and `KNNDensity` at CCN 14,
+  cognitive 25, NPath 2192; both were split rather than excused.
+- **`W0-150` is the round's sharpest finding** and it is about measuring, not about ROOT: `tools/rootsuite/baseline.json`
+  still says `FAIL` for **eight** gtest programs that pass, because `ratchet.write_baseline` refuses anything but a
+  full four-kind run and no round can afford one. The suite's promise list therefore understates it by every gain
+  since round 43. A `--merge` mode that records only the PASSes a real run saw is the fix, and the round's own
+  `/tmp/r61/gtest` already holds the rows.
+- **`W0-152` is the `W0-63` check done on round 60's work**: the two programs whose wall `TServerSocket` removed did
+  not pass, they moved on - `RCurlConnection` for `curl_connection`, and a UNIX-domain socket *path* read as a port
+  for `testParallelMergingFile` (a small feature of `pyroot/core/net.py`, queued with the measured message).
+- **`W0-153` cost twenty minutes**: `git worktree add /tmp/r61/w01 feat/root-testsuite` gives the same branch to two
+  worktrees, so the worker's commit moved the branch under the main tree's index, which then showed the worker's patch
+  as a *staged revert*. Recovered with `git reset` + `git checkout -- <the worker's paths>`; **use `git worktree add -d`**.
+- Worktree discipline (`W0-138`): the round worked off `feat/root-testsuite`'s tip, gated there, and **pushed nothing** -
+  `W0-138` is still the operator's decision.
+- Evidence kept: `/tmp/r61/{gtest,knn2,reb,net2,pmf,romb-base,base,head,work-knn,gate1.log,gate1b.log,w01*,w01-brief.md}`.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
-- [x] the queue read and the failures ranked by cause, from the last `results.json`
-- [ ] sixteen scopes chosen, disjoint files, each with a measured "before" - **not this round**: the load
-      average opened at 76 (`W0-103`), so there was no fan-out
-- [ ] sixteen worktrees created from `HEAD`, one branch each - **not this round**
-- [ ] sixteen briefs written and launched, staggered, detached - **not this round**
-- [ ] workers watched; a worker that blocked reports, a worker that left a patch is honoured - n/a
-- [x] every commit that applies cleanly cherry-picked `-x`, one fix group each, gates green
-- [x] **every branch that loses a PASS rejected**, with the refusal to relax recorded - none lost
-- [x] the areas the round touched were measured before and after (`/tmp/r42/ac`, `/tmp/r42/json`)
-- [x] `TODO.md` §0 and the ledger rows updated in the same commits (§7's cumulative table has no
-      column for this round: no whole-suite run was possible, as in rounds 37-41)
+- [x] the queue read and the failures ranked by cause, from the last `results.json` - **the freshest whole-kind
+      ranking was round 58's** (`/tmp/r58/gtest`), so the round rebuilt its "one failing case from PASS" list from it
+      (43 programs) before choosing
+- [x] **two scopes chosen, disjoint files, each with a measured "before"**: `testRooExtendedBinding` (a name that does
+      not exist) and `testKNNDensity` (`std::span` missing) - one to a worker, one to the round's own hands
+- [x] one worktree created (`/tmp/r61/w01`) and **one brief**, launched detached with `pi -p` - **not sixteen**: the
+      load average opened at 12 but the two targets were priced at forty minutes each
+- [x] the worker's commit taken **as its own commit**, not cherry-picked (it had committed on the branch - `W0-153`)
+- [x] **every branch that loses a PASS rejected**, with the refusal to relax recorded - none lost; the whole gtest
+      kind re-measured at the tip (65 / 206 / 77 / 2, `/tmp/r61/gtest`)
+- [x] the areas the round touched were measured before and after (`/tmp/r61/knn`, `/tmp/r61/knn2`, `/tmp/r61/reb`,
+      `/tmp/r61/net2`, `/tmp/r61/pmf`)
+- [x] every claim measured against the oracle where ROOT's numbers are the claim (`/tmp/r61/work-knn/{knn,tc}.C`)
+- [x] `TODO.md` §0 and the ledger rows updated in one commit at the close (§7 gains no cumulative column: no
+      whole-suite run was possible, as in rounds 37-41; the *gtest* kind was measured whole instead)
 - [x] **every extra thing the round found added to §4's queue or §5's housekeeping**, with file,
       message and first step (see step 6c) — a round that discovers work and does not write it
       down has wasted it
@@ -1926,6 +1973,7 @@ For the round's work, the evidence is, in this order:
   load average of 13-15; ruff clean, mypy 1024 files, maintainability 31 307 functions, components 1024 modules /
   0 undeclared. `/tmp/r60/gate1.log` is the first command's output, run in the round's own worktree
   (`/tmp/ralph-round-202611220414/main`, since removed - the commit is on `feat/root-testsuite`).
+- Round 61's result of them, at `1a7e31ca` (the code; `efe8b9de` adds only `TODO.md`): **`TOTAL 119899 0 30046 0 100%`** - 13 073 passed then 44 passed - at a load average of 13-16; ruff clean, mypy 1026 files, maintainability 31 351 functions, components 1025 modules / 0 undeclared, `mkdocs --strict` built. `/tmp/r61/gate1b.log` is the first command's output (an earlier run, `/tmp/r61/gate1.log`, named round 61's own two regressions: `_wrap_parameters` at CCN 11 and `KNNDensity` at CCN 14 / cognitive 25 / NPath 2192, plus the 53 batched-call tests the prologue conversion broke). Run in the main tree, which is `feat/root-testsuite` itself (`W0-138`: nothing is pushed).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -2147,6 +2195,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 58 | `1fc32254` | **one commit**: an array of *arrays* of objects destroys its rows and their elements - every level of an object array is an `ObjectArray` (`ad8c97a8`) | **0 harness PASS, 0 lost**, and **the whole gtest kind re-measured: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r58/gtest`), identical to round 56's - the `W0-63` check across rounds 57-58. Gate `TOTAL 119730 0 30012 0 100%` | 2: `W0-143` (`Take<std::vector<bool>>`'s rows are NumPy slices, and the kind the emitted call carries is dropped by `frame.Take`), `W0-144` (`TMultiGraph::GetHistogram`'s log-scale range: 79.9602 and 0.65234 against our 65.5672 and 1.08468); `W0-140` closed |
 | 59 | `74caab18` | **one commit**: `Take` of a column of vectors is a vector of vectors - `_Method` carries the template arguments a booking named, `RResultPtr` keeps them, `_vector_of` builds `std::vector<std::vector<T>>` from a `Jagged` (`0c58dd9e`) | **gtest +1: `gtest/tree/dataframe/dataframe_take` PASSES** (all three cases), the kind **61 -> 62**; nothing lost in 109 `gtest/tree/{dataframe,ntuple,treeplayer}/*` programs (`/tmp/r59/df`). Gate `TOTAL 119736 0 30014 0 100%` | 1: `W0-145` (`Take<V>` builds its rows from the row's dtype, not from the element `V` names); `W0-143` closed |
 | 60 | `0e88415c` | **one commit**: `TServerSocket`, `TInetAddress` and `ESocketBindOption` over Python's `socket`, with the socket as a dialect guard (`6e981a56`) | **gtest +1: `gtest/net/net/nettests` PASSES**, the kind **62 -> 63**; nothing lost in 71 `gtest/net/*` + `gtest/core/*` + `gtest/tree/tree/*` programs (`/tmp/r60/net`). Gate `TOTAL 119809 0 30022 0 100%` | 4: `W0-146` (`ntuple_largefile2` writes 268 M entries - a large-file test), `W0-147` (`Delaunay2D::Interpolate` is not barycentric interpolation), `W0-148` (`gROOT`'s name is `PyROOT` here and `root` in a compiled program), `W0-149` (a null stored into a class-typed local, with the shape of its two-part fix) |
+| 61 | `24cfc1ea` | **two targets, one worker and the round's own hands**: `RooExtendedBinding` in `roofit/pdfs/extend.py`, its registry entry, a test file and a docs line (`730bb942`, worker w01 - a `RooAbsReal` whose value is `pdf.expectedEvents(normSet)`, 1.0 un-normalised and the density's integral with a set); `std::span` and `TMath::KNNDensity` (`618f5a98` - a span holds what `&x` makes here, a `Cell`, so `result[i] = ...` reaches the caller's variable, and the density is ROOT's own walk outwards, bit for bit against the oracle); and two translator behaviours (`9d380d3f`: a std typedef written as a call is the scalar cast, and a braced list becomes its container in a *lambda's* body; `a006df48`: the same conversion in every function's prologue broke 53 batched-call contracts, so it was narrowed) | **gtest +2, the kind 63 -> 65**: `gtest/roofit/roofitcore/testRooExtendedBinding` PASSES (`/tmp/r61/reb`) and `gtest/math/mathcore/testKNNDensity` PASSES (`/tmp/r61/knn2`), and **the whole kind measured at `1a7e31ca`: 65 PASS / 206 FAIL / 77 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r61/gtest`) - four gained over round 58's 61, **none lost**. Gate `TOTAL 119899 0 30046 0 100%` (13 073 + 44, `/tmp/r61/gate1b.log`), ruff, mypy 1026 files, maintainability 31 351 functions, components 1025 modules, mkdocs | 5: `W0-150` (**`baseline.json` understates by every PASS since round 43** - `write_baseline` refuses a partial baseline, so no round can record a gain; the shape of the merge mode is named), `W0-151` (a braced list into a *function's* container parameter - belongs at the call site), `W0-152` (**the two walls `TServerSocket` removed moved on**: `RCurlConnection`, and a UNIX-socket path read as a port), `W0-153` (**a worker must not check out the main tree's branch** - `git worktree add -d`), `W0-154` (`testRooRombergIntegrator` FAIL -> UNSUPPORTED already at the base: a header's refusal now comes first) |
 
 ## Notes
 
