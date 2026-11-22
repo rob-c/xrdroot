@@ -33,6 +33,7 @@ from .dialect import ROOT as DIALECT
 from .library import aclic
 from .library import loading as libraries
 from .runtime import ROOT
+from .runtime.application import PROGRAM, named
 
 __all__ = [
     "run",
@@ -250,6 +251,7 @@ def run_program(
     argv: Sequence[str] = (),
     *,
     use_cache: bool = True,
+    session: str = PROGRAM,
 ) -> int:
     """``xrdroot run a.cxx b.cxx -- argv``: the files as one program, run from its entry point.
 
@@ -260,6 +262,13 @@ def run_program(
     status, as a compiled program's; else the GoogleTest tests the files
     define, as ``gtest_main`` runs them; else - nothing to run - a refusal.
     ``argv`` is the program's whole command line, its name first.
+
+    ``session`` is the name ``gROOT`` takes while it runs. A program started by
+    ``xrdroot run`` is the compiled program's kin, so its ``gROOT`` is ROOT's own
+    ``root`` (:data:`~.runtime.application.PROGRAM`); the prompt's ``TRint`` runs
+    its macros under ``Rint`` and says so, because a macro that reads ``gROOT``'s
+    name back - a ``TEntryList``'s sub-lists are named after it - has to see the
+    session it ran in.
     """
     wheres = [_path(path) for path in paths]
     dialect = session_dialect()
@@ -273,7 +282,8 @@ def run_program(
             define(_read(where))
     if aclic.is_compiled(str(paths[0])):
         return _compiled(str(paths[0]), tuple(args))
-    return _cxx.run_program(wheres, args, argv, dialect=dialect, use_cache=use_cache)
+    with named(session):
+        return _cxx.run_program(wheres, args, argv, dialect=dialect, use_cache=use_cache)
 
 
 def _compiled(spec: str, args: tuple[Any, ...]) -> int:

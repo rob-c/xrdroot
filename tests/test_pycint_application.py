@@ -13,7 +13,14 @@ from xrdroot import pyroot as ROOT
 from xrdroot.pycint.execute import called, process_line
 from xrdroot.pycint.library import loading
 from xrdroot.pycint.runtime import ROOT as HOST
-from xrdroot.pycint.runtime.application import TApplication, gApplication, started
+from xrdroot.pycint.runtime.application import (
+    PROGRAM,
+    TRINT,
+    TApplication,
+    gApplication,
+    named,
+    started,
+)
 from xrdroot.pycxx import cache
 from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core import troot
@@ -146,3 +153,38 @@ def test_an_application_is_made_as_cpp_makes_one_with_a_count_and_the_words():
     made = TApplication("App", 2, ["prog", "-b"])
     assert (made.GetName(), made.Argv(), made.Argc()) == ("App", ["prog", "-b"], 2)
     assert TApplication("App", 0, None).Argv() == ["root.exe"]
+
+
+def test_a_program_started_on_its_own_is_named_root_as_a_compiled_program_is(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """ROOT's compiled program has the default ``TROOT("root", …)``; ``entrylist_enter`` asks
+    for the sub-list it names, ``"root/t1"``."""
+    from xrdroot.pycint.execute import run_program
+
+    _write("who.C", 'void who() { printf("%s\\n", gROOT->GetName()); }')
+    assert run_program([Path("who.C")]) == 0
+    assert capsys.readouterr().out == "root\n"
+    assert ROOT.gROOT.GetName() == "PyROOT"  # the name was the program's, not the library's
+
+
+def test_a_macro_the_prompt_runs_is_named_after_the_rint_session_it_runs_in(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``root -b -q m.C`` is a ``TRint`` session, which renames ``gROOT`` to ``Rint``; a macro
+    reading the name back has to see that session's, not a program's."""
+    from xrdroot.pycint.execute import run_program
+
+    _write("who.C", 'void who() { printf("%s\\n", gROOT->GetName()); }')
+    with started(["root.exe", "-b", "-q", "who.C"]):
+        assert run_program([Path("who.C")], session=TRINT) == 0
+        assert ROOT.gROOT.GetName() == TRINT
+    assert capsys.readouterr().out == "Rint\n"
+
+
+def test_the_name_a_program_runs_under_is_put_back_when_the_program_raises() -> None:
+    with pytest.raises(RuntimeError, match="boom"):
+        with named(PROGRAM):
+            assert ROOT.gROOT.GetName() == PROGRAM
+            raise RuntimeError("boom")
+    assert ROOT.gROOT.GetName() == "PyROOT"
