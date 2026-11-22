@@ -109,8 +109,12 @@ class TString:
     def __iter__(self) -> Any:
         return iter(self._s)
 
-    def __call__(self, start: int, length: int | None = None) -> Any:
-        """``s(i)`` is a character, ``s(start, length)`` the part of the string there."""
+    def __call__(self, start: Any, length: int | None = None) -> Any:
+        """``s(i)`` is a character, ``s(start, length)`` the part of the string there, and
+        ``s(re)`` the part of it a ``TPRegexp`` matches."""
+        if length is None and not isinstance(start, int):
+            # anything that is no index is a pattern: ``operator()(const TPRegexp&)``
+            return TString(start.First(self._s))
         if length is None:
             return self._s[start]
         return TString(self._s[start : start + length])

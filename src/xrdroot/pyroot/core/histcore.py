@@ -150,10 +150,15 @@ class Booked:
         remember(self._xrd, self)
         if self._default_sumw2[0]:
             self._xrd.sumw2()
-        if args and self._add_directory[0]:
-            here = current_directory()
-            if here is not None:  # a histogram booked with no directory current is nowhere,
-                here.Append(self, True)  # as ROOT's TDirectory::TContext(nullptr) makes it
+        if args:
+            self._kept()
+
+    def _kept(self) -> None:
+        """Keep the histogram in the directory that is current, if there is one: a macro's
+        ``TDirectory::TContext(nullptr)`` books its histograms in memory only."""
+        here = current_directory()
+        if self._add_directory[0] and here is not None:
+            here.Append(self, True)
 
     def _booked(self, args: tuple[Any, ...]) -> Any:
         """The xrdroot histogram ROOT's constructor arguments describe."""
