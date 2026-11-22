@@ -286,6 +286,15 @@ class ofstream(ostream):
             self.target.flush()
         return self
 
+    def _destruct(self) -> None:
+        """``~ofstream``: the file closed, which writes out what the stream still holds.
+
+        C++'s stream writes through a buffer of its own, so a program that writes a file in one
+        scope and reads it in the same run reads what this closed - ROOT's own tests write a
+        header and then load it (``dictgen_base``'s ``myextra.h``).
+        """
+        self.close()
+
 
 cout = ostream(None, "stdout")
 cerr = ostream(None, "stderr")
