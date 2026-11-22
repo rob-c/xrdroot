@@ -1882,8 +1882,6 @@ class WritableFile(WritableDirectory):
         second free list and header of its own. A program that writes a file and reads it back
         in the same run - as ROOT's own tests do - reads it here too.
         """
-        if self._closed:
-            return
         self._assemble()
         self._out.finish()
 
