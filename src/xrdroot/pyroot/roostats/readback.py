@@ -38,13 +38,13 @@ INTERVAL = "RooStats::SimpleInterval"
 CONF_INTERVAL = "RooStats::ConfInterval"
 
 
-def _record(members: Any, key: str) -> Mapping[str, Any]:
+def _record(members: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     """The record ``key`` holds, or an empty one for a member written as a null pointer."""
-    found = members.get(key) if isinstance(members, Mapping) else None
+    found = members.get(key)
     return found if isinstance(found, Mapping) else {}
 
 
-def _named(members: Any) -> tuple[str, str]:
+def _named(members: Mapping[str, Any]) -> tuple[str, str]:
     """The name and title a ``TNamed`` base carries."""
     named = _record(members, "TNamed")
     return str(named.get("fName", "")), str(named.get("fTitle", ""))
