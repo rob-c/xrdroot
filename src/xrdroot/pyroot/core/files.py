@@ -422,13 +422,25 @@ class TDirectoryFile(TDirectory):
         return made
 
     def Write(self, name: Any = None, option: int = 0, bufsize: int = 0) -> int:
-        """``Write``: every object in memory here written, and every directory below its own."""
+        """``Write``: every object in memory here written, and every directory below its own.
+
+        ROOT writes the file's bookkeeping as it goes, so what has been written is a file on
+        disk that a program can open and read straight away - ``testTChainSaveAsCxx`` and
+        ROOT's own ``w.C`` probe both write a file and read it back in one run. The file stays
+        open for writing and what is written next is appended.
+        """
         if self._writable() is None:
             message(
                 "Error", "TDirectoryFile::Write", "file %s not opened in write mode", self.GetName()
             )
             return 0
-        return super().Write(name, option, bufsize)
+        total = super().Write(name, option, bufsize)
+        self._write_trees()
+        held = self.GetFile()
+        writing = getattr(held, "_writing", None) if held is not None else None
+        if writing is not None:
+            writing.checkpoint()
+        return total
 
     def mkdir(self, name: Any, title: Any = "", returnExistingDirectory: bool = False) -> Any:
         """``mkdir``: a directory below this one - on file too - and ``a/b`` makes both."""

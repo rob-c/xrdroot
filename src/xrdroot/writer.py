@@ -1831,6 +1831,12 @@ class WritableFile(WritableDirectory):
         #: The file's ``ProcessID`` records, by the UUID each is titled with: what an object
         #: a ``TRef`` may point at is written with the index of.
         self._pids: dict[str, int] | None = None
+        #: The trees and ntuples a checkpoint has already given their own record, by object id,
+        #: and the streamer-info record written last with how many classes it covered - so a
+        #: second checkpoint writes only what is new and a close after one writes nothing twice.
+        self._finished: set[int] = set()
+        self._streamer_record: tuple[int, int] | None = None
+        self._streamers_for = 0
 
     def _processes(self) -> dict[str, int]:
         """The file's ``ProcessID`` records - those it had already, when it is being updated."""
@@ -1867,6 +1873,20 @@ class WritableFile(WritableDirectory):
             seek, nbytes = region
             self._freed.append((seek, seek + nbytes - 1))
 
+    def checkpoint(self) -> None:
+        """Write the file as far as it goes and leave it open - what ROOT's ``TFile::Write`` does.
+
+        Everything written so far becomes a file at this file's path that can be opened and
+        read: the header, the directory's keys, each tree's own record and the streamer info.
+        What is written next is appended, as ROOT appends it, and a second ``Write`` appends a
+        second free list and header of its own. A program that writes a file and reads it back
+        in the same run - as ROOT's own tests do - reads it here too.
+        """
+        if self._closed:
+            return
+        self._assemble()
+        self._out.finish()
+
     def close(self) -> None:
         """Lay out the bookkeeping, fill in the header, and let go."""
         if self._closed:
@@ -1880,16 +1900,28 @@ class WritableFile(WritableDirectory):
                 self._handle.close()
 
     def _assemble(self) -> None:
-        """Everything that could only be placed once the objects were in."""
+        """Everything that could only be placed once the objects were in.
+
+        Each tree's record is written once and the streamer info only when a class new since
+        the last one has been used, so assembling twice - a checkpoint and then the close, or
+        two ``Write`` calls - writes nothing twice. The free list and the header are written
+        every time, each replacing the one before it, as ROOT's own ``WriteFree`` does.
+        """
         for tree in self._trees:
-            tree._finish()  # its baskets are in; now it can say where they went
+            if id(tree) not in self._finished:
+                self._finished.add(id(tree))
+                tree._finish()  # its baskets are in; now it can say where they went
         for ntuple in self._rntuples:
-            ntuple._finish()  # likewise its pages; now its header, footer and anchor
-        info = self._write_streamers()
+            if id(ntuple) not in self._finished:
+                self._finished.add(id(ntuple))
+                ntuple._finish()  # likewise its pages; now its header, footer and anchor
+        if self._streamer_record is None or self._streamers_for != len(self._used):
+            self._streamer_record = self._write_streamers()
+            self._streamers_for = len(self._used)
         for directory in self._walk():
             if directory._dirty:
                 directory._write_keys()
-        self._write_header(*self._write_free(), info)
+        self._write_header(*self._write_free(), self._streamer_record)
 
     def _write_streamers(self) -> tuple[int, int]:
         """The file's ``StreamerInfo`` record, and where it went."""
