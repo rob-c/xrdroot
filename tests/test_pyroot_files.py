@@ -636,3 +636,57 @@ def test_the_rntuples_a_file_holds_are_looked_for_below_its_directories():
         expect((files._ntuples(held), []))
     finally:
         held.close()
+
+
+def test_a_file_written_before_it_closes_can_be_read_and_added_to_again(tmp_path):
+    """ROOT's ``TFile::Write`` writes the keys, the streamer info and the header as it goes, so
+    a program that writes a file and reads it back in the same run reads it (its own ``w.C``
+    probe answers ``open=1 tree=1``). The file stays open and what is written next is appended."""
+    made = ROOT.TFile(str(tmp_path / "twice.root"), "RECREATE")
+    first = ROOT.TH1D("first", "first", 4, 0, 4)
+    first.Fill(1.0)
+    first.Write()
+    assert made.Write() == 1
+    with ROOT.TFile(str(tmp_path / "twice.root")) as read:
+        expect(
+            (read.IsOpen(), True),
+            (read.Get("first") is not None, True),
+            (read.Get("second") is None, True),
+        )
+    made.cd()  # reading a file leaves the current directory elsewhere, as ROOT's does
+    second = ROOT.TH1D("second", "second", 4, 0, 4)
+    second.Fill(2.0)
+    second.Write()
+    made.Write()
+    made.Close()
+    with ROOT.TFile(str(tmp_path / "twice.root")) as read:
+        expect(
+            (read.Get("first") is not None, True),
+            (read.Get("second") is not None, True),
+        )
+
+
+def test_a_tree_written_before_the_file_is_assembled_reads_back_with_its_entries(tmp_path):
+    """A tree written to a file that is then written is on disk at the ``Write`` - one key per
+    write, as ROOT's own probe measures (cycles 2 and 1 for ``t.Write()`` then ``f.Write()``) -
+    and the entries are the ones filled."""
+    import numpy
+
+    made = ROOT.TFile(str(tmp_path / "tree.root"), "RECREATE")
+    tree = ROOT.TTree("t", "t")
+    x = numpy.zeros(1)
+    tree.Branch("x", x, "x/D")
+    for value in (1.0, 2.0, 3.0):
+        x[0] = value
+        tree.Fill()
+    tree.Write()
+    made.Write()
+    made.Close()
+    with ROOT.TFile(str(tmp_path / "tree.root")) as read:
+        keys = [key for key in read.GetListOfKeys() if key.GetName() == "t"]
+        again = read.Get("t")
+        expect(
+            (len(keys), 2),
+            (again is not None, True),
+            (int(again.GetEntries()), 3),
+        )
