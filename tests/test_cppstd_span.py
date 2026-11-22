@@ -97,3 +97,4 @@ def test_an_objects_address_answers_the_object_moved_by_its_offset():
         address[8:]
     with pytest.raises(TypeError, match="not written through its address"):
         address[0:] = held
+    assert repr(address).startswith("ObjectAddress(")
