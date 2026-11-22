@@ -10,6 +10,7 @@ arrays, so a bin set here is a bin written.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable
 from typing import Any
 
@@ -237,6 +238,48 @@ class Bins:
     def RetrieveBinContent(self, bin: int) -> float:
         return self.GetBinContent(bin)
 
+    def FindFirstBinAbove(
+        self, threshold: float = 0.0, axis: int = 1, firstbin: int = 0, lastbin: int = -1
+    ) -> int:
+        """``FindFirstBinAbove``: the lowest bin along ``axis`` holding more than ``threshold``.
+
+        ROOT's own search, in ROOT's own numbering: along ``axis`` from ``firstbin`` - which
+        is 1 when given below 1 - to ``lastbin`` - which is that axis's last bin when given
+        below 0 or past it. A histogram of more than one axis answers with this axis's bin
+        number if *any* bin of the other axes at that number is above the threshold, so the
+        planes of the other axes are walked for each bin in turn. ``-1`` if no bin is.
+        """
+        return self._find_above(threshold, axis, firstbin, lastbin, True)
+
+    def FindLastBinAbove(
+        self, threshold: float = 0.0, axis: int = 1, firstbin: int = 0, lastbin: int = -1
+    ) -> int:
+        """``FindLastBinAbove``: ``FindFirstBinAbove``'s search run downwards, highest bin first."""
+        return self._find_above(threshold, axis, firstbin, lastbin, False)
+
+    def _find_above(
+        self, threshold: float, axis: int, firstbin: int, lastbin: int, forward: bool
+    ) -> int:
+        """The bin ``FindFirstBinAbove`` and ``FindLastBinAbove`` search for, in either
+        direction: they differ only in the order they walk the bins this axis numbers."""
+        counts = [found.GetNbins() for found in self._axes()]  # type: ignore[attr-defined]
+        chosen = _checked_axis(int(axis), len(counts))
+        low, high = _span(firstbin, lastbin, counts[chosen])
+        steps = range(low, high + 1) if forward else range(high, low - 1, -1)
+        for step in steps:
+            if self._any_above(threshold, chosen, counts, step):
+                return int(step)
+        return -1
+
+    def _any_above(self, threshold: float, chosen: int, counts: list[int], step: int) -> bool:
+        """Whether any bin of the other axes at bin ``step`` of ``chosen`` is above the
+        threshold - every bin of the plane through this histogram at that number."""
+        planes = [range(1, count + 1) for at, count in enumerate(counts) if at != chosen]
+        return any(
+            self._one_content(self.GetBin(*[*plane[:chosen], step, *plane[chosen:]])) > threshold
+            for plane in itertools.product(*planes)
+        )
+
     def SetBinContent(self, *args: Any) -> None:
         """``SetBinContent(bin, c)`` or ``(binx, biny[, binz], c)``: and one more entry."""
         bin, (content,) = self._split(args, 1)
@@ -380,6 +423,26 @@ class Bins:
         from ...arithmetic import reset_statistics
 
         reset_statistics(self._xrd)
+
+
+def _span(firstbin: int, lastbin: int, count: int) -> tuple[int, int]:
+    """The bins of one axis ROOT's two searches walk: from ``firstbin``, one for anything
+    below it, to ``lastbin``, the axis's last bin for anything below zero or past it - a
+    ``lastbin`` of 0 is not below zero, and leaves no bin to walk at all."""
+    low = max(1, int(firstbin))
+    high = int(lastbin)
+    return low, count if high < 0 or high > count else high
+
+
+def _checked_axis(axis: int, dimension: int) -> int:
+    """Which axis's bins to walk: ROOT assumes x, with its ``Warning``, for an axis of another
+    histogram's dimension - ``TH1::FindLastBinAbove`` names ``FindFirstBinAbove`` in its own
+    message, as ROOT leaves it, so that text is reproduced rather than corrected."""
+    if 1 <= axis <= dimension:
+        return axis - 1
+    message("Warning", "TH1::FindFirstBinAbove",
+            "Invalid axis number : %d, axis x assumed", axis)  # fmt: skip
+    return 0
 
 
 def _flowing(parts: list[int], widths: list[int], axis: int, low: bool) -> bool:
