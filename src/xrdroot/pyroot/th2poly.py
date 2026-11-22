@@ -21,7 +21,7 @@ import numpy as np
 
 from ..errors import UnsupportedFeatureError
 from ..hist import Histogram
-from ..polybins import PolyBins
+from ..polybins import REGIONS, PolyBins
 from ._pythonization._uhi import UnifiedHistogram
 from ._pythonization._uhi.indexing import _compute_common_index
 from ._pythonization._uhi.plotting import _grid_by_copy
@@ -53,6 +53,9 @@ def _hexagon(x0: float, y0: float, a: float, vertical: bool) -> tuple[list[float
 
 class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
     """``TH2Poly()``, or ``TH2Poly(name, title, xlow, xup, ylow, yup)``: bins of any shape."""
+
+    #: The cells of the fixed grid ROOT gives a ``TH2Poly``'s x and y axes.
+    GRID = 100
 
     def __init__(self, name: Any = "NoName", title: Any = "NoTitle", *ranges: float) -> None:
         super().__init__(str(name), str(title))
@@ -138,6 +141,34 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
 
     def GetNumberOfBins(self) -> int:
         return len(self._xrd_bins.polygons)
+
+    # -- the grid ROOT draws it on -------------------------------------------------------
+    #
+    # A ``TH2Poly`` has no axis of its own: ROOT keeps a fixed 100-cell x and y axis and a
+    # one-cell z, only so that the frame, the range and ``TAxis::kAxisRange`` have something
+    # to be asked of. The bins are *not* these cells - a bin is a polygon by number.
+
+    def GetDimension(self) -> int:
+        return 2
+
+    def GetXaxis(self) -> Any:
+        from .core.axes import TAxis
+
+        return TAxis(self.GRID, *self._xrd_bins.xrange)
+
+    def GetYaxis(self) -> Any:
+        from .core.axes import TAxis
+
+        return TAxis(self.GRID, *self._xrd_bins.yrange)
+
+    def GetZaxis(self) -> Any:
+        from .core.axes import TAxis
+
+        return TAxis(1, 0.0, 1.0)
+
+    def GetNcells(self) -> int:
+        """ROOT's cell count: the bins, then the nine under/overflow regions round them."""
+        return self.GetNumberOfBins() + REGIONS
 
     def GetBinContent(self, number: int) -> float:
         """A bin's content by number from 1, or a region's, -1 to -9."""

@@ -203,6 +203,27 @@ Coordinates count from zero the way a `Histogram` does, so `-1` is an
 underflow and `len(axis)` an overflow. `to_dense(flow=True)` keeps the flow
 bins, and a grid of more than ten million cells is refused.
 
+A `TH2Poly` and a `TKDTreeBinning` are there too, for bins that are not a
+grid: a poly's bins are the polygons a program adds, and a k-d binning is
+the leaves of a tree over a data set, each leaf a box and the count of the
+points in it - the two together are ROOT's data-driven binning with no empty
+bin.
+
+```python
+poly = TH2Poly("pt", "pt", 0.0, 200.0, 0.0, 5.0)
+poly.AddBin(0.0, 0.0, 10.0, 5.0)  # x1, y1, x2, y2 - or a TGraph's polygon
+poly.GetNumberOfBins(), poly.GetNcells()  # the bins, then the nine regions
+poly.GetXaxis().GetNbins()  # 100: the grid it is drawn on, not its bins
+
+bins = TKDTreeBinning(points.size, 2, points, 1000)
+bins.GetBinContent(0)  # the points of that leaf
+bins.GetBinsMinEdges(), bins.GetBinsMaxEdges()  # each leaf's box
+```
+
+`THistRange` walks a histogram's bins the way ROOT's does - the global bin
+numbers the axes' *current* ranges cover, x fastest, so `SetRange` narrows
+what it visits; its four kinds are `TBinIterator`'s, `kHistRange` first.
+
 ## Building and filling histograms
 
 A histogram is also something to fill and compute with, the way ROOT's `TH1`

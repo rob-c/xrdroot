@@ -50,6 +50,8 @@ FAMILIES = (
     "jsonbuffer",
     "axes",
     "hists",
+    "histrange",
+    "tkdtree",
     "candles",
     "profiles",
     "stacks",
