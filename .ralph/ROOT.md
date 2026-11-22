@@ -1805,6 +1805,35 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   average of 15-20; ruff clean, mypy 1023 files, maintainability 31 283 functions, components 1023 modules /
   0 undeclared.
 
+## Round 60's close (recorded here for the next iteration)
+
+- Base `0e88415c`, closed at **`6e981a56`**. **One commit, +1 gtest PASS (62 -> 63)**, after two targets were
+  measured and **dropped for good reasons** - which is the round's other half.
+- **`6e981a56`: `TServerSocket`.** ROOT's `net/net` module lets a program open a port for itself -
+  `TServerSocket(0, false, TServerSocket::kDefaultBacklog, -1, ESocketBindOption::kInaddrLoopback)` - and this kit
+  had none of it, so `gtest/net/net/nettests` was refused at the socket. It is Python's `socket` behind ROOT's names,
+  which is all ROOT's is: `TInetAddress` answers `GetHostAddress`/`GetHostName`/`GetPort`/`IsValid`
+  (`127.0.0.1`, `localhost`, the port, true), a default bind gives `0.0.0.0`, a negative port binds nothing as ROOT's
+  does, and `Close` gives the port back - it is a dialect **guard**, so a local socket is closed where its scope ends.
+  The numbers are the oracle's: `kDefaultBacklog` 10, `kInaddrAny` 0, `kInaddrLoopback` 1. **`nettests` PASSES.**
+- **Two targets measured and dropped, each with its reason in the queue**:
+  `ntuple_largefile2` writes **268 435 456** entries to exceed 2 GB (`W0-146`) - the two-part null fix that would get
+  past its first wall was written, **measured, and reverted**, because it turns FAIL into TIMEOUT rather than PASS,
+  and its shape is recorded in `W0-149` for whoever needs a nulled value-model local; and
+  `ROOT::Math::Delaunay2D::Interpolate` is **not** barycentric interpolation of z (`W0-147`) - scipy reproduces 12 of
+  its 15 values exactly and none of the three on the diagonal edge, so ROOT's source must be read first.
+- **`W0-148` is a scoping question the round measured**: `gROOT.GetName()` is `PyROOT` here and `root` in a compiled
+  ROOT program (an interactive `Rint` on the oracle, `/tmp/r60/g.C`), so `TEntryList::Enter`'s prefix disagrees with
+  `entrylist_enter`'s `GetEntryList("root/t1","")`; three unit tests pin `PyROOT`.
+- Nothing lost: 71 `gtest/net/*` + `gtest/core/*` + `gtest/tree/tree/*` programs, **21 PASS / 35 FAIL /
+  14 UNSUPPORTED / 1 TIMEOUT** (`/tmp/r60/net`), the same set as round 58's.
+- Worktree discipline (`W0-138`): opened `/tmp/ralph-round-202611220414/main` off `feat/root-testsuite`'s tip, gated
+  there, fast-forwarded `feat/root-testsuite`, tore the worktree and branch down. **`W0-138` is still open**, so
+  nothing was pushed.
+- Gates: **`TOTAL 119809 0 30022 0 100%`** by the two-command decomposition (13 045 passed, then 44) at a load
+  average of 13-15; ruff clean, mypy 1024 files, maintainability 31 307 functions, components 1024 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1893,6 +1922,10 @@ For the round's work, the evidence is, in this order:
   load average of 15-20; ruff clean, mypy 1023 files, maintainability 31 283 functions, components 1023 modules /
   0 undeclared. `/tmp/r59/gate1.log` is the first command's output, run in the round's own worktree
   (`/tmp/ralph-round-202611220350/main`, since removed - the commit is on `feat/root-testsuite`).
+- Round 60's result of them, at `6e981a56`: **`TOTAL 119809 0 30022 0 100%`** - 13 045 passed then 44 passed - at a
+  load average of 13-15; ruff clean, mypy 1024 files, maintainability 31 307 functions, components 1024 modules /
+  0 undeclared. `/tmp/r60/gate1.log` is the first command's output, run in the round's own worktree
+  (`/tmp/ralph-round-202611220414/main`, since removed - the commit is on `feat/root-testsuite`).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -2113,6 +2146,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 57 | `44eb8a61` | **one commit**: a ROOT number type written as a function is the C++ cast - `TFormula` and TMVA's FDA parser both take `formula.functions.CASTS` (`b42926d0`) | **0 harness PASS**, but TMVA's own default split expression `UInt_t([EventNumber])%UInt_t([NumFolds])` now parses: `gtest/tmva/tmva/crossvalidation/*` runs real cross-validation (4.6 s, 2.8 s) and both stop at `ROOT has cv_milli_t`. Nothing lost in 66 `gtest/hist/*` + `gtest/tmva/*` (`/tmp/r57/areas`). Gate `TOTAL 119732 0 30014 0 100%` | 2: `W0-141` (a function-local `using` alias of a template instance is not substituted in a value position - and then TMVA's Reader), `W0-142` (a cast to an integer does not make a following `/` integer, and must not for `TTree::Draw`) |
 | 58 | `1fc32254` | **one commit**: an array of *arrays* of objects destroys its rows and their elements - every level of an object array is an `ObjectArray` (`ad8c97a8`) | **0 harness PASS, 0 lost**, and **the whole gtest kind re-measured: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r58/gtest`), identical to round 56's - the `W0-63` check across rounds 57-58. Gate `TOTAL 119730 0 30012 0 100%` | 2: `W0-143` (`Take<std::vector<bool>>`'s rows are NumPy slices, and the kind the emitted call carries is dropped by `frame.Take`), `W0-144` (`TMultiGraph::GetHistogram`'s log-scale range: 79.9602 and 0.65234 against our 65.5672 and 1.08468); `W0-140` closed |
 | 59 | `74caab18` | **one commit**: `Take` of a column of vectors is a vector of vectors - `_Method` carries the template arguments a booking named, `RResultPtr` keeps them, `_vector_of` builds `std::vector<std::vector<T>>` from a `Jagged` (`0c58dd9e`) | **gtest +1: `gtest/tree/dataframe/dataframe_take` PASSES** (all three cases), the kind **61 -> 62**; nothing lost in 109 `gtest/tree/{dataframe,ntuple,treeplayer}/*` programs (`/tmp/r59/df`). Gate `TOTAL 119736 0 30014 0 100%` | 1: `W0-145` (`Take<V>` builds its rows from the row's dtype, not from the element `V` names); `W0-143` closed |
+| 60 | `0e88415c` | **one commit**: `TServerSocket`, `TInetAddress` and `ESocketBindOption` over Python's `socket`, with the socket as a dialect guard (`6e981a56`) | **gtest +1: `gtest/net/net/nettests` PASSES**, the kind **62 -> 63**; nothing lost in 71 `gtest/net/*` + `gtest/core/*` + `gtest/tree/tree/*` programs (`/tmp/r60/net`). Gate `TOTAL 119809 0 30022 0 100%` | 4: `W0-146` (`ntuple_largefile2` writes 268 M entries - a large-file test), `W0-147` (`Delaunay2D::Interpolate` is not barycentric interpolation), `W0-148` (`gROOT`'s name is `PyROOT` here and `root` in a compiled program), `W0-149` (a null stored into a class-typed local, with the shape of its two-part fix) |
 
 ## Notes
 
