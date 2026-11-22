@@ -351,9 +351,12 @@ def _edges(func: Any, name: str, low: float, high: float) -> list[float]:
         count = int(
             configuration(func).getConfigSection("RooBinIntegrator").getRealValue("numBins")
         )
-        log(None, WARNING, "Integration", "RooBinIntegrator::RooBinIntegrator WARNING: integrand "
-            f"provide no binning definition observable #0 substituting default binning of {count} "
-            "bins")  # fmt: skip
+        said = func.__dict__.setdefault("_said_no_binning", set())
+        if name not in said:  # ROOT says it once, in the integrator's constructor
+            said.add(name)
+            log(None, WARNING, "Integration", "RooBinIntegrator::RooBinIntegrator WARNING: "
+                f"integrand provide no binning definition observable #0 substituting default "
+                f"binning of {count} bins")  # fmt: skip
         found = [low + j * (high - low) / count for j in range(count + 1)]
     edges = [e for e in found if low <= e <= high]
     if not edges or edges[0] > low:

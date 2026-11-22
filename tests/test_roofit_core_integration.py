@@ -178,3 +178,18 @@ def test_an_integral_that_does_not_settle_lists_every_refinement_as_root_does(
     lines = capsys.readouterr().out.splitlines()
     assert lines[1:3] == ["   [1] h = 1 , s = 1.51049", "   [2] h = 0.25 , s = 1.87328"]
     assert lines[-1] == "   [20] h = 3.63798e-12 , s = 2.76716"
+
+
+def test_a_binned_integral_says_it_has_no_binning_once(capsys: Any) -> None:
+    """``RooBinIntegrator`` says it in its constructor, so an integral evaluated again - every
+    fit iteration, every frame - does not say it again: rf614's ten copies of one warning."""
+    from xrdroot.roofit.integration import _edges
+
+    y = RooRealVar("y", "y", 1.0, -5.0, 5.0)
+    plain = RooFormulaVar("plain", "plain", "y*y", RooArgList(y))
+    capsys.readouterr()
+    first = _edges(plain, "y", -1.0, 1.0)
+    second = _edges(plain, "y", -1.0, 1.0)
+    assert first == second and len(first) == 101  # 100 even bins, the range's ends among them
+    said = capsys.readouterr().out.splitlines()
+    assert len(said) == 1 and "substituting default binning of 100 bins" in said[0]
