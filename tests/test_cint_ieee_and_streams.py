@@ -122,7 +122,7 @@ def test_an_ofstream_is_closed_as_the_scope_it_was_made_in_ends(
     assert block(capsys, source) == "read=[hello]\n"
 
 
-def test_a_header_a_pragma_extra_include_names_is_translated_beside_the_macro(tmp_path: Path) -> None:
+def test_a_header_a_pragma_extra_include_names_is_translated_beside_the_macro() -> None:
     """``#pragma extra_include "myextra.h"`` is what rootcling reads into a dictionary and the
     compiler never sees; the library build here is that pass, so the header's ``f()`` is a name
     the session has - which is the whole of ROOT's ``dictgen_base``."""
