@@ -49,7 +49,6 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--oracle-only", action="store_true", help="run ROOT only: fill the cache")
     run.add_argument("--no-oracle", action="store_true", help="run xrdroot only, uncompared")
     run.add_argument("--out", type=Path, help="where results go (CACHE/results)")
-    run.add_argument("--previous", type=Path, help="baseline-timings.json to compare ratios with")
     run.add_argument(
         "--also-vetoed", action="append", default=[], metavar="REASON",
         help="run the tutorials ROOT's CMakeLists vetoes for REASON (a substring, e.g. "
@@ -72,7 +71,7 @@ def parser() -> argparse.ArgumentParser:
     check.add_argument("results", type=Path)
     check.add_argument("--baseline", type=Path, default=ratchet.BASELINE)
     check.add_argument("--rerun-timeouts", action="store_true", help="recheck timeouts alone")
-    baseline = commands.add_parser("baseline", help="record statuses and timings from a full run")
+    baseline = commands.add_parser("baseline", help="record statuses from a full run")
     baseline.add_argument("results", type=Path)
     baseline.add_argument("--output", type=Path, default=ratchet.BASELINE)
     api = commands.add_parser("api-coverage", help="compare ROOT's public API by library")
@@ -85,13 +84,11 @@ def parser() -> argparse.ArgumentParser:
 
 
 def default_jobs() -> int:
-    """How many tutorials run at once when none is asked for: one a core, as the timings say.
+    """How many tutorials run at once when none is asked for: one a core.
 
-    The committed timings are 11 505 s of tutorial work, so a fixed width of four leaves a third of
-    the wall clock in a queue: modelled from ``baseline-timings.json``, 3 093 s at four, 2 191 at
-    six and 1 803 at eight, against a packing floor of 1 438. Two cores are kept back for the ROOT
-    oracle half of each pair and for whatever else the machine is doing, and the width is capped so
-    a many-core runner does not open a hundred turtles.
+    Two cores are kept back for the ROOT oracle half of each pair and for whatever else the
+    machine is doing, and the width is capped so a many-core runner does not open a hundred
+    turtles.
     """
     cores = os.cpu_count() or 1
     return max(1, min(cores - 2, 8))
@@ -172,8 +169,7 @@ def _run(args: argparse.Namespace) -> int:
         "no_oracle": args.no_oracle,
         "also_vetoed": list(args.also_vetoed),
     }
-    previous = json.loads(args.previous.read_text()) if args.previous else None
-    doc = report.document(records, meta, previous)
+    doc = report.document(records, meta)
     for path in report.write(doc, settings.results):
         print(path)
     print(json.dumps(doc["counts"]))
@@ -193,7 +189,10 @@ def _report(args: argparse.Namespace) -> int:
     doc = json.loads(args.results.read_text())
     if doc.get("schema") != report.SCHEMA:
         print(
-            f"{args.results}: schema {doc.get('schema')!r}, not {report.SCHEMA!r}", file=sys.stderr
+            f"{args.results}: schema {doc.get('schema')!r}, not {report.SCHEMA!r}: a run "
+            f"recorded before ROOT's wall times stopped being compared with xrdroot's "
+            f"cannot be redrawn, so run the tutorials again",
+            file=sys.stderr,
         )
         return 2
     doc = {**report.document(doc["tutorials"], doc["meta"]), **doc}

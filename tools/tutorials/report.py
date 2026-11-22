@@ -15,19 +15,22 @@ from __future__ import annotations
 
 import html
 import json
+import math
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import timing
 from .classify import STATUSES
 
-__all__ = ["SCHEMA", "document", "ranked", "markdown", "page", "write"]
+__all__ = ["SCHEMA", "document", "ranked", "slowest", "markdown", "page", "write"]
 
 #: The results' shape; a consumer tracking trends checks this before reading on.
-SCHEMA = "xrdroot-tutorials/1"
+SCHEMA = "xrdroot-tutorials/2"
+
+#: The slowest tutorials, ranked by xrdroot's own wall time: the order speed work wants.
+SLOWEST_HEADER = ("tutorial", "xrdroot s")
 
 #: The statuses a ranked reason is drawn from: xrdroot's own failures.
 BLOCKING = ("FAIL", "UNSUPPORTED")
@@ -63,10 +66,30 @@ def ranked(records: Iterable[Mapping[str, Any]], statuses: Sequence[str]) -> lis
     return sorted(rows, key=lambda row: (-row["count"], row["reason"]))
 
 
-def document(
-    records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any],
-    previous: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
+def _seconds(value: Any) -> float | None:
+    finite = isinstance(value, (int, float)) and math.isfinite(value)
+    return float(value) if finite else None
+
+
+def _seconds_text(value: Any, digits: int = 3) -> str:
+    seconds = _seconds(value)
+    return "" if seconds is None else f"{seconds:.{digits}f}"
+
+
+def slowest(records: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Every tutorial by xrdroot's own wall time, the slowest first.
+
+    ROOT's time is kept in the record of its own run but is never divided into
+    xrdroot's here: a ratio invites a target that moves whenever either side does.
+    """
+    rows = []
+    for record in records:
+        side = record.get("xrdroot") or {}
+        rows.append({"path": record["path"], "xrdroot_seconds": _seconds(side.get("runtime"))})
+    return sorted(rows, key=lambda row: (-(row["xrdroot_seconds"] or 0.0), row["path"]))
+
+
+def document(records: Sequence[Mapping[str, Any]], meta: Mapping[str, Any]) -> dict[str, Any]:
     """The whole run, in the stable schema."""
     return {
         "schema": SCHEMA,
@@ -76,7 +99,7 @@ def document(
         "areas": areas(records),
         "reasons": ranked(records, BLOCKING),
         "blockers": ranked(records, (*BLOCKING, "DIFF")),
-        "timings": timing.rows(records, previous),
+        "slowest": slowest(records),
         "diffs": ranked(records, ("DIFF",)),
         "skips": ranked(records, ("SKIP",)),
         "oracle_failures": ranked(records, ("ORACLE-FAIL",)),
@@ -109,6 +132,10 @@ def _reason_rows(rows: Sequence[Mapping[str, Any]], top: int) -> list[list[Any]]
     ]
 
 
+def _slowest_cells(rows: Sequence[Mapping[str, Any]], top: int = 30) -> list[list[str]]:
+    return [[row["path"], _seconds_text(row["xrdroot_seconds"])] for row in rows[:top]]
+
+
 def markdown(doc: Mapping[str, Any], top: int = 30) -> str:
     """A summary to read: totals, per area, then the reasons, ranked."""
     meta, total = doc["meta"], sum(doc["counts"].values())
@@ -120,8 +147,8 @@ def markdown(doc: Mapping[str, Any], top: int = 30) -> str:
         "",
     ]
     lines += _table(STATUSES, [[doc["counts"][status] for status in STATUSES]])
-    lines += ["", "## Slowest 30 tutorials (wall time)", ""]
-    lines += _table(timing.HEADER, map(timing.cells, doc.get("timings", [])[:30]))
+    lines += ["", "## Slowest 30 tutorials (xrdroot wall time)", ""]
+    lines += _table(SLOWEST_HEADER, _slowest_cells(doc.get("slowest", [])))
     lines += ["", "## By area", ""]
     lines += _table(["area", *STATUSES], [[a, *c.values()] for a, c in doc["areas"].items()])
     sections = (
@@ -207,13 +234,9 @@ def _detail(record: Mapping[str, Any]) -> str:
     return f"<details><summary>{_e(record.get('reason', ''))}</summary>{body}</details>"
 
 
-def _runtime(side: Any) -> str:
-    return f"{side['runtime']:.1f}" if side else ""
-
-
-def _timings_html(doc: Mapping[str, Any]) -> str:
-    rows = ([_e(cell) for cell in timing.cells(row)] for row in doc.get("timings", [])[:30])
-    return _html_table(timing.HEADER, rows)
+def _slowest_html(doc: Mapping[str, Any]) -> str:
+    rows = ([_e(cell) for cell in row] for row in _slowest_cells(doc.get("slowest", [])))
+    return _html_table(SLOWEST_HEADER, rows)
 
 
 def page(doc: Mapping[str, Any], top: int = 40) -> str:
@@ -225,8 +248,8 @@ def page(doc: Mapping[str, Any], top: int = 40) -> str:
     )
     area_rows = ([_e(a), *(str(n) for n in c.values())] for a, c in doc["areas"].items())
     tutorial_rows = (
-        [_e(r["path"]), _status(r["status"]), _detail(r), _runtime(r.get("oracle")),
-         _runtime(r.get("xrdroot")), timing.display(timing.measured(r)["ratio"])]
+        [_e(r["path"]), _status(r["status"]), _detail(r),
+         _seconds_text((r.get("xrdroot") or {}).get("runtime"), 1)]
         for r in doc["tutorials"]
     )  # fmt: skip
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -236,7 +259,7 @@ def page(doc: Mapping[str, Any], top: int = 40) -> str:
 <div class="muted">{_e(doc["generated"])} · ROOT {_e(meta.get("root_version") or "none")} ·
 xrdroot {_e(meta.get("xrdroot_commit") or "?")} · {_e(meta.get("tutorials_dir", ""))}</div>
 <div class="tiles">{tiles}</div>
-<h2>Slowest 30 tutorials (wall time)</h2>{_timings_html(doc)}
+<h2>Slowest 30 tutorials (xrdroot wall time)</h2>{_slowest_html(doc)}
 <h2>All blockers</h2>{_reasons_html(doc.get("blockers", doc["reasons"]), top)}
 <h2>Top failure reasons</h2>{_reasons_html(doc["reasons"], top)}
 <h2>Output differences</h2>{_reasons_html(doc["diffs"], top)}
@@ -244,8 +267,7 @@ xrdroot {_e(meta.get("xrdroot_commit") or "?")} · {_e(meta.get("tutorials_dir",
 <h2>ROOT itself failed</h2>{_reasons_html(doc["oracle_failures"], top)}
 <h2>Skipped</h2>{_reasons_html(doc["skips"], top)}
 <h2>Every tutorial</h2><input id="filter" placeholder="filter: path, status, reason">
-{_html_table(["tutorial", "status", "reason", "ROOT s", "xrdroot s", "xrdroot/ROOT"],
-             tutorial_rows, "tutorials")}
+{_html_table(["tutorial", "status", "reason", "xrdroot s"], tutorial_rows, "tutorials")}
 <script>{_SCRIPT}</script></body></html>
 """
 

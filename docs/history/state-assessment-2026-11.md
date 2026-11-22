@@ -56,7 +56,7 @@ below rather than assumed to be a regression.
 | module tests (`other`) | 14 / 109 PASS |
 | all non-tutorial kinds | **1185 / 2820 PASS (42 %)** — reproduced exactly from `tools/rootsuite/baseline.json` |
 | tutorials | baseline 558 PASS / 1189 (47 %); my environment 544 |
-| tutorial speed | median **0.47× ROOT's time** (i.e. twice as fast); 32 tutorials > 5× ROOT; 14 > 10×; 10 time out at the 300 s limit |
+| tutorial speed | 5 858 s of tutorial wall time, 3 000 s of it ten timeouts at the 300 s limit, then a dozen tutorials of minutes each; the ROOT-relative ratios this once quoted were retired (see §4) |
 
 The one-sentence verdict: **the architecture is sound and unusually well
 engineered; the code is the equal of anything in scientific Python. What stands
@@ -208,27 +208,23 @@ one for these runs (it does not run them at all — see §8).
 
 Two different stories.
 
-**Throughput is good; the median tutorial is twice as fast as ROOT** — the
-median xrdroot/ROOT runtime ratio is 0.47 across 854 comparable tutorials,
-while the *total* is 5 858 s against ROOT's 4 804 s, because ten timeouts
-alone account for 3 000 s of it. Reading a
+**Throughput is good.** The tutorial suite's own total is 5 858 s, of which
+ten timeouts at the 300 s limit alone account for 3 000 s. Reading a
 2-column tree: 34.7 M rows/s. `RDataFrame.Filter/Define/Mean` over 1 M rows:
 32.9 M rows/s. `TH1::FillN`: 38.5 M rows/s.
 
-**The tail is bad, and it is concentrated:**
+**A note on the ratios this section used to quote.** Every tutorial was once
+measured against ROOT's own run and the ratios committed in
+`baseline-timings.json`. That measurement was retired on purpose: xrdroot aims
+to be faster than ROOT ultimately, so a ratio is a target that moves whenever
+either side does. Nothing committed compares the two sides' wall times now, and
+`tools/tutorials` ranks the slowest tutorials by xrdroot's own seconds.
 
-| ratio | tutorials |
-|---|---|
-| > 1.5× ROOT | 97 |
-| > 2× | 80 |
-| > 3× | 53 |
-| > 5× | 32 |
-| > 10× | 14 |
-
-Worst: `tmva100_DataPreparation.py` 45×, `df101_h1Analysis.C` 27×,
-`df101_h1Analysis.py` 17×, `df103`/`hist103` 12–14×, `permute.C` 15×,
-`perceptualcolormap.C` 14.5×, `fit2dHist.C` 13×, `schroedinger_hydrogen.C`
-12.6×, `rf801_mcstudy.py` 11.4×, `rs701` 11×.
+**The tail is bad, and it is concentrated:** the ten timeouts, then
+`tmva100_DataPreparation.py`, `df101_h1Analysis.C` and `.py`, `df103` and
+`hist103`, `permute.C`, `perceptualcolormap.C`, `fit2dHist.C`,
+`schroedinger_hydrogen.C`, `rf801_mcstudy.py` and `rs701`, each taking minutes
+where the rest of the suite takes seconds.
 
 Three distinct root causes, each with a clear owner:
 
@@ -238,13 +234,13 @@ Three distinct root causes, each with a clear owner:
    — one Python call per entry. That is exactly df101/df103/df104/df105/df107,
    hist102/hist103 and tmva100. Vectorising jagged-array `ROOT::VecOps` bodies
    (and translating declared functions into batched form) is the single largest
-   speed win available, worth ~10 tutorials and 2 500 s of wall time.
-2. **RooStats toys and RooFit likelihoods** (3.5–11×): evaluation count, caching
-   and integral reuse — `roofit/fitting`, `roostats/toys`.
-3. **Canvas text and palettes** (12–15×): `canvas/fonts`, `canvas/raster`,
-   `palette.py` — `perceptualcolormap`, `schroedinger_hydrogen`, `tmathtext`
-   also have the *worst image similarity*, so they are the same defect seen
-   twice.
+   speed win available: it is worth about ten tutorials and, with them, the
+   larger part of the suite's wall time.
+2. **RooStats toys and RooFit likelihoods:** evaluation count, caching and
+   integral reuse — `roofit/fitting`, `roostats/toys`.
+3. **Canvas text and palettes:** `canvas/fonts`, `canvas/raster`, `palette.py`
+   — `perceptualcolormap`, `schroedinger_hydrogen`, `tmathtext` also have the
+   *worst image similarity*, so they are the same defect seen twice.
 
 A fourth, cheap one: **the default write compression level does not match
 ROOT's**. `compression.LEVELS["zlib"] = 6`, while ROOT's `TFile` default is
@@ -321,8 +317,10 @@ Missing, in order of how much they would save:
    environment artefact. A `requirements-parity.txt` (or `uv.lock`) plus a
    documented interpreter pin for the harness runs is required before any
    ratchet result means anything.
-3. **No performance gate.** `baseline-timings.json` exists but nothing fails on
-   a regression. A ratchet over the tutorial timings (median and the top 20)
+3. **No performance gate.** Nothing fails when the tutorial tail grows, and the
+   ROOT-relative ratio baseline this once proposed to ratchet has been retired
+   on purpose (§4). An absolute ceiling — the 300 s timeout, with
+   `tools/tutorials`' ranking of the slowest tutorials by xrdroot's own time —
    and a micro-benchmark of tree read/write/RDF would keep the tail from
    growing.
 4. **`ratchet` cannot judge a partial run.** `python -m tools.rootsuite ratchet
@@ -362,7 +360,7 @@ Missing, in order of how much they would save:
 | **Breadth of ROOT's API** | 153 roottest tests + most tutorials fail on a *name* that does not exist; there are ~2 000 more in the API inventory that no test yet reaches | the API inventory should drive a generated skeleton (refusing constructors, correct signatures) so names never cost a test |
 | **RooFit/RooStats semantics** | 84 tutorial stdout DIFFs are evaluation counts, cache keys and log ordering; these are the hardest to fix and the least visible | treat RooFit output parity as its own workstream with its own ratchet (rf* tutorials) |
 | **Reflection/dictionaries** | 182 `root/meta` + 45 `TClass.GetClassInfo` tests, plus ACLiC and `TBufferJSON` | one coherent dictionary registry, built once |
-| **Perf tail** | 10 tutorials cannot pass while they exceed 300 s; the slowest is 45× ROOT | batched RDF evaluation first; never raise the timeout |
+| **Perf tail** | 10 tutorials cannot pass while they exceed 300 s, and the slowest of them takes minutes | batched RDF evaluation first; never raise the timeout |
 | **Oracle availability** | the oracle is the only definition of "correct", and a macOS-only 2.3 GB conda install is fragile | document a CI-installable oracle (Linux conda-forge) and version-key the cache (already done) |
 
 ## 8. A sequenced route to "the whole suite passes"

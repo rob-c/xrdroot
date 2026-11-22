@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from . import timing
 from .classify import STATUSES
 from .compare import Tolerance
 from .environment import find_oracle, root_config
@@ -46,9 +45,6 @@ def write_baseline(doc: Mapping[str, Any], destination: Path) -> None:
     statuses = {record["path"]: record["status"] for record in records}
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(statuses, indent=1, sort_keys=True) + "\n")
-    destination.with_name(destination.stem + "-timings.json").write_text(
-        json.dumps(timing.snapshot(doc), indent=1, sort_keys=True) + "\n"
-    )
 
 
 def _require_full_run(meta: Mapping[str, Any]) -> None:

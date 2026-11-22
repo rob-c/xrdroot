@@ -9,15 +9,14 @@ thrown away to break its correlations; ``p`` is the luxury level's 0, 24,
 digit nine further back, so that small numbers keep 24 bits of precision.
 
 Run as ROOT runs it, a draw costs a dozen steps of a loop, each depending on
-the last; ROOT itself takes 80 ns a draw. But the digits are the base-2**24
-expansion of a fraction with denominator ``m = b**24 - b**10 + 1``, and each
-step divides that fraction's numerator by ``b`` modulo ``m`` (Tezuka and
-L'Ecuyer; Sibidanov's RANLUX++ is built on the same fact). So the ``24 + p``
-steps between one kept block and the next are one multiplication of a
-576-bit number, and the block's digits are the low digits of the numerator
-times ``m``'s inverse - a few big-integer operations per 24 draws, in
-Python's own arithmetic, and exact. The digits are then made into ROOT's
-``float`` values an array at a time.
+the last. But the digits are the base-2**24 expansion of a fraction with
+denominator ``m = b**24 - b**10 + 1``, and each step divides that fraction's
+numerator by ``b`` modulo ``m`` (Tezuka and L'Ecuyer; Sibidanov's RANLUX++ is
+built on the same fact). So the ``24 + p`` steps between one kept block and
+the next are one multiplication of a 576-bit number, and the block's digits
+are the low digits of the numerator times ``m``'s inverse - a few big-integer
+operations per 24 draws, in Python's own arithmetic, and exact. The digits
+are then made into ROOT's ``float`` values an array at a time.
 
 The numerator of the generator's state is ``L10 - L24 - carry``: the last
 ten digits and the last twenty-four, read as numbers, less the borrow. For

@@ -727,7 +727,7 @@ def _records():
         {"path": "a/x.C", "area": "a", "status": "FAIL", "reason": "missing ROOT.TF1"},
         {"path": "a/y.C", "area": "a", "status": "UNSUPPORTED", "reason": "missing ROOT.TF1"},
         {"path": "b/z.C", "area": "b", "status": "FAIL", "reason": "timeout", "details": ["t"]},
-        {"path": "b/p.C", "area": "b", "status": "PASS", "reason": "", "oracle": {"runtime": 1.0}},
+        {"path": "b/p.C", "area": "b", "status": "PASS", "reason": "", "xrdroot": {"runtime": 1.0}},
     ]
 
 
@@ -766,6 +766,7 @@ def test_the_cli_lists_the_catalogue_and_redraws_reports(tree, tmp_path, capsys,
     assert cli.main(["report", "--results", str(tmp_path / "r" / "results.json")]) == 0
     (tmp_path / "old.json").write_text(json.dumps({"schema": "other"}))
     assert cli.main(["report", "--results", str(tmp_path / "old.json")]) == 2
+    assert "cannot be redrawn" in capsys.readouterr().err
 
 
 def test_the_cli_runs_uncompared_without_root(tree, tmp_path, capsys, monkeypatch):
@@ -923,9 +924,8 @@ def test_output_matching_no_recorded_order_is_still_a_diff(harness, tmp_path):
 def test_the_width_of_a_run_comes_from_the_machine_and_keeps_two_cores_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A fixed width of four left a third of the tutorial run in a queue: the committed timings
-    say 3 093 s at four and 1 803 at eight. Measured here on roottest's roostats tutorials, the
-    same selection took 322.8 s at four and 233.8 s at eight."""
+    """A fixed width of four left a third of the tutorial run in a queue: measured on roottest's
+    roostats tutorials, the same selection took 322.8 s at four and 233.8 s at eight."""
     monkeypatch.setattr(cli.os, "cpu_count", lambda: 18)
     assert cli.default_jobs() == 8  # two cores back for the oracle half, and capped at eight
     monkeypatch.setattr(cli.os, "cpu_count", lambda: 6)

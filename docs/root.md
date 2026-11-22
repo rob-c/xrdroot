@@ -479,19 +479,19 @@ NumPy's compiled twister from ROOT's state: ten million draws take about
 0.2 s. `TRandom2` steps a few thousand streams side by side, each started
 further on by a jump matrix (about 0.6 s for ten million); `TRandom1` runs
 RANLUX as the LCG it is on 576-bit numbers, one big-integer multiplication per
-24 numbers (about 0.4 s for a million, where ROOT's loop costs 80 ns a draw).
-The rejection algorithms — `Gaus`, `Poisson`, `Sphere` — work out, for every
-draw, what the number starting there would be and where the next would start,
-then follow those links from the first draw by pointer doubling, so they take
-exactly ROOT's draws without a Python loop per draw: a million `Gaus` in
-about 0.5 s, a million `Poisson(100)` in about 1 s. `Poisson` below a mean of
-25 multiplies draws until the product crosses `exp(-mean)`, about mean + 1
-draws a count, and every product is formed in ROOT's order before it is
-believed, so it costs about 0.2 µs per draw it uses: a million `Poisson(3)` in
-about 1 s, `Poisson(24)` in about 5 s. One number at a time goes through
-ROOT's loop written out in Python instead — a couple of microseconds for a
-`Gaus`. Draws are made ahead and held; `state`, `get_seed` and pickling
-report the generator after exactly the draws handed out.
+24 numbers (about 0.4 s for a million). The rejection algorithms — `Gaus`,
+`Poisson`, `Sphere` — work out, for every draw, what the number starting there
+would be and where the next would start, then follow those links from the
+first draw by pointer doubling, so they take exactly ROOT's draws without a
+Python loop per draw: a million `Gaus` in about 0.5 s, a million
+`Poisson(100)` in about 1 s. `Poisson` below a mean of 25 multiplies draws
+until the product crosses `exp(-mean)`, about mean + 1 draws a count, and
+every product is formed in ROOT's order before it is believed, so it costs
+about 0.2 µs per draw it uses: a million `Poisson(3)` in about 1 s,
+`Poisson(24)` in about 5 s. One number at a time goes through ROOT's loop
+written out in Python instead — a couple of microseconds for a `Gaus`.
+Draws are made ahead and held; `state`, `get_seed` and pickling report the
+generator after exactly the draws handed out.
 
 **Seeds.** A seed is ROOT's: an unsigned 32-bit number to a constructor, an
 unsigned 64-bit one to `set_seed`, cut to 32 bits where ROOT's member is a
@@ -3907,8 +3907,7 @@ tutorials and oracle installation:
 ```console
 python -m tools.tutorials run --tutorials rootsrc-6.40/tutorials --jobs 4 \
     --oracle-prefix ~/.local/root-oracle --xrdroot-src "$PWD/src" \
-    --python "$PWD/.venv/bin/python" --out /tmp/harness/full \
-    --previous tools/tutorials/baseline-timings.json
+    --python "$PWD/.venv/bin/python" --out /tmp/harness/full
 python -m tools.tutorials ratchet /tmp/harness/full/results.json
 ```
 
@@ -3919,19 +3918,20 @@ settings and records the evidence in `timeout-rechecks/`; only a passing rerun
 excuses the concurrent timeout. The per-tutorial timeout is capped at 300 seconds,
 including ROOT's `longtest` tutorials.
 
-`results.json` retains both subprocess wall times, even for cached oracle runs.
-The Markdown and HTML reports show the slowest 30 tutorials, xrdroot/ROOT ratios,
-and changes relative to the supplied timing snapshot. Timings include process
-startup and should be compared on the same machine under similar load. Preserve
-each run's results to retain performance history. After reviewing a full run:
+`results.json` keeps each run's own wall time, ROOT's and xrdroot's alike,
+because that is a fact of the run and what a timeout is judged on. The reports
+rank the slowest 30 tutorials by xrdroot's own wall time: a run's duration
+including process startup is kept so speed work can find its tail, and no
+ratio against ROOT is formed or committed anywhere, since a ratio moves
+whenever either side does. After reviewing a full run:
 
 ```console
 python -m tools.tutorials baseline /tmp/harness/full/results.json
 ```
 
-This writes `tools/tutorials/baseline.json` (tutorial path to status) and
-`baseline-timings.json` (times, ratios, commit and settings). Update both with the
-fix that changes them. Partial or uncompared runs cannot replace the baseline.
+This writes `tools/tutorials/baseline.json` (tutorial path to status). Update it
+with the fix that changes it. Partial or uncompared runs cannot replace the
+baseline.
 
 The public API inventory measures classes and method names independently of
 tutorial execution, grouped by their dictionary's ROOT library:

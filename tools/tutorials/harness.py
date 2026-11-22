@@ -1,11 +1,10 @@
 """Run the tutorials under ROOT and under xrdroot, and judge each pair of runs.
 
-ROOT's runs are the slow half and do not change while ROOT does not, so
-each is cached on disk (``~/.cache/xrdroot-tutorials/oracle/<ROOT
-version>/<key>/``) under a key hashing the tutorial, every file beside it,
-how CI runs it, and its dependencies' keys - an edit to any of those, or a
-new ROOT, is a new key. xrdroot's runs are never cached: they are what is
-being measured.
+ROOT's runs do not change while ROOT does not, so each is cached on disk
+(``~/.cache/xrdroot-tutorials/oracle/<ROOT version>/<key>/``) under a key
+hashing the tutorial, every file beside it, how CI runs it, and its
+dependencies' keys - an edit to any of those, or a new ROOT, is a new key.
+xrdroot's runs are never cached: they are what is being measured.
 
 Tutorials run in waves, each wave's dependencies all in earlier ones, and
 each wave through a pool of workers. A dependent is given the outputs ROOT's
