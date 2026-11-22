@@ -69,3 +69,76 @@ def test_calc_reads_a_value_out_without_printing_it(capsys):
 @pytest.mark.parametrize("expression", ["1+2", "(Double_t) 3 / 2"])
 def test_calc_gives_the_value_back(expression):
     expect((ROOT.gInterpreter.Calc(expression), eval(expression.replace("(Double_t) ", ""))))
+
+
+def test_an_array_of_objects_is_destroyed_as_its_scope_ends(tmp_path, monkeypatch):
+    """``A a[3]`` in a block destroys three times at the closing brace, as C++ does."""
+    source = (
+        "struct A { static int n; A(){n++;} ~A(){n--;} };\n"
+        "int A::n = 0;\n"
+        "int count() {\n{\nA a[3];\n}\nreturn A::n;\n}\n"
+    )
+    text = translate(source, "a.C")
+    namespace: dict[str, object] = {}
+    exec(compile(text, "a.C", "exec"), namespace)
+    expect((namespace["count"](), 0), ("a._destruct()" in text, True))
+
+
+def test_a_pointer_owning_an_array_of_objects_destroys_them_as_its_scope_ends():
+    """``std::make_unique<A[]>(n)`` builds n of them and the pointer destroys them."""
+    text = body(
+        '{\nstd::make_unique<A[]>(3);\n}\n'
+    ) if False else translate(
+        "struct A { static int n; A(){n++;} ~A(){n--;} };\n"
+        "int A::n = 0;\n"
+        "int count() {\n{\nauto a = std::make_unique<A[]>(3u);\n}\nreturn A::n;\n}\n",
+        "b.C",
+    )
+    namespace: dict[str, object] = {}
+    exec(compile(text, "b.C", "exec"), namespace)
+    expect((namespace["count"](), 0), ("make=A" in text, True))
+
+
+def test_an_array_of_numbers_has_no_destructor_to_run():
+    text = body("{\nint a[3];\na[0] = 1;\n}\nprintf(\"after\\n\");")
+    expect(("_destruct()" in text, False))
+
+
+def test_an_array_of_arrays_is_not_destroyed_one_row_at_a_time():
+    """A two-dimensional array of objects keeps plain lists for rows, which say nothing of
+    their elements, so the translator runs no destructor for it rather than raising."""
+    text = translate(
+        "struct A { A(){} ~A(){} };\nvoid t() {\n{\nA a[2][2];\n}\n}\n", "c.C"
+    )
+    expect((text.count("a._destruct()"), 0))
+
+
+def test_letting_an_array_of_objects_go_twice_leaves_it_empty():
+    from xrdroot.cppstd.objects import ObjectArray
+
+    made: list = []
+
+    class Held:
+        def _destruct(self) -> None:
+            made.append(1)
+
+    held = ObjectArray([Held(), Held()])
+    held._destruct()
+    held._destruct()
+    # an element that says nothing of a destructor - a number, or one never built - is left
+    # alone, and an array already emptied has nothing to walk
+    ObjectArray([None, 7])._destruct()
+    ObjectArray()._destruct()
+    expect((len(made), 2), (len(held), 0))
+
+
+def test_a_pointer_owning_an_array_of_numbers_is_an_array_of_zeros():
+    """``std::make_unique<int[]>(2)`` is two ints, which the caller writes into."""
+    text = translate(
+        "int total() {\nauto a = std::make_unique<int[]>(2u);\na[0] = 42;\na[1] = 7;\n"
+        "return a[0] + a[1];\n}\n",
+        "d.C",
+    )
+    namespace: dict[str, object] = {}
+    exec(compile(text, "d.C", "exec"), namespace)
+    expect((namespace["total"](), 49), ("array('int', 2)" in text, True))

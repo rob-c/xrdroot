@@ -256,6 +256,15 @@ class CallEmitter(ExprEmitter):
         if kind.scalar:
             first = self.store(kind, node.args[0]) if node.args else zero(kind)
             return f"Cell({first}, {kind.name!r})", P.POSTFIX
+        if kind.dims:
+            # ``std::make_unique<A[]>(n)``: n default-built objects, which the pointer owns and
+            # destroys as its scope ends - the array ``A a[n]`` is, built the same way.
+            count = self.value(node.args[0]) if node.args else "1"
+            element = kind.element()
+            if element.scalar:
+                return f"array({element.name!r}, {count})", P.POSTFIX
+            made = self.class_expr(element)
+            return f"array({self.spelled(element)!r}, {count}, make={made})", P.POSTFIX
         return f"{self.class_expr(kind)}({self.arguments(node)})", P.POSTFIX
 
     def _smart_alias(self, func: Name) -> bool:

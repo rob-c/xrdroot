@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .ctype import CType
+from .ctype import SMART, CType
 from .dialect import active
 from .emit_expr import _is_null, is_container, zero
 from .emit_stmt import StmtEmitter
@@ -156,16 +156,31 @@ class VariableEmitter(StmtEmitter):
         (see :meth:`statements`); anywhere else - a ``for``'s first clause, an
         ``if``'s condition - it is refused.
         """
-        if ctype is None or ctype.pointer or ctype.reference or ctype.dims:
+        if ctype is None or ctype.pointer or ctype.reference:
             return False
-        guarded = ctype.name in GUARDS or ctype.name in active().guards
-        if not (guarded or self._destructs(ctype.name)):
+        named = self._owned(ctype)
+        if named is None:
+            return False
+        guarded = named.name in GUARDS or named.name in active().guards
+        if not (guarded or self._destructs(named.name)):
             return False
         if self.destructed is None:
             where = "declared in a condition or a for's first part"
             why = f"the local {ctype.name} {decl.name} {where}, whose destructor C++ runs"
             raise self.refuse(f"{why} as that statement ends", decl)
         return True
+
+    def _owned(self, ctype: CType) -> CType | None:
+        """The type whose destructor C++ runs for a local of ``ctype``, which is the local's own
+        unless it is a one-dimensional array of them - ``A a[3]``, or the ``A[]`` a
+        ``std::unique_ptr`` holds, which this kit keeps as the array ``cppstd.objects.ObjectArray``
+        builds. ``None`` for an array of arrays, whose rows this kit keeps as plain lists."""
+        if ctype.dims:
+            return ctype.element() if len(ctype.dims) == 1 else None
+        inner = ctype.args[0] if ctype.name in SMART and ctype.args else None
+        if isinstance(inner, CType) and inner.dims:
+            return inner.element() if len(inner.dims) == 1 else None
+        return ctype
 
     def _destructs(self, name: str) -> bool:
         """Does the macro's class ``name`` have a destructor with a body?"""

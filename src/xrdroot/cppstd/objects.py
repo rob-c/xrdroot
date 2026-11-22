@@ -116,13 +116,35 @@ def _fill(out: Any, init: Any) -> None:
         _fill(row, values)
 
 
-def _object_array(dims: tuple[int, ...], init: Any, make: Callable[..., Any] | None) -> list[Any]:
+class ObjectArray(list[Any]):
+    """A C array of objects: ``A a[3]``, and what a ``std::unique_ptr<A[]>`` holds.
+
+    C++ destroys an array's elements as the array's scope ends, the last one
+    first, which is what :meth:`_destruct` does - the translated local is put
+    in a ``try`` whose ``finally`` runs it (:mod:`xrdroot.pycxx.emit_vars`). The
+    elements are taken out as they are destroyed, as the storage C++ gives
+    back with them, so a second call has nothing left to do.
+    """
+
+    __slots__ = ()
+
+    def _destruct(self) -> None:
+        while self:
+            item = self.pop()
+            destruct = getattr(item, "_destruct", None)
+            if destruct is not None:
+                destruct()
+
+
+def _object_array(
+    dims: tuple[int, ...], init: Any, make: Callable[..., Any] | None
+) -> list[Any]:
     out = _filled(dims, make or (lambda: None))
     for index, value in enumerate(list(init or ())[: dims[0]]):
         # ``TString names[2] = {"a", "b"}``: each literal made into the element's class.
         literal = isinstance(value, (str, int, float))
         out[index] = make(value) if make is not None and literal else value
-    return out
+    return ObjectArray(out) if len(dims) == 1 else out
 
 
 #: What an argument for an integer parameter may be: a Python or a NumPy integer.
