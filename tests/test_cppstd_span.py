@@ -40,7 +40,7 @@ def test_a_span_indexes_iterates_and_counts_what_it_was_given():
     view = span([4.0, 5.0])
     assert len(view) == 2
     assert not view.empty()
-    assert [each for each in view] == [4.0, 5.0]
+    assert list(view) == [4.0, 5.0]
 
 
 def test_the_element_type_is_forgotten_so_one_class_serves_both_spellings():

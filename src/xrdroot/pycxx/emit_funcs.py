@@ -17,8 +17,8 @@ from typing import Any
 from .base import Out, P
 from .ctype import CType
 from .dialect import active
-from .emit_vars import Context, VariableEmitter, _mentions, addressable
 from .emit_expr import is_container
+from .emit_vars import Context, VariableEmitter, _mentions, addressable
 from .labels import lower
 from .nodes import Capture, Expr, Function, InitList, Lambda, Literal, Name, Param, Unary, VarDecl
 from .nrvo import candidate
