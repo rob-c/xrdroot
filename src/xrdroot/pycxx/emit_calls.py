@@ -19,7 +19,7 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from .base import Out, P
-from .ctype import SMART, CType
+from .ctype import SMART, STD_TYPEDEFS, CType
 from .cursor import looks_like_type
 from .dialect import active
 from .emit_expr import ExprEmitter, _copy_store, _is_null, _lvalue, zero
@@ -150,6 +150,9 @@ class CallEmitter(ExprEmitter):
     def library_call(self, func: Name, node: Call) -> Out:
         """A function the program did not declare: an inherited member's, a C text writer's
         that has to give its character array its text back, or the library's own call."""
+        cast = self._typedef_cast(func, node)
+        if cast is not None:
+            return cast, P.POSTFIX
         inherited = self.inherited_call(func)
         if inherited is not None:
             return f"{inherited}({self.arguments(node)})", P.POSTFIX
@@ -157,6 +160,14 @@ class CallEmitter(ExprEmitter):
         if written is not None:
             return written, P.POSTFIX
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def _typedef_cast(self, func: Name, node: Call) -> str | None:
+        """``std::size_t(1)`` or ``uint8_t(x)``: written as a call, a standard typedef's name
+        is the scalar cast it is in C++ - ``int(1)`` here - and not a name of the runtime."""
+        name = "::".join(func.parts)
+        if func.targs or len(node.args) != 1 or name not in STD_TYPEDEFS:
+            return None
+        return self.store(CType(STD_TYPEDEFS[name]), node.args[0])
 
     def text_written(self, func: Name, node: Call) -> str | None:
         """``sscanf(line, "%s %d", name, &n)`` where ``name`` is a ``char[]`` the translation

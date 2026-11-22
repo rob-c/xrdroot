@@ -18,6 +18,7 @@ from .base import Out, P
 from .ctype import CType
 from .dialect import active
 from .emit_vars import Context, VariableEmitter, _mentions, addressable
+from .emit_expr import is_container
 from .labels import lower
 from .nodes import Capture, Expr, Function, InitList, Lambda, Literal, Name, Param, Unary, VarDecl
 from .nrvo import candidate
@@ -191,10 +192,11 @@ class FunctionEmitter(VariableEmitter):
             with self.out.indented():
                 self.out.line(f"{own.py} = len({array.py})", value.where)
 
-    def _wrap_parameters(self, func: Function) -> None:
+    def _wrap_parameters(self, func: Function | Lambda) -> None:
         """A parameter passed by value whose address is taken goes into a cell on entry; one
         of a dialect's string classes handed a string is built from it, as C++ converts the
-        argument."""
+        argument; and one of a standard container handed the list a braced list becomes is
+        that container, which is the ``initializer_list`` constructor C++ picks."""
         strings = active().string_classes
         for param in func.params:
             symbol = self.lookup(param.name or "")
@@ -203,6 +205,10 @@ class FunctionEmitter(VariableEmitter):
             elif symbol is not None and param.ctype.name in strings and not param.ctype.pointer:
                 made = self.host_name(param.ctype.name.split("::"))
                 line = f"if isinstance({symbol.py}, str): {symbol.py} = {made}({symbol.py})"
+                self.out.line(line, param.where)
+            elif symbol is not None and _receives_a_list(param.ctype):
+                made = self.class_expr(param.ctype)
+                line = f"if isinstance({symbol.py}, list): {symbol.py} = {made}({symbol.py})"
                 self.out.line(line, param.where)
 
     def _declare_scopes(self, context: Context, head: int, node: Any) -> None:
@@ -275,6 +281,7 @@ class FunctionEmitter(VariableEmitter):
         """A lambda's statements, with no loop around them for ``break`` to leave."""
         head = self.out.mark()
         self.given_defaults()
+        self._wrap_parameters(node)
         lower(node.body, self.refuse)
         self.loops, saved = [], self.loops
         try:
@@ -303,6 +310,11 @@ class FunctionEmitter(VariableEmitter):
             if symbol is not None and symbol.kind in ("local", "param") and not symbol.cell:
                 found.append(f"{symbol.py}={symbol.py}")
         return found
+
+
+def _receives_a_list(ctype: CType) -> bool:
+    """Is a parameter of this type built from a braced list: a standard container, by value?"""
+    return is_container(ctype) and not ctype.pointer and not ctype.dims and not ctype.reference
 
 
 def _sized_by(param: Param, name: str) -> bool:
