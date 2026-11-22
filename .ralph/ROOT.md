@@ -1693,6 +1693,37 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   average of 13-17; ruff clean, mypy 1023 files, maintainability 31 266 functions, components 1023 modules /
   0 undeclared.
 
+## Round 56's close (recorded here for the next iteration)
+
+- Base `9f4395db`, closed at **`4f884ec7`**. **One commit, +1 gtest PASS (60 -> 61)**, and - more valuable - **the
+  gtest kind measured whole for the first time since round 53: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of
+  350 (`/tmp/r56/gtest`, `--jobs 3`). The five it gained over round 53's 56 are rounds 53-56's, **and none was lost**:
+  that is the `W0-63` check across four rounds that touched the destructor machinery and the `RDataFrame`/RNTuple paths.
+- **`4f884ec7`: an array of objects is destroyed as its scope ends.** C++ destroys an array's elements where the
+  array's scope ends, last first; this kit built `A a[3]` as a plain Python list, so nothing ran their destructors -
+  `A::n` stayed 3 after the block. It is `cppstd.objects.ObjectArray` now (a list whose `_destruct` destroys each
+  element and takes it out as it goes), `pycxx`'s `_destructible` asks a one-dimensional array's *element* instead of
+  refusing every array, and the local lands in the `try`/`finally` a scalar local already used. **`testMake_unique`
+  PASSES** - its `std::make_unique<A[]>(3u)` had been emitted as `A(3)`, the array form lost and its size taken as a
+  constructor argument; `_make` now builds `array('A', n, make=A)` (and `array('int', n)` for an arithmetic element),
+  and `_owned` reads the array back out of the `unique_ptr<A[]>` the dialect infers, so the pointer's scope end
+  destroys the elements too.
+- **The full gate caught one contract, and that is the round's process lesson.** `ObjectArray` in
+  `cppstd.objects.__all__` broke `tests/test_cppstd_objects.py`'s rule that every name there is one the legacy runtime
+  re-exports (`xrdroot.cint.runtime.objects` has no `ObjectArray`) - 1 failed, 13 024 passed. It is a runtime data
+  type, not a name a translation writes, so it stays out of `__all__`. Then part 2 of the gate named **one uncovered
+  line** (`emit_calls.py:265`, the arithmetic `make_unique<int[]>` arm) that no unit test reached although the target
+  program uses it - a second test covered it. Both are `W0-63` and `W0-112` in one round.
+- Queued: **`W0-139`** (`ntuple_extended` 133 s, `testBulkApiMultiple` TIMEOUT - the bulk-fill pathology near the
+  wall) and **`W0-140`** (an array of *arrays* of objects is still not destroyed; one dimension is done).
+- Worktree discipline (`W0-138`): the round opened `/tmp/ralph-round-202611220140/main` off `feat/root-testsuite`'s
+  tip, integrated and gated there, landed the commits on `feat/root-testsuite` by fast-forward, and removed the
+  worktree and its branch. **`W0-138`'s question - whether `main` is meant to be the trunk - is still open**, so
+  nothing was pushed.
+- Gates: **`TOTAL 119714 0 30014 0 100%`** by the two-command decomposition (13 026 passed, then 44) at a load
+  average of 12-31; ruff clean, mypy 1023 files, maintainability 31 274 functions, components 1023 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1762,6 +1793,11 @@ For the round's work, the evidence is, in this order:
   load average of 13-17; ruff clean, mypy 1023 files, maintainability 31 266 functions, components 1023 modules /
   0 undeclared. `/tmp/r55/gate1.log` is the first command's output, run in the round's own worktree
   (`/tmp/ralph-round-202611220111/main`, since removed - the commit is on `feat/root-testsuite`).
+- Round 56's result of them, at `4f884ec7`: **`TOTAL 119714 0 30014 0 100%`** - 13 026 passed then 44 passed - at a
+  load average of 12-31; ruff clean, mypy 1023 files, maintainability 31 274 functions, components 1023 modules /
+  0 undeclared. `/tmp/r56/gate3.log` is the first command's output (an earlier run, `/tmp/r56/gate1.log`, was the one
+  that failed on `cppstd.objects.__all__` and named the uncovered line), run in the round's own worktree
+  (`/tmp/ralph-round-202611220140/main`, since removed - the commit is on `feat/root-testsuite`).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -1978,6 +2014,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 53 | `6f1b71a9` | **two commits**: `ROOT::RangeStaticCast`/`ROOT::RangeDynCast` over any range, a C array of pointers included, with a class the program declared found in the interpreter's table (`7f90083d`); `TDataType::GetType(typeid(T))` over `EDataType`'s codes, with them under the bare names a macro writes (`f93144fd`) | **gtest +2: `gtest/core/foundation/testRRangeCast` and `gtest/core/meta/testTDataType` PASS** (`/tmp/r53/corefm`), the kind **56 -> 58**; **the gtest kind measured whole at HEAD** (`/tmp/r53/gtest`): 56 / 216 / 76 / 2 of 350, nothing lost | 2: `W0-131` closed (the ranking is current and has no name cluster; `/tmp/r53/one-case.md` names the 47 programs one failing case from a PASS), `W0-133` (`Calc` echoes where ROOT is silent) |
 | 54 | `2a668e00` | **two commits**: a qualified static call `T::f(...)` asks the dialect's `method_returns`, so an `auto` local a factory gives has a type, and `RNTupleWriter` is a guard with the `_destruct` one needs (`98df6a2e`); `TInterpreter::Calc` reads a value out without cling's echo (`2ce1f188`) | **gtest +1: `gtest/tree/ntuple/ntuple_randomaccess` PASSES** (`/tmp/r54/ntuple`), the kind **58 -> 59**; nothing lost in the 49 `gtest/tree/ntuple/*` or the 26 `gtest/core/*` (`/tmp/r54/core`) | 3: `W0-133` closed, `W0-134` (`GetClusterDescriptor`), `W0-135` (three `TFile`s in one scope), `W0-136` (another session's stopped processes starve a whole-kind run) |
 | 55 | `127c20e2` | **one commit**: the IO-feature bits a ROOT 6.40 basket records - `ROOT.EIOFeatures`, `ROOT::Experimental`'s two enums and `TBasket::kIOBitCount`/`EIOBits::kSupported`, every number measured against the oracle (`d1752d03`) | **gtest +1: `gtest/tree/tree/testTIOFeatures` PASSES** (`/tmp/r55/areas`: 73 tests of `gtest/hist/*` + `gtest/tree/tree/*`), the kind **59 -> 60**; nothing lost. Gate `TOTAL 119689 0 30000 0 100%` | 2: `W0-137` (the first whole figure for `roottest/root/{hist,tree}/*`: 313 tests, 138 PASS), `W0-138` (**the round's own step 0 assumes a `main` that is 238 commits behind this branch**) |
+| 56 | `9f4395db` | **one commit**: an array of objects is destroyed as its scope ends - `cppstd.objects.ObjectArray`, `_destructible` asks the element, and `std::make_unique<A[]>(n)` builds the array `A a[n]` is (`4f884ec7`) | **gtest +1: `gtest/core/foundation/testMake_unique` PASSES**, and **the kind measured whole: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r56/gtest`) - five gained over round 53's 56, **none lost**. Gate `TOTAL 119714 0 30014 0 100%` | 2: `W0-139` (the bulk-fill tests near the 300 s wall: `ntuple_extended` 133 s, `testBulkApiMultiple` TIMEOUT), `W0-140` (an array of *arrays* of objects is still not destroyed) |
 
 ## Notes
 
