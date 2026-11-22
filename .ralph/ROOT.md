@@ -1875,7 +1875,8 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   as a *staged revert*. Recovered with `git reset` + `git checkout -- <the worker's paths>`; **use `git worktree add -d`**.
 - Worktree discipline (`W0-138`): the round worked off `feat/root-testsuite`'s tip, gated there, and **pushed nothing** -
   `W0-138` is still the operator's decision.
-- Evidence kept: `/tmp/r61/{gtest,knn2,reb,net2,pmf,romb-base,base,head,work-knn,gate1.log,gate1b.log,w01*,w01-brief.md}`.
+- **The roottest risk was reasoned down to one test and then measured**: a lambda whose parameter is a standard container *by value* is the only shape the conversion can touch, and a grep of `roottest/`, `test/` and `tutorials/` finds exactly three sources - `roottest/root/multicore/`'s `tSequentialExecutor.cpp`, `tThreadExecutor.cpp` and `executorTests.hxx`. The only one with a PASS at stake is `roottest/root/multicore/tSequentialExecutor-build`, and it still PASSES (`/tmp/r61/seq`). The other 30 matches are references, which `_receives_a_list` excludes.
+- Evidence kept: `/tmp/r61/{gtest,knn2,reb,net2,pmf,romb-base,base,head,work-knn,seq,gate1.log,gate1b.log,w01*,w01-brief.md}`.
 
 ## Checklist (per round)
 
