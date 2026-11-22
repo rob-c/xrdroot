@@ -31,3 +31,4 @@ venv/
 .ralph/*.log
 .ralph/*.md
 !.ralph/ROOT.md
+*.xrdlib
