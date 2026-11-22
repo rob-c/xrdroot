@@ -1899,13 +1899,11 @@ class WritableFile(WritableDirectory):
             if self._owned:
                 self._handle.close()
 
-    def _assemble(self) -> None:
-        """Everything that could only be placed once the objects were in.
+    def _finish_containers(self) -> None:
+        """Give each tree and ntuple its own record, each one once.
 
-        Each tree's record is written once and the streamer info only when a class new since
-        the last one has been used, so assembling twice - a checkpoint and then the close, or
-        two ``Write`` calls - writes nothing twice. The free list and the header are written
-        every time, each replacing the one before it, as ROOT's own ``WriteFree`` does.
+        A record written twice is a second key, so a checkpoint and the close that follows it
+        write it once between them: what is in ``_finished`` has already been written.
         """
         for tree in self._trees:
             if id(tree) not in self._finished:
@@ -1915,6 +1913,16 @@ class WritableFile(WritableDirectory):
             if id(ntuple) not in self._finished:
                 self._finished.add(id(ntuple))
                 ntuple._finish()  # likewise its pages; now its header, footer and anchor
+
+    def _assemble(self) -> None:
+        """Everything that could only be placed once the objects were in.
+
+        Each tree's record is written once and the streamer info only when a class new since
+        the last one has been used, so assembling twice - a checkpoint and then the close, or
+        two ``Write`` calls - writes nothing twice. The free list and the header are written
+        every time, each replacing the one before it, as ROOT's own ``WriteFree`` does.
+        """
+        self._finish_containers()
         if self._streamer_record is None or self._streamers_for != len(self._used):
             self._streamer_record = self._write_streamers()
             self._streamers_for = len(self._used)
