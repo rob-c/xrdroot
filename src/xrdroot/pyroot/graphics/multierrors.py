@@ -52,22 +52,6 @@ class _Layer(TAttLine, TAttFill):
         return self._held
 
 
-class _WrittenObject:
-    """What a graph this session wrote is read back from, under the key it was written to.
-
-    ``TFile::Get`` in ROOT reads the record the file has just been given, and the record's
-    own reader here is made only when a file is opened to read - so what answers is the
-    graph the record was made from, exactly as the kit already does for a class a program
-    declared. A file reopened from disk is read by its own bytes, as it always is.
-    """
-
-    def __init__(self, written: Any) -> None:
-        self._written = written
-
-    def read(self) -> Any:
-        return self._written
-
-
 class TGraphMultiErrors(TGraph):
     """``TGraphMultiErrors(n, x, y, exl, exh, eyl, eyh[, mode])``: a graph of layers.
 
