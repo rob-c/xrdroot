@@ -351,12 +351,27 @@ class Program:
         self._buffers()
 
     def _buffers(self) -> None:
-        """The names handed to a method the dialect says writes into a buffer it is given."""
-        methods = active().buffer_methods
+        """The names handed to a method - or to one of the dialect's ``buffer_functions`` - that
+        the dialect says writes into a buffer it is given."""
         for _, _, body in self.bodies():
-            self.buffers |= {arg.last for node in walk(body) if isinstance(node, Call)
-                             and isinstance(node.func, Member) and node.func.name in methods
-                             for arg in node.args if isinstance(arg, Name)}  # fmt: skip
+            self.buffers |= self._method_buffers(body) | self._function_buffers(body)
+
+    @staticmethod
+    def _method_buffers(body: Node) -> set[str]:
+        """The ``char`` arrays handed to a method that writes into one: ``t.Branch(s)``."""
+        methods = active().buffer_methods
+        return {arg.last for node in walk(body) if isinstance(node, Call)
+                and isinstance(node.func, Member) and node.func.name in methods
+                for arg in node.args if isinstance(arg, Name)}  # fmt: skip
+
+    @staticmethod
+    def _function_buffers(body: Node) -> set[str]:
+        """Those handed to one of the dialect's free functions that does: ``memset(buf, 0, n)``."""
+        functions = active().buffer_functions
+        first = (node.args[0] if node.args else None for node in walk(body)
+                 if isinstance(node, Call) and isinstance(node.func, Name)
+                 and node.func.last in functions)  # fmt: skip
+        return {given.last for given in first if isinstance(given, Name)}
 
     def analyse(self, func: Function) -> None:
         """A function made after the rest were looked over - an instance of a template - looked
@@ -405,10 +420,17 @@ class Program:
             if known is not None:
                 return known
             return self._user_positions(self._methods(func.name), len(call.args))
-        if isinstance(func, Name) and len(func.parts) == 1:
-            if func.last in self.classes:
-                return self.constructor_positions(func.last, len(call.args))
-            return self._user_positions(self.overloads(func.last), len(call.args))
+        if isinstance(func, Name):
+            # ``TBufferJSON::FromJSON(obj, json)``: a qualified static call takes its first
+            # argument by reference just as ``obj.FromJSON(...)`` does, and ROOT's table is
+            # keyed by the name either way.
+            known = active().out_parameters.get((func.last, len(call.args)))
+            if known is not None:
+                return known
+            if len(func.parts) == 1:
+                if func.last in self.classes:
+                    return self.constructor_positions(func.last, len(call.args))
+                return self._user_positions(self.overloads(func.last), len(call.args))
         return ()
 
     def _methods(self, name: str) -> list[Function]:

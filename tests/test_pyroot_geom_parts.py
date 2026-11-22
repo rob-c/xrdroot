@@ -78,17 +78,23 @@ def test_materials_are_listed_with_the_geometry_and_vacuums_have_huge_lengths() 
     expect((vacuum.GetRadLen(), 1e30), (aluminium.GetIntLen(), 39.0), (aluminium.GetName(), "Al"),
            (carbon.GetZ(), 6.0), (carbon.GetIndex(), 2), (geom.GetMaterial("Al"), aluminium),
            (geom.GetMaterial(0), vacuum), (geom.GetMaterial(9), None),
-           (aluminium.GetTransparency(), 40), (vacuum.IsMixture(), False))  # fmt: skip
+           (aluminium.GetTransparency(), 40), (vacuum.IsMixture(), False),
+           (carbon.GetElement(0).GetName(), "C"), (carbon.GetNelements(), 1),
+           (aluminium.GetElement(), None))  # fmt: skip
 
 
 def test_a_mixture_is_its_elements_by_weight() -> None:
+    oxygen = ROOT.TGeoElement("O", "oxygen", 8, 16.0)
     mylar = ROOT.TGeoMixture("mylar", 3, 1.39)
     mylar.AddElement(12.01, 6, 0.625)
     mylar.DefineElement(1, 1.008, 1, 0.042)
-    mylar.AddElement(ROOT.TGeoElement("O", "oxygen", 8, 16.0), 0.333)
+    mylar.AddElement(oxygen, 0.333)
     expect((mylar.GetNelements(), 3), (mylar.IsMixture(), True),
            (mylar.GetA(),
-           pytest.approx((12.01 * .625 + 1.008 * .042 + 16 * .333) / 1.0)))  # fmt: skip
+           pytest.approx((12.01 * .625 + 1.008 * .042 + 16 * .333) / 1.0)),
+           (mylar.GetWmixt().tolist(), [0.625, 0.042, 0.333]),
+           (mylar.GetElement(2), oxygen), (mylar.GetElement(0), None),
+           (mylar.GetElement(3), None), (mylar.GetElement(-1), None))  # fmt: skip
 
 
 def test_an_element_prints_as_root_prints_it(capsys: pytest.CaptureFixture[str]) -> None:

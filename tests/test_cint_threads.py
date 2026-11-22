@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import datetime
+import os
 import threading
 
 import pytest
 
 from cintfake import fake
+from xrdroot.cppstd.containers import std
 from xrdroot.pycint import translate
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycint.runtime import (
@@ -150,3 +152,64 @@ def test_a_thread_has_an_id_and_a_detached_or_empty_one_has_none() -> None:
     thread().join()
     assert this_thread.get_id() == threading.get_ident()
     getattr(this_thread, "yield")()
+
+
+CONCURRENCY = r"""
+#include <thread>
+int doubled(int k) { return 2 * k; }
+struct AddOne { int operator()(int k) const { return k + 1; } };
+void t() {
+  int total = 0;
+  std::thread by_function([]{ printf("lambda\n"); });
+  std::thread by_functor([]{ printf("functor\n"); });
+  by_function.join(); by_functor.join();
+  printf("%d %d\n", doubled(2), AddOne()(2));
+  printf("%u\n", std::thread::hardware_concurrency() > 0);
+}
+"""
+
+
+def test_hardware_concurrency_counts_the_processors_and_zero_when_it_cannot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``std::thread::hardware_concurrency()`` is the machine's, as C++'s: 0 if unknown."""
+    monkeypatch.setattr(os, "cpu_count", lambda: 7)
+    assert thread.hardware_concurrency() == 7
+    monkeypatch.setattr(os, "cpu_count", lambda: None)
+    assert thread.hardware_concurrency() == 0
+
+
+def test_the_std_namespace_has_thread_which_is_the_class_a_local_is_made_of() -> None:
+    """``std::thread::hardware_concurrency()`` translates to ``ROOT.std.thread.…``."""
+    assert std.thread is thread
+    assert std.thread.hardware_concurrency() > 0
+    assert "std.thread.hardware_concurrency()" in translate(CONCURRENCY, "t.C")
+
+
+def test_a_thread_may_be_handed_a_lambda_a_function_or_a_function_object(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """All three are what C++ lets a thread be started from; ``join()`` waits for each."""
+    root = fake()
+    root.std.thread = thread
+    run_source(CONCURRENCY, "t.C", root=root)
+    lines = capsys.readouterr().out.split()
+    assert sorted(lines[:2]) == ["functor", "lambda"] and lines[2:] == ["4", "3", "1"]
+
+
+def test_a_thread_still_joinable_as_its_scope_ends_refuses_rather_than_detaching() -> None:
+    """C++'s destructor of a joinable thread calls ``std::terminate``; this refuses instead."""
+    done, started = threading.Event(), threading.Event()
+    running = thread(started.wait)
+    started.set()
+    with pytest.raises(RuntimeError, match="std::terminate"):
+        running._destruct()
+    running.join()
+    running._destruct()  # joined: the thread is no longer joinable, so nothing terminates
+    detached = thread(done.wait)
+    with pytest.raises(RuntimeError, match="join"):
+        detached._destruct()
+    detached.detach()
+    detached._destruct()
+    done.set()
+    thread()._destruct()  # a default-made thread is not joinable either

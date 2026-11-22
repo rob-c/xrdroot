@@ -130,6 +130,10 @@ IS_REFERENCED = 1 << 4
 BYPASS_STREAMER = 1 << 12
 NO_MEMBER_WISE = 1 << 17
 
+#: A ``TObject``'s version and the two words every object carries: what :meth:`Buffer.referenced`
+#: reads in one go, every object of every tree being one.
+_TOBJECT = struct.Struct(">HII")
+
 _U8 = struct.Struct(">B")
 _I8 = struct.Struct(">b")
 _U16 = struct.Struct(">H")
@@ -219,7 +223,17 @@ class Buffer:
         return len(self.data) - (self.pos - self.offset)
 
     def _take(self, form: struct.Struct) -> Any:
-        return self.scalars(form)[0]
+        """The one value ``form`` covers, read where the cursor is.
+
+        Not the tuple :meth:`scalars` gives, which is for a run of members: a member read on
+        its own is the commonest read there is - a whole object walked member by member
+        takes a million of them a tree - and the tuple it would make costs as much again.
+        """
+        index = self.pos - self.offset
+        if index + form.size > len(self.data):
+            raise FormatError(f"the record ends {form.size} bytes before it said it would")
+        self.pos += form.size
+        return form.unpack_from(self.data, index)[0]
 
     def scalars(self, form: struct.Struct) -> tuple[Any, ...]:
         """Every value ``form`` covers, for a reader that knew them all when it was built.
@@ -373,10 +387,21 @@ class Buffer:
 
     def referenced(self) -> tuple[int, int, int | None]:
         """A ``TObject`` and, when a ``TRef`` may point at it - ``kIsReferenced`` - which of the
-        file's ``ProcessID`` records numbered it; ``None`` for an object no reference names."""
-        self.u16()
-        unique, bits = self.u32(), self.u32()
-        return unique, bits, self.u16() if bits & IS_REFERENCED else None
+        file's ``ProcessID`` records numbered it; ``None`` for an object no reference names.
+
+        The two words come back exactly as the file wrote them. The bits are not the reader's to
+        change here: these members are read back out and written again as they came in, so a
+        word with ROOT's ``kIsOnHeap|kNotDeleted`` in it would be a word the file never held.
+        ROOT's reader sets those two bits on the *object* it fills (``TObject::Streamer``), which
+        is :meth:`xrdroot.pyroot.core.objects.TObject._bitword` here.
+
+        The identifier is the number alone for the same reason the process is handed back
+        beside it rather than folded into its top byte: the index means nothing until the file
+        it was written in is known, and it is that file's records that name the process.
+        """
+        _version, unique, bits = self.scalars(_TOBJECT)
+        process = self.u16() if bits & IS_REFERENCED else None
+        return unique, bits, process
 
     def named(self) -> tuple[str, str]:
         """A ``TNamed``: the name and title every ROOT object carries."""

@@ -15,7 +15,8 @@ import re
 import time
 from typing import Any
 
-__all__ = ["chrono", "c_time", "Duration", "TimePoint"]
+__all__ = ["chrono", "c_time", "formatted_time", "gmtime", "localtime", "strftime", "tm",
+           "Duration", "TimePoint"]  # fmt: skip
 
 #: ``std::ratio``'s names, and the seconds one tick of each is.
 RATIOS = {"nano": 1e-9, "micro": 1e-6, "milli": 1e-3, "centi": 1e-2, "deci": 1e-1}
@@ -158,3 +159,74 @@ def c_time(where: Any = None) -> int:
     if where is not None and hasattr(where, "value"):
         where.value = now
     return now
+
+
+class tm:
+    """C's ``struct tm``: a broken-down calendar time, with ``strftime``'s fields.
+
+    ``tm_year`` counts from 1900 and ``tm_mon`` from January being 0, as C's do - which is why
+    a program writes ``tt->tm_year + 1900`` for the year it prints.
+    """
+
+    __slots__ = ("tm_sec", "tm_min", "tm_hour", "tm_mday", "tm_mon", "tm_year", "tm_wday",
+                 "tm_yday", "tm_isdst")
+
+    def __init__(self, fields: time.struct_time) -> None:
+        self.tm_sec, self.tm_min, self.tm_hour = fields.tm_sec, fields.tm_min, fields.tm_hour
+        self.tm_mday, self.tm_mon, self.tm_year = fields.tm_mday, fields.tm_mon - 1, \
+            fields.tm_year - 1900
+        self.tm_wday, self.tm_yday, self.tm_isdst = fields.tm_wday, fields.tm_yday - 1, \
+            fields.tm_isdst
+
+    def __repr__(self) -> str:
+        return (f"<tm {self.tm_year + 1900}-{self.tm_mon + 1:02d}-{self.tm_mday:02d} "
+                f"{self.tm_hour:02d}:{self.tm_min:02d}:{self.tm_sec:02d}>")
+
+
+def _when(t: Any) -> float:
+    """The seconds a ``time_t *`` points at, or the clock's own now when it points nowhere."""
+    if t is None:
+        return time.time()
+    return float(t.value if hasattr(t, "value") else t)
+
+
+def localtime(t: Any = None) -> tm:
+    """``localtime``: the calendar time in the machine's own zone."""
+    return tm(time.localtime(_when(t)))
+
+
+def gmtime(t: Any = None) -> tm:
+    """``gmtime``: the calendar time in UTC."""
+    return tm(time.gmtime(_when(t)))
+
+
+def formatted_time(fmt: Any, when: tm) -> str:
+    """The time ``fmt`` spells, which ``strftime`` gives the character array it was handed."""
+    return time.strftime(str(fmt), _struct_of(when))
+
+
+def strftime(buffer: Any, size: Any, fmt: Any, when: tm) -> int:
+    """``strftime(buf, size, fmt, tt)``: the time formatted into the character array ``size``
+    allows, and how many characters were written.
+
+    A ``char buf[N]`` is a Python ``str`` here, which no write reaches in place, so the text is
+    what this returns and the translation gives it to the variable - the caller hands the
+    buffer over and keeps what comes back.
+    """
+    text = formatted_time(fmt, when)[: max(int(size) - 1, 0)]
+    where = buffer.value if hasattr(buffer, "value") else buffer
+    if isinstance(where, str) or where is None:
+        # A char[] the translation holds as text: the caller gives the variable what this
+        # returns, as it does for ``sprintf`` and ``fgets``.
+        return text  # type: ignore[return-value]
+    for at, char in enumerate(text):
+        where[at] = ord(char)
+    return len(text)
+
+
+def _struct_of(when: tm) -> time.struct_time:
+    """The ``time.struct_time`` a ``tm`` holds, for Python's own ``strftime``."""
+    return time.struct_time((
+        when.tm_year + 1900, when.tm_mon + 1, when.tm_mday, when.tm_hour, when.tm_min,
+        when.tm_sec, when.tm_wday, when.tm_yday + 1, when.tm_isdst,
+    ))  # fmt: skip

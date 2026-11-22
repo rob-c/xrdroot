@@ -11,6 +11,8 @@ from typing import Any
 
 import numpy as np
 
+from ...cppstd.buffers import CharBuffer
+from ...cppstd.buffers import text_into as text_into
 from ...cppstd.objects import AN_OBJECT as AN_OBJECT
 from ...cppstd.objects import DTYPES as DTYPES
 from ...cppstd.objects import INTEGRAL as INTEGRAL
@@ -45,6 +47,7 @@ from ..errors import Refusal
 
 __all__ = [
     "array",
+    "char_array",
     "convertible",
     "function_template",
     "UNGIVEN",
@@ -74,6 +77,29 @@ __all__ = [
     "release",
     "set_heuristic",
 ]
+
+
+def char_array(shape: Any, init: Any = None) -> Any:
+    """``char name[2][8]``: the characters as one buffer of the shape declared.
+
+    A ``char[N][M]`` is N rows of M bytes, not an array of C strings: ``name[i]``
+    is a view of row ``i`` - the C string that row holds, which ``strcpy`` and
+    ``&name[i][0]`` write in place - and ``name[i][j]`` its j-th byte. Each
+    string of ``init`` is copied into a row of its own, NUL and all, as C
+    initialises it; a braced list of characters fills the buffer in its own
+    order, since that is the order C lays them down in.
+    """
+    out = np.zeros(tuple(int(size) for size in shape), dtype=np.int8).view(CharBuffer)
+    if init is None:
+        return out
+    flat = out.reshape(-1)
+    rows = flat.reshape(-1, out.shape[-1])
+    for index, item in enumerate(_flat(init)):
+        if isinstance(item, str):
+            text_into(rows[index], item)
+        else:
+            flat[index] = int(item)
+    return out
 
 
 def inherited(obj: Any, name: str, host: Any) -> Any:

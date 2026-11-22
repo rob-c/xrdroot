@@ -26,6 +26,7 @@ from .errors import FormatError, UnsupportedFeatureError
 from .plugins import lookup, lookup_loaded
 from .rootarrays import ARRAYS as ARRAYS
 from .streamers import read_layouts, reconcile
+from .winfo import INFOS
 
 if TYPE_CHECKING:
     from .file import Source
@@ -44,6 +45,37 @@ BYTE_COUNT = 4
 #: rather than object by object: all the keys, then all the values.
 MEMBER_WISE = 0x4000
 
+#: ``TObject::kIsOnHeap | kNotDeleted``: the two bits a ``TObject`` carries for an object made
+#: with ``new`` and not yet deleted. A file never holds them - ``TObject::Streamer`` masks them
+#: out when it writes, since where the reading process made the object is not the writer's to
+#: say - so ROOT's reader sets them on the object it fills, and so does this one: the oracle
+#: reading a ``TClonesArray`` of ``TNamed`` prints ``50331648`` for a word the file holds as 0.
+HEAP_BITS = 0x03000000
+
+#: ``TObject::kIsReferenced``: the object is one a ``TRef`` may point at, which the word the
+#: file holds says with this bit.
+IS_REFERENCED = 1 << 4
+
+#: The bits of ``fUniqueID`` that hold the object's own number; the byte above them is the
+#: reading process's. ROOT's writer stores the number alone - where an object was numbered is
+#: not something the writing process can say - and its reader folds the byte in, so a
+#: ``fUniqueID`` read back is ``((index + 1) << 24) | number``: the oracle prints ``16777225``
+#: for a file holding ``9``, and ``0`` for an object no process ever numbered.
+UID_MASK = 0x00FFFFFF
+
+#: The byte of ``fUniqueID`` that names the process an object was numbered in, above the
+#: number itself: zero when nothing ever numbered the object.
+PID_MASK = 0xFF000000
+
+#: ``TBufferIO::GetPidOffset``: the byte ROOT's reader adds, the index of the ``ProcessID``
+#: record the object was numbered in plus one. It is the index plus one rather than the index
+#: because zero has to mean "no process", which is what an unreferenced object's byte is. A
+#: file whose objects the reader itself numbers holds one ``ProcessID`` record, index 0, so
+#: this reader stamps ``1`` on an identifier that arrived without a byte; one written where a
+#: second process was at work stores the byte of the process that numbered the object, and
+#: that byte is the file's own answer (see :func:`_numbered`).
+PID_OFFSET = 1
+
 #: The layouts the program's own classes have in memory, by name, as ROOT's dictionary holds
 #: them. A file written by another vintage of a class records a layout that is not the one
 #: the objects in memory have, and only the layer that declares a class knows the latter, so
@@ -58,6 +90,7 @@ def declare(name: str, layout: Described) -> None:
     as re-declaring a class in ROOT replaces what its dictionary said of it.
     """
     DECLARED[name] = layout
+
 
 #: A record header - four bytes of byte count, two of version.
 RECORD = 6
@@ -781,6 +814,54 @@ def _shaped_run(run: list[tuple[str, _Plain]]) -> Step:
     return read
 
 
+def flat_reader(
+    name: str, source: Source
+) -> tuple[Callable[[Buffer], tuple[Any, ...]], tuple[str, ...]] | None:
+    """How an object of ``name`` reads as one struct: the reader giving every member's value
+    in the order their names are - or ``None`` for a class that is more than a run of plain
+    numbers, which the members' own steps read.
+
+    A class of nine numbers read by a bulk loop of ten million records built a dictionary of
+    them per record; a record that is one struct hands back the values themselves.
+    """
+    try:
+        steps = _steps(name, source)
+    except _Unreadable:
+        return None
+    form = _flat_form(steps)
+    if form is None:
+        return None
+    return _streamed_flat(form), tuple(label for label, _step in steps)
+
+
+def _flat_form(steps: list[tuple[str, Step]]) -> struct.Struct | None:
+    """The one struct that reads every member of a class, or ``None`` for a class a member of
+    which is not one number: a fixed array of them is a row, an object or a string a step."""
+    fields = [step for _label, step in steps]
+    if not fields or not all(_a_member_number(field) for field in fields):
+        return None
+    return _form("".join(cast(_Plain, field).code for field in fields))
+
+
+def _a_member_number(step: Any) -> bool:
+    """Is this member one plain number, the kind a struct reads beside its neighbours?"""
+    return type(step) is _Plain and step.count == 1 and not step.shaped
+
+
+def _streamed_flat(form: struct.Struct) -> Callable[[Buffer], tuple[Any, ...]]:
+    """A class that streamed itself, read as the one struct over its members."""
+
+    def value(buf: Buffer) -> tuple[Any, ...]:
+        version, end = buf.header()
+        if version == 0 and end is not None and end - buf.pos >= 4:
+            buf.u32()  # a foreign class carries its checksum where a version would go
+        values = buf.scalars(form)
+        buf.resume(end)
+        return values
+
+    return value
+
+
 def _plan(steps: list[tuple[str, Step]]) -> list[Step]:
     """The members of a class as the fewest reads that read them in the order they come.
 
@@ -997,6 +1078,30 @@ def _flattened(
     return found
 
 
+def _folded(
+    fill: Fill, label: str, fold: Callable[[np.ndarray[Any, Any]], np.ndarray[Any, Any]]
+) -> Fill:
+    """``fill`` with the words it read for ``label`` given what ROOT's reader makes of them.
+
+    A container written a member at a time is read straight into objects ROOT has already
+    made, so what its ``TObject`` base holds is not the file's word: the reader sets
+    ``kIsOnHeap|kNotDeleted`` on the bits and folds the reading process's byte into the
+    identifier (:data:`FOLDED`). The fold is the one the split branch's column gets, taken
+    over the values the fill brought rather than one at a time - an identifier and a word of
+    bits are four bytes each, whatever the class (``UInt_t``), so they make one array.
+    """
+
+    def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+        fill(buf, rows)
+        if not rows:
+            return
+        values = fold(np.asarray([row[label] for row in rows], dtype=np.uint32))
+        for row, value in zip(rows, values, strict=True):
+            row[label] = value
+
+    return column
+
+
 def _into(label: str, sub: str, step: Step) -> Step:
     """A base class's field, read into the base's own dictionary in the object's."""
 
@@ -1009,9 +1114,26 @@ def _into(label: str, sub: str, step: Step) -> Step:
     return read
 
 
-def _columns(
-    name: str, source: Source, seen: tuple[str, ...]
-) -> list[tuple[str, Fill]] | None:
+def _base_flattened(member: Member) -> bool:
+    """Is this member a base that ROOT writes as bare members, rather than as a record of its own?
+
+    ROOT gives a base a record of its own per object when its class has a compiled
+    ``Streamer`` of ROOT's - a ``TAttLine``, whose version and three shorts stand in a
+    record inside ``vector<TLine>`` - and only lays its members among the rest when the
+    class is one that nothing but a streamer info describes: a HistFactory class, which ROOT
+    writes at version 0 with a checksum, or a class the program declares. The classes with
+    a compiled ``Streamer`` of ROOT's are the ones this library carries a layout for
+    (:data:`~.winfo.INFOS`), which is the set the writer gives a record to as well
+    (:meth:`~.wdobjects._Writer.column` follows its catalogue, which holds the program's
+    classes and no class of ``INFOS``), so reading one of the two ways cannot disagree with
+    the bytes a file written here holds. A base with no layout here that streams itself has
+    no members to flatten, and :func:`_member_columns` refuses the container rather than
+    reading it either way.
+    """
+    return member.stype == 0 and member.typename == "BASE" and member.name not in INFOS
+
+
+def _columns(name: str, source: Source, seen: tuple[str, ...]) -> list[tuple[str, Fill]] | None:
     """The members of one class as columns - one member of every object in a container
     written member-wise - or ``None`` for a class that has no such list, because it streams
     itself or the file does not describe it.
@@ -1020,6 +1142,13 @@ def _columns(
     rest, every object's ``std::string`` member inside one record, a member that is a
     container of a class under one header and then each object's count and items, a
     map likewise, and every other kind of member for each object in turn.
+
+    A base that only a streamer info describes is flattened into these columns; a base of
+    one of ROOT's own classes, which has a compiled ``Streamer``, is not - ROOT gives it a
+    record of its own per object, version and all, exactly as it writes an object held by
+    value (see :func:`_base_flattened`). The oracle's ``vector<TLine>`` holds
+    ``4000 0008 0002 0001 0001 0001`` for ``TAttLine`` and ``4000 0002 0000`` for
+    ``TAttBBox2D`` where a flattened ``TLine`` would hold the three shorts and nothing else.
     """
     if name in SELF_STREAMING:
         return None
@@ -1030,20 +1159,49 @@ def _columns(
     found: list[tuple[str, Fill]] = []
     members = (_description(source, name) or {}).values()
     for (label, step), member in zip(steps, members, strict=True):
-        if member.stype != 0 or member.typename != "BASE":
-            found.append((label, _column(label, member, step, source, seen)))
-            continue
-        inner = _columns(member.name, source, seen)
-        if inner is None:
+        columns = _member_columns(name, label, step, member, source, seen)
+        if columns is None:
             return None
-        found += [(label, _into_column(label, column)) for _sub, column in inner]
+        found += columns
     return found
 
 
+def _member_columns(
+    owner: str,
+    label: str,
+    step: Step,
+    member: Member,
+    source: Source,
+    seen: tuple[str, ...],
+) -> list[tuple[str, Fill]] | None:
+    """One member's columns - its own, or a flattened base's several - or ``None`` for a base
+    whose own class has nothing to read one member at a time: one that streams itself, or one
+    the file does not describe. That leaves the whole container unreadable field by field,
+    which is what the class's own fields would be too.
+
+    The two words of a ``TObject`` base that a file does not hold as the object does - the
+    identifier and the bits - are folded as they are read, see :data:`FOLDED`.
+    """
+    if member.stype == 0:
+        inner = _columns(member.name, source, seen)
+        if inner is None:
+            return None
+        if _base_flattened(member):
+            return [(label, _into_column(label, column)) for _sub, column in inner]
+    fold = FOLDED.get(member.name) if owner == "TObject" else None
+    return [(label, _column(label, member, step, source, seen, fold))]
+
+
 def _column(
-    label: str, member: Member, step: Step, source: Source, seen: tuple[str, ...]
+    label: str,
+    member: Member,
+    step: Step,
+    source: Source,
+    seen: tuple[str, ...],
+    fold: Callable[[np.ndarray[Any, Any]], np.ndarray[Any, Any]] | None = None,
 ) -> Fill:
-    """One member's column, by what the member is."""
+    """One member's column, by what the member is, with ``fold`` applied to what it read when
+    the word the file holds is not the word the object has."""
     node = parse(member.typename)
     if isinstance(node, Str) and node.record:
         return _string_column(label)
@@ -1052,11 +1210,29 @@ def _column(
     held = _class_held(member.typename) if node is None else None
     if held is not None and not held[1]:
         return _container_column(label, held[0], source, seen)
-    return _each_row(label, step)
+    fill = _each_row(label, step)
+    return fill if fold is None else _folded(fill, label, fold)
 
 
 def _each_row(label: str, step: Step) -> Fill:
-    """A member every object has in turn, each read the way one object's is."""
+    """A member every object has in turn, each read the way one object's is.
+
+    A member that is one number is read for every object in one go: the objects' numbers
+    follow one another with nothing between them, so one struct covers them all - a
+    collection of six hundred objects of fourteen numbers was eight thousand reads of one
+    number, and is fourteen reads of six hundred.
+    """
+    if type(step) is _Plain and not step.shaped:
+        code = step.code  # narrowed to _Plain by the test above
+
+        def run(buf: Buffer, rows: list[dict[str, Any]]) -> None:
+            if not rows:
+                return
+            values = buf.scalars(_form(f"{len(rows)}{code}"))
+            for row, value in zip(rows, values, strict=True):
+                row[label] = value
+
+        return run
 
     def column(buf: Buffer, rows: list[dict[str, Any]]) -> None:
         for row in rows:
@@ -1447,8 +1623,187 @@ def _object_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step 
         # pointing at another of its own kind - a list of lists - is finite
         # as far as the bytes go, which is as far as a reader ever goes.
         classes = _Described(source, ())
-        return _plainly(lambda buf: buf.any(classes))
+        return _plainly(_pointers(classes, member.length))
     return None
+
+
+def _pointers(classes: dict[str, Any], length: int) -> Callable[[Buffer], Any]:
+    """The pointers one element of ``kObjectP`` stands for: ``TAxis *fVaxis[3]``.
+
+    ROOT describes an array of pointers as that same pointer element with the N its array
+    holds as its length and no array offset on its type - the length is the only sign of the
+    array - and writes one pointer per element, a null one as the zero it is. Read as the
+    single pointer such an element otherwise is, the array stops after its first element and
+    every member after it is read from the wrong place.
+
+    A lone pointer is described with a length of one - ROOT's maximum index, counted in
+    elements - so only a length past one is the array the declaration gave an N to.
+    """
+
+    def read(buf: Buffer) -> Any:
+        if length > 1:
+            return [buf.any(classes) for _ in range(length)]
+        return buf.any(classes)
+
+    return read
+
+
+#: The streamer type ROOT gives a member that points at a container: ``kSTLp``.
+STL_POINTER = 71
+
+#: The streamer type of a container held by value: ``kSTL``.
+STL = 300
+
+#: The streamer type of an array of pointers to containers: ``kSTLp`` and the array offset,
+#: which is what ``Event::fVectorTnamed`` - ``vector<TNamed> *f[6]`` - is described as.
+STL_POINTERS = STL_POINTER + OFFSET_L
+
+#: The streamer type of an array of containers: ``kSTL`` and the array offset, which is what
+#: ``Event::fVectorD`` - ``vector<double> f[4]`` - is described as.
+STL_ARRAY = STL + OFFSET_L
+
+
+def _held_container(member: Member) -> str:
+    """The container a member holds: the one it names, or the one it points at.
+
+    ``vector<TObject> *fVectorTobject`` - the bigevent roottest's ``Event`` - is described
+    with ``kSTLp``, and ROOT writes the container where the pointer stands with nothing to
+    say a pointer was there, so the member reads as a container held by value does. An array
+    of pointers to containers, ``vector<TNamed> *f[6]``, is a different shape and keeps its
+    type: it is read by :func:`_containers_held`, out of one record for the whole array.
+
+    A class that *derives* from a container - ``Event``'s ``UShortVector``, a
+    ``vector<UShort_t>`` - is described by one element per base, and ROOT puts the
+    container in that element's name with no type name of its own beside it, which is
+    the only place left for the type to be read from.
+    """
+    if member.stype == STL_POINTER and member.typename.endswith("*"):
+        return member.typename.rstrip("*").strip()
+    return member.typename or member.name
+
+
+def _containers_held(
+    member: Member, source: Source, seen: tuple[str, ...]
+) -> Callable[[Buffer], list[Any]]:
+    """The containers an array of pointers to them holds - ``vector<TNamed> *f[6]``.
+
+    ROOT writes the whole array into *one* record: the count and the items of each element
+    in turn, with no record per element as a container of containers gets and no word saying
+    how many pointers there are - the declaration gives the array's length, and a null
+    pointer is written as the empty container it would have held. So the reading is the one
+    a single container of that kind gets, once per element, with the header hoisted out of
+    the elements and a check that the record ended where it said.
+    """
+    held = member.typename.rstrip("*").strip()
+    length = member.length
+    node = parse(held)
+    if isinstance(node, (Prim, Str, Seq)):
+        item = node.item if isinstance(node, Seq) else node
+        return _array_of(_counted_items(item), length, held)
+    found = _class_held(held)
+    if found is None:
+        raise _Unreadable(
+            f"{member.name!r}, an array of pointers to {held}, which is not a container of "
+            f"the one class that would read inside an entry"
+        )
+    name, pointed = found
+    if pointed:
+        classes = _Described(source, seen)
+        return _array_of(_pointed_objects(classes), length, held)
+    columns = _columns(name, _read_by_memory(source, name), seen)
+    if columns is None:
+        raise _Unreadable(
+            f"{member.name!r}, an array of pointers to containers of {name}, which streams "
+            f"itself rather than being written a member at a time as such a container is"
+        )
+    return _array_of_members(columns, length, name)
+
+
+def _strings(length: int) -> Callable[[Buffer], list[str]]:
+    """The ``length`` ``TString``s an array member holds, one after another.
+
+    A ``TString`` is a length byte and its characters with no record to introduce a run of
+    them, so an array of them is read where the declaration says it is - and reading it as
+    the single string it looks like leaves the rest of the entry eleven bytes out of step.
+    """
+
+    def read(buf: Buffer) -> list[str]:
+        return [buf.string() for _ in range(length)]
+
+    return read
+
+
+def _counted_items(item: Any) -> Callable[[Buffer], Any]:
+    """One container of numbers or strings written inside another's record: how many, then
+    the items, with no record of its own."""
+
+    def read(buf: Buffer) -> Any:
+        return _items(item, buf, buf.u32())
+
+    return read
+
+
+def _pointed_objects(classes: dict[str, Any]) -> Callable[[Buffer], list[Any]]:
+    """One container of pointers written inside another's record: how many, then each
+    object where its pointer stands - a zero for a null one."""
+
+    def read(buf: Buffer) -> list[Any]:
+        return [buf.any(classes) for _ in range(buf.u32())]
+
+    return read
+
+
+def _array_of(
+    one: Callable[[Buffer], Any], length: int, held: str
+) -> Callable[[Buffer], list[Any]]:
+    """One record holding ``length`` containers of ``held``, each of them ``one``."""
+
+    def read(buf: Buffer) -> list[Any]:
+        _version, end = buf.header()
+        found = [one(buf) for _ in range(length)]
+        _ended(buf, end, f"the {length} containers of {held}")
+        return found
+
+    return read
+
+
+def _array_of_members(
+    columns: list[tuple[str, Fill]], length: int, name: str
+) -> Callable[[Buffer], list[Any]]:
+    """One record holding ``length`` containers of ``name``, written a member at a time: the
+    class's version once for the whole array, then each element's count and its objects'
+    members as columns, which is how ROOT writes ``vector<TNamed> *f[6]``."""
+
+    def read(buf: Buffer) -> list[Any]:
+        _version, end = buf.header()
+        _versioned(buf)
+        found = [_group(buf, columns) for _ in range(length)]
+        _ended(buf, end, f"the {length} containers of {name}")
+        return found
+
+    return read
+
+
+def _parsed_step(member: Member, node: Any, named: str) -> Step:
+    """How a member whose type name parses into a string or a container reads.
+
+    A name that says one container is one container, unless the declaration gave it an
+    array, and then the whole array stands in one record: ``vector<double> f[4]`` is four
+    counts and their items in turn, where ``TString fNames[12]`` is twelve strings - a
+    ``TString`` being a length byte with no record round a run of them, while a
+    ``std::string`` carries one and is written one string to the record. A member that is
+    no array at all is described with a length of one, ROOT's maximum index, or none.
+    """
+    if isinstance(node, Str) and member.length > 1 and not node.record:
+        # ``TString fNames[12]``: ROOT describes an array of strings as the one string
+        # element with the array offset on its type, exactly as it describes
+        # ``vector<double> f[4]``, and writes the twelve where the declaration said.
+        return _plainly(_strings(member.length))
+    if member.stype == STL_ARRAY and isinstance(node, Seq):
+        # ``vector<double> f[4]``: the whole array in one record, each element's count
+        # and items in turn - which is one reading per element and not one for the lot.
+        return _plainly(_array_of(_counted_items(node.item), member.length, named))
+    return _plainly(_reader(node))
 
 
 def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> Step | None:
@@ -1456,18 +1811,30 @@ def _container_step(member: Member, source: Source, seen: tuple[str, ...]) -> St
 
     What the type's name parses into covers strings and containers of numbers
     or strings; what is left is a container of one class, held by value or by
-    pointer, which reads as a list of whole objects.
+    pointer, which reads as a list of whole objects. An array of pointers to
+    containers is neither - its elements share one record - and is asked first.
+
+    The name asked is :func:`_held_container`'s rather than the member's own, because a
+    class that derives from a container is described with the container as the element's
+    name and no type name of its own: ``UShortVector`` is a ``vector<unsigned short>``.
     """
-    node = parse(member.typename)
-    if node is not None:
-        return _plainly(_reader(node))
-    held = _class_held(member.typename)
-    if held is None:
-        return _pointer_map(member.typename, source, seen)
-    name, pointed = held
-    if pointed:
+    if member.stype == STL_POINTERS:
+        return _plainly(_containers_held(member, source, seen))
+    named = _held_container(member)
+    held = _class_held(named)
+    if held is not None and held[1]:
+        # A container of pointers holds *objects*, whatever they point at: an item is the
+        # class it names and then the object, so ``list<string*>`` - which ``Event`` keeps
+        # three of - is four pointers and not four strings, however much the item's type
+        # name looks like the string a container of strings holds.
         classes = _Described(source, seen)
         return _plainly(_objects(lambda buf: buf.any(classes)))
+    node = parse(named)
+    if node is not None:
+        return _parsed_step(member, node, named)
+    if held is None:
+        return _pointer_map(named, source, seen) or _pair_map(named, source, seen)
+    name, _pointed = held
     # A class the file describes can also be written field by field; one
     # that streams itself, such as a TArrayD, only ever comes whole.
     return _plainly(
@@ -1590,6 +1957,66 @@ def _pointer_map(typename: str, source: Source, seen: tuple[str, ...]) -> Step |
     return _plainly(read)
 
 
+#: The class a map is written as a container *of*: a map has no bytes of its own, only the
+#: pairs its contents are iterated into.
+PAIR_CLASS = "pair"
+
+
+def _pair_map(typename: str, source: Source, seen: tuple[str, ...]) -> Step | None:
+    """How a map whose *key* is an object reads - ``map<TNamed*,int>``, which is what the
+    bigevent roottest's ``Event`` keeps its named counters in - or ``None`` for anything else.
+
+    A map is written as a container of pairs, and a container of objects goes member-wise, so
+    its pairs are a column of ``first``s and then a column of ``second``s under the version of
+    the pair's class. How each of those is written is what the file's description of
+    ``pair<K,V>`` says: :func:`_columns` reads it, which is the same reading a member-wise
+    ``vector`` of an object uses, so a key held by value and one held by pointer need nothing
+    here that the pair's own members do not already describe.
+
+    The description is looked up only once a map has a pair to read: an empty one is a count
+    and no more, and the writer of a file that holds no pairs never describes them - ROOT's
+    own description of a pair a file never wrote is not in that file to be found.
+    """
+    head, angle, rest = typename.replace("std::", "").strip().partition("<")
+    if not angle or not rest.endswith(">") or head not in POINTER_MAPS:
+        return None
+    pair = f"{PAIR_CLASS}<{rest[:-1]}>"
+    found: list[list[tuple[str, Fill]]] = []
+
+    def columns() -> list[tuple[str, Fill]]:
+        if not found:
+            held = _columns(pair, source, seen)
+            if held is None or len(held) != 2:
+                raise UnsupportedFeatureError(
+                    f"a {typename} is written as a container of {pair}, and this file's "
+                    f"streamer information does not describe a pair well enough to read "
+                    f"one: read the file with a reader that has ROOT's own description of "
+                    f"{pair} instead"
+                )
+            found.append(held)
+        return found[0]
+
+    def read(buf: Buffer) -> list[tuple[Any, Any]]:
+        version, end = buf.header()
+        if not version & MEMBER_WISE:
+            raise UnsupportedFeatureError(
+                f"a {typename} whose pairs were not written field by field is not a shape "
+                f"this reader decodes: ROOT writes a map of objects a member at a time, so "
+                f"a file that holds one the other way was written by something else"
+            )
+        _versioned(buf)
+        count = buf.i32()
+        plan = columns() if count else []
+        rows: list[dict[str, Any]] = [{} for _ in range(count)]
+        for _label, column in plan:
+            column(buf, rows)
+        _ended(buf, end, f"{count} pairs of {typename}")
+        key, value = (label for label, _column in plan) if plan else ("first", "second")
+        return [(row[key], row[value]) for row in rows]
+
+    return _plainly(read)
+
+
 #: The streamer type of a ``TStreamerLoop``: ``x[n]`` of a class.
 STREAM_LOOP = 501
 
@@ -1602,18 +2029,22 @@ def _loop_step(
     It is ``MyClass* x; //[n]`` - ``TH2Poly`` keeps a ``TList`` per cell of
     its partition that way - and ROOT writes it as one record holding the
     ``n`` objects, each streaming itself, or for ``MyClass**`` each a pointer
-    naming its class.
+    naming its class. ``TString *name //[n]`` - ``Event::fTstringp`` - holds the
+    strings themselves rather than objects, so each of the ``n`` is one string.
     """
     if member.stype != STREAM_LOOP:
         return None
     where = before.get(member.count)
     if where is None:
         raise _Unreadable(f"{member.name!r}, which is counted by a member written after it")
+    inside = member.typename.rstrip("*")
     if member.typename.endswith("**"):
         classes = _Described(source, ())
         one: Callable[[Buffer], Any] = lambda buf: buf.any(classes)  # noqa: E731
+    elif isinstance(parse(inside), Str):
+        one = _string
     else:
-        one = _embedded(member.typename.rstrip("*"), source, seen)
+        one = _embedded(inside, source, seen)
 
     def step(buf: Buffer, row: dict[str, Any]) -> list[Any]:
         _version, end = buf.header()
@@ -1919,11 +2350,15 @@ def _primitive_element(branch: BranchRecord, leaf: LeafRecord, source: Source) -
     class - so an entry holds one value per object, or ``length`` of them
     for an array member, one object's after another's.
     """
+    member = leaf.name.rsplit(".", 1)[-1] if branch.classname == "TObject" else ""
     for base in (0, OFFSET_L, OFFSET_P):
         kind = leaf.ltype - base
         prim = BASIC.get(kind)
         if prim is not None:
-            return _primitive_shape(leaf, prim, base)
+            shape = _primitive_shape(leaf, prim, base)
+            if member == "fBits":
+                return _in_memory(shape)
+            return _numbered_column(shape) if member == "fUniqueID" else shape
         if kind in PACKED:
             return _packed_member(branch, leaf, source, kind, base == OFFSET_P)
     return None
@@ -1940,3 +2375,114 @@ def _primitive_shape(leaf: LeafRecord, prim: Prim, base: int) -> Column:
     if leaf.count is not None:
         return Rows(prim, 0, False)
     return Flat(prim, leaf.length)
+
+
+class HeapRows(Rows):
+    """A ``TObject``'s bits, one per object of a split collection, as the object holds them.
+
+    ROOT masks ``kIsOnHeap|kNotDeleted`` out of ``fBits`` when it writes and sets them again on
+    the object its reader fills, so a split collection's ``fBits`` column is the word the file
+    holds with those two bits on - which is what ``TTree::Show`` prints for each object, and
+    what a ``TObject`` made from the row carries.
+    """
+
+    __slots__ = ()
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return _with_heap_bits(super().decode(raw))
+
+
+class HeapFlat(Flat):
+    """A ``TObject``'s bits for an object held whole, one word per entry: see :class:`HeapRows`."""
+
+    __slots__ = ()
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return _with_heap_bits(super().decode(raw))
+
+
+class NumberedRows(Rows):
+    """A ``TObject``'s identifier, one per object of a split collection, as ROOT's reader leaves
+    it: the number the file holds with the byte naming the process that numbered it.
+
+    ``TTree::Show`` prints that word, so a collection whose objects a file's references number
+    reads back as ``16777225`` rather than the ``9`` the file holds.
+    """
+
+    __slots__ = ()
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return _numbered(super().decode(raw))
+
+
+class NumberedFlat(Flat):
+    """A ``TObject``'s identifier for an object held whole, one word per entry: see
+    :class:`NumberedRows`."""
+
+    __slots__ = ()
+
+    def decode(self, raw: bytes) -> np.ndarray[Any, Any]:
+        return _numbered(super().decode(raw))
+
+
+def _numbered(values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    """``values`` with the process's byte on every identifier a process numbered.
+
+    Zero is not one of those: an object no reference names is in no process's numbering, and
+    the oracle prints its identifier as ``0``, so only a number in the low bits earns a byte.
+    An identifier that already carries one keeps it, because the byte is which process
+    numbered the object and the file is the only thing that knows: ROOT's writer stores the
+    byte when the object was numbered in a process other than the file's first, so folding
+    this reader's ``1`` onto a ``0x02000009`` would name a third process no file holds.
+    """
+    numbered = (values & UID_MASK) != 0
+    unstamped = (values & PID_MASK) == 0
+    fresh = numbered & unstamped
+    return values | ((fresh.astype(values.dtype) << 24) * PID_OFFSET)
+
+
+def _with_heap_bits(values: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    """``values`` with the two bits ROOT's reader sets on every object it fills."""
+    return values | HEAP_BITS
+
+
+#: What ROOT's reader makes of a ``TObject``'s two words, by member name: a container written
+#: a member at a time holds the file's word, and the object holds these - the identifier with
+#: the byte of the process that numbered it, the bits with ``kIsOnHeap|kNotDeleted``. The same
+#: two folds a split branch's column gets, so that a class read a member at a time carries what
+#: the same object read branch by branch carries.
+FOLDED: dict[str, Callable[[np.ndarray[Any, Any]], np.ndarray[Any, Any]]] = {
+    "fBits": _with_heap_bits,
+    "fUniqueID": _numbered,
+}
+
+
+def _as_prim(column: Numeric) -> Prim:
+    """The width and decoding ``column`` already has, as the recipe copying it takes.
+
+    A column that decorates another - the bits ROOT's reader sets, the process's byte - is
+    made from a :class:`Prim` and the column it copies is known only by what it decoded, so
+    what it decoded is said again.
+    """
+    assert column.typename is not None  # a column of numbers is named what it decodes as
+    return Prim(column.typename, column.typecode, column.itemsize)
+
+
+def _numbered_column(column: Column) -> Column:
+    """``column`` given the byte ROOT's reader folds into a split ``TObject``'s ``fUniqueID``;
+    any other column is itself, since no other member is an identifier a process numbered."""
+    if isinstance(column, Rows):
+        return NumberedRows(_as_prim(column), column.header, column.counted, column.unpack)
+    if isinstance(column, Flat):
+        return NumberedFlat(_as_prim(column), column.length, column.unpack)
+    return column
+
+
+def _in_memory(column: Column) -> Column:
+    """``column`` given the bits ROOT's reader sets on every object it fills, when it is a
+    split ``TObject``'s ``fBits``; any other column is itself."""
+    if isinstance(column, Rows):
+        return HeapRows(_as_prim(column), column.header, column.counted, column.unpack)
+    if isinstance(column, Flat):
+        return HeapFlat(_as_prim(column), column.length, column.unpack)
+    return column

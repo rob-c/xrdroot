@@ -41,7 +41,9 @@ import numpy as np
 
 from . import bitset as _bitset
 from . import random as _random
+from . import span as _span
 from . import stdlib as _stdlib
+from . import threads as _threads
 from .vectorassign import register as _register_vector_assignment
 from .vectorvalue import assigned as _assign_vector_value
 from .vectorvalue import converted as _vector_value
@@ -419,12 +421,62 @@ class _Container:
     __cpp_name__ = ""
 
 
+class _DeclaredIterator:
+    """``std::list<T>::iterator it;``: the iterator a macro declares before it walks.
+
+    A macro keeps the iterator outside the loop and assigns a container's
+    ``begin()`` to it - ``std::list<T>::iterator i; for (i = l.begin(); ...)`` - so
+    what the declaration makes has to exist, be compared and stepped, and is
+    replaced by the value assigned to it. The translator drops the template
+    arguments of a nested type name, so one class stands for the iterator of every
+    container and for its ``const_iterator``; reading through one that was never
+    assigned refuses, there being no element it is at.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<iterator, no container given>"
+
+    def __eq__(self, other: object) -> bool:
+        """Equal to another unassigned one, as two default-made C++ iterators are."""
+        return isinstance(other, _DeclaredIterator)
+
+    def __ne__(self, other: object) -> bool:
+        return not self.__eq__(other)
+
+    __hash__ = None  # type: ignore[assignment]
+
+    def __iadd__(self, step: int) -> _DeclaredIterator:
+        return self
+
+    def __add__(self, step: int) -> _DeclaredIterator:
+        return self
+
+    def __deref__(self) -> Any:
+        raise TypeError(
+            "an iterator made by a declaration points at no element; assign it a "
+            "container's begin() before reading through it"
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(self.__deref__(), name)
+
+
 class _Template:
     """``std.vector``: a class for each element type, by ``[...]`` or by ``(...)``.
 
     Both spellings give the one class for the one type, so ``isinstance``
     and a tree's check of what it was handed work whichever was used.
     """
+
+    #: C++'s nested iterator names, which a macro declares a variable of
+    #: (``std::vector<int>::iterator``) - by the class the declaration makes, and the
+    #: ``const_iterator``, which differs from it only in what it may be assigned.
+    iterator = _DeclaredIterator
+    const_iterator = _DeclaredIterator
 
     def __init__(self, name: str, arity: int, build: Any) -> None:
         self._name = name
@@ -832,8 +884,13 @@ class _VectorIterator:
     def __init__(self, owner: Any, position: int) -> None:
         self._owner, self._position = owner, position
 
-    def __deref__(self) -> Any:
+    def _element(self) -> Any:
+        """The thing at :attr:`_position` - read through the owner, which is what an
+        iterator of another container overrides, as a set's does."""
         return self._owner[self._position]
+
+    def __deref__(self) -> Any:
+        return self._element()
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):
@@ -843,17 +900,22 @@ class _VectorIterator:
     def __float__(self) -> float:
         return float(self.__deref__())
 
+    def __int__(self) -> int:
+        """``printf("%d", *it)``: the number the iterator is at, as ``%g`` reads it through
+        :meth:`__float__`."""
+        return int(self.__deref__())
+
     def __iadd__(self, step: int) -> _VectorIterator:
         self._position += int(step)
         return self
 
     def __add__(self, step: int) -> _VectorIterator:
-        return _VectorIterator(self._owner, self._position + int(step))
+        return type(self)(self._owner, self._position + int(step))
 
     def __sub__(self, other: Any) -> Any:
         if isinstance(other, _VectorIterator):
             return self._position - other._position
-        return _VectorIterator(self._owner, self._position - int(other))
+        return type(self)(self._owner, self._position - int(other))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, _VectorIterator):
@@ -868,6 +930,19 @@ class _VectorIterator:
         return self._position < other._position
 
     __hash__ = None  # type: ignore[assignment]
+
+
+class _SetIterator(_VectorIterator):
+    """A ``std::set`` iterator: the element at a place among the elements in order.
+
+    A set holds its elements unordered here, so an iterator counts off the sorted
+    ones instead of indexing the container as a vector's does, and
+    ``for (std::set<float>::const_iterator i = s.begin(); i != s.end(); ++i)`` steps
+    them in the order iteration gives.
+    """
+
+    def _element(self) -> Any:
+        return self._owner._ordered()[self._position]
 
 
 def _insertion(what: Sequence[Any]) -> list[Any]:
@@ -905,6 +980,19 @@ def _element(kind: Any, value: Any) -> Any:
     if isinstance(kind, np.dtype):
         return np.asarray(value, dtype=kind).item()
     return _converted(kind, value)
+
+
+def _held(kind: Any, value: Any) -> Any:
+    """``value`` as a set or a map keeps it: C++ stores a *copy* of what ``insert`` and
+    ``m[k] = v`` are given, so a caller that goes on changing its own object - the
+    ``TJsonEx1`` ``TJsonEx13::Init`` inserts four times, each turn with other members -
+    does not change what the container holds. A number, a string and a pointer stand for
+    themselves; a class held by value and a container are copied."""
+    if isinstance(kind, np.dtype) or value is None or kind is string:
+        return value
+    if getattr(kind, "opaque", False) and str(kind.__cpp_name__).rstrip().endswith("*"):
+        return value  # a pointer is copied as the pointer, and the pointer here is the object
+    return copy.deepcopy(value)
 
 
 def _default(kind: Any) -> Any:
@@ -1003,12 +1091,17 @@ class _Map(_Container):
 
     def __getitem__(self, key: Any) -> Any:
         found = self._key(key)
-        if found not in self._items:
-            self._items[found] = _default(self.kinds[1])
-        return self._items[found]
+        if found in self._items:
+            return self._items[found]
+        kept = _held(self.kinds[0], found)
+        self._items[kept] = _default(self.kinds[1])
+        return self._items[kept]
 
     def __setitem__(self, key: Any, value: Any) -> None:
-        self._items[self._key(key)] = _element(self.kinds[1], value)
+        found = self._key(key)
+        if found not in self._items:  # a key already there keeps the copy it was put in as
+            found = _held(self.kinds[0], found)
+        self._items[found] = _held(self.kinds[1], _element(self.kinds[1], value))
 
     def items(self) -> list[tuple[Any, Any]]:
         """Every key and its value, in the key order a ``std::map`` keeps."""
@@ -1181,8 +1274,21 @@ class _Set(_Container):
     def count(self, value: Any) -> int:
         return int(value in self)
 
+    def _ordered(self) -> list[Any]:
+        """The elements in the order iteration gives them, which is what an iterator of a set
+        counts off: a set has no place to index, so its iterator is a step count."""
+        return sorted(self._items)
+
+    def begin(self) -> _SetIterator:
+        """``begin()``: an iterator at the first element, which ``*it`` and ``it += 1`` use."""
+        return _SetIterator(self, 0)
+
+    def end(self) -> _SetIterator:
+        """``end()``: the iterator one past the last element."""
+        return _SetIterator(self, len(self))
+
     def insert(self, value: Any) -> None:
-        self._items.add(self._value(value))
+        self._items.add(_held(self.kind, self._value(value)))
 
     def erase(self, value: Any) -> int:
         """``erase(value)``: how many were taken out - one, or none if it was not there."""
@@ -1227,6 +1333,10 @@ class _Multiset(_Set):
         kept = sorted(self._counts.items(), key=lambda pair: (pair[0],))
         return [value for value, count in kept for _ in range(count)]
 
+    def _ordered(self) -> list[Any]:
+        """The copies in order, as many as there are of each - what an iterator steps over."""
+        return self._flat()
+
     def __len__(self) -> int:
         return sum(self._counts.values())
 
@@ -1244,6 +1354,8 @@ class _Multiset(_Set):
 
     def insert(self, value: Any) -> None:
         found = self._value(value)
+        if found not in self._counts:
+            found = _held(self.kind, found)
         self._counts[found] = self._counts.get(found, 0) + 1
 
     def erase(self, value: Any) -> int:
@@ -1588,6 +1700,48 @@ class _ArrayTemplate:
         return self[deduced(values), len(values)](values)
 
 
+def _range_span(first: Any, last: Any, name: str) -> tuple[Any, int, int]:
+    """The container and the half-open span that the two ends of a range name.
+
+    A range arrives as the emitter leaves it: two iterators of one vector, or a
+    pointer and the tail it leaves over - ``a, a + n`` is ``a`` and ``a[n:]``, so the
+    end is what the first still holds after the second's. The container itself, not a
+    copy of the span, is what an algorithm gets, because C++ writes back through the
+    iterators and a copy would swallow the write.
+    """
+    if isinstance(first, _VectorIterator) and isinstance(last, _VectorIterator):
+        if first._owner is not last._owner:
+            raise TypeError(f"std::{name}() over the ends of two different containers; "
+                            "give it the begin() and end() of one of them.")
+        return first._owner, first._position, last._position
+    if not isinstance(first, _VectorIterator) and hasattr(first, "__len__") \
+            and hasattr(last, "__len__"):
+        return first, 0, len(first) - len(last)
+    raise TypeError(f"std::{name}() over a range xrdroot cannot follow back to its container; "
+                    "give it v.begin(), v.end() or a pointer and its end.")
+
+
+def _shuffle(first: Any, last: Any, engine: Any = None) -> None:
+    """``std::shuffle(begin, end, g)``: the span's elements in an order ``g`` draws."""
+    from .objects import shuffle_range
+
+    shuffle_range(*_range_span(first, last, "shuffle"), engine)
+
+
+def _generate(first: Any, last: Any, generate: Any) -> None:
+    """``std::generate(begin, end, gen)``: ``gen()`` called into each element in turn."""
+    from .objects import generate_range
+
+    generate_range(*_range_span(first, last, "generate"), generate)
+
+
+def _next_permutation(first: Any, last: Any) -> bool:
+    """``std::next_permutation(begin, end)``: the next permutation, in place."""
+    from .objects import next_permutation_range
+
+    return next_permutation_range(*_range_span(first, last, "next_permutation"))
+
+
 class _Stream:
     """``std::cout`` and ``std::cerr``: what ``<<`` is given, written as text."""
 
@@ -1610,7 +1764,6 @@ class _Stream:
 
 class _Namespace:
     """``ROOT.std``: the containers, the streams, and a refusal by name for the rest of it."""
-
     cout = _Stream("cout")
     cerr = _Stream("cerr")
     endl = "\n"
@@ -1641,10 +1794,15 @@ class _Namespace:
     array = _ArrayTemplate()
     get = _GetTemplate()
     bitset = _bitset.bitset
+    #: ``std::span<T>``: a view of what it was handed, indexed in place.
+    span = _span.span
     mt19937 = _random.mt19937
+    default_random_engine = _random.default_random_engine
     normal_distribution = _random.normal_distribution
     uniform_real_distribution = _random.uniform_real_distribution
     string = string
+    #: ``std::thread``: ``std.thread(f, args...)``, and ``std.thread.hardware_concurrency()``.
+    thread = _threads.thread
     numeric_limits = _stdlib.numeric_limits
     unique_ptr = _stdlib.smart_pointer("unique_ptr")
     shared_ptr = _stdlib.smart_pointer("shared_ptr")
@@ -1657,6 +1815,9 @@ class _Namespace:
     piecewise_construct = _stdlib._Tag("piecewise_construct")
     rand = staticmethod(_stdlib.rand)
     srand = staticmethod(_stdlib.srand)
+    shuffle = staticmethod(_shuffle)
+    generate = staticmethod(_generate)
+    next_permutation = staticmethod(_next_permutation)
 
     def __repr__(self) -> str:
         return "<namespace std>"

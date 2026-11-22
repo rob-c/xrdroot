@@ -60,14 +60,22 @@ def test_a_cleared_tables_row_is_written_as_empty():
 
 
 def _two_entries_of_two_referenced_names(tree, clones):
-    """Fill ``tree`` twice, two numbered ``TNamed``s a branch entry."""
+    """Fill ``tree`` twice, two numbered ``TNamed``s a branch entry.
+
+    The identifiers the session gave them come back too: numbering runs on from whatever the
+    session numbered before, so a test that says which identifier the last object got has to
+    ask rather than count.
+    """
+    numbered = []
     for entry in range(2):
         clones.Clear()
         for slot in range(2):
             named = clones.ConstructedAt(slot)
             named.SetName(f"N_{entry}_{slot}")
-            ROOT.TRef(named)  # numbers it, so the branch holding it is recorded
+            numbered.append(ROOT.TRef(named).GetUniqueID() & 0xFFFFFF)  # numbers it, so the
+            # branch holding it is recorded
         tree.Fill()
+    return numbered
 
 
 def test_each_fill_records_the_branch_holding_every_referenced_object():
@@ -75,14 +83,16 @@ def test_each_fill_records_the_branch_holding_every_referenced_object():
     clones = ROOT.TClonesArray("TNamed")
     tree.Branch("n", Cell(clones))
     table = tree.BranchRef().GetRefTable()
-    _two_entries_of_two_referenced_names(tree, clones)
+    numbered = _two_entries_of_two_referenced_names(tree, clones)
     branch = tree.GetBranch("n")
     assert branch is not None
-    assert table.GetN() == 5  # ROOT's fN: the last identifier plus one, not how many there are
-    assert table.GetSize() >= 5
-    assert table.GetParent(3) is table.GetParents().At(0)
-    assert table.GetParent(4) is table.GetParents().At(0)
-    assert table.GetParent(3).GetName() == branch.GetName()
+    last = max(numbered)
+    # ROOT's fN: the last identifier plus one, not how many there are.
+    assert table.GetN() == last + 1
+    assert table.GetSize() >= last + 1
+    assert table.GetParent(last - 1) is table.GetParents().At(0)
+    assert table.GetParent(last) is table.GetParents().At(0)
+    assert table.GetParent(last).GetName() == branch.GetName()
     assert table.GetParent(0) is None
     assert table.GetParent(99) is None
     assert table.GetParents().GetEntriesFast() == 1
@@ -267,3 +277,135 @@ def test_a_branch_ref_with_nothing_recorded_writes_the_tree_as_ever():
     assert tree.Write() > 0
     out.Close()
     assert ROOT.TFile("a.root").Get("t").GetEntry(0) > 0
+
+
+def test_the_objects_of_the_entry_being_read_are_filed_once_for_its_references():
+    """ROOT files an object as its streamer reads it, and numbers a process's objects from
+    the start in every entry, so an entry's objects are filed again in the entry after."""
+    from xrdroot.pyroot.trees.branches import read_referenced
+
+    filing = []
+    tree = SimpleNamespace(GetReadEntry=lambda: 3, holds=filing, GetName=lambda: "t")
+    tree.__dict__["_backing"] = lambda: {}
+    tree.__dict__["_leaves"] = lambda: []
+    TRefTable._tree, TRefTable._filed, TRefTable._kept = tree, None, []
+    read_referenced(SimpleNamespace(GetUniqueID=lambda: 1))
+    assert TRefTable._filed == (id(tree), 3)
+    assert TRefTable._kept == []
+    TRefTable._tree, TRefTable._filed, TRefTable._kept = None, None, []
+
+
+def test_a_reference_with_no_tree_being_read_files_nothing():
+    from xrdroot.pyroot.trees.branches import read_referenced
+
+    TRefTable._tree, TRefTable._filed = None, None
+    read_referenced(SimpleNamespace(GetUniqueID=lambda: 1))
+    assert TRefTable._filed is None
+
+
+def test_an_object_a_reference_may_point_at_is_filed_under_the_number_it_carries():
+    from xrdroot.pyroot.core.references import (
+        IS_REFERENCED,
+        TProcessID,
+        filed_object,
+        named_process,
+    )
+
+    out = ROOT.TFile("plain.root", "RECREATE")
+    out.WriteTObject(ROOT.TNamed("only", "no process record here"))
+    out.Close()
+    read = ROOT.TFile("plain.root")
+    pid = TProcessID.AddProcessID()
+    named = ROOT.TNamed("N", "N")
+    named.SetBit(IS_REFERENCED)
+    named.SetUniqueID(7)
+    filed_object(named, read)  # the file has no ProcessID record to file it in
+    plain = ROOT.TNamed("P", "P")
+    filed_object(plain, read)  # and this one is no object a reference may point at
+    assert named_process(None, 0) is None
+    assert named_process(read, None) is None
+    assert pid.GetObjectWithID(7) is None
+    read.Close()
+
+
+def test_the_reference_of_a_member_read_back_names_the_process_of_the_file_it_came_from():
+    """``TRef::Streamer`` resolves its process as it reads, through ``gFile``."""
+    from xrdroot.pyroot.core.references import TProcessID, _tref_from
+
+    out = ROOT.TFile("p.root", "RECREATE")
+    named = ROOT.TNamed("N", "N")
+    ref = ROOT.TRef(named)
+    assert out.WriteProcessID(ref.GetPID()) == 0
+    out.Close()
+    read = ROOT.TFile("p.root")
+    made = _tref_from({"TObject": {"fUniqueID": 1, "fBits": 0}, "fPID": 0})
+    assert isinstance(made.GetPID(), TProcessID)
+    assert made.GetObject() is None  # the object itself was never read into this session
+    read.Close()
+
+
+def test_an_object_filed_in_a_file_that_names_its_process_is_found_by_its_number():
+    """The other half of the filing: a file that *has* a ``ProcessID`` record, so the object
+    read beside a reference is filed in it and ``GetObjectWithID`` gives it back."""
+    from xrdroot.pyroot.core.references import (
+        IS_REFERENCED,
+        TProcessID,
+        filed_object,
+    )
+
+    pid = TProcessID.AddProcessID()
+    out = ROOT.TFile("filed.root", "RECREATE")
+    assert out.WriteProcessID(pid) == 0
+    out.Close()
+    read = ROOT.TFile("filed.root")
+    named = ROOT.TNamed("N", "N")
+    named.SetBit(IS_REFERENCED)
+    named.SetUniqueID(7)
+    filed_object(named, read)  # filed in the process the file's ProcessID0 names
+    assert pid.GetObjectWithID(7) is named
+    read.Close()
+
+
+def test_a_clones_slot_reads_its_source_trees_own_objects_when_it_was_given_them():
+    """A clone shares its collection's address with the tree it copies, so the objects that
+    address holds are the entry - and they are the ones a ``TRef`` numbered."""
+    from types import SimpleNamespace
+
+    from xrdroot.pyroot.trees.objects import ClonedSlot
+    from xrdroot.wclasses import Layout, Member
+
+    layout = Layout("Plain", 1, 0, (Member("fName", 65, "TString", "a name", 0),))
+    slot = ClonedSlot("r1", layout, 1, ["r1.fName"], [])
+    held = [SimpleNamespace(fName="N_0_0"), SimpleNamespace(fName="N_0_1")]
+    tree = SimpleNamespace(_addresses={"r1": SimpleNamespace(get=lambda: held)})
+    slot._follows = [SimpleNamespace(tree=tree)]
+    assert slot.read() == [("N_0_0",), ("N_0_1",)]  # one row per object of the live collection
+
+
+def test_a_clones_slot_reads_the_values_when_its_collection_holds_whole_objects():
+    """A collection holding a ``TRef`` per object is copied from the values read, which the
+    writer streams itself: its rows are the objects, not members of the objects the tree was
+    given - so there is nothing to take from that tree's address."""
+    from types import SimpleNamespace
+
+    from xrdroot.pyroot.trees.objects import ClonedSlot
+    from xrdroot.wclasses import Layout, Member
+
+    layout = Layout("Referring", 1, 0, (Member("fRef", 61, "TRef", "a reference", 0),))
+    slot = ClonedSlot("r1", layout, 1, ["r1.fRef"], [])
+    tree = SimpleNamespace(_addresses={"r1": SimpleNamespace(get=lambda: ["an object"])})
+    slot._follows = [SimpleNamespace(tree=tree)]
+    assert slot._live() is None
+
+
+def test_a_clones_slot_with_no_address_to_read_is_read_from_its_columns():
+    from types import SimpleNamespace
+
+    from xrdroot.pyroot.trees.objects import ClonedSlot
+    from xrdroot.wclasses import Layout, Member
+
+    layout = Layout("Plain", 1, 0, (Member("fName", 65, "TString", "a name", 0),))
+    slot = ClonedSlot("r1", layout, 1, ["r1.fName"], [])
+    assert slot._live() is None  # no source tree at all
+    slot._follows = [SimpleNamespace(tree=SimpleNamespace(_addresses={}))]
+    assert slot._live() is None  # a tree with no address for this collection

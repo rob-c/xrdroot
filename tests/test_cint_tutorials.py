@@ -78,7 +78,8 @@ def test_hist000_fills_a_stack_histogram_and_writes_it_to_the_file() -> None:
     histogram = root.made[0]
     assert histogram.values == [1, 2, 3, 3, 3, 4, 3, 2, 1, 0]
     (written,) = root.TFile.opened
-    assert written.calls == [("WriteObject", (histogram, "histogram"))]
+    # the write, and then the close a C++ local's destructor runs as its scope ends
+    assert written.calls == [("WriteObject", (histogram, "histogram")), ("_destruct", ())]
 
 
 def test_hist001_fills_randomly_and_writes_the_histogram() -> None:

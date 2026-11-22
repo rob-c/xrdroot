@@ -21,6 +21,7 @@ from ...pycxx.errors import CxxError as CintError
 from ...pycxx.errors import MacroError
 from ..execute import arguments, called, define, exists, run_program, split_call
 from ..returned import status as exit_status
+from ..runtime.application import TRINT
 from .commands import Said, dispatch, failure
 from .lexer import Piece, pending, pieces
 from .lines import adopt
@@ -176,7 +177,8 @@ class Interpreter:
             return [Said(f"Error in <TApplication::ExecuteFile>: macro {path} not found in "
                          "path .", True)]  # fmt: skip
         try:
-            self.last_status = run_program([spec], arguments(split_call(given)[1]))
+            self.last_status = run_program([spec], arguments(split_call(given)[1]),
+                                           session=TRINT)  # fmt: skip
         except SystemExit as leaving:
             self.leave(leaving)
             return []

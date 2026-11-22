@@ -269,9 +269,7 @@ class Clones(_Whole):
     """A ``TClonesArray``, unsplit: its objects whole, or member by member when bypassing."""
 
     def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
-        return Whole(
-            "TClonesArray", object=True, holds=(obj._class,), split=0, basket_size=bufsize
-        )
+        return Whole("TClonesArray", object=True, holds=(obj._class,), split=0, basket_size=bufsize)
 
     def entry(self, obj: Any) -> bytes:
         getters = [_members_of(item) for item in obj]
@@ -316,7 +314,12 @@ class SplitArray(Kind):
 
 
 def _objects(member: Any, rows: list[Any]) -> bytes:
-    """One entry's whole objects of a member, each as the record its class streams."""
+    """One entry's whole objects of a member, each as the record its class streams.
+
+    A reference the writer holds is ``TRef::Streamer``'s to make, and the file has to hold
+    the ``ProcessID`` record its ``fPID`` names first. A row a clone copied is the source
+    file's own bytes, which come back as that file described them, index included.
+    """
     if member.typename != "TRef":
         clones = member.owner
         raise UnsupportedFeatureError(
@@ -324,7 +327,78 @@ def _objects(member: Any, rows: list[Any]) -> bytes:
             f"writer streams no {member.typename} into a tree entry yet; write that member "
             f"as a number instead, or leave the branch out"
         )
+    if rows and isinstance(rows[0], dict):  # a clone's rows: the source file described them
+        return b"".join(_described_record(ref) for ref in rows)
+    _named_processes(rows)
     return b"".join(tref_record(ref) for ref in rows)
+
+
+def _described_record(ref: dict[str, Any]) -> bytes:
+    """A reference as the source file described it, written back as that same record: a clone
+    copies the entry's bytes, so nothing of it may change but the index of its process."""
+    from ...wbranch import _ref_record
+
+    return _ref_record(ref)
+
+
+def _named_processes(rows: list[Any]) -> None:
+    """The file being written given a record for each process these references name.
+
+    A reference's record holds the index of its process among the file's ``ProcessID``
+    records, not the process's name, so the records have to be there for a reader to
+    resolve one - ROOT writes them as its ``TRef::Streamer`` meets the process, through
+    ``TFile::WriteProcessID``. Every other path to a ``TRef`` goes through the writer's
+    own record of it, which writes the record; a collection in a tree does not.
+    """
+    from ..core.directories import current_file
+
+    file = current_file()
+    for ref in rows if file is not None else ():
+        file.WriteProcessID(getattr(ref, "_pid", None))
+
+
+def _carried_processes(
+    keys: list[str], members: list[Any], columns: dict[str, Any], source: Any
+) -> None:
+    """The file being written given a record for each process a copied reference names, and
+    each reference's own record naming the index that file gave it.
+
+    A clone copies a ``TRef``'s bytes as its source file wrote them, so the ``fPID`` in one
+    is the index of a ``ProcessID`` record of *that* file, which the new file need not have
+    at all - and then a reader finds neither the object a reference names nor the process to
+    look it up in, though the entry beside it holds the object (roottest/root/io/tree/test-rc).
+    The index is rewritten because a file numbers its ``ProcessID`` records as it writes them.
+    """
+    from ..core.directories import current_file
+
+    file = current_file()
+    for key, member in zip(keys, members, strict=True):
+        if member.stype == OBJECT_TYPE:
+            columns[key] = [
+                [_renumbered(ref, source, file) for ref in refs] for refs in columns[key]
+            ]
+
+
+def _renumbered(ref: dict[str, Any], source: Any, file: Any) -> dict[str, Any]:
+    """A reference read out of its file, naming the index the file being written gives the
+    process it named - the index it had when nothing here can say what that process was, or
+    when nothing is being written at all."""
+    uuid = _source_uuid(source, ref["fPID"])
+    index = -1 if uuid is None or file is None else int(file.WriteProcessID(uuid))
+    return ref if index < 0 else {**ref, "fPID": index}
+
+
+def _source_uuid(source: Any, index: int) -> str | None:
+    """The UUID the file a clone copies from titled its ``ProcessID{index}`` record with, or
+    ``None`` when nothing here knows the file, or it recorded no process at that index."""
+    if source is None:
+        return None
+    try:
+        members = source[f"ProcessID{int(index)}"]
+    except KeyError:  # a reference one file wrote to another's numbering that is not here
+        return None
+    named = members.get("TNamed", members)
+    return str(named.get("fTitle", ""))
 
 
 def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:
@@ -406,7 +480,47 @@ def _held_kind(obj: Any) -> Kind | None:
     if _of_lorentz(obj):
         return Lorentzes()
     nested = _nested(obj)
-    return None if nested is None else Nested(nested)
+    if nested is not None:
+        return Nested(nested)
+    layout = _root_layout(obj)
+    return None if layout is None else Root(layout)
+
+
+class Root(Kind):
+    """An object of a class ROOT itself describes - a bare ``TObject`` - split member by member.
+
+    ``TTree::Branch("Abc", "TObject", &obj, 4000, 99)`` gives a branch per member of the
+    class at a split level above 0, as ROOT splits an object it holds a description for: the
+    6.40 oracle's ``tref_test.root`` keeps ``Abc.fUniqueID`` and ``Abc.fBits`` under a branch
+    named for the object. A class whose members are not numbers - a ``TRef`` - has no layout
+    to split here, and :func:`_undeclared` is asked for its address instead.
+    """
+
+    def __init__(self, layout: Layout) -> None:
+        self.layout = layout
+
+    def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
+        return Split(self.layout, split=max(split, 1), basket_size=bufsize)
+
+    def entry(self, obj: Any) -> Any:
+        return tuple(_whole_member(obj, member.name) for member in self.layout.members)
+
+
+def _whole_member(obj: Any, name: str) -> Any:
+    """One member of such an object as its own split branch reads it.
+
+    ``fBits`` is the object's whole bit word here - the heap's bits included, as ROOT writes
+    them for a branch of an object - where a split ``TClonesArray`` leaves those out.
+    """
+    if name == "fBits":
+        return int(obj._bitword())
+    return _member(obj, name)
+
+
+def _root_layout(obj: Any) -> Layout | None:
+    """The layout of the class this object is, if ROOT describes that class by numbers alone."""
+    name = obj.ClassName() if hasattr(obj, "ClassName") else ""
+    return harvested(name) if name else None
 
 
 def _histogram(obj: Any) -> bool:
@@ -477,6 +591,24 @@ class WholeCollection(Spec):
         return Branch(name, name, self.split, column, [leaf], info)
 
 
+def _no_layout(obj: Any, name: str) -> None:
+    """Refuse, by name, a branch of an object of a class this writer has no layout for.
+
+    The address does say its type - it holds an object of a ROOT class - so the advice a
+    branch of a number gets is wrong: what is missing is a layout for that class, and the
+    way round it is a leaf list of the members or a branch of the class the writer does
+    describe.
+    """
+    classname = obj.ClassName() if hasattr(obj, "ClassName") else ""
+    if not classname:
+        return
+    raise UnsupportedFeatureError(
+        f"the branch {name!r} holds a {classname}, and this writer carries no layout for a "
+        f"{classname} to split or stream whole: write the members it needs as leaves of "
+        f"their own, as in Branch({name!r}, {name}, 'fUniqueID/i')"
+    )
+
+
 class ObjectSlot:
     """The slot of a branch of objects: the object read at every ``Fill``, one entry each.
 
@@ -528,6 +660,10 @@ class ObjectSlot:
         """What ``Fill`` says this entry took: its bytes, or eight a number."""
         return len(value) if isinstance(value, bytes) else 8 * int(np.size(value))
 
+    def takes(self, value: Any) -> int:
+        """How many bytes of a basket one entry took, as a store's slot counts."""
+        return self.nbytes(value)
+
 
 def _joined(pieces: list[Any]) -> Any:
     from ...tree import concatenate
@@ -553,7 +689,13 @@ class ClonedSlot:
     code = ""
 
     def __init__(
-        self, name: str, element: str, split: int, sources: list[str], follows: list[Any]
+        self,
+        name: str,
+        element: str,
+        split: int,
+        sources: list[str],
+        follows: list[Any],
+        source: Any = None,
     ) -> None:
         self.name = self.branch = self.title = name
         self._kind = SplitArray(element)
@@ -561,6 +703,9 @@ class ClonedSlot:
         #: What the tree this copies calls each member's column, in ROOT's order.
         self.sources = sources
         self._follows = follows
+        #: The directory of the file these rows were read from: what a ``TRef`` among them
+        #: names only by the index of a ``ProcessID`` record, which only that file holds.
+        self._source = source
         #: The names the writer keeps the count and each member's rows under.
         self.keys = column_keys(name, self._spec.build(name, 32000))
         self.pending: list[Any] = []
@@ -570,9 +715,35 @@ class ClonedSlot:
         return f"<ClonedSlot {self.name!r} of {len(self.sources)} members>"
 
     def read(self, counts: Any = None) -> Any:
-        """One entry as ``Fill`` reads it: each object of the entry, and its members' values."""
+        """One entry as ``Fill`` reads it: each object of the entry, and its members' values.
+
+        A clone shares its collection's address with the tree it was cloned from, as ROOT's
+        does: once ``SetBranchAddress`` has given that tree the objects to read into, those
+        objects are the entry - and they are the ones a ``TRef`` made from them numbered, so
+        the clone has to write them and not the copies the entry was read as
+        (roottest/root/io/tree/create-r).
+        """
+        live = self._live()
+        if live is not None:
+            return self._kind.entry(live)
         values = [follow.get() for follow in self._follows]
         return [tuple(one) for one in zip(*values, strict=True)]
+
+    def _live(self) -> Any:
+        """The objects the source tree holds for this collection, if it was given any.
+
+        A collection holding a whole object of its own per row - a ``TRef`` - is copied from
+        the values read instead, which the writer streams itself: those rows are not members
+        of the objects the tree was given but the objects themselves.
+        """
+        if any(member.stype == OBJECT_TYPE for member in getattr(self._kind, "members", ())):
+            return None
+        tree = self._follows[0].tree if self._follows else None
+        address = getattr(tree, "_addresses", {}).get(self.name)
+        if address is None:
+            return None
+        held = address.get() if hasattr(address, "get") else _held(address)
+        return None if held is None or isinstance(held, (int, float)) else held
 
     def taken(self, read: Any) -> list[Any]:
         """Every entry copied at once: each of its objects' members, from the columns read."""
@@ -591,7 +762,9 @@ class ClonedSlot:
         """How many objects each entry holds, and each member's rows, as ROOT writes them."""
         self.seal()
         rows = [row for chunk in self.chunks for row in chunk]
-        return self._kind.columns(self.keys, rows)
+        columns = self._kind.columns(self.keys, rows)
+        _carried_processes(self.keys[1:], self._kind.members, columns, self._source)
+        return self._kind.written(self.keys, columns)
 
     def spec(self) -> Spec:
         return self._spec
@@ -600,12 +773,17 @@ class ClonedSlot:
         """What ``Fill`` says this entry took: the size of what each of its objects read."""
         return 8 * sum(int(np.size(one)) for row in value for one in row)
 
+    def takes(self, value: Any) -> int:
+        """How many bytes of a basket one entry took, as a store's slot counts."""
+        return self.nbytes(value)
+
 
 def object_slot(name: str, address: Any, split: int, bufsize: int | None) -> ObjectSlot | None:
     """The slot for a branch given an object, or ``None`` when ``address`` holds no object."""
     obj = _held(address)
     kind = _kind(obj, split)
     if kind is None:
+        _no_layout(obj, name)
         return None
     if isinstance(kind, Macro) and not _splittable(obj, split):
         kind = MacroWhole()

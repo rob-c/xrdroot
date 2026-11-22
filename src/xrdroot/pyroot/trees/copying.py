@@ -15,19 +15,23 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
-from ...interp import Each, Values
+from ...interp import IS_REFERENCED, PID_OFFSET, UID_MASK, Each, Values
 from ...streamers import read_infos
 from ...tree import Jagged
 from ...wbranch import DeclaredWhole, Described, clones_members
 from ...winfo import INFOS
 from .addresses import Address
-from .objects import ClonedSlot
+from .objects import ClonedSlot, _source_uuid
 from .store import OBJECT, Slot, memory_tree
 
 __all__ = ["Follow", "clone", "subset"]
 
 #: Type codes whose width is the platform's, and the ones that are not.
 PLATFORM = {"l": "q", "L": "Q"}
+
+#: The members of a split collection's objects that a file does not read out of the entry:
+#: ``TObject``'s identifier, and the bits that say a reference may point at the object.
+NUMBERED_MEMBERS = ("fUniqueID", "fBits")
 
 
 class Follow(Address):
@@ -57,6 +61,108 @@ class Follow(Address):
 
     def put(self, value: Any) -> None:
         """Nothing: a clone's leaves are the other tree's, which ``GetEntry`` fills there."""
+
+
+def _live_objects(tree: Any, branch: str) -> Any:
+    """The objects the source tree holds for one collection, or ``None`` if it holds none."""
+    address = getattr(tree, "_addresses", {}).get(branch)
+    held = None if address is None else address.get()
+    return None if held is None or isinstance(held, (int, float)) else held
+
+
+class Live(Follow):
+    """A collection's identifier, read from the objects the tree was given rather than the entry.
+
+    ``fUniqueID`` and ``fBits`` are not values of the entry a file wrote: they say which process
+    numbered an object and that a reference may point at it, and ``GetEntry`` does not settle
+    them - ``TProcessID::AssignID`` numbers an object the moment a ``TRef`` is made to it, which
+    is after the entry was read. So a collection the tree was handed (``SetBranchAddress``) has
+    identifiers its entry never held, and a clone has to copy them
+    (roottest/root/io/tree/test-rcr). Every other member is still the entry's: a reference among
+    them is streamed from what the entry described, not from the object it was made of.
+    """
+
+    def __init__(self, tree: Any, column: str, member: str, branch: str, source: Any) -> None:
+        super().__init__(tree, column, False, False)
+        self.member = member
+        self.branch = branch
+        #: The directory these objects were read from, whose ``ProcessID`` records the file
+        #: being written has to hold before it numbers anything of its own.
+        self.source = source
+
+    def get(self, count: int | None = None) -> Any:
+        objects = _live_objects(self.tree, self.branch)
+        if objects is None:  # the tree holds no objects of it: the entry is all there is
+            return super().get(count)
+        if self.member == "fBits":
+            # The heap's own bits go to the file as ROOT's own objects carry them: this branch is
+            # one member of a record nobody writes for the object, so nothing puts them back.
+            return [int(obj._bitword()) for obj in objects]
+        _carried_records(self.source)
+        return [_identifier(obj) for obj in objects]
+
+
+def _identifier(obj: Any) -> int:
+    """The ``fUniqueID`` the file being written gives ``obj``: its number under the byte of the
+    ``ProcessID`` record that holds it - that record's index plus :data:`~xrdroot.interp.PID_OFFSET`
+    - or what it already says for an object no process ever numbered.
+    """
+    number = int(obj.GetUniqueID())
+    if not obj.TestBit(IS_REFERENCED):  # nothing numbered it, so there is no record to name
+        return number
+    index = _process_index(_process_of(obj, number))
+    return number if index < 0 else (number & UID_MASK) | ((index + PID_OFFSET) << 24)
+
+
+def _process_of(obj: Any, number: int) -> Any:
+    """The session's process that numbered ``obj``, which its identifier's byte names."""
+    from ..core.references import TProcessID
+
+    return TProcessID.GetProcessWithUID(number, obj)
+
+
+def _process_index(pid: Any) -> int:
+    """The index the file being written gives ``pid``'s record, or ``-1`` for a file that is
+    not being written.
+
+    The index is left on the process, because an identifier and a ``TRef`` written after it
+    name the same record and nothing else can say which one the file made: a reference's
+    ``fPID`` is an index among the file's ``ProcessID`` records, not among the session's
+    processes, and the two differ as soon as the file wrote another process's record first -
+    which a clone's carrying the records of the file it copies does
+    (roottest/root/io/tree/test-rcr2, where the session numbers the copied file's process
+    first and the file being written numbers it second).
+    """
+    from ..core.directories import current_file
+
+    file = current_file()
+    index = -1 if file is None or pid is None else int(file.WriteProcessID(pid))
+    if index >= 0:
+        pid._file_index = index
+    return index
+
+
+def _carried_records(source: Any) -> None:
+    """The file being written given a ``ProcessID`` record for each one the file a clone copies
+    had, at the index that file gave it.
+
+    A reference, and an identifier whose object a *file's* process numbered, name their process
+    by the index of a record, and a clone copies both, so the source's records have to be
+    written in the source's own order. They are written before the file numbers anything of its
+    own: the session's process would otherwise take the first index, and every copied index
+    would name another process (roottest/root/io/tree/test-rcr).
+    """
+    from ..core.directories import current_file
+
+    file = current_file()
+    if file is None:
+        return
+    index = 0
+    uuid = _source_uuid(source, index)
+    while uuid is not None:
+        file.WriteProcessID(uuid)
+        index += 1
+        uuid = _source_uuid(source, index)
 
 
 def _code(sample: Any) -> str:
@@ -230,7 +336,8 @@ class Streamed:
     def spec(self) -> Any:
         return self._spec
 
-    def nbytes(self, value: Any) -> int:
+    def takes(self, value: Any) -> int:
+        """How many bytes of a basket one entry took: the bytes of its objects."""
         return len(value)
 
 
@@ -374,6 +481,19 @@ def _members(top: str, element: str, leaves: dict[str, Any]) -> list[Any]:
     return [leaves[name] for name in names]
 
 
+def _directory(backing: Any) -> Any:
+    """The open file a clone's rows were read out of, or ``None`` for one read from memory.
+
+    A ``TRef`` among those rows is the record its source file wrote, and a record names its
+    process only by the index of a ``ProcessID`` record in that file; a tree keeps the bytes
+    it read through rather than the file, so the session's own list of open files has both.
+    """
+    from ...session import gROOT
+
+    source = getattr(backing, "_source", None)
+    return next((file for file in gROOT.files if file._source is source), None)
+
+
 def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[str]]:
     """A slot for each leaf the clone fills, and the split collections' top branches.
 
@@ -383,6 +503,7 @@ def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[s
     together - is the only one of the two that is read.
     """
     elements = {leaf.column: _element(leaf, backing) for leaf in leaves}
+    source = _directory(backing)
     by_column = {leaf.column: leaf for leaf in leaves}
     slots: list[Any] = []
     grouped: set[str] = set()
@@ -396,12 +517,25 @@ def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[s
             continue
         element, split = found
         members = _members(leaf.column, element, by_column)
-        follows = [Follow(tree, one.column, one.vector, one.text) for one in members]
+        follows = [_follower(leaf.column, one, tree, source) for one in members]
         sources = [one.column for one in members]
-        slots.append(ClonedSlot(leaf.column, element, split, sources, follows))
+        slots.append(ClonedSlot(leaf.column, element, split, sources, follows, source))
         grouped.add(leaf.column)
         inside |= {one.column for one in members}
     return _count_slots(slots) + slots, grouped
+
+
+def _follower(branch: str, leaf: Any, tree: Any, source: Any) -> Follow:
+    """What a clone copies one member of a split collection's objects from.
+
+    Every member but the object's own bookkeeping is a value its leaf holds, which ``GetEntry``
+    put in the entry last read; ``fUniqueID`` and ``fBits`` are what the objects themselves say,
+    because numbering an object happens after it was read (see :class:`Live`).
+    """
+    name = leaf.column.rpartition(".")[2]
+    if name in NUMBERED_MEMBERS:
+        return Live(tree, leaf.column, name, branch, source)
+    return Follow(tree, leaf.column, leaf.vector, leaf.text)
 
 
 def clone(tree: Any, made: Any, start: int, stop: int, selection: str | None) -> Any:

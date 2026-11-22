@@ -15,7 +15,17 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any
 
-__all__ = ["TApplication", "gApplication", "started"]
+__all__ = ["TApplication", "gApplication", "started", "TRINT", "PROGRAM", "named"]
+
+#: The name ``gROOT`` has while ``root``'s ``TRint`` session runs - a macro typed at the
+#: prompt or given on the command line, which TRint renames the session's directory after.
+TRINT = "Rint"
+
+#: The name ``gROOT`` has in a program that is not a session at all: ROOT's ``TROOT`` is
+#: ``TROOT("root", "ROOT of everything")`` there, and a program reads that name back -
+#: ``TEntryList::Enter`` prefixes a sub-list's tree with it, and ``entrylist_enter`` asks
+#: for ``"root/t1"``.
+PROGRAM = "root"
 
 
 class TApplication:
@@ -81,9 +91,29 @@ def started(argv: Sequence[str] = ()) -> Iterator[TApplication]:
 
     before = gApplication.GetName(), gApplication.Argv(), gROOT.GetName()
     gApplication.restart("TRint", argv)  # the one object every macro has been handed
-    gROOT.SetName("Rint")
+    gROOT.SetName(TRINT)
     try:
         yield gApplication
     finally:
         gApplication.restart(before[0], before[1])
         gROOT.SetName(before[2])
+
+
+@contextmanager
+def named(name: str) -> Iterator[None]:
+    """``gROOT`` called ``name`` while a translated program runs, and as it was afterwards.
+
+    Which name is right depends on what is running, not on this library: a program started
+    on its own is the compiled program's kin, so its ``gROOT`` is ROOT's default ``root``,
+    while a macro the prompt runs belongs to ``root``'s ``TRint`` session, which renames
+    ``gROOT`` to ``Rint`` (:func:`started`). What a macro reads back - ``gDirectory->pwd()``,
+    a ``TEntryList``'s sub-list names - follows from the one it ran under.
+    """
+    from ...pyroot import gROOT
+
+    before = gROOT.GetName()
+    gROOT.SetName(name)
+    try:
+        yield
+    finally:
+        gROOT.SetName(before)

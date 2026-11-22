@@ -55,7 +55,8 @@ Running it
     python -m tools.rootsuite run --root rootsrc --kind tutorial       # tools.tutorials, needs ROOT
     python -m tools.rootsuite report --results OUT/results.json        # redraw summary.md
     python -m tools.rootsuite ratchet OUT/results.json [--rerun-timeouts]
-    python -m tools.rootsuite baseline OUT/results.json                # rewrite baseline.json
+    python -m tools.rootsuite baseline OUT/results.json [--merge]      # rewrite baseline.json,
+                                                                   #  or raise the rows it passed
 
 ``--out`` defaults to ``$XRDROOT_ROOTSUITE_OUT``, else ``xrdroot-rootsuite``
 in the system's temporary directory - never the repository. It receives

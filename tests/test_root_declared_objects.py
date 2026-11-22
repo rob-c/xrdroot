@@ -11,28 +11,40 @@ translated classes, member by member.
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import re
+import struct
+from types import SimpleNamespace
+from typing import ClassVar
 
 import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
+from xrdroot.buffer import BYTE_COUNT_MASK, Buffer
 from xrdroot.cppstd.bitset import Bitset
 from xrdroot.cppstd.stdlib import complex_type
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.file import open_root
+from xrdroot.interp import flat_reader
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.runtime.namespace import DECLARED
 from xrdroot.pyroot.core.declared import (
+    _member_maker,
+    _root_member,
     catalogue_for,
+    converted,
     find_class,
     made_from,
     payload_of,
     plain_value,
+    root_row,
 )
+from xrdroot.rdobjects import flat_reader_for
 from xrdroot.streamers import read_infos
+from xrdroot.wclasses import checksum
 from xrdroot.wdeclared import (
     CARRIED_LAYOUTS,
     NO_DIMS,
@@ -42,7 +54,14 @@ from xrdroot.wdeclared import (
     normalised,
     parse_type,
 )
-from xrdroot.wdobjects import Instance, write_instance, write_members, write_value
+from xrdroot.wdobjects import (
+    Instance,
+    flat_record,
+    write_instance,
+    write_members,
+    write_value,
+    written_flat,
+)
 from xrdroot.winfo import INFOS, Element
 from xrdroot.writer import WBuffer
 
@@ -188,6 +207,44 @@ def test_a_member_whose_type_changed_is_converted_as_cpp_converts_it():
 def test_a_record_of_a_class_no_one_declared_is_not_made_into_one():
     assert made_from("NoSuchClass", {"x": 1}) is None
     assert find_class("NoSuchClass") is None
+
+
+def test_a_member_that_is_one_number_is_made_as_its_types_reading_makes_one():
+    """The reading a bulk read takes for a member that is one number gives back what
+    ``converted`` gives back - for what a file gives and for every other shape a value comes
+    in, including where it stands aside for an array of them."""
+    for typename in ("int", "short", "char", "unsigned char", "long long", "unsigned int"):
+        found = parse_type(typename)
+        made = _member_maker(found)
+        for value in (0, 1, -1, 127, 128, 255, 256, -128, -129, 2**31 - 1, 2**31, 2**40, 5.7):
+            assert made(value, 0) == converted(value, found, 0), (typename, value)
+    made = _member_maker(parse_type("int"))
+    assert made(None, 0) is None
+    assert made(7, 0) == 7
+    assert made(np.int64(7), 0) == converted(np.int64(7), parse_type("int"), 0)
+    assert made([1, 2], None).tolist() == [1, 2]  # a record whose member is a row
+    held = np.zeros(2, dtype=np.int64)
+    assert made([5, 6], held) is held and held.tolist() == [5, 6]
+
+
+def test_a_member_of_a_float_or_a_bool_is_converted_as_converted_converts_it():
+    """A type whose reading is a conversion, not a mask, keeps the conversion."""
+    for typename in ("double", "float", "bool"):
+        found = parse_type(typename)
+        made = _member_maker(found)
+        for value in (1, 1.5, -2.5, 0, True):
+            assert made(value, None) == converted(value, found, None), (typename, value)
+        assert made(None, None) is None
+        assert made([1, 2], None).tolist() == converted([1, 2], found, None).tolist()
+
+
+def test_a_member_that_is_text_or_an_array_is_not_taken_for_one_number():
+    """A ``char`` may be the string it holds, and ``int v[3]`` is three numbers: those keep
+    the reading they had."""
+    text = _member_maker(parse_type("char"))
+    assert text("abc", None) == converted("abc", parse_type("char"), None) == "abc"
+    array = _member_maker(parse_type("int"), (3,))
+    assert array([1, 2, 3], None).tolist() == [1, 2, 3]
     assert payload_of(3) is None
 
 
@@ -263,6 +320,99 @@ def test_a_counted_array_shorter_than_its_count_is_an_error():
     buf = WBuffer()
     write_instance(buf, Instance("C", {"n": 0, "v": None, "a": np.array([1, 2])}), catalogue)
     assert bytes(buf.data).hex() == "4000000f0002000000000000000001" + "00000002"
+
+
+def test_a_run_of_numbers_is_written_by_one_struct_and_falls_back_where_it_must():
+    """A class of numbers writes its numbers one after another, so the writer writes the run
+    with one ``struct`` - and, where the ``struct`` refuses a value, writes the members one at
+    a time, so a float into an ``int`` member is the truncation NumPy makes and not an error."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b", "c"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    buf = WBuffer()
+    write_instance(buf, Instance("C", {"a": 1, "b": 2, "c": 3}), catalogue)
+    assert bytes(buf.data).hex() == "4000000e0002" + "000000010000000200000003"
+    refused = WBuffer()
+    write_instance(refused, Instance("C", {"a": 1.9, "b": 2, "c": 3}), catalogue)
+    assert bytes(refused.data).hex() == "4000000e0002" + "000000010000000200000003"
+
+
+def test_a_run_of_plain_numbers_is_written_from_the_values_at_hand():
+    """A class whose members are all numbers is one struct over the object's own values."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    buf = WBuffer()
+    assert written_flat(buf, "C", catalogue, [1, 2]) is True
+    assert bytes(buf.data).hex() == "4000000a0002" + "0000000100000002"
+
+
+def test_a_run_of_numbers_stands_aside_for_a_value_or_a_class_it_cannot_write():
+    """A class nothing describes, a class that is more than numbers, a value the struct
+    refuses, and a row that is not one value per member: the writer's own steps write them."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    assert flat_record(Catalogue({}), "NoSuchClass") is None
+    strings = Catalogue({"C": Declaration("C", 2, False, (), (Field("s", "TString", "", ()),))})
+    assert flat_record(strings, "C") is None
+    assert written_flat(WBuffer(), "C", catalogue, [1.9, 2]) is False  # the struct refuses it
+    assert written_flat(WBuffer(), "C", catalogue, [1]) is False  # not one value per member
+
+
+def test_a_foreign_class_of_numbers_carries_its_checksum_after_a_zero_version():
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    foreign = Catalogue({"C": Declaration("C", 1, True, (), fields)})
+    written = WBuffer()
+    assert written_flat(written, "C", foreign, [3, 4]) is True
+    assert bytes(written.data)[4:6] == b"\x00\x00"  # version zero, the checksum after it
+
+
+def _record(version: int, body: bytes) -> bytes:
+    """A record as ROOT writes one: its byte count, its version, then the body."""
+    return struct.pack(">IH", BYTE_COUNT_MASK | (2 + len(body)), version) + body
+
+
+def test_a_class_of_numbers_is_read_as_one_struct_of_its_members():
+    """The reader a bulk loop takes for a class of numbers gives every member's value in the
+    order their names are - and stands aside for a class that is more than that."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b", "c"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    read, labels = flat_reader_for("C", catalogue)
+    assert labels == ("a", "b", "c")
+    assert read(Buffer(_record(2, struct.pack(">iii", 7, 8, 9)))) == (7, 8, 9)
+    arrays = Catalogue({"C": Declaration("C", 2, False, (), (Field("v", "int", "", (3,)),))})
+    assert flat_reader_for("C", arrays) is None  # a fixed array is a row, not one number
+    assert flat_reader_for("vector<int>", catalogue) is None  # a container is not one either
+    # a class the file's streamer information does not describe is no one struct either
+    assert flat_reader("C", SimpleNamespace(streamers=dict)) is None
+
+
+def test_a_foreign_class_of_numbers_reads_past_the_checksum_its_version_holds():
+    """A class without ``ClassDef`` carries its checksum where a version would go, which a
+    read of one struct steps over as the members' own steps do."""
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    catalogue = Catalogue({"C": Declaration("C", 0, True, (), fields)})
+    read, _labels = flat_reader_for("C", catalogue)
+    body = struct.pack(">I", 1234) + struct.pack(">ii", 1, 2)
+    assert read(Buffer(_record(0, body))) == (1, 2)
+
+
+def test_a_flat_read_stands_aside_for_a_class_or_a_file_it_cannot_fill(monkeypatch):
+    """A class the catalogue does not describe, a class that is more than numbers, and a file
+    whose members are not the ones the class declares: the reader's own steps take them."""
+    from xrdroot.pyroot.core import buffers
+
+    class _Nothing:
+        def declared(self, name: str) -> None:
+            return None
+
+    assert buffers._read_flat(Buffer(b""), "X", _Nothing(), object()) is None
+    fields = tuple(Field(name, "int", "", ()) for name in ("a", "b"))
+    catalogue = Catalogue({"C": Declaration("C", 2, False, (), fields)})
+    strings = Catalogue({"C": Declaration("C", 2, False, (), (Field("s", "TString", "", ()),))})
+    assert buffers._read_flat(Buffer(b""), "C", strings, object()) is None
+    monkeypatch.setattr(
+        buffers, "flat_reader_for", lambda name, held: (lambda buf: (1, 2), ("z", "y"))
+    )
+    assert buffers._read_flat(Buffer(b""), "C", catalogue, SimpleNamespace()) is None
 
 
 def test_a_container_of_containers_of_objects_is_refused():
@@ -445,6 +595,19 @@ def test_a_pointer_read_to_a_class_no_one_declared_is_kept_as_read():
     assert converted(-1.5, parse_type("short"), 0) == -1
 
 
+def test_a_record_of_a_class_the_kit_makes_whole_is_given_to_the_object_read_into():
+    # ROOT finishes a read in the object it was handed, so a TBufferFile round trip hands back
+    # the object ``Streamer(buffer)`` was called on; where there is no such object, or it is
+    # not of the record's class, the one made from the members is what comes back.
+    from xrdroot.pyroot.core.declared import converted
+
+    row = {"fName": "n", "fTitle": "t"}
+    made = converted(row, parse_type("TNamed"), None)
+    assert (made.GetName(), made.GetTitle()) == ("n", "t")
+    assert converted(row, parse_type("TNamed"), ROOT.TNamed("old", "one")).GetTitle() == "t"
+    assert converted(row, parse_type("TNamed"), ROOT.TObject()).GetName() == "n"
+
+
 def _bitset(width: int, value: int) -> Bitset:
     """A ``std::bitset`` of ``width`` bits, as a translated macro holds one."""
     return Bitset(width, value)
@@ -540,6 +703,39 @@ def test_one_of_roots_classes_read_a_member_at_a_time_is_made_again():
     back = converted(row, parse_type("TRefArray*"), None)
     assert type(back).__name__ == "TRefArray" and hasattr(back, "Delete")
     assert back.GetEntries() == 0
+
+
+def test_a_root_member_is_read_by_its_getter_with_or_without_the_get_prefix():
+    # ROOT names a getter after the member without its ``f`` - ``GetLast`` for ``fLast`` - but
+    # not always with a ``Get``: ``TObjArray::fLowerBound`` is read by ``LowerBound``, so a
+    # member written by the layout alone is the number it holds rather than None.
+    arr = ROOT.TObjArray()
+    arr.SetName("items")
+    assert _root_member(arr, "fLast") == -1
+    assert _root_member(arr, "fLowerBound") == 0
+
+
+def test_a_root_member_with_no_getter_at_all_is_the_attribute_itself():
+    # A class of ROOT's the kit keeps by name - a drawing class's ``fLineColor`` - has no
+    # getter to ask, and the member is what the object holds.
+    class Kept:
+        fLineColor = 4
+
+    assert _root_member(Kept(), "fLineColor") == 4
+    assert _root_member(Kept(), "fLineStyle") is None
+
+
+def test_one_of_roots_collections_is_written_by_the_members_its_layout_names():
+    # A ``TObjArray`` among a declared class's members has no record of its own here, so it
+    # is written by what its streamer info names - its name, its size, its lower bound and
+    # the index of its last filled slot.
+    arr = ROOT.TObjArray()
+    arr.SetName("items")
+    arr.Add(ROOT.TNamed("one", ""))
+    row = root_row(arr, "TObjArray")
+    held = row["TSeqCollection"]["TCollection"]
+    assert (held["fName"], held["fSize"]) == ("items", 1)
+    assert (row["fLowerBound"], row["fLast"]) == (0, 0)
 
 
 def test_a_clones_array_member_names_the_array_and_not_the_class_it_holds():
@@ -1288,15 +1484,31 @@ def test_an_array_of_containers_writes_every_element_into_its_one_record():
     assert bytes(buf.data).hex() == ARRAY_OF_CONTAINERS_BYTES
 
 
-def test_an_array_of_containers_of_objects_is_refused_by_name():
-    """ROOT writes a container of objects member by member, and how it lays one of those out
-    column by column inside an array's single record is not a shape this writer knows: the
-    member is refused with a sentence naming it rather than written on a guess."""
+def test_an_array_of_containers_of_objects_is_one_record_of_columns():
+    """The oracle's bytes for ``std::vector<TNamed> *f[2]`` with a ``TNamed`` in the first
+    element and nothing in the second: one record round the whole array - the container's
+    version with its member-wise bit, ``TNamed``'s own version the once the array needs it,
+    then each element's count and its objects' members as columns. A class of ``int`` stands
+    in for ``TNamed`` here, so its version is 3 and its one column a number."""
+    made = Catalogue({
+        "E": Declaration("E", 3, True, (), (Field("a", "int", "", ()),)),
+        "C": Declaration("C", 1, True, (), (Field("v", "vector<E>", "", (2,)),))})  # fmt: skip
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"v": [[{"a": 1}], []]}), made)
+    assert bytes(buf.data).hex() == ("40000010" "400a" "0003"
+                                     "00000001" "00000001" "00000000")  # fmt: skip
+
+
+def test_an_array_of_containers_of_objects_takes_the_class_version_once():
+    """A ``std::complex`` has no version of its own but a checksum, and an array of its
+    containers writes that pair once for the array rather than once per element."""
     made = Catalogue({"C": Declaration("C", 1, True, (), (
-        Field("v", "vector<TLine>", "", (2,)),))})
-    with pytest.raises(UnsupportedFeatureError,
-                       match=r"a vector<TLine> array holds objects, which ROOT writes"):
-        write_members(WBuffer(), Instance("C", {"v": [[], []]}), made)  # fmt: skip
+        Field("v", "vector<complex<double> >", "", (2,)),))})
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"v": [[{"_real": 1.5, "_imag": 2.5}], []]}), made)
+    assert bytes(buf.data).hex() == (
+        "40000020" "400a" "0000db2371a1" "00000001"
+        "3ff8000000000000" "4004000000000000" "00000000")  # fmt: skip
 
 
 #: ROOT 6.40.04's bytes for ``class P : public TObject { std::vector<int> *fVint;
@@ -1486,6 +1698,54 @@ def test_a_counted_pointer_holding_fewer_objects_than_the_count_is_refused():
             buf, Instance("Probe", {"TObject": {}, "fN": 2, "fP": [{"fX": 1}]}), made)
 
 
+def _a_class_holding_an_array_of_pointers(comment: str) -> Catalogue:
+    """``Point *f[2]`` - the array of pointers ROOT describes as the one pointer element with
+    the two it holds as its length, and no array offset on its type."""
+    return Catalogue({
+        "Point": Declaration("Point", 1, False, (), (Field("fX", "Int_t", "x", ()),)),
+        "Holder": Declaration("Holder", 1, False, ("TObject",), (
+            Field("f", "Point*", comment, (2,)),)),
+    })  # fmt: skip
+
+
+def test_an_array_of_pointers_an_arrow_owns_is_written_one_record_after_another():
+    """An array of ``Point *f[2]; //->`` is described as type 68, the pointer written in place
+    as if held by value, so ROOT writes each element's record and the array's length says how
+    many there are."""
+    made = _a_class_holding_an_array_of_pointers("-> owned")
+    _version, _sum, elements = made.info("Holder")[0:3]
+    assert elements[1][:4] == ("TStreamerObjectAnyPointer", "f", "-> owned", 68)
+    assert elements[1][4:9] == (16, 2, 1, (2, 0, 0, 0, 0), "Point*")
+    buf = WBuffer()
+    write_instance(buf, Instance("Holder", {"TObject": {}, "f": [{"fX": 11}, {"fX": 22}]}),
+                   made)  # fmt: skip
+    # Two ``Point`` records, the version word and the version, then ``fX``: no tag of a class
+    # in front of either, since the layout already says the elements are points.
+    assert bytes(buf.data).endswith(bytes.fromhex(
+        "40000006" "0001" "0000000b" "40000006" "0001" "00000016"))
+
+
+def test_an_array_of_pointers_with_no_arrow_is_written_with_a_tag_each():
+    """``Point *f[2]`` with no comment is type 69, the pointer ROOT writes as the tag naming
+    the class it points at, or four zero bytes where it is the null one - one such pointer per
+    element of the array, and a slot the object holds no pointer for written as the null."""
+    made = _a_class_holding_an_array_of_pointers("")
+    assert made.info("Holder")[2][1][3] == 69
+    buf = WBuffer()
+    write_instance(buf, Instance("Holder", {"TObject": {}, "f": [{"fX": 16}]}), made)
+    assert bytes(buf.data).endswith(bytes.fromhex(
+        "40000014" "ffffffff" "506f696e7400" "40000006" "0001" "00000010" "00000000"))
+
+
+def test_an_array_of_pointers_holding_more_pointers_than_it_has_room_for_is_refused():
+    """The array in the layout is a number of pointers, so more than it says is a row this
+    writer cannot lay out rather than a longer record."""
+    made = _a_class_holding_an_array_of_pointers("")
+    buf = WBuffer()
+    with pytest.raises(ValueError, match=r"f holds 3 pointers where its array has room for 2"):
+        write_instance(buf, Instance("Holder", {"TObject": {}, "f": [None, None, None]}), made)
+
+
 def test_a_class_spelled_with_a_space_where_a_streamer_names_it_is_the_same_class():
     """A declaration spells a template instance as C++ writes it,
     ``template2<template1<int> >``, while a streamer names the very class
@@ -1515,6 +1775,36 @@ def test_a_member_of_a_template_instance_is_an_object_held_in_place_of_that_clas
     assert made.info("Event")[2] == (
         ("TStreamerObjectAny", "fTemplateMember", "", 62, 8, 0, 0, NO_DIMS, spelled, ()),)
     assert set(made.entries()) == {"Event", "template2<template1<int>>"}
+
+
+def test_an_instantiated_template_is_described_by_the_declaration_and_not_by_roots_table():
+    """The bigevent roottest's ``Event::fTemplateMember`` is an instance of a template the
+    program itself declares, so ROOT describes it out of that declaration and never out of
+    its own table: its record is version 1 with no elements - both templates are empty - and
+    an object of it is written as a class of no ``ClassDef`` is, version 0 and the checksum
+    ``0xf1819316`` after it. An entry for the instance in :data:`~.winfo.INFOS` would take it
+    away from the declaration instead - ``pyroot/core/declared._reach`` stops at a name the
+    table holds - and its record would go out as version 1 with no checksum.
+    """
+    spelled = "template2<template1<int> >"
+    assert spelled not in INFOS
+    made = Catalogue({
+        "Holder": Declaration("Holder", 1, False, (), (
+            Field("fN", "Int_t", "", ()),
+            Field("fTemplateMember", "template2< template1< int > >", "", ()),
+            Field("fAfter", "Int_t", "", ()),)),
+        spelled: Declaration(spelled, 1, True, (), ()),
+    })  # fmt: skip
+    assert made.info("Holder")[2][1] == (
+        "TStreamerObjectAny", "fTemplateMember", "", 62, 8, 0, 0, NO_DIMS, spelled, ())
+    buf = WBuffer()
+    write_instance(buf, Instance("Holder", {
+        "fN": 5, "fTemplateMember": {}, "fAfter": 3}), made)  # fmt: skip
+    # The record ROOT 6.40.04 writes for a ``Holder`` of the same three members: no tag in
+    # front of the member - the layout already says a class is held there - and no bytes of
+    # its own, an empty class being nothing but its version word and its checksum.
+    assert bytes(buf.data) == bytes.fromhex(
+        "40000014" "0001" "00000005" "40000006" "0000" "f1819316" "00000003")
 
 
 TEMPLATE_MEMBER = r"""
@@ -2159,3 +2449,317 @@ def test_a_container_of_roots_core_objects_is_written_by_the_members_their_layou
     # container, ``TObject``'s version and the count - one column per member of a ``TObject``.
     assert bytes(buf.data)[24:].hex() == "40000010" + "400a" + "0001" + "00000001" \
         + "00000000" + "03000000"
+
+
+def test_an_array_of_tstrings_is_one_string_element_with_the_array_offset():
+    """``TString f[2]`` is the one ``TStreamerString`` a single ``TString`` is, with the array
+    offset on its type, room for the two strings and two as its length. The 6.40.04 oracle
+    dumps ``class P : public TObject { TString f[2]; }`` as type 85, 48 bytes, a length of 2
+    and one dimension, and checksums the class at 3007492621, which this layout does too -
+    the twelve ``TString``s of the bigevent roottest's ``Event::fNames`` are described so."""
+    made = _a_class_holding_an_array_of_tstrings()
+    _version, _sum, elements = made.info("P")
+    assert elements[1] == (
+        "TStreamerString", "f", "", 85, 48, 2, 1, (2, 0, 0, 0, 0), "TString", ())
+    assert checksum("P", elements) == 3007492621  # the oracle's for that class
+
+
+def _a_class_holding_an_array_of_tstrings() -> Catalogue:
+    return Catalogue({"P": Declaration("P", 1, True, ("TObject",), (
+        Field("f", "TString", "", (2,)),))})
+
+
+def test_an_array_of_tstrings_is_written_one_string_after_another():
+    """ROOT writes the N strings of a ``TString f[N]`` in turn, each with the length byte the
+    one string is written with, and a slot the object holds no string for as the empty string
+    ROOT's own default-made ``TString`` is."""
+    made = _a_class_holding_an_array_of_tstrings()
+    for given, expected in ((("ab", "cd"), "026162026364"), (("ab",), "02616200")):
+        buf = WBuffer()
+        write_instance(buf, Instance("P", {"TObject": {}, "f": list(given)}), made)
+        assert bytes(buf.data).endswith(bytes.fromhex(expected)), given
+
+
+def test_an_array_of_tstrings_holding_more_strings_than_it_has_room_for_is_refused():
+    """The array in the layout is a number of strings, so more than it says is a row this
+    writer cannot lay out rather than a longer record."""
+    made = _a_class_holding_an_array_of_tstrings()
+    buf = WBuffer()
+    with pytest.raises(ValueError, match=r"f holds 3 strings where its array has room for 2"):
+        write_instance(buf, Instance("P", {"TObject": {}, "f": ["a", "b", "c"]}), made)
+
+
+#: The classes the writers of a whole array of containers, of a counted array of ROOT's own
+#: objects and of a ``TDatime`` are reached through - the shapes the bigevent roottest fills a
+#: whole ``Event`` with, one member at a time.
+SHAPES = """
+class Inner {
+public:
+   Int_t n;
+   Inner() : n(1) {}
+   ClassDef(Inner, 1)
+};
+
+class Arrayed {
+public:
+   std::vector<int> *fV[2];
+   std::vector<Inner> *fO[2];
+   Arrayed();
+   ClassDef(Arrayed, 1)
+};
+
+Arrayed::Arrayed() {
+   for (int i = 0; i < 2; ++i) {
+      fV[i] = new std::vector<int>();
+      fO[i] = new std::vector<Inner>();
+   }
+   fV[0]->push_back(1);
+   fV[0]->push_back(2);
+   fO[0]->push_back(Inner());
+}
+
+class Counted {
+public:
+   Int_t fN;
+   TAxis *fP;      //[fN]
+   TDatime fD;
+   Counted();
+   ClassDef(Counted, 1)
+};
+
+Counted::Counted() : fN(2), fP(0) {
+   fP = new TAxis[fN];
+   for (int i = 0; i < fN; ++i) fP[i].Set(10, 0., 1.);
+   fD.Set(2006, 1, 2, 15, 4, 5);
+}
+"""
+
+
+def test_an_array_of_pointers_to_vectors_is_plain_data_one_vector_per_slot():
+    """The array level stays where ROOT keeps it: ``std::vector<int> *f[2]`` is two vectors,
+    each written as its own count and values inside the array's one record. Converting the
+    member as the element's type would fold the two levels into one - which is how the
+    bigevent roottest's six ``vector<TNamed> *`` reached the writer as six objects."""
+    from xrdroot.pyroot.core.declared import catalogue_for, instance_of
+
+    run_source(SHAPES, "shapes.C", call=False)
+    made = instance_of(find_class("Arrayed")(), "Arrayed", catalogue_for("Arrayed"))
+    assert made.members["fV"] == [[1, 2], []]
+    assert [list(one) for one in made.members["fO"]] == [[Instance("Inner", {"n": 1})], []]
+
+
+def test_a_member_of_an_axis_that_has_no_getter_is_taken_from_the_row_it_keeps():
+    """``fBits2`` is ROOT's second bit status word of an axis, which no ``Get`` of ROOT's asks
+    for: the axis here keeps it in the row the histogram writes, and ``fCanExtend``'s bit
+    with it."""
+    from xrdroot.pyroot.core.axes import CAN_EXTEND, TAxis
+    from xrdroot.pyroot.core.declared import root_row
+
+    axis = TAxis(10, 0.0, 1.0)
+    assert root_row(axis, "TAxis")["fBits2"] == 0
+    axis.SetCanExtend(True)
+    assert root_row(axis, "TAxis")["fBits2"] == CAN_EXTEND
+
+
+def test_a_counted_array_of_roots_own_objects_is_plain_data_one_object_per_slot():
+    """``TAxis *fP //[fN]`` is a ``kStreamLoop`` of objects ROOT writes in place, so each slot
+    is the members its layout names - which is what the writer lays out, where the axis object
+    itself is one this writer does not put in a file."""
+    from xrdroot.pyroot.core.declared import catalogue_for, instance_of
+
+    run_source(SHAPES, "shapes.C", call=False)
+    made = instance_of(find_class("Counted")(), "Counted", catalogue_for("Counted"))
+    held = made.members["fP"]
+    assert [row["fNbins"] for row in held] == [10, 10]
+    assert [row["fXmax"] for row in held] == [1.0, 1.0]
+
+
+def test_a_tdatime_member_is_the_moment_it_stands_for():
+    """ROOT streams a ``TDatime`` as one packed word and no record - the one class of its kit
+    small enough to have skipped the version header - so what the writer is handed is the
+    moment reading one back gives."""
+    import datetime
+
+    from xrdroot.pyroot.core.declared import catalogue_for, instance_of
+
+    run_source(SHAPES, "shapes.C", call=False)
+    made = instance_of(find_class("Counted")(), "Counted", catalogue_for("Counted"))
+    assert made.members["fD"] == datetime.datetime(2006, 1, 2, 15, 4, 5)
+
+
+def test_a_tdatime_is_the_one_packed_word_root_writes_for_it():
+    made = Catalogue({"C": Declaration("C", 1, True, (), (
+        Field("fD", "TDatime", "date and time", ()),))})
+    buf = WBuffer()
+    write_members(buf, Instance("C", {"fD": datetime.datetime(2006, 1, 2, 15, 4, 5)}), made)
+    assert bytes(buf.data).hex() == "2c44f105"  # what as_datetime unpacks
+
+
+def test_a_tdatime_that_is_not_a_moment_is_refused():
+    made = Catalogue({"C": Declaration("C", 1, True, (), (
+        Field("fD", "TDatime", "date and time", ()),))})
+    buf = WBuffer()
+    with pytest.raises(UnsupportedFeatureError, match="a TDatime is written as the moment"):
+        write_members(buf, Instance("C", {"fD": 20060102}), made)
+
+
+def test_a_member_that_is_one_of_roots_classes_is_written_as_that_classs_row():
+    """The bigevent roottest's ``TLorentzVector fLorentz`` holds a ``TVector3 fP``, which is a
+    class of ROOT's itself: what the file holds is the members ``TVector3`` is written by, and
+    the ``double fE`` beside it stays the number it is."""
+    row = root_row(ROOT.TLorentzVector(1.0, 2.0, 3.0, 4.0), "TLorentzVector")
+    assert row["fP"]["fX"] == 1.0
+    assert row["fP"]["fY"] == 2.0
+    assert row["fP"]["fZ"] == 3.0
+    assert row["fP"]["TObject"] == {"fBits": 0, "fUniqueID": 0}
+    assert row["fE"] == 4.0
+
+
+def test_the_vector_a_four_vector_keeps_is_written_where_no_getter_hands_it_over():
+    """``P()`` answers the momentum's *length*, and it is the name the member has without its
+    ``f``: a method of the member's name is no way to reach the member, so the vector the
+    class keeps its components in is what is written - and the length is not what the row of
+    ``fP`` says."""
+    four = ROOT.TLorentzVector(1.0, 2.0, 3.0, 4.0)
+    assert four.P() == pytest.approx(3.7416573867739413)
+    assert root_row(four, "TLorentzVector")["fP"]["fX"] == 1.0
+
+
+#: A stand-in for a class of ROOT's that holds one object of another by value.
+HELD_INFO = (0, 1, (("TStreamerObject", "fInner", "", 61, 0, 0, 0, NO_DIMS, "Kept", ()),))
+#: The class of the object held: one number, as ROOT describes a plain member.
+KEPT_INFO = (0, 1, (("TStreamerBasicType", "fX", "", 8, 8, 0, 0, NO_DIMS, "double", ()),))
+
+
+class Kept:
+    """An object of a stand-in class of ROOT's, held by another."""
+
+    def __init__(self, x: float) -> None:
+        self.fX = x
+
+
+def test_a_held_object_whose_name_is_the_members_is_the_one_written(monkeypatch):
+    """Two objects of the member's class are kept, and the member's own name - ``fInner``'s
+    ``_inner``, whose case is all that tells them apart - says which is written."""
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        def __init__(self) -> None:
+            self._other = Kept(1.0)
+            self._inner = Kept(2.0)
+
+        def GetInner(self) -> float:  # what a getter of the member's name answers instead
+            return -1.0
+
+    assert root_row(Holder(), "Held")["fInner"] == {"fX": 2.0}
+
+
+def test_a_held_object_that_is_the_only_one_of_its_class_is_the_one_written(monkeypatch):
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        def __init__(self) -> None:
+            self._kept = Kept(3.0)
+
+        def GetInner(self) -> float:
+            return -1.0
+
+    assert root_row(Holder(), "Held")["fInner"] == {"fX": 3.0}
+
+
+def test_a_holder_that_keeps_no_members_by_name_is_left_the_value_it_answered(monkeypatch):
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        __slots__ = ()
+
+        def GetInner(self) -> float:
+            return -1.0
+
+    assert root_row(Holder(), "Held")["fInner"] == -1.0
+
+
+def test_a_member_that_is_already_the_objects_own_row_is_left_as_it_is(monkeypatch):
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        def GetInner(self) -> dict[str, float]:
+            return {"fX": 5.0}
+
+    assert root_row(Holder(), "Held")["fInner"] == {"fX": 5.0}
+
+
+def test_a_member_a_getter_already_answers_with_its_own_class_is_that_classs_row(monkeypatch):
+    monkeypatch.setitem(INFOS, "Held", HELD_INFO)
+    monkeypatch.setitem(INFOS, "Kept", KEPT_INFO)
+
+    class Holder:
+        def GetInner(self) -> Kept:
+            return Kept(7.0)
+
+    assert root_row(Holder(), "Held")["fInner"] == {"fX": 7.0}
+
+
+def test_a_member_of_roots_that_is_a_string_or_a_collection_is_left_as_it_is(monkeypatch):
+    """A ``TString`` has a layout of ROOT's like any class, and a collection streams its own
+    entries: neither is a row of members the writer lays out."""
+    elements = (
+        ("TStreamerObject", "fS", "", 61, 0, 0, 0, NO_DIMS, "TString", ()),
+        ("TStreamerObject", "fL", "", 61, 0, 0, 0, NO_DIMS, "TObjArray", ()),
+        ("TStreamerBasicType", "fN", "", 8, 8, 0, 0, NO_DIMS, "double", ()),
+    )
+    monkeypatch.setitem(INFOS, "Held", (0, 1, elements))
+    held = ROOT.TObjArray()
+
+    class Holder:
+        def GetS(self) -> str:
+            return "text"
+
+        def GetL(self) -> object:
+            return held
+
+        def GetN(self) -> float:
+            return 0.5
+
+    row = root_row(Holder(), "Held")
+    assert (row["fS"], row["fN"]) == ("text", 0.5)
+    assert row["fL"] is held
+
+
+def test_a_kept_object_with_no_attribute_named_after_its_member_is_the_only_one_of_its_class():
+    """``TLorentzVector`` keeps its ``TVector3`` in ``_p``, but a class may keep it under any
+    name; the one value of that class is then the member, and none at all is no member."""
+    from xrdroot.pyroot.core.declared import _kept_object
+
+    class Vector:
+        pass
+
+    class Named:
+        def __init__(self, held):
+            self.somewhere = held
+
+    vector = Vector()
+    assert _kept_object(Named(vector), "fP", "Vector") is vector
+    assert _kept_object(Named(1.0), "fP", "Vector") is None
+
+
+def test_a_member_a_row_does_not_name_is_read_from_the_object_itself():
+    """An object that keeps its members in a row answers from that row, and a member the row
+    does not name falls back to the attribute of that name - or to nothing where it has none."""
+    from xrdroot.pyroot.core.declared import _member_value
+
+    class Drawn:
+        _row: ClassVar[dict[str, int]] = {"fLineColor": 4}
+
+    class Held:
+        _row: ClassVar[dict[str, int]] = {}
+
+        def __init__(self) -> None:
+            self.fAbsent = 3.0
+
+    assert _member_value(Drawn(), "fAbsent") is None  # neither the row nor the object has it
+    assert _member_value(Held(), "fAbsent") == 3.0  # the row does not name it; the object does

@@ -16,16 +16,19 @@ member added since (left as the constructor made it) or dropped (ignored).
 
 from __future__ import annotations
 
+import datetime
 import functools
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 from weakref import WeakKeyDictionary
 
 import numpy as np
 
 from ...cppstd.containers import std
+from ...pycxx.runtime.namespace import DECLARED
+from ...pycxx.symbols import member_name
 from ...wclasses import TYPES
 from ...wdeclared import (
     ARRAY_TEMPLATES,
@@ -39,9 +42,10 @@ from ...wdeclared import (
     class_name,
     parse_type,
 )
-from ...wdobjects import Clones, DeclaredObject, Instance
+from ...wdobjects import Clones, DeclaredObject, Instance, written_flat
 from ...winfo import INFOS
-from .objects import TNamed, TObject
+from ...writer import WBuffer
+from .objects import HEAP_BITS, TNamed, TObject
 
 __all__ = [
     "declared_class",
@@ -76,6 +80,11 @@ COLLECTIONS = ("TList", "THashList", "TSortedList", "TObjArray")
 STRINGS = ("TString", "string", "basic_string")
 #: The collections of those that keep a numbered slot per object, a slot never filled a hole.
 SLOTTED = ("TObjArray",)
+#: The elements whose member is an object of a class ROOT writes in place - by value, not behind
+#: a pointer - so that what the writer is handed for it is the row of that class's members, as
+#: :func:`root_row` builds one: a ``TLorentzVector``'s ``TVector3 fP``. An object behind a marker
+#: is the writer's own business, a pointer to one arriving as a record already.
+HELD_OBJECTS = ("TStreamerObject", "TStreamerObjectAny")
 
 
 def declared_class(cls: Any) -> bool:
@@ -95,12 +104,30 @@ def find_class(name: str) -> type | None:
     before they are compared - the bigevent roottest's ``Event::fTemplateMember``
     is reached only by the first and asked for only by the second.
     """
-    from ...pycxx.runtime.namespace import DECLARED
+    held = DECLARED.get(name)
+    known = _FOUND.get(name)
+    if known is not None and known[0] is held:
+        return cast(type, known[1])  # settled on, and nothing has replaced the entry
+    found = _searched(name, DECLARED)
+    if found is not None and found is held:
+        # the name as C++ declared it, which is the answer a bulk read asks for again
+        _FOUND[name] = (held, found)
+    return found
 
+
+#: The classes ``find_class`` has settled on by the name it was asked for, with the entry
+#: ``DECLARED`` held at the time. A name declared again is another object, so a cached answer
+#: is only given back while that object is still the one under the name - which is the case
+#: a bulk write or read asks about, ten million times over.
+_FOUND: dict[str, tuple[Any, Any]] = {}
+
+
+def _searched(name: str, declared: dict[str, Any]) -> type | None:
+    """``find_class`` by the rules its docstring gives, over everything declared so far."""
     wanted = _squashed_name(name)
     last = wanted.split("::")[-1]
     fallback = None
-    for cls in list(DECLARED.values()):
+    for cls in list(declared.values()):
         if not declared_class(cls):
             continue
         own = _squashed_name(str(cls.__dict__["_cxx_layout_"][0]))
@@ -331,6 +358,24 @@ def _current_writer() -> Any:
     return writable() if callable(writable) else None
 
 
+def flat_bytes(obj: Any, classname: str, catalogue: Catalogue) -> bytes | None:
+    """The record of an object of a class whose members are all plain numbers, written
+    straight from the object - or ``None`` for one that is more than that.
+
+    The members are fetched from the object and packed under the one struct their class is
+    written with, with no dictionary of them in between: roottest's ``WriteBuffer`` writes
+    ten million records of nine numbers, and that dictionary was a third of what each cost.
+    """
+    if catalogue.declared(classname) is None:
+        return None
+    attributes = _plan(catalogue, classname).flat
+    if attributes is None:
+        return None
+    out = WBuffer()
+    values = [getattr(obj, attribute, None) for attribute in attributes]
+    return bytes(out.data) if written_flat(out, classname, catalogue, values) else None
+
+
 def instance_of(obj: Any, name: str, catalogue: Catalogue) -> Instance:
     """``obj`` as plain data, read by the declaration of its class ``name``.
 
@@ -356,6 +401,10 @@ class _Plan(NamedTuple):
     #: Each persistent member: its field, the attribute the object keeps it in, and its type
     #: taken apart - or ``None`` for a number, which is written as the value it is.
     fields: tuple[tuple[Field, str, Spelled | None], ...]
+    #: The attributes of a class whose members are all plain numbers and which has no base -
+    #: a record that is one struct over the object's own values - or ``None`` for a class
+    #: that is more than that.
+    flat: tuple[str, ...] | None
 
 
 #: Each catalogue's plans by class name. Held weakly: a catalogue is kept with the class it
@@ -384,7 +433,10 @@ def _planned(catalogue: Catalogue, name: str) -> _Plan:
         for field in declared.fields
         if not field.comment.startswith("!")
     )
-    return _Plan(declared.bases, fields)
+    flat = None
+    if not declared.bases and all(found is None for _field, _at, found in fields):
+        flat = tuple(attribute for _field, attribute, _found in fields)
+    return _Plan(declared.bases, fields, flat)
 
 
 def _a_number(field: Field) -> bool:
@@ -395,8 +447,6 @@ def _a_number(field: Field) -> bool:
 
 
 def _attribute(name: str) -> str:
-    from ...pycxx.symbols import member_name
-
     return member_name(name)
 
 
@@ -420,7 +470,9 @@ def root_row(obj: Any, classname: str) -> dict[str, Any]:
     row: dict[str, Any] = {}
     held = getattr(obj, "members", None)
     if isinstance(obj, TObject):
-        row["fBits"] = obj._bitword()
+        # The heap's two bits are the reader's, never the file's: ROOT's writer masks them out
+        # and only a reader puts them back, so a row ready to be written carries none.
+        row["fBits"] = obj._bitword() & ~HEAP_BITS
         row["fUniqueID"] = obj.GetUniqueID()
     elif isinstance(held, Mapping) and classname == "TObject":
         # A drawing class keeps the members ROOT would write by name in ``members``, and is
@@ -435,29 +487,120 @@ def root_row(obj: Any, classname: str) -> dict[str, Any]:
         if element[0] == "TStreamerBase":
             row[member] = root_row(obj, member)
         elif member not in row:
-            row[member] = _root_member(obj, member)
+            row[member] = _root_member(obj, member, element[0], element[8])
     return row
 
 
-def _root_member(obj: Any, member: str) -> Any:
-    """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``."""
+def _root_member(obj: Any, member: str, kind: str = "", typename: str = "") -> Any:
+    """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``.
+
+    ROOT names most of them ``Get`` and the member's name without its ``f``, but not all of
+    them - ``TObjArray::fLowerBound`` is read by ``LowerBound()`` - so the name alone is tried
+    before the attribute, which a few classes keep for themselves instead. A member with
+    neither is taken from the row the object keeps its members in, which is where a ``TAxis``
+    holds ``fBits2`` - ROOT's second bit status word of an axis, which no ``Get`` of ROOT's
+    asks for and which the axis here keeps for the histogram it belongs to.
+
+    ``kind`` and ``typename`` are the element's, and are what say that the member is itself an
+    object of one of ROOT's classes, held by value: what is written then is that class's own
+    row of members, not the value a method of the member's name happens to answer.
+    """
+    value = _member_value(obj, member)
+    if kind not in HELD_OBJECTS or typename in STRINGS or typename not in INFOS:
+        return value
+    if typename in COLLECTIONS:  # written as the entries it holds, not as a row of members
+        return value
+    if isinstance(value, Mapping):
+        return value
+    if _of_class(value, typename):
+        return root_row(value, typename)
+    kept = _kept_object(obj, member, typename)
+    return value if kept is None else root_row(kept, typename)
+
+
+#: How a member of one of ROOT's classes comes off the object - its getter, its own name, or
+#: the row the object keeps - by the class of the object and the member. Kept because which
+#: of them answers is a property of the class: a file of two million vectors asked it, and
+#: built the getter's name from the member's, two million times over.
+_ACCESSORS: dict[tuple[type, str], Callable[[Any], Any]] = {}
+
+
+def _member_value(obj: Any, member: str) -> Any:
+    """What ``obj`` answers for the member ``member``: its getter's, its own of that name, or
+    the one the row it keeps its members in holds."""
+    key = (type(obj), member)
+    found = _ACCESSORS.get(key)
+    if found is None:
+        found = _ACCESSORS[key] = _probed(obj, member)
+    return found(obj)
+
+
+def _probed(obj: Any, member: str) -> Callable[[Any], Any]:
+    """The way ``obj``'s class answers ``member``, for every object of that class after it."""
     getter = getattr(obj, "Get" + member[1:], None)
-    return getter() if callable(getter) else getattr(obj, member, None)
+    if callable(getter):
+        return lambda held: getattr(held, "Get" + member[1:])()
+    terse = getattr(obj, member[1:], None)
+    if callable(terse):
+        return lambda held: getattr(held, member[1:])()
+    if isinstance(getattr(obj, "_row", None), Mapping):
+        def from_row(held: Any) -> Any:
+            row = getattr(held, "_row", None)
+            if isinstance(row, Mapping) and member in row:
+                return row[member]
+            return getattr(held, member, None)
+
+        return from_row
+    return lambda held: getattr(held, member, None)
+
+
+def _of_class(value: Any, typename: str) -> bool:
+    """Is ``value`` an object of the class ROOT's element calls ``typename``?"""
+    return type(value).__name__ == typename
+
+
+def _kept_object(obj: Any, member: str, typename: str) -> Any:
+    """The object of ROOT's class ``typename`` that ``obj`` keeps for its member ``member``,
+    for when no getter of ROOT's hands that member over.
+
+    A ``TLorentzVector``'s ``TVector3 fP`` is such a member: ``P()`` - the member's name
+    without its ``f``, which is what :func:`_member_value` tries before the attribute - answers
+    the momentum's *length* rather than the vector the class keeps its components in, so the
+    length is what is asked for and not what the file holds. The attribute a class keeps such
+    an object in is the only one of that class, or is the one named after the member - ``_p``
+    for ``fP``, which is all that tells two vectors apart.
+    """
+    held = getattr(obj, "__dict__", None)
+    if not isinstance(held, dict):
+        return None
+    wanted = member.lstrip("f").lower()
+    for name in ("_" + wanted, wanted):  # the one named after the member first
+        found = held.get(name)
+        if _of_class(found, typename):
+            return found
+    for value in held.values():
+        if _of_class(value, typename):
+            return value
+    return None
 
 
 def _plain_member(value: Any, field: Any, catalogue: Catalogue,
                   found: Spelled | None = None) -> Any:  # fmt: skip
     """A data member's value as plain data.
 
-    An array of *objects* - ``T a[N]`` and ``std::array<T,N>`` alike - holds one plain
-    instance per element, which is what the member-wise writer writes one record
-    after another; an array of numbers stays the values it is.
+    An array of anything but a number - ``T a[N]`` and ``std::array<T,N>`` alike - holds one
+    plain element per slot, which is what the writer of an array of objects, and of an array of
+    containers, writes one after another; an array of numbers stays the values it is, and so
+    does a string of characters, which is one text and not a run of them. The array level is
+    the writer's: converting the member as the element's type would fold the two levels into
+    one, and the bigevent roottest's ``vector<TNamed> *fVectorTnamed[6]`` arrives here as six
+    vectors.
     """
     found = parse_type(field.spelled) if found is None else found
     template = found.name in ARRAY_TEMPLATES and bool(found.args)
     content = found.args[0] if template else found  # a std::array's, or the element of T[N]
     is_array = bool(field.dims) or template
-    if is_array and catalogue.declared(class_name(content)) is not None:  # an array of objects
+    if is_array and found.name not in TYPES:  # an array of objects, containers or pointers
         return [_plain(element, content, catalogue) for element in (value if value is not None
                                                                     else ())]  # fmt: skip
     return _plain(value, found, catalogue)
@@ -499,6 +642,8 @@ def _plain_object(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
     name = class_name(found)
     if catalogue.declared(name) is not None and name not in STRINGS:
         return _object_of(value, name, catalogue)
+    if isinstance(value, (list, tuple)) and name in INFOS and name not in STRINGS:
+        return _plain_run(value, found, catalogue)
     if isinstance(value, TObject):
         return _root_object(value, found.name, catalogue)
     if _held_by_root(name, value):
@@ -506,6 +651,14 @@ def _plain_object(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
         # ``TObject`` to be asked what class it is - a drawing class, a ``TAttLine``.
         return root_row(value, name)
     return value if isinstance(value, (int, float, np.ndarray, list)) else _scalar(value)
+
+
+def _plain_run(value: Any, found: Spelled, catalogue: Catalogue) -> list[Any]:
+    """A counted array of one of ROOT's own objects, ``T *f //[n]`` and ``T **f //[n]``: one
+    plain object per slot, which is what ROOT streams one after another - in place for one
+    star, behind a pointer that names the class for two. The bigevent roottest's ``fPaxis``
+    and ``fQaxis`` arrive here as the ``TAxis`` objects the macro made."""
+    return [_plain_object(element, found, catalogue) for element in value]
 
 
 def _held_by_root(name: str, value: Any) -> bool:
@@ -526,7 +679,12 @@ def _root_object(value: Any, classname: str, catalogue: Catalogue) -> Any:
     it, and any other by the members its layout names."""
     from .collections import TClonesArray
     from .records import recorded
+    from .timing import TDatime
 
+    if isinstance(value, TDatime):
+        # A ``TDatime`` streams itself as one packed word and no record, so what is handed on
+        # is the moment it stands for - the value reading one back gives.
+        return _moment(value)
     if isinstance(value, TClonesArray):
         return _clones(value, catalogue)
     made = recorded(value, WRITER.get())
@@ -545,6 +703,16 @@ def _clones(value: Any, catalogue: Catalogue) -> Clones:
     items = [None if item is None else instance_of(item, held, catalogue)
              for item in list(value)[: value.GetEntriesFast()]]  # fmt: skip
     return Clones(held, str(getattr(value, "_name", "")) or held + "s", items)
+
+
+def _moment(value: Any) -> datetime.datetime:
+    """A ``TDatime`` as the moment it stands for, from the two numbers ROOT lets one be read
+    by: its date as ``YYYYMMDD`` and its time as ``HHMMSS``."""
+    date, clock = int(value.GetDate()), int(value.GetTime())
+    return datetime.datetime(
+        date // 10000, date // 100 % 100, date % 100,
+        clock // 10000, clock // 100 % 100, clock % 100,
+    )  # fmt: skip
 
 
 def _plain_container(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
@@ -606,14 +774,93 @@ def _new(cls: type) -> Any:
 
 def _fill(obj: Any, cls: type, row: Mapping[str, Any]) -> None:
     """``obj`` given the members of ``row``, by the declaration of ``cls``."""
-    _own, bases, fields = cls.__dict__["_cxx_layout_"]
+    _own, bases, _fields = cls.__dict__["_cxx_layout_"]
     for base in bases:
         _fill_base(obj, cls, str(base), row.get(str(base)))
-    for name, spelled, comment, _dims in fields:
-        if name in row and not str(comment).startswith("!"):
-            attribute = _attribute(str(name))
-            current = getattr(obj, attribute, None)
-            setattr(obj, attribute, converted(row[name], parse_type(str(spelled)), current))
+    for name, attribute, made in _fills_of(cls):
+        if name in row:
+            setattr(obj, attribute, made(row[name], getattr(obj, attribute, None)))
+
+
+def _fills_of(cls: type) -> tuple[tuple[str, str, Callable[[Any, Any], Any]], ...]:
+    """The members of ``cls`` a read fills: its name in the row, its attribute, and how the
+    value it was read as becomes the member's own.
+
+    Kept per class - a ``TClass::Streamer`` in roottest's bulk loop fills ten million
+    records of one class of nine numbers, and working out which attribute a name is and
+    what type its member has is not something a record changes.
+    """
+    found = _FILLS.get(cls)
+    if found is None:
+        found = _FILLS[cls] = tuple(
+            (str(name), _attribute(str(name)), _member_maker(parse_type(str(spelled)), dims))
+            for name, spelled, comment, dims in cls.__dict__["_cxx_layout_"][2]
+            if not str(comment).startswith("!")
+        )
+    return found
+
+
+#: Each class's fill plan, held weakly: a plan says nothing about anything outside the class.
+_FILLS: WeakKeyDictionary[type, tuple[tuple[str, str, Callable[[Any, Any], Any]], ...]] = (
+    WeakKeyDictionary()
+)
+
+#: The types a member's value is made from with nothing but the value itself, less the one
+#: whose reading is not a number a stream gives: a ``char`` may be the string it holds.
+_PLAIN = frozenset(name for name in TYPES if name not in ("char", "Char_t"))
+
+
+def _member_maker(found: Spelled, dims: Any = ()) -> Callable[[Any, Any], Any]:
+    """How a member of the type ``found`` is given the value read for it.
+
+    A member that is one number - nine members in ten of a class of numbers - goes straight
+    to the arithmetic its C++ type's reading is, where :func:`converted` would first ask
+    whether it is a pointer, a container, a bitset or a string. A declaration of an array of
+    them is not one number, and keeps the reading it had.
+    """
+    if found.stars or dims or found.name not in _PLAIN:
+        return lambda value, current: converted(value, found, current)
+    return _number_maker(found.name)
+
+
+def _number_maker(typename: str) -> Callable[[Any, Any], Any]:
+    """``_number``'s work for a member that is a number and not an array of them."""
+    c_type = TYPES[typename][1]
+    made_number = _converter(c_type)
+    if c_type in FLOATS or c_type == "bool":
+        return _converted_number(typename, made_number)
+    # An integer member of a record read out of a file is a Python int - what ``struct``
+    # gives - so the mask and the sign are worked out here, as ``_scalar_number`` works them
+    # out, without a call and two checks that a value of that type never needs.
+    bits, signed = WIDTHS[_c_name(c_type)]
+    mask, sign, width = (1 << bits) - 1, 1 << (bits - 1), 1 << bits
+
+    def made(value: Any, current: Any) -> Any:
+        if type(value) is int:
+            whole = value & mask
+            return whole - width if signed and whole >= sign else whole
+        if value is None:
+            return None
+        if isinstance(current, np.ndarray) or isinstance(value, (list, tuple, np.ndarray)):
+            return _number(value, typename, current)
+        return made_number(value)
+
+    return made
+
+
+def _converted_number(
+    typename: str, made_number: Callable[[Any], Any]
+) -> Callable[[Any, Any], Any]:
+    """A member of a type whose value is a conversion rather than a mask: a float, a bool."""
+
+    def made(value: Any, current: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(current, np.ndarray) or isinstance(value, (list, tuple, np.ndarray)):
+            return _number(value, typename, current)
+        return made_number(value)
+
+    return made
 
 
 def _fill_base(obj: Any, cls: type, base: str, row: Any) -> None:
@@ -846,6 +1093,49 @@ def _recorded_object(named: str, row: Mapping[str, Any]) -> Any:
     return made
 
 
+def _root_held(name: str, value: Mapping[str, Any], current: Any) -> Any:
+    """A record of one of ROOT's classes, held by value: the object the kit makes of it, or
+    that object given to the one the read was into when the two are the same class.
+
+    ROOT reads into the object it is handed, so a class the kit makes whole - a ``TF1``, whose
+    numbers are its formula's rather than its members' - is made as a pointer to one is, and
+    then adopted, which is what a ``TBufferFile`` round trip hands back.
+    """
+    from .wrapping import from_members
+
+    made = from_members(name, value)
+    if made is None and current is not None:
+        made = _dressed(name, value)
+    if made is not None:
+        return _become(current, made)
+    if current is None:
+        return value
+    fill_root(current, value)
+    return current
+
+
+def _become(current: Any, made: Any) -> Any:
+    """A record read as ``made`` given to ``current``, the object the read was into.
+
+    ROOT finishes a read in the object it was handed, which is what a ``TBufferFile`` round
+    trip hands back: a class the kit makes whole from a record - a ``TF1``, whose parameters
+    are its formula's and not its own members - would otherwise keep the formula the
+    constructor gave it while its other members were filled in around it. Where the two are
+    not the same class, or the object has nothing to be given a whole object by, the one just
+    made is what comes back.
+    """
+    from .wrapping import remember
+
+    if current is None:
+        return made
+    adopt = getattr(current, "_adopted", None)
+    if adopt is None or type(current) is not type(made):
+        return made
+    adopt(made._xrd)
+    remember(made._xrd, current)  # ``wrap`` gives back what stands for an object
+    return current
+
+
 def _object(value: Any, found: Spelled, current: Any) -> Any:
     if found.name == "pair":
         first, second = found.args
@@ -858,16 +1148,8 @@ def _object(value: Any, found: Spelled, current: Any) -> Any:
     cls = find_class(found.name)
     if not isinstance(value, Mapping):
         return value
-    from .wrapping import from_members
-
     if cls is None:  # one of ROOT's classes, held by value
-        made = from_members(found.name, value)
-        if made is not None:  # one the kit makes again from a record's members
-            return made
-        if current is None:
-            return value
-        fill_root(current, value)
-        return current
+        return _root_held(found.name, value, current)
     target = current if isinstance(current, cls) else _new(cls)
     _fill(target, cls, value)
     return target
@@ -894,17 +1176,44 @@ def _number(value: Any, typename: str, current: Any) -> Any:
 
 
 def _scalar_number(value: Any, typename: str) -> Any:
-    number = value.item() if isinstance(value, np.generic) else value
+    return _converter(typename)(value)
+
+
+@functools.cache
+def _converter(typename: str) -> Callable[[Any], Any]:
+    """How a number of the C++ type ``typename`` is made from what a stream read for it.
+
+    The width and the sign a reading masks and unwraps by are the same for every member of
+    that type, so they are worked out once: a record read ten million times is nine numbers
+    of one class apiece, and looking the width up for each of them was most of the member.
+    """
     if typename == "bool":
-        return bool(number)
+        return _as_bool
     if typename in FLOATS:
-        return float(number)
+        return _as_float
     bits, signed = WIDTHS[_c_name(typename)]  # every integer a streamer names has a width
-    whole = math.trunc(number) if isinstance(number, float) else int(number)
-    whole &= (1 << bits) - 1
-    if signed and whole >= 1 << (bits - 1):
-        whole -= 1 << bits
+    mask, sign, width = (1 << bits) - 1, 1 << (bits - 1), 1 << bits
+
+    def whole(value: Any) -> Any:
+        number = _unwrapped(value)
+        number = math.trunc(number) if isinstance(number, float) else int(number)
+        number &= mask
+        return number - width if signed and number >= sign else number
+
     return whole
+
+
+def _unwrapped(value: Any) -> Any:
+    """A number a stream gave, as the Python number it stands for."""
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def _as_bool(value: Any) -> bool:
+    return bool(_unwrapped(value))
+
+
+def _as_float(value: Any) -> float:
+    return float(_unwrapped(value))
 
 
 def _c_name(typename: str) -> str:

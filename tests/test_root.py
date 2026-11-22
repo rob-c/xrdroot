@@ -338,6 +338,14 @@ def test_a_referenced_object_carries_an_extra_word():
     assert marked.remaining == 0
 
 
+def test_the_process_beside_an_identifier_is_not_in_it():
+    """The index a record names is that file's, so it comes back beside the identifier and not
+    folded into its top byte - and the bits are the file's, with none of the reader's own:
+    these words go back out to a file as they came in."""
+    assert Buffer(struct.pack(">HIIH", 1, 9, 1 << 4, 1)).referenced() == (9, 1 << 4, 1)
+    assert Buffer(struct.pack(">HII", 1, 9, 0)).referenced() == (9, 0, None)
+
+
 def test_a_named_object_gives_its_name_and_title():
     body = struct.pack(">HII", 1, 0, 0) + tstring("pt") + tstring("transverse momentum")
     buf = Buffer(record(1, body))

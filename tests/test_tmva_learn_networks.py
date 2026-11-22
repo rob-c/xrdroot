@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -141,3 +143,34 @@ def test_a_deep_network_descending_too_fast_stops_once_it_no_longer_improves(ses
     method = train_one(ROOT.TMVA.Types.kDL, "DL", f"{LAYOUT}:{strategy}")
     errors = [error for _, error in method.history["valError"]]
     assert len(errors) < 30 and min(errors) < errors[-1]
+
+
+@pytest.mark.parametrize("optimizer", ["ADAM", "SGD"])
+def test_a_step_by_either_optimiser_descends_the_way_its_own_rule_says(optimizer):
+    """Both branches of the trainer's update: ADAM (the default) scales each step by its own
+    moments, and ``Optimizer=SGD`` accumulates ``lr * grad`` with momentum. On a *first* step
+    the moments are zero, so ADAM's first step is ``lr / (1 - beta1)`` normalised by the
+    second moment, and momentum's is ``lr * grad`` alone - the two differ and each is checked."""
+    from xrdroot.tmva.nettrain import Descent, _step
+
+    net = SimpleNamespace(layers=[(np.full((2, 3), 1.0), np.zeros((2, 1)))])
+    grads = [(np.full((2, 3), 0.5), np.ones((2, 1)))]
+    _step(net, grads, {"t": 0}, Descent(optimizer=optimizer, momentum=0.5, learning_rate=0.1))
+    moved = 1.0 - net.layers[0][0][0, 0]
+    bias = net.layers[0][1][0, 0]
+    if optimizer == "SGD":  # momentum is zero, so the step is lr * gradient
+        assert moved == pytest.approx(0.1 * 0.5)
+        assert bias == pytest.approx(-0.1 * 1.0)
+    else:  # ADAM corrects its moments, so a first step of 0.5 and of 1 move by lr each
+        assert moved == pytest.approx(0.1, rel=1e-5)
+        assert bias == pytest.approx(-0.1, rel=1e-5)
+
+
+def test_a_training_strategy_that_asks_for_momentum_descends_by_it(session):
+    """``Optimizer=SGD`` in a ``TrainingStrategy`` reaches the trainer and still trains a method
+    that answers as its weight file does."""
+    text = f"{LAYOUT}:TrainingStrategy=LearningRate=1e-2,Momentum=0.5,BatchSize=20,"
+    text += "MaxEpochs=3,ConvergenceSteps=1,Optimizer=SGD"
+    method = train_one(ROOT.TMVA.Types.kDL, "DLS", text)
+    agrees(method, "DLS")
+    assert len(method.history["valError"]) >= 1

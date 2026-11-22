@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from ..core.objects import TAttFill, TNamed
 
 __all__ = ["TGeoElement", "TGeoMaterial", "TGeoMixture", "TGeoMedium"]
@@ -68,6 +70,9 @@ class TGeoMaterial(TNamed, TAttFill):
 
     def __init__(self, name: Any = "", *args: Any) -> None:
         super().__init__(str(name).strip(), "")
+        #: The element given as ``(name, element, rho)``, if one was: a material made
+        #: of bare numbers is made of none, where ROOT would read one off its table.
+        self._element = args[0] if args and isinstance(args[0], TGeoElement) else None
         self._a, self._z, self._density, radlen, intlen = _numbers(args)[:5]
         vacuum = self._a < 0.9 or self._z < 0.9
         self._radlen, self._intlen = _length(radlen, vacuum), _length(intlen, vacuum)
@@ -97,6 +102,17 @@ class TGeoMaterial(TNamed, TAttFill):
     def IsMixture(self) -> bool:
         return False
 
+    def GetNelements(self) -> int:
+        return 1
+
+    def GetElement(self, index: int = 0) -> Any:
+        """The element the material is made of, as ``(name, element, rho)`` states it.
+
+        ROOT answers a material built from bare numbers with the table's element
+        for its ``Z``; xrdroot carries no such table, so it answers nothing.
+        """
+        return self._element
+
     def SetTransparency(self, transparency: int = 0) -> None:
         self._transparency = int(transparency)
 
@@ -108,18 +124,21 @@ class TGeoMixture(TGeoMaterial):
     """``TGeoMixture(name, nelements, rho)``: elements by weight, added one by one."""
 
     def __init__(self, name: Any = "", nelements: int = 0, rho: float = 0.0) -> None:
-        self._elements: list[tuple[float, float, float]] = []
+        #: One row per element: its ``(a, z, weight)`` and the ``TGeoElement`` it was
+        #: added as, which a mixture built from bare numbers does not state.
+        self._elements: list[tuple[float, float, float, Any]] = []
         super().__init__(name, 0.0, 0.0, rho)
 
     def AddElement(self, *args: Any) -> None:
         """``AddElement(a, z, weight)``, or ``(element, weight)``."""
-        if isinstance(args[0], TGeoElement):
-            args = (args[0].A(), args[0].Z(), args[1])
+        element = args[0] if isinstance(args[0], TGeoElement) else None
+        if element is not None:
+            args = (element.A(), element.Z(), args[1])
         a, z, weight = (float(v) for v in args[:3])
-        self._elements.append((a, z, weight))
-        total = sum(w for *_, w in self._elements) or 1.0
-        self._a = sum(a * w for a, _, w in self._elements) / total
-        self._z = sum(z * w for _, z, w in self._elements) / total
+        self._elements.append((a, z, weight, element))
+        total = sum(row[2] for row in self._elements) or 1.0
+        self._a = sum(row[0] * row[2] for row in self._elements) / total
+        self._z = sum(row[1] * row[2] for row in self._elements) / total
 
     def DefineElement(self, index: int, a: float, z: float, weight: float) -> None:
         self.AddElement(a, z, weight)
@@ -129,6 +148,14 @@ class TGeoMixture(TGeoMaterial):
 
     def IsMixture(self) -> bool:
         return True
+
+    def GetElement(self, index: int = 0) -> Any:
+        """The element at ``index``, which ROOT's table would fill in for a bare ``(a, z)``."""
+        return self._elements[index][3] if 0 <= index < len(self._elements) else None
+
+    def GetWmixt(self) -> Any:
+        """The elements' proportions by mass, the array ROOT's ``Double_t *`` points at."""
+        return np.array([row[2] for row in self._elements], dtype=float)
 
 
 class TGeoMedium(TNamed):

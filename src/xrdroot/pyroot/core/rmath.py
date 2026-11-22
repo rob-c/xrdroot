@@ -37,11 +37,15 @@ from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools
     GeneticMinimizerParameters,
     GradFunctor,
     GradFunctor1D,
-    Integrator,
+    GSLRootFinder,
+    GSLRootFinderDeriv,
     IntegratorOneDim,
+    IRootFinderMethod,
     Minimizer,
     RootFinder,
+    Roots,
 )
+from .mathtools import Integrator as _Integrator
 
 #: The fraction of an interval a golden-section search keeps: ``(3 - sqrt 5) / 2``, as
 #: GSL's ``GSL_MIN_GOLDEN_RATIO`` and ROOT's ``GSLMinimizer1D`` use it.
@@ -218,6 +222,155 @@ def cosint(x: Any) -> float:
     return -_e1_of_ix(magnitude).real
 
 
+class Integrator(_Integrator):
+    """``ROOT::Math::Integrator``: ROOT's ``Integral`` overloads as well as the engine's rule.
+
+    ``Integral(a, b)`` integrates the function ``SetFunction`` was given; ROOT's second
+    overload, ``Integral(f, a, b)``, integrates a function handed to the call itself, and
+    a macro that wraps a ``TF1`` per integral uses that one, so it sets the function and
+    then integrates as the first overload does.
+    """
+
+    def Integral(self, *args: Any) -> float:
+        """``Integral(a, b)`` or ``Integral(f, a, b)``: the integral over ``[a, b]``."""
+        if len(args) == 3:
+            self.SetFunction(args[0])
+            args = args[1:]
+        return super().Integral(*args)
+
+
+class IntegrationOneDim:
+    """``ROOT::Math::IntegrationOneDim``: which rule ``Integrator`` integrates with."""
+
+    kGAUSS, kLEGENDRE, kADAPTIVE, kADAPTIVESINGULAR, kNONADAPTIVE = range(5)
+
+
+class IntegrationMultiDim:
+    """``ROOT::Math::IntegrationMultiDim``: which rule ``IntegratorMultiDim`` integrates with."""
+
+    kADAPTIVE, kVEGAS, kMISER, kPLAIN = range(4)
+
+
+#: The points a multi-dimensional integral is sampled at over all its dimensions together,
+#: so that the lattice grows with the dimension as ``dim``-th root: two dimensions get 256 a
+#: side, seven get five, and none spends more time than a two-dimensional one of 65536 calls.
+_MULTIDIM_POINTS = 65536
+
+
+def _lattice(low: Any, high: Any, per_axis: int) -> np.ndarray:
+    """The centres of a ``per_axis``-a-side lattice over the box from ``low`` to ``high``,
+    one row per point, which is the shape a function of several numbers is called with.
+
+    The centres rather than the corners: a midpoint rule is exact for a polynomial of the
+    first degree in each dimension, which is the whole of what a smooth integrand looks
+    like over one cell of a lattice this dense.
+    """
+    steps = (np.arange(per_axis) + 0.5) / per_axis
+    axes = [lo + (hi - lo) * steps for lo, hi in zip(low, high, strict=True)]
+    return np.stack([axis.ravel() for axis in np.meshgrid(*axes, indexing="ij")], axis=-1)
+
+
+class IntegratorMultiDim:
+    """``ROOT::Math::IntegratorMultiDim``: the integral of a function of ``n`` numbers over a box.
+
+    ROOT sends ``kADAPTIVE`` to Cernlib's rule and ``kVEGAS``, ``kMISER`` and ``kPLAIN``
+    to GSL's three Monte Carlos - four samplings of two libraries, which agree to the
+    tolerance they are asked for and not to the last digit. One deterministic lattice
+    answers all four here, at the midpoints :func:`_lattice` gives, so the same integral
+    twice is the same number; the error is the standard error of the lattice's own
+    spread, which is what a caller's tolerance is compared against.
+    """
+
+    def __init__(self, *args: Any) -> None:
+        self._fn: Any = next((arg for arg in args if callable(arg)), None)
+        kind = next((arg for arg in args if not callable(arg)), IntegrationMultiDim.kADAPTIVE)
+        self._kind = int(kind)
+        self._result = math.nan
+        self._error = math.nan
+        self._neval = 0
+        self._status = 0
+
+    def SetFunction(self, fn: Any, *rest: Any) -> None:
+        """``SetFunction(f)``: the function to integrate, a function of an array of numbers."""
+        self._fn = fn
+
+    def Integral(self, a: Any, b: Any) -> float:
+        """``Integral(a, b)``: the integral over the box whose lower corners are ``a`` and
+        whose upper corners are ``b``, one number each."""
+        low = np.asarray(a, dtype=float).ravel()
+        high = np.asarray(b, dtype=float).ravel()
+        if low.shape != high.shape or low.size == 0:
+            raise ValueError(
+                "the box to integrate over takes as many lower corners as upper ones, at "
+                f"least one of each; got {low.size} and {high.size}."
+            )
+        per_axis = max(2, round(_MULTIDIM_POINTS ** (1.0 / low.size)))
+        volume = float(np.prod(high - low))
+        values = np.array([float(self._fn(point)) for point in _lattice(low, high, per_axis)])
+        self._neval = int(values.size)
+        self._result = volume * float(values.mean())
+        self._error = volume * float(values.std()) / math.sqrt(values.size)
+        return self._result
+
+    def Result(self) -> float:
+        """``Result()``: the integral ``Integral`` last found."""
+        return self._result
+
+    def Error(self) -> float:
+        """``Error()``: the standard error of the points that integral was summed over."""
+        return self._error
+
+    def NEval(self) -> int:
+        """``NEval()``: how many points the function was called at."""
+        return self._neval
+
+    def Status(self) -> int:
+        """``Status()``: 0, a fixed lattice having nothing to fail to converge."""
+        return self._status
+
+    def SetRelTolerance(self, tolerance: float) -> None:
+        """``SetRelTolerance``: accepted, and nothing to do - see :meth:`SetAbsTolerance`."""
+
+    def SetAbsTolerance(self, tolerance: float) -> None:
+        """``SetAbsTolerance``: accepted, and nothing to do.
+
+        GSL's Monte Carlos stop when their running estimate moves less than the tolerance
+        asked for; a lattice of fixed size is summed once, so the tolerance is a number a
+        caller may set and read back through ``Error()`` instead.
+        """
+
+    def SetMaxPts(self, points: int) -> None:
+        """``SetMaxPts``: accepted, and nothing to do - the lattice's size is the dimension's."""
+
+
+class AdaptiveIntegratorMultiDim(IntegratorMultiDim):
+    """``ROOT::Math::AdaptiveIntegratorMultiDim``: Cernlib's adaptive rule, by name.
+
+    The arguments are ``(function, absTol, relTol, maxPts)``; they are ROOT's to accept,
+    and the lattice above is what answers, as it answers ``kADAPTIVE``.
+    """
+
+
+class WrappedTF1(IGenFunction):
+    """``ROOT::Math::WrappedTF1``: a ``TF1`` as the function of one number ROOT's tools take.
+
+    ROOT's own wrapper holds the ``TF1`` by reference and hands on its parameters; here
+    ``Eval`` and ``Derivative`` are reached through the object itself, so a ``TF1``
+    whose parameters are set after the wrapping is integrated with those, as in ROOT.
+    """
+
+    def __init__(self, function: Any) -> None:
+        self._function = function
+
+    def DoEval(self, x: float) -> float:
+        """``DoEval(x)``: what the ``TF1`` is at ``x``."""
+        return float(self._function.Eval(float(x)))
+
+    def Derivative(self, x: float) -> float:
+        """``Derivative(x)``: the ``TF1``'s own derivative there."""
+        return float(self._function.Derivative(float(x)))
+
+
 class GSLMinimizer1D:
     """``ROOT::Math::GSLMinimizer1D``: where a function of one number is least inside a bracket.
 
@@ -389,14 +542,13 @@ __all__ = sorted(
     + list(_interfaces)
     + [
         "Factory",
-        "GeneticMinimizer",
-        "GeneticMinimizerParameters",
         "Minimizer",
         "Functor",
         "Functor1D",
+        "GeneticMinimizer",
+        "GeneticMinimizerParameters",
         "GradFunctor",
         "GradFunctor1D",
-        "Integrator",
         "IntegratorOneDim",
         "LFSR",
         "WrappedMultiTF1",

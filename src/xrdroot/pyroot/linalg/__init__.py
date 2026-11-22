@@ -1,5 +1,6 @@
 """ROOT's linear algebra: dense matrices, views of them, decompositions, and the checks on them.
 
+``SVector``, ``SMatrix`` and the free functions a macro calls on them (:mod:`.smatrix`),
 ``TMatrixD``, ``TMatrixDSym`` and ``THilbertMatrixD`` (:mod:`.matrices`), the
 element actions a macro derives from to fill one (:mod:`.actions`), the row,
 column and diagonal views (:mod:`.views`), and ``TDecompLU``,
@@ -46,6 +47,24 @@ from .matrices import (
     TMatrixTSymLazy,
     values_of,
 )
+from .smatrix import (
+    AssignSym,
+    Cross,
+    Dot,
+    Mag,
+    Mag2,
+    MatRepStd,
+    MatRepSym,
+    Similarity,
+    SimilarityT,
+    SMatrix,
+    SMatrixIdentity,
+    Square,
+    SVector,
+    Times,
+    Transpose,
+    Unit,
+)
 from .views import (
     TMatrixDColumn,
     TMatrixDColumn_const,
@@ -71,6 +90,8 @@ __all__ = [
     "TElementPosActionT", "TElementActionD", "TElementActionF", "TElementPosActionD",
     "TElementPosActionF", "TMatrixTLazy", "TMatrixTSymLazy", "TMatrixDLazy", "TMatrixFLazy",
     "TMatrixDSymLazy", "TMatrixFSymLazy", "THaarMatrixD", "THaarMatrixF", "TMatrix",
+    "SVector", "SMatrix", "MatRepStd", "MatRepSym", "AssignSym", "Dot", "Transpose", "Similarity",
+    "SMatrixIdentity", "SimilarityT", "Mag", "Mag2", "Cross", "Unit", "Square", "Times",
 ]  # fmt: skip
 
 

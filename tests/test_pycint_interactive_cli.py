@@ -579,6 +579,25 @@ def test_a_missing_file_ends_root_before_anything_runs(capsys: pytest.CaptureFix
     )
 
 
+def test_an_option_root_does_not_know_is_named_and_the_help_pointed_at(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """ROOT's own parser names every option it cannot read - a dash word it does not know,
+    including ``"-e invalid"`` glued into one - then says where the help is, and runs
+    nothing. Nothing of the command line runs, so a macro beside it is not processed."""
+    write("five.C", "int five() { return 5; }")
+    assert run("root", "-l", "-b", "-q", "-e invalid", "--no_exist") == 2
+    said = capsys.readouterr()
+    assert said.out == ""
+    assert said.err == ("root: unrecognized option '-e invalid'\n"
+                        "root: unrecognized option '--no_exist'\n"
+                        "Try 'root --help' for more information.\n")  # fmt: skip
+    # ``--web=off`` is an option ROOT takes and has nothing to do here, so the macro runs:
+    # ``-q`` exits with the value it gave back, as it does for ``root -q five.C``.
+    assert run("root", "-l", "-b", "-q", "--web=off", "five.C") == 5
+    assert "Processing five.C" in capsys.readouterr().out
+
+
 def test_a_macro_that_fails_ends_the_command_line_and_a_line_that_fails_does_not(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

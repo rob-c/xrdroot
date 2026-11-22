@@ -164,7 +164,9 @@ def test_pointer_string_pair_and_map_conversion_keep_their_existing_behavior() -
     pair = stl.std.pair["int", type(leaf)](1, leaf)
     mapping = stl.std.map["int", type(leaf)]()
     mapping[1] = leaf
-    assert pair.second is leaf and mapping[1] is leaf
+    # A pair made from what it is given holds that object; a map's ``m[k] = v`` stores a
+    # copy of ``v``, as C++'s does, so the map holds an equal vector rather than this one.
+    assert pair.second is leaf and mapping[1] == leaf and mapping[1] is not leaf
 
 
 def test_custom_indices_keep_one_index_conversion_after_value_conversion() -> None:

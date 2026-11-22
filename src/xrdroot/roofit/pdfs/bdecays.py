@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from ..real import Context, value_of
-from .anaconv import RooAbsAnaConvPdf, decay_type
+from .anaconv import RooAbsAnaConvPdf, decay_type, declares_decay_type
 from .basic import ref
 from .decays import draw_time, inside, value
 
@@ -295,3 +295,6 @@ def _density_and_envelope(
         + f3 * math.sin(dm * t)
     )
     return f, 1.001 * math.exp(-ft * gammamin) * (abs(f0) + abs(f1) + math.sqrt(f2 * f2 + f3 * f3))
+
+
+declares_decay_type(RooBCPEffDecay, RooBCPGenDecay, RooBDecay)

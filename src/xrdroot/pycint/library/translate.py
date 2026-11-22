@@ -11,6 +11,7 @@ what a rootmap lists and a LinkDef selects.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,7 @@ __all__ = [
     "declared",
     "declared_in",
     "enums_of",
+    "with_extra_includes",
     "digest",
 ]
 
@@ -115,13 +117,33 @@ class Declared:
         return found
 
 
+#: ``#pragma extra_include "header"``: a header rootcling reads into a dictionary and the
+#: compiler never sees. ROOT defines ``__ROOTCLING__`` for that pass, which is how the pragma
+#: is usually guarded; a library build here is the one pass a dictionary and a compile share,
+#: so the pragma is read off the text itself.
+EXTRA_INCLUDE = re.compile(r'^[ \t]*#[ \t]*pragma[ \t]+extra_include[ \t]*"([^"]+)"', re.M)
+
+
+def with_extra_includes(source: str) -> str:
+    """``source`` with every header a ``#pragma extra_include`` names included before it.
+
+    rootcling parses those headers for the same reason it parses the file: their declarations
+    are what the dictionary describes, and the session then has them - ``dictgen_base``'s
+    ``myextra.h`` declares ``f()``, which the macro itself never includes.
+    """
+    named = EXTRA_INCLUDE.findall(source)
+    if not named:
+        return source
+    return "".join(f'#include "{each}"\n' for each in named) + source
+
+
 def translated_unit(
     source: str, file: str, directories: list[Path]
 ) -> tuple[Translation, Declared]:
     """``source``, as the file ``file``, translated in ROOT's dialect; and what it declares,
     read before the translator settles each name in its class."""
     with using(DIALECT):
-        tokens, included = preprocess(source, file, directories)
+        tokens, included = preprocess(with_extra_includes(source), file, directories)
         unit = parse(tokens)
         found = declared(unit)
         translator = Translator(Program(unit), file, Path(file).stem)
@@ -398,4 +420,3 @@ def digest(paths: list[str]) -> str:
         except OSError:
             hashed.update(b"\0missing\0")
     return hashed.hexdigest()
-

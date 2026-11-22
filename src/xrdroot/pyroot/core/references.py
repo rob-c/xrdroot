@@ -24,7 +24,7 @@ from typing import Any, ClassVar
 
 from .objects import TNamed, TObject
 
-__all__ = ["TProcessID", "TProcessUUID", "TRef", "TRefArray"]
+__all__ = ["TProcessID", "TProcessUUID", "TRef", "TRefArray", "filed_object"]
 
 #: ``TObject::kIsReferenced``: the object is filed in a process's table by its number.
 IS_REFERENCED = 1 << 4
@@ -38,6 +38,10 @@ NUMBER_MASK = 0xFFFFFF
 MOST = NUMBER_MASK
 #: The index a process past the 255th is filed under in an identifier's top byte.
 FAR = 0xFF
+#: ``TBufferIO::GetPidOffset``: the byte an identifier's top byte carries over its file's
+#: ``ProcessID`` index, one, so that zero can mean "in no process's numbering". ROOT's reader
+#: folds it in and so does :func:`filed_object`, which has to take it back out.
+PID_OFFSET = 1
 #: ``TObject::kIsOnHeap | kNotDeleted``, which every object made on the heap carries:
 #: a ``TRef`` is one here, as ``TClass::New`` makes it when a file reads one back.
 HEAP_BITS = 0x03000000
@@ -259,9 +263,7 @@ class TRef(TObject):
     def GetObject(self) -> Any:
         """The object referred to, if its process still has it - after running the action,
         if there is one and the object was not there - and ``None`` otherwise."""
-        if self._pid is None or not TProcessID.IsValid(self._pid):
-            return None
-        found = self._pid.GetObjectWithID(self.GetUniqueID())
+        found = self._looked_up()
         if found is not None:
             return found
         action = self._action if isinstance(self._action, str) else self._numbered_action()
@@ -270,6 +272,22 @@ class TRef(TObject):
         from .troot import gROOT
 
         gROOT.ProcessLine(action)
+        assert self._pid is not None
+        return self._pid.GetObjectWithID(self.GetUniqueID())
+
+    def _looked_up(self) -> Any:
+        """The object in this reference's process, once the entry being read is filed.
+
+        ROOT files an object as its streamer reads it, so by the time a reference asks for
+        it, it is there; a tree read here files nothing of an entry no address was given
+        for, so the entry is filed as the reference asks - and asks again in the entry
+        after, whose objects carry the same numbers (roottest/root/io/tree/test-r).
+        """
+        if self._pid is None or not TProcessID.IsValid(self._pid):
+            return None
+        from ..trees.branches import read_referenced
+
+        read_referenced(self)
         return self._pid.GetObjectWithID(self.GetUniqueID())
 
     def _numbered_action(self) -> str | None:
@@ -519,9 +537,47 @@ def _settle_members(found: Any, members: dict[str, Any], file: Any) -> None:
                 _give_process(held, record, file)
 
 
+def named_process(file: Any, index: Any) -> TProcessID | None:
+    """The session's process that ``file``'s ``ProcessID{index}`` record names, or ``None``
+    when no file is open or the file has no such record."""
+    return None if file is None or index is None else file_process(file, int(index))
+
+
+def current_file() -> Any:
+    """``gFile``: the file a record being read or written belongs to.
+
+    A record read out of a file names its process only by the process's index in *that*
+    file, so a reader has to know which file is was in - ROOT gets it from ``gFile`` too.
+    """
+    from .directories import current_file as opening
+
+    found = opening()
+    return None if found is None else found.GetFile() or found
+
+
+def filed_object(found: Any, file: Any = None) -> None:
+    """An object read that a ``TRef`` may point at, filed where the reference will look.
+
+    ROOT files such an object as its streamer reads it - keyed by the number in the low
+    bits of its identifier, in the file's process the identifier's top byte names - and
+    a ``TRef`` read beside it names that same process, so the reference finds it again.
+    The top byte is the process's record index plus ``PID_OFFSET``, as ROOT's reader leaves
+    it, so an object whose identifier carries none of that byte is in the file's first
+    process. Nothing in this reader runs that streamer, so a split collection's elements are
+    filed once they are made (roottest/root/io/tree/test-r).
+    """
+    if not isinstance(found, TObject) or not found.TestBit(IS_REFERENCED):
+        return
+    identifier = _unique(found)
+    index = max((identifier >> 24) - PID_OFFSET, 0)
+    pid = named_process(file if file is not None else current_file(), index)
+    if pid is not None:
+        pid.PutObjectWithID(found, identifier & NUMBER_MASK)
+
+
 def _give_process(found: Any, members: dict[str, Any], file: Any) -> None:
     """``found`` given the session's process that the file's ``ProcessID`` record names."""
-    pid = file_process(file, int(members.get("fPID", 0)))
+    pid = named_process(file, members.get("fPID"))
     if pid is not None:
         found._pid = pid
 
@@ -539,6 +595,9 @@ def _filed(found: Any, tobject: dict[str, Any], pid: TProcessID | None) -> None:
 def _tref_from(members: Any) -> TRef:
     made = TRef()
     tobject = members.get("TObject", {})
+    # ``TRef::Streamer`` resolves its ``fPID`` as it reads, through ``gFile``: a reference
+    # kept in a tree's entry is read with no file handed to it here, and finds none.
+    made._pid = named_process(current_file(), members.get("fPID"))
     made.SetUniqueID(int(tobject.get("fUniqueID", 0)))
     # ROOT's ``TObject::Streamer`` leaves the memory bits out of what it writes - a stack
     # object's ``kIsOnHeap`` is not the reader's - so an object read is given them afresh.

@@ -341,3 +341,41 @@ def test_an_axiss_uneven_edges_are_a_tarrayd():
     stats = [0.0] * 2
     ROOT.TH1D("st", "", 3, 0, 3).GetStats(stats)
     assert stats == [0.0, 0.0]  # only as many sums as there is room for
+
+
+def test_an_axis_carries_roots_status_bits_by_name():
+    """``TAxis::EStatusBits`` is a bit of the axis's status word: ``kAxisRange`` is set when
+    the axis shows a range rather than all its bins, and a macro names it, it does not
+    write ``1 << 11``."""
+    axis = ROOT.TH1D("bits", "", 10, 0, 10).GetXaxis()
+    expect(
+        (ROOT.TAxis.kAxisRange, 1 << 11),
+        (ROOT.TAxis.kIsInteger, 1 << 22),
+        (ROOT.TAxis.kMoreLogLabels, 1 << 23),
+        (ROOT.TAxis.kCenterLabels, 1 << 14),  # bit 13 belongs to TObject
+    )
+    axis.SetRange(2, 4)
+    assert axis.TestBit(ROOT.TAxis.kAxisRange)
+    axis.SetBit(ROOT.TAxis.kIsInteger)
+    assert axis.TestBit(ROOT.TAxis.kAxisRange) and axis.TestBit(ROOT.TAxis.kIsInteger)
+
+
+def test_an_axis_roots_own_constructor_checks_its_limits_and_reports_them(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``TAxis::Set`` *reports* a binning it cannot use and leaves the default axis - it does
+    not raise - and ROOT's own ``TAxis.EqualBinEdges`` case expects exactly these two lines:
+    equal edges, and a limit that is not a finite number. ``TAxis(edges)`` is ROOT's
+    constructor from a vector of them, which a macro writes as ``TAxis _({1, 1})``."""
+    assert ROOT.TAxis([0.0, 1.0, 2.0]).GetNbins() == 2
+    assert ROOT.TAxis([1.0, 1.0]).GetNbins() == 1
+    assert capsys.readouterr().err == (
+        "Error in <TAxis::Set>: bin edges must be in increasing order\n"
+    )
+    for low, high in ((-float("inf"), 0.0), (0.0, float("inf")), (float("nan"), 0.0)):
+        assert ROOT.TAxis(1, low, high).GetNbins() == 1
+        assert capsys.readouterr().err == (
+            "Error in <TAxis::Set>: Axis limits need to be finite numbers\n"
+        )
+    assert ROOT.TAxis(1, 0.0, 1.0).GetNbins() == 1
+    assert ROOT.TH1D("h", "", 2, array.array("d", [0, 1, 3])).GetXaxis().GetNbins() == 2

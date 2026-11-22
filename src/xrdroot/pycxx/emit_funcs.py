@@ -17,7 +17,8 @@ from typing import Any
 from .base import Out, P
 from .ctype import CType
 from .dialect import active
-from .emit_vars import Context, VariableEmitter, addressable
+from .emit_expr import is_container
+from .emit_vars import Context, VariableEmitter, _mentions, addressable
 from .labels import lower
 from .nodes import Capture, Expr, Function, InitList, Lambda, Literal, Name, Param, Unary, VarDecl
 from .nrvo import candidate
@@ -68,11 +69,21 @@ class FunctionEmitter(VariableEmitter):
             default = self._default(name, param) if param.default is not None else None
             cell = by_reference(param.ctype) or (name in cells and addressable(param.ctype))
             symbol = self.declare(name, "param", param.ctype.value(), cell=cell)
-            if default is not None and not self._constant(param.default):
+            if default is not None and self._put_off(param, default):
                 self.deferred.append((symbol.py, default, param))
                 default = "UNGIVEN"
             items.append(symbol.py + ("" if default is None else "=" + default))
         return items
+
+    def _put_off(self, param: Param, default: str) -> bool:
+        """Is a default given in the body rather than in the list?
+
+        One C++ works out at each call is - a call, an increment, a variable, an object.
+        So is one ROOT's inheritance chain answers with ``self``, ``kIterForward`` being a
+        name a macro's class inherits: the list is built as the class is defined, where
+        there is no ``self`` to ask, and C++ reads the default in the class's own scope.
+        """
+        return not self._constant(param.default) or _mentions(default, "self")
 
     def _constant(self, node: Expr | None) -> bool:
         """Is a default the same at every call: a literal, or a name of a constant?"""
@@ -84,7 +95,7 @@ class FunctionEmitter(VariableEmitter):
             return False
         symbol = self.symbol(node)
         variable = symbol is not None and symbol.kind in ("local", "param", "global", "field",
-                                                          "static")  # fmt: skip
+                                                          "static", "member")  # fmt: skip
         return not variable or bool(symbol is not None and symbol.ctype is not None
                                     and symbol.ctype.const)  # fmt: skip
 
@@ -146,7 +157,7 @@ class FunctionEmitter(VariableEmitter):
         with self.out.indented():
             head = self.out.mark()
             self.given_defaults()
-            self._wrap_parameters(func)
+            self._wrap_parameters(func.params)
             self._deduce_values(func)
             if prologue is not None:
                 prologue()
@@ -181,18 +192,32 @@ class FunctionEmitter(VariableEmitter):
             with self.out.indented():
                 self.out.line(f"{own.py} = len({array.py})", value.where)
 
-    def _wrap_parameters(self, func: Function) -> None:
+    def _wrap_parameters(self, params: list[Param]) -> None:
         """A parameter passed by value whose address is taken goes into a cell on entry; one
         of a dialect's string classes handed a string is built from it, as C++ converts the
         argument."""
         strings = active().string_classes
-        for param in func.params:
+        for param in params:
             symbol = self.lookup(param.name or "")
             if symbol is not None and symbol.cell and not by_reference(param.ctype):
                 self.out.line(f"{symbol.py} = Cell({symbol.py})", param.where)
             elif symbol is not None and param.ctype.name in strings and not param.ctype.pointer:
                 made = self.host_name(param.ctype.name.split("::"))
                 line = f"if isinstance({symbol.py}, str): {symbol.py} = {made}({symbol.py})"
+                self.out.line(line, param.where)
+
+    def _container_parameters(self, params: list[Param]) -> None:
+        """A lambda's parameter of a standard container handed the list a braced list becomes
+        is that container, which is the ``initializer_list`` constructor C++ picks for it.
+
+        A function's call site converts instead, where the parameter's type is written down;
+        a lambda's call site has no signature to read, so the conversion is made in the body.
+        """
+        for param in params:
+            symbol = self.lookup(param.name or "")
+            if symbol is not None and _receives_a_list(param.ctype):
+                made = self.class_expr(param.ctype)
+                line = f"if isinstance({symbol.py}, list): {symbol.py} = {made}({symbol.py})"
                 self.out.line(line, param.where)
 
     def _declare_scopes(self, context: Context, head: int, node: Any) -> None:
@@ -265,6 +290,8 @@ class FunctionEmitter(VariableEmitter):
         """A lambda's statements, with no loop around them for ``break`` to leave."""
         head = self.out.mark()
         self.given_defaults()
+        self._wrap_parameters(node.params)
+        self._container_parameters(node.params)
         lower(node.body, self.refuse)
         self.loops, saved = [], self.loops
         try:
@@ -293,6 +320,11 @@ class FunctionEmitter(VariableEmitter):
             if symbol is not None and symbol.kind in ("local", "param") and not symbol.cell:
                 found.append(f"{symbol.py}={symbol.py}")
         return found
+
+
+def _receives_a_list(ctype: CType) -> bool:
+    """Is a parameter of this type built from a braced list: a standard container, by value?"""
+    return is_container(ctype) and not ctype.pointer and not ctype.dims and not ctype.reference
 
 
 def _sized_by(param: Param, name: str) -> bool:

@@ -147,14 +147,16 @@ def parse_type(spelled: str, resolve: bool = True) -> Spelled:
     return found
 
 
-def _parse(tokens: list[str], at: int, resolve: bool = True) -> tuple[Spelled, int]:
-    name = _plain_name(tokens[at], resolve)
+def _parse(
+    tokens: list[str], at: int, resolve: bool = True, top: bool = True
+) -> tuple[Spelled, int]:
+    name = _plain_name(tokens[at], resolve, top)
     at += 1
     args: list[Spelled] = []
     if at < len(tokens) and tokens[at] == "<":
         at += 1
         while tokens[at] != ">":
-            arg, at = _parse(tokens, at, resolve)
+            arg, at = _parse(tokens, at, resolve, False)
             args.append(arg)
             at += 1 if tokens[at] == "," else 0
         at += 1
@@ -165,11 +167,32 @@ def _parse(tokens: list[str], at: int, resolve: bool = True) -> tuple[Spelled, i
     return Spelled(name, tuple(args), stars), at
 
 
-def _plain_name(text: str, resolve: bool = True) -> str:
-    words = [word for word in text.split() if word not in ("const", "volatile", "struct", "class")]
+#: The words a type's spelling carries that say nothing about the class it names: a template
+#: argument keeps its own ``const``, which is what ROOT counts.
+QUALIFIERS = ("const", "volatile")
+
+
+def _plain_name(text: str, resolve: bool = True, top: bool = True) -> str:
+    """One level of a type's spelling: the class it names, with the words that say nothing of
+    the class out of it.
+
+    ``struct`` and ``class`` may introduce a type anywhere, and a member's own ``const`` or
+    ``volatile`` is the member's rather than its class's, so all four go. A *template
+    argument*'s ``const`` stays: ROOT spells the element of a ``list<const TObject*>`` member
+    ``list<const TObject*>`` - the bigevent roottest's ``Event::fVectorTobjectp`` - and counts
+    that word in the class's checksum, while the class it names is found without it.
+    """
+    dropped = ("struct", "class", *QUALIFIERS) if top else ("struct", "class")
+    words = [word for word in text.split() if word not in dropped]
     name = " ".join(words).removeprefix("::")
     name = name.removeprefix("std::")
     return ROOT_TYPEDEFS.get(name, name) if resolve else name
+
+
+def _unqualified(name: str) -> str:
+    """``name`` without the ``const`` a template argument kept in front of it, which is how
+    the class it names is looked up."""
+    return " ".join(word for word in name.split() if word not in QUALIFIERS)
 
 
 def normalised(spelled: str, resolve: bool = True) -> str:
@@ -179,8 +202,13 @@ def normalised(spelled: str, resolve: bool = True) -> str:
     return streamer_name(found)
 
 
+@functools.cache
 def class_name(found: Spelled) -> str:
-    """The class a type names, its template arguments as ROOT spells them: ``pair<int,float>``."""
+    """The class a type names, its template arguments as ROOT spells them: ``pair<int,float>``.
+
+    Kept by the type it names, which is a pure function of it: a record of a class writes one
+    of its members by looking its class up, ten million times over in roottest's own loop.
+    """
     return streamer_name(Spelled(found.name, found.args, 0))
 
 
@@ -258,24 +286,41 @@ class Catalogue:
         self.used: dict[str, None] = {}
         #: The classes being described just now, which a member may point back at.
         self._building: set[str] = set()
+        #: How each declared class's record begins and what its members are written with.
+        self._plans: dict[str, tuple[int, int | None, tuple[Element, ...]]] = {}
+        #: The names settled as no class of the program's, and how many there were then.
+        self._absent: dict[str, int] = {}
 
     # -- what a class is ----------------------------------------------------------
 
     def declared(self, name: str) -> Declaration | None:
-        """The program's class ``name``, or the pair a map holds, if it is one."""
-        found = self.declarations.get(name)
-        if found is None:
-            found = self.declarations.get(self.spelled.get(_squash(name), ""))
+        """The program's class ``name``, or the pair a map holds, if it is one.
+
+        A name that is not the program's - every one of ROOT's own, asked once per object
+        written - is remembered as absent, with how many classes the catalogue described
+        when it was asked: a class described later is looked for again.
+        """
+        unqualified = _unqualified(name)
+        found = self.declarations.get(unqualified)
+        if found is not None:
+            return found
+        absent = self._absent.get(unqualified)
+        if absent is not None and absent == len(self.declarations):
+            return None
+        found = self.declarations.get(self.spelled.get(_squash(unqualified), ""))
         if found is None and name.startswith("pair<"):
             found = _pair(name)
             self.declarations[name] = found
+        if found is None:
+            self._absent[unqualified] = len(self.declarations)
         return found
 
     def known(self, name: str) -> bool:
         """Is ``name`` a class this write can describe - or one of ROOT's that streams itself
         and that the file has no description of, a ``TRef``?"""
-        return (self.declared(name) is not None or name in INFOS or name in SELF_STREAMED
-                or name in CARRIED_LAYOUTS)
+        plain = _unqualified(name)
+        return (self.declared(name) is not None or plain in INFOS or plain in SELF_STREAMED
+                or plain in CARRIED_LAYOUTS)
 
     def tobject(self, name: str) -> bool:
         """Does the class ``name`` derive from ``TObject``?"""
@@ -327,6 +372,26 @@ class Catalogue:
         if found is not None and found.foreign and version <= 1:
             return 0, sum_
         return version, None
+
+    def written_as(self, name: str) -> tuple[int, int | None, tuple[Element, ...]] | None:
+        """How a record of ``name`` is written: its version, the checksum a foreign class
+        carries after it, and the elements its members are written by - or ``None`` for a
+        class the program did not declare, whose record ROOT's own layout writes.
+
+        Kept, for the reason :attr:`infos` is: ``TClass::Streamer`` in a bulk loop writes
+        ten million records of one class and asks this once for every one of them.
+        """
+        found = self._plans.get(name)
+        if found is not None:
+            return found
+        declared = self.declared(name)
+        if declared is None:
+            return None  # not kept: a class a file describes later may be this one
+        sum_, version, elements = self.info(name)
+        foreign = declared.foreign and version <= 1  # a foreign class carries its checksum
+        made = (0, sum_, elements) if foreign else (version, None, elements)
+        self._plans[name] = made
+        return made
 
     def entries(self) -> dict[str, tuple[int, int, tuple[Element, ...]]]:
         """The descriptions this write made, for the file's streamer record: the program's
@@ -504,13 +569,29 @@ class Catalogue:
     def _string(
         self, owner: Declaration, field: Field, found: Spelled, counter: bool
     ) -> Element | None:
-        if field.dims:
-            return None
+        """``TString name``, or the array of them ``TString name[N]``: ROOT describes a
+        ``TString`` as the one ``TStreamerString`` its class writes, and an array of them as
+        that same element with the array offset on its type, room for N strings and N as its
+        length - ``TString f[2]`` is type 85, 48 bytes, a length of 2 and one dimension, as
+        the 6.40.04 oracle dumps the streamer information of a class holding one.
+
+        Without the array offset a ``TString name[N]`` would be described as the one string it
+        is not, and ROOT reading the file back would take the twelve of the bigevent
+        roottest's ``Event::fNames`` for one string and lose the other eleven.
+        """
         if found.stars:
-            return self._string_pointer(owner, field, found)
+            return None if field.dims else self._string_pointer(owner, field, found)
+        dims = _dimensions(owner, field)
         if found.name == "TString":
+            if dims:
+                length = _product(dims)
+                return ("TStreamerString", field.name, field.comment, TSTRING + OFFSET_L,
+                        STRING_SIZE * length, length, len(dims), (*dims, *NO_DIMS)[:5],
+                        "TString", ())  # fmt: skip
             return ("TStreamerString", field.name, field.comment, TSTRING, STRING_SIZE, 0, 0,
                     NO_DIMS, "TString", ())  # fmt: skip
+        if dims:
+            return None
         if found.name in ("string", "basic_string"):
             return ("TStreamerSTLstring", field.name, field.comment, STL, STRING_SIZE, 0, 0,
                     NO_DIMS, "string", (STL_STRING, STL_STRING))  # fmt: skip

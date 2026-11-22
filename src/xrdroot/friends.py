@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
-from xrdclient.url import parse
+from .transport import parse
 
 if TYPE_CHECKING:
     from .file import Source

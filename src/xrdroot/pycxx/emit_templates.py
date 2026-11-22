@@ -109,7 +109,7 @@ class TemplateEmitter(ClassEmitter):
         takes the call as it is - ``generate(p)`` of ``generate<T>(T *&)`` beside
         ``generate(void *, TClass *)`` is the template, ``T`` deduced from ``p`` - a template
         with a body, since only the run chooses between a set's ordinary functions."""
-        if symbol is None or symbol.kind not in ("function", "static", "method"):
+        if symbol is None or symbol.kind not in ("function", "static", "method", "member"):
             return None
         given = [self.typeof(arg) for arg in node.args]
         return self._template_taking(self.function_named(symbol), given)

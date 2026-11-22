@@ -95,6 +95,7 @@ class Test:
     passregex: tuple[str, ...] = ()
     failregex: tuple[str, ...] = ()
     will_fail: bool = False
+    store_out: bool = False
     check_out: bool = True
     check_err: bool = True
     custom_diff: bool = False

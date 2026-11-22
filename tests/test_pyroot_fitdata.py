@@ -123,3 +123,24 @@ def test_points_added_one_by_one_are_fitted_by_the_model_as_root_fits_them() -> 
     line = ROOT.Fit.BinData(2, 1)
     line.Add(1.0, 2.0)
     assert (line.Size(), line.NDim()) == (1, 1)
+
+
+def test_bin_data_says_which_errors_it_carries_and_reads_a_point_back():
+    """``GetErrorType`` and the point accessors a macro's ``printData`` reads it with."""
+    assert ROOT.Fit.BinData().GetErrorType() == ROOT.Fit.BinData.kNoError
+    data = ROOT.Fit.BinData()
+    data.Add([1.5], 2.0, 0.5)
+    assert data.GetErrorType() == ROOT.Fit.BinData.kValueError
+    assert list(data.Coords(0)) == [1.5]
+    assert (data.Value(0), data.Error(0)) == (2.0, 0.5)
+    kinds = (ROOT.Fit.BinData.kNoError, ROOT.Fit.BinData.kCoordError, ROOT.Fit.BinData.kAsymError)
+    assert kinds == (0, 2, 3)
+
+
+def test_a_wrapped_tf1s_parameters_are_the_tf1s_own():
+    """ROOT's wrapper holds the ``TF1``, so setting its parameters sets the ``TF1``'s."""
+    function = ROOT.TF1("w", "[0]*x + [1]", 0, 1)
+    wrapped = ROOT.Math.WrappedMultiTF1(function)
+    wrapped.SetParameters([2.0, 3.0])
+    assert list(wrapped.Parameters()) == [2.0, 3.0]
+    assert function.GetParameter(1) == 3.0

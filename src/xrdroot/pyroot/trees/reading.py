@@ -98,6 +98,13 @@ def _vector_for(address: Any, leaves: list[Any]) -> Any:
     return address.value
 
 
+def _being_read(tree: Any) -> None:
+    """``tree`` is reading an entry now: a reference that finds no object asks it for one."""
+    from .branches import TRefTable
+
+    TRefTable._tree = tree
+
+
 def _columns_bound(name: str, branch: Any, leaf: Any, address: Any) -> dict[str, Any]:
     """What each column of a branch - or the one leaf asked for - is read into."""
     if branch is not None and is_object(branch):
@@ -176,6 +183,7 @@ class _Reading(_TreeCore):
         if not 0 <= entry < self.GetEntries():
             return 0
         self._read_entry = entry
+        _being_read(self)
         wanted = self._columns() if columns is None else columns
         nbytes = 0
         for column in wanted:
@@ -196,7 +204,11 @@ class _Reading(_TreeCore):
         value = self._batch.value(column, entry)
         if held is None or held.address is not address:
             address.put(value.item() if isinstance(value, np.generic) else value)
-        return max(int(np.asarray(value).nbytes) if not isinstance(value, str) else len(value), 1)
+        if isinstance(value, np.generic):
+            return max(int(value.dtype.itemsize), 1)  # one number: the bytes of its own width
+        if isinstance(value, str):
+            return max(len(value), 1)
+        return max(int(np.asarray(value).nbytes), 1)
 
     def _load_friends(self, entry: int) -> None:
         """Read the same entry of every friend, or the entry its index matches."""

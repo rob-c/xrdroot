@@ -24,6 +24,7 @@ from .funcbase import (
     IGradientFunctionMultiDim,
     IGradientFunctionOneDim,
 )
+from .refs import store
 
 __all__ = [
     "Functor1D",
@@ -33,6 +34,10 @@ __all__ = [
     "Integrator",
     "IntegratorOneDim",
     "RootFinder",
+    "IRootFinderMethod",
+    "GSLRootFinder",
+    "GSLRootFinderDeriv",
+    "Roots",
     "Fitter",
     "Fit",
     "Minimizer",
@@ -217,13 +222,28 @@ class RootFinder:
         kGSL_NEWTON,
         kGSL_SECANT,
         kGSL_STEFFENSON,
-    ) = range(7)
+        kMODAB,
+    ) = range(8)
+
+    #: What ROOT's ``RootFinder::Name()`` answers for each kind: GSL's own algorithm names
+    #: for the six GSL solvers, and ``BrentRootFinder`` for ROOT's own Brent implementation.
+    NAMES = ("BrentRootFinder", "bisection", "falsepos", "brent", "newton", "secant",
+             "steffenson", "ModABRootFinder")  # fmt: skip
 
     def __init__(self, kind: int = 0) -> None:
         self._kind = int(kind)
         self._fn: Any = None
         self._bounds: tuple[float, ...] = ()
         self._root = math.nan
+        self._iterations = 0
+
+    def Name(self) -> str:
+        """``Name``: the solver's name, as GSL would spell it."""
+        return self.NAMES[self._kind] if 0 <= self._kind < len(self.NAMES) else "NoSolver"
+
+    def Iterations(self) -> int:
+        """``Iterations``: how many steps the last ``Solve`` took."""
+        return self._iterations
 
     def SetFunction(self, fn: Any, *bounds: float) -> bool:
         """``SetFunction(f, low, high)`` to bracket, or ``(f, start)`` for Newton's method."""
@@ -232,14 +252,17 @@ class RootFinder:
 
     def Solve(self, maxIter: int = 100, absTol: float = 1e-8, relTol: float = 1e-10) -> bool:
         """``Solve``: Newton's from the start given, or bisection inside the bracket given."""
+        self._iterations = 0
         if len(self._bounds) == 1:
             self._root = self._newton(self._bounds[0], maxIter)
         else:
-            self._root = _bisected(self._fn, self._bounds[0], self._bounds[1])
+            self._root, self._iterations = _bisected(self._fn, self._bounds[0],
+                                                     self._bounds[1])
         return not math.isnan(self._root)
 
     def _newton(self, x: float, iterations: int) -> float:
-        for _ in range(int(iterations)):
+        for step_at in range(int(iterations)):
+            self._iterations = step_at + 1
             step = self._fn(x) / self._fn.Derivative(x)
             x -= step
             if abs(step) <= 1e-15 * max(abs(x), 1.0):
@@ -250,14 +273,171 @@ class RootFinder:
         return self._root
 
 
-def _bisected(fn: Callable[[float], float], low: float, high: float) -> float:
-    """Where ``fn`` changes sign between ``low`` and ``high``, to the last bit."""
+def _bisected(fn: Callable[[float], float], low: float, high: float
+              ) -> tuple[float, int]:
+    """Where ``fn`` changes sign between ``low`` and ``high``, to the last bit - and how many
+    halvings it took, which is what ``RootFinder::Iterations`` answers with."""
     below = fn(low) < 0
     middle = 0.5 * (low + high)
+    steps = 0
     while middle not in (low, high):
         low, high = (middle, high) if (fn(middle) < 0) == below else (low, middle)
         middle = 0.5 * (low + high)
-    return middle
+        steps += 1
+    return middle, steps
+
+
+class IRootFinderMethod:
+    """``ROOT::Math::IRootFinderMethod``: what every solver of ROOT's answers - the root it
+    found and how many steps it took. ``Name`` and ``Solve`` are each solver's own, as ROOT
+    declares them pure virtual."""
+
+    def __init__(self) -> None:
+        self._root = math.nan
+        self._iterations = 0
+
+    def Root(self) -> float:
+        return self._root
+
+    def Iterations(self) -> int:
+        return self._iterations
+
+
+class GSLRootFinder(IRootFinderMethod):
+    """``ROOT::Math::GSLRootFinder``: one of GSL's bracketing solvers over a C function.
+
+    GSL calls a ``GSLFuncPointer`` - ``double f(double x, void *p)`` - with the ``void *p``
+    it is handed, which is why ROOT's solver takes the function and its parameters apart. A
+    macro translated here holds the function itself as a Python callable of two arguments,
+    and the parameters as whatever the C++ stored in the pointer, usually nothing.
+    """
+
+    #: The name GSL answers with, which ``Name`` gives - ``bisection``, ``brent``, ...
+    algorithm = "GSL"
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__()
+        self._fn: Any = None
+        self._params: Any = None
+        self._bounds: tuple[float, ...] = ()
+
+    def SetFunction(self, fn: Any, params: Any = None, low: float = 0.0,
+                    high: float = 0.0) -> bool:  # fmt: skip
+        """``SetFunction(f, p, low, high)``: the function, the pointer GSL hands it, and the
+        bracket its root is looked for in."""
+        self._fn, self._params = fn, params
+        self._bounds = (float(low), float(high))
+        return True
+
+    def _called(self, x: float) -> float:
+        """``f(x, p)``: GSL's call, with the pointer it was given at ``SetFunction``."""
+        return float(self._fn(x, self._params))
+
+    def Solve(self, maxIter: int = 100, absTol: float = 1e-8, relTol: float = 1e-10) -> bool:
+        """``Solve``: the bracket's sign change, to the last bit."""
+        self._root, self._iterations = _bisected(self._called, *self._bounds)
+        return not math.isnan(self._root)
+
+    def Name(self) -> str:
+        return self.algorithm
+
+
+class GSLRootFinderDeriv(IRootFinderMethod):
+    """``ROOT::Math::GSLRootFinderDeriv``: a solver that also takes the derivative, and the
+    coupled function-and-derivative GSL can be given instead.
+
+    ROOT keeps this a base of its own rather than a ``GSLRootFinder``, because the two are
+    handed different functions: GSL's derivative solvers call ``f`` and ``df``, or one
+    ``fdf`` that writes both through the two pointers it is given.
+    """
+
+    #: The name GSL answers with: ``newton``, ``secant``, ``steffenson``.
+    algorithm = "GSLDeriv"
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__()
+        self._fn: Any = None
+        self._derivative: Any = None
+        self._fdf: Any = None
+        self._params: Any = None
+        self._start = 0.0
+
+    def SetFunction(self, fn: Any, derivative: Any = None, fdf: Any = None,
+                    params: Any = None, start: float = 0.0) -> bool:  # fmt: skip
+        """``SetFunction(f, df, fdf, p, x0)``: the function, its derivative (or the pair
+        ``fdf`` that gives both), the pointer, and where to start."""
+        self._fn, self._derivative, self._fdf, self._params = fn, derivative, fdf, params
+        self._start = float(start)
+        return True
+
+    def _called(self, x: float) -> float:
+        return float(self._fn(x, self._params))
+
+    def _slope(self, x: float) -> float:
+        if self._derivative is not None:
+            return float(self._derivative(x, self._params))
+        y, dy = _pair_out()
+        self._fdf(x, self._params, y, dy)
+        return float(dy[0])
+
+    def Solve(self, maxIter: int = 100, absTol: float = 1e-8, relTol: float = 1e-10) -> bool:
+        """``Solve``: Newton's method from the start given."""
+        wanted = float(absTol)
+        x = self._start
+        for step_at in range(int(maxIter)):
+            self._iterations = step_at + 1
+            step = self._called(x) / self._slope(x)
+            x -= step
+            if abs(step) <= wanted:
+                break
+        self._root = x
+        return not math.isnan(x)
+
+    def Name(self) -> str:
+        return self.algorithm
+
+
+def _pair_out() -> tuple[list[float], list[float]]:
+    """The two cells a ``void f(double, void *, double *y, double *dy)`` writes through."""
+    return [0.0], [0.0]
+
+
+class Roots:
+    """``ROOT::Math::Roots``: GSL's root-finding algorithms by name, each a solver of its own.
+
+    ROOT spells them ``ROOT::Math::Roots::Brent`` and so on, rather than naming a kind to
+    one ``RootFinder``, so a macro that wants Brent's method exactly writes its own class.
+    """
+
+    class Brent(GSLRootFinder):
+        """Brent's method, which GSL answers to ``brent``."""
+
+        algorithm = "brent"
+
+    class Bisection(GSLRootFinder):
+        """Bisection, which GSL answers to ``bisection``."""
+
+        algorithm = "bisection"
+
+    class FalsePos(GSLRootFinder):
+        """The regula falsi, which GSL answers to ``falsepos``."""
+
+        algorithm = "falsepos"
+
+    class Newton(GSLRootFinderDeriv):
+        """Newton's method, which GSL answers to ``newton``."""
+
+        algorithm = "newton"
+
+    class Secant(GSLRootFinderDeriv):
+        """The secant method, which GSL answers to ``secant``."""
+
+        algorithm = "secant"
+
+    class Steffenson(GSLRootFinderDeriv):
+        """Steffenson's method, which GSL answers to ``steffenson``."""
+
+        algorithm = "steffenson"
 
 
 class _FCNResult:
@@ -409,8 +589,14 @@ class Fitter:
             one.SetName(tf.GetParName(i))
         return True
 
-    def Fit(self, data: Any, *rest: Any) -> bool:
-        """``Fit(data)``: the model's chi-square over the data minimised."""
+    def Fit(self, data: Any, function: Any = None, *rest: Any) -> bool:
+        """``Fit(data)``, or ``Fit(data, function)``: the model's chi-square over the data
+        minimised, from the parameters the model stands at - which ROOT's ``Fit(d, f)``
+        takes from the function it is handed, so a fit follows a ``SetParameters``."""
+        if function is not None:
+            self.SetFunction(function)
+        elif "_model" not in self.__dict__:
+            raise ValueError("Fit() fits the model SetFunction gave it, and none was given")
         chi2 = fitdata.Chi2Function(data, self.__dict__["_model"])
         return self.FitFCN(chi2.NDim(), chi2, None, data.Size(), True)
 
@@ -464,6 +650,24 @@ def _minimised(fcn: Any, settings: list[ParameterSettings]) -> Any:
     return core._result(made, names, False, int(made.nfcn))
 
 
+class _Template:
+    """A ROOT class template whose argument a macro writes out, as ``Chi2FCN<IMultiGenFunction>``.
+
+    In C++ the argument says what the template is instantiated over; here it says
+    nothing a reader of the object needs, so naming it gives the class back and
+    the call makes the object, which is what the macro's next line does.
+    """
+
+    def __init__(self, make: Callable[..., Any]) -> None:
+        self._make = make
+
+    def __getitem__(self, argument: Any) -> _Template:
+        return self
+
+    def __call__(self, *args: Any) -> Any:
+        return self._make(*args)
+
+
 class _FitNamespace:
     """``ROOT.Fit``: the ``ROOT::Fit`` namespace."""
 
@@ -472,6 +676,9 @@ class _FitNamespace:
     ParameterSettings = ParameterSettings
     BinData = fitdata.BinData
     Chi2Function = fitdata.Chi2Function
+    #: ``ROOT::Fit::Chi2FCN``: the same chi-square under the name ROOT's own fit code
+    #: gives it, a class template whose argument a macro has to write out.
+    Chi2FCN = _Template(fitdata.Chi2Function)
     DataOptions = fitdata.DataOptions
     DataRange = fitdata.DataRange
     FillData = staticmethod(fitdata.FillData)
@@ -536,29 +743,6 @@ class Minimizer:
     def SetFunction(self, fcn: Any) -> None:
         self._fcn = fcn
 
-    def Clear(self) -> None:
-        """``Clear()``: forget the variables and what was found, so that the same minimiser
-        can be set up and run again - what a test program does between two functions."""
-        self._variables, self._found = {}, None
-
-    def GetMinosError(self, ivar: int, el: Any, eu: Any) -> bool:
-        """``GetMinosError(ivar, el, eu)``: MINOS's two errors on one parameter, written into
-        the two references given, and whether Minuit had them to give.
-
-        MINOS needs a minimum it trusts, so a minimisation that ended anywhere else - or
-        one that has not run - answers false rather than an error read off nothing.
-        """
-        if self._found is None:
-            return False
-        name = self._variables[sorted(self._variables)[int(ivar)]][0]
-        try:
-            self._found.minos(name)
-            error = self._found.merrors[name]
-        except (RuntimeError, KeyError):  # no minimum MINOS trusts, or no error from it
-            return False
-        el.value, eu.value = float(error.lower), float(error.upper)
-        return True
-
     def SetVariable(self, index: int, name: Any, value: float, step: float) -> bool:
         self._variables[int(index)] = [str(name), float(value), float(step), None]
         return True
@@ -567,6 +751,13 @@ class Minimizer:
                            low: float, high: float) -> bool:  # fmt: skip
         self._variables[int(index)] = [str(name), float(value), float(step), (low, high)]
         return True
+
+    def Clear(self) -> None:
+        """``Clear``: the minimum of the last ``Minimize`` dropped, and the function and the
+        variables kept - which is what ROOT's ``Minuit2Minimizer::Clear`` does, so that the
+        same minimiser is set up and run again. Every accessor below then gives what ROOT
+        gives with no minimum: zeros, and an empty ``X``."""
+        self._found = None
 
     def Minimize(self) -> bool:
         """``Minimize``: MIGRAD from the variables set, and - at print level 1 - ROOT's lines."""
@@ -594,26 +785,66 @@ class Minimizer:
         for name, value, error in zip(names, found.values, found.errors, strict=False):
             print(f"{name}\t  = {value:g}\t +/-  {error:g}")
 
+    def GetMinosError(self, index: int, errLow: Any = None, errUp: Any = None,
+                      option: int = 0) -> bool:  # fmt: skip
+        """``GetMinosError(i, low, high)``: Minuit2's MINOS errors either side of parameter
+        ``i`` - where the function has risen by the fit's error definition with every other
+        parameter minimised again - put where the references point, and whether MINOS found
+        both. ROOT's ``False``, with both errors zero, when it did not, or when nothing has
+        been minimised; Minuit2 ignores ``option``.
+        """
+        error = self._minos_error(index)
+        pair = (0.0, 0.0) if error is None else (float(error.lower), float(error.upper))
+        _given(errLow, pair[0])
+        _given(errUp, pair[1])
+        return error is not None
+
+    def _minos_error(self, index: int) -> Any:
+        """MINOS' two errors of one parameter, or ``None`` when there is no minimum to start
+        from - none made, or one Minuit2 does not call valid - or when MINOS itself could not
+        find them, which is ROOT's ``false``."""
+        made = self._found
+        if made is None or not made.valid:
+            return None
+        name = str(made.parameters[int(index)])
+        made.minos(name)
+        error = made.merrors.get(name)
+        return error if error is not None and error.is_valid else None
+
     def X(self) -> np.ndarray[Any, Any]:
+        if self._found is None:
+            return np.array([])
         return np.array(self._found.values)
 
     def Errors(self) -> np.ndarray[Any, Any]:
+        if self._found is None:
+            return np.array([])
         return np.array(self._found.errors)
 
     def MinValue(self) -> float:
-        return float(self._found.fval)
+        return 0.0 if self._found is None else float(self._found.fval)
 
     def Edm(self) -> float:
-        return float(self._found.fmin.edm)
+        return 0.0 if self._found is None else float(self._found.fmin.edm)
 
     def NCalls(self) -> int:
-        return int(self._found.nfcn)
+        return 0 if self._found is None else int(self._found.nfcn)
 
     def NDim(self) -> int:
         return len(self._variables)
 
     def Status(self) -> int:
-        return 0 if self._found.valid else 3
+        return 0 if self._found is None or self._found.valid else 3
+
+
+def _given(target: Any, value: float) -> None:
+    """Put ``value`` where an out-argument's reference points, as ``store`` does, and nothing
+    where the caller passed a bare number: a number is handed over as its value rather than as
+    a reference, so the variable it came from stays as it was until the translator declares
+    ``GetMinosError`` among the calls that write through references.
+    """
+    if target is not None and not isinstance(target, (int, float)):
+        store(target, value)
 
 
 #: ``GeneticMinimizerParameters``' defaults, as ROOT's own struct has them: the search
@@ -679,13 +910,18 @@ class GeneticMinimizer(Minimizer):
     def __init__(self, i: int = 0) -> None:
         super().__init__("Genetic", "")
         self._parameters = GeneticMinimizerParameters()
+        #: ROOT's own constructor takes an ``int`` and never reads it; here it is the seed
+        #: when one is given, so that a search is repeatable from the constructor alone.
+        self._parameters.fSeed = int(i)
         self._ranges: dict[int, tuple[float, float]] = {}
         self._fixed: dict[int, float] = {}
         self._result: list[float] = []
         self._ndim = 0
         self._best = math.inf
         self._calls = 0
-        self._status = 0
+        #: ``-1`` until a search has run, which is the status ROOT's base ``Minimizer``
+        #: carries and its genetic search leaves alone until ``Minimize`` reports one.
+        self._status = -1
         self.SetTolerance(0.1 * self._parameters.fConvCrit)
         self.SetMaxIterations(self._parameters.fNsteps)
 
@@ -693,10 +929,11 @@ class GeneticMinimizer(Minimizer):
 
     def Clear(self) -> None:
         """``Clear()``: forget the function, its coordinates and what was found, as ROOT's
-        ``Clear`` does - ``SetFunction`` starts from here, so set the variables after it."""
+        ``Clear`` does - ``SetFunction`` starts from here, so set the variables after it.
+        The status of the last search stays, as ROOT's own ``Clear`` leaves it."""
         self._fcn = None
         self._ranges, self._fixed, self._result = {}, {}, []
-        self._ndim, self._best, self._calls, self._status = 0, math.inf, 0, 0
+        self._ndim, self._best, self._calls = 0, math.inf, 0
 
     def SetFunction(self, fcn: Any) -> None:
         """``SetFunction(func)``: the function of the parameters, whose ``NDim`` is the
@@ -748,6 +985,11 @@ class GeneticMinimizer(Minimizer):
         """``MinimizerParameters()``: the settings the search runs with."""
         return self._parameters
 
+    def Parameters(self) -> GeneticMinimizerParameters:
+        """``Parameters()``: the same struct ``MinimizerParameters`` gives, under the
+        shorter name a search read from Python is likely to reach for first."""
+        return self._parameters
+
     # -- the search ---------------------------------------------------------------------
 
     def Minimize(self) -> bool:
@@ -760,6 +1002,9 @@ class GeneticMinimizer(Minimizer):
         """
         if self._fcn is None:
             messages.Error("GeneticMinimizer::Minimize", "Fitness function has not been set")
+            return False
+        if not self._ranges_in_order():
+            # Nothing to breed over: a coordinate was never given, or every one is fixed.
             return False
         settings = self._synced()
         ranges = [tmva_genetic.Interval(low, high) for low, high in self._ranges_in_order()]
@@ -872,11 +1117,11 @@ class GeneticMinimizer(Minimizer):
         return 0.0
 
     def Status(self) -> int:
-        """``Status()``: one, a search that ran to the generations ROOT allows itself.
-
-        ROOT asks the same ``MaxIterations`` of the base class for both the count it
-        stops at and the count of quiet generations it wants, and stops on the first
-        before asking about the second, so ROOT's own search reports 1 as well.
+        """``Status()``: minus one until a search has run, then zero for one that settled
+        or the generations it was allowed. ROOT's base ``Minimizer`` carries ``-1`` as the
+        status of a minimiser that has not been run, and its genetic search answers 1 for
+        one that stopped on ``MaxIterations``, which - with ROOT's own generation count -
+        is where it stops, since ROOT asks the same count of its convergence test.
         """
         return self._status
 

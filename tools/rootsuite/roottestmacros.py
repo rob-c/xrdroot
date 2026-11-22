@@ -190,9 +190,12 @@ def add_test(self: Directory, args: list[str]) -> None:
     if parsed.get("COMMAND") and not parsed.get("MACRO") and not parsed.get("EXEC"):
         _command_test(self, parsed, test_id, ctest)
         return
+    # ROOT's ROOTTEST_ADD_TEST hands every test's output to the driver as
+    # `OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${testname}.log`, so a test that follows one reads
+    # the file its sibling wrote there - `schemaRun2check`'s `sed schemaRun2.log`.
     self.registry.add(Test(id=test_id, ctest=ctest, kind=kind_of(ctest, self.relative),
-                           directory=self.relative, **_macro_or_exec(self, parsed),
-                           **_judging(self, parsed)))
+                           directory=self.relative, store_out=True,
+                           **_macro_or_exec(self, parsed), **_judging(self, parsed)))
 
 
 def _enabled(self: Directory, parsed: dict[str, list[str]]) -> bool:
@@ -235,7 +238,7 @@ def _command_test(self: Directory, parsed: dict[str, list[str]], test_id: str,
     test = self.registry.tests.pop()
     checks = bool(parsed.get("OUTREF")) or "STOREOUT" in parsed
     judging = _judging(self, parsed)
-    judging.update(check_out=checks, check_err=checks)
+    judging.update(check_out=checks, check_err=checks, store_out=True)
     fields = {**test.__dict__, **judging}
     self.registry.add(Test(**fields))
 

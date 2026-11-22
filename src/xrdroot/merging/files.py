@@ -29,12 +29,11 @@ import warnings
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Any, NamedTuple
 
-from xrdclient.url import parse
-
 from ..compression import CODES, LEVELS
 from ..errors import FormatError, ROOTError
 from ..file import Directory, Key, ROOTFile, open_root
 from ..objects import TREE_CLASSES
+from ..transport import parse
 from ..winfo import INFOS
 from ..writer import WritableFile, create
 from ..wupdate import AS_FILED, _setting, update
@@ -151,7 +150,7 @@ def _is_local_file(target: Any) -> bool:
 
 
 def _local_path(target: Any) -> str:
-    return parse(os.fspath(target)).path
+    return str(parse(os.fspath(target)).path)
 
 
 class _Merger:

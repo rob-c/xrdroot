@@ -189,6 +189,54 @@ def test_a_declaration_puts_what_it_declares_in_the_namespace(monkeypatch):
         ROOT.__dict__.pop("answer", None)
 
 
+def test_load_text_declares_what_the_text_declares(monkeypatch):
+    """ROOT's ``LoadText`` is the text of a file the interpreter now holds: what it
+    declares is callable at once, which is what roottest's regression tests ask of it."""
+
+    def takesref(*args):
+        return bool(args[0])
+
+    takesref.__module__ = "__cint__"
+    execute = types.ModuleType("xrdroot.pycint.execute")
+    execute.run_source = lambda code, file, call: {"takesref": takesref}
+    execute.process_line = lambda text: 7
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", execute)
+    monkeypatch.setattr(troot, "_PRELUDE", {})
+    troot.set_line_processor(None)
+    try:
+        expect(
+            (ROOT.gInterpreter.LoadText("bool takesref(const int& arg) { return arg; }"), None),
+            (ROOT.takesref(0), False),
+            (ROOT.takesref(1), True),
+        )
+    finally:
+        troot.set_line_processor(None)
+        ROOT.__dict__.pop("takesref", None)
+
+
+def test_load_text_is_refused_by_its_own_name_without_the_translator(monkeypatch):
+    troot.set_line_processor(None)  # one an earlier test's ProcessLine found and kept
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", None)  # not installed
+    with pytest.raises(UnsupportedFeatureError, match=r"gInterpreter\.LoadText"):
+        ROOT.gInterpreter.LoadText("int f();")
+
+
+def test_load_text_is_read_as_one_line_by_a_translator_that_declares_nothing(monkeypatch):
+    """A translator that only processes lines still reads the text, as ``ProcessLine`` would."""
+    seen = []
+    fake = types.ModuleType("xrdroot.pycint.execute")
+    fake.process_line = lambda text: seen.append(text) or 7
+    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", fake)
+    troot.set_line_processor(None)
+    try:
+        expect(
+            (ROOT.gInterpreter.LoadText("int x = 1;"), None),
+            (seen, ["int x = 1;"]),
+        )
+    finally:
+        troot.set_line_processor(None)
+
+
 def test_the_translator_is_not_looked_for_without_it(monkeypatch):
     monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", None)  # not installed
     assert troot._translator("run_source") is None

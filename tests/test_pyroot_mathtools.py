@@ -59,7 +59,17 @@ def test_the_root_finder_brackets_or_follows_a_derivative():
     expect(
         (bool(bracket.Solve()), True),
         (bracket.Root(), pytest.approx(0.25)),
+        (finder.Name(), "newton"),
+        (bool(finder.Iterations() > 0), True),
+        (bracket.Name(), "BrentRootFinder"),
+        (ROOT.Math.RootFinder(ROOT.Math.RootFinder.kMODAB).Name(), "ModABRootFinder"),
     )
+    # ``exp`` has no root and Newton's step never shrinks, so it takes the steps it is
+    # given and says how many that was.
+    stuck = ROOT.Math.RootFinder(ROOT.Math.RootFinder.kGSL_NEWTON)
+    stuck.SetFunction(ROOT.Math.GradFunctor1D(np.exp, np.exp), 1.0)
+    assert stuck.Solve(3) is True
+    assert stuck.Iterations() == 3
 
 
 def test_the_fitter_minimises_and_prints_as_root_does(capsys):
@@ -320,7 +330,235 @@ def test_a_minimizer_cleared_is_ready_to_be_set_up_again():
     minimizer.SetVariable(0, "a", 0.0, 0.1)
     assert minimizer.Minimize()
     minimizer.Clear()
-    assert minimizer.NDim() == 0
+    # ROOT's Minuit2Minimizer::Clear drops the minimum and keeps the function's dimension,
+    # so the same minimiser is given its variables again and run again.
+    assert minimizer.NDim() == 1
     minimizer.SetVariable(0, "b", 5.0, 0.1)
     assert minimizer.Minimize()
     assert minimizer.X()[0] == pytest.approx(2.0, abs=1e-2)
+
+
+def test_minos_gives_the_errors_either_side_of_a_parameter():
+    pytest.importorskip("iminuit")
+    minimizer = ROOT.Math.Minimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 1) ** 2 + 2 * (v[1] - 3) ** 2, 2))
+    minimizer.SetVariable(0, "x", -1.0, 0.01)
+    minimizer.SetVariable(1, "y", 1.0, 0.01)
+    assert minimizer.Minimize()
+    low, high = np.zeros(1), np.zeros(1)
+    expect(
+        (bool(minimizer.GetMinosError(0, low, high)), True),
+        (low[0], pytest.approx(-1.0, rel=1e-4)),
+        (high[0], pytest.approx(1.0, rel=1e-4)),
+        # 2*(y-3)^2 rises by one at 1/sqrt(2), as ROOT's MINOS finds.
+        (bool(minimizer.GetMinosError(1, low, high)), True),
+        (high[0], pytest.approx(np.sqrt(0.5), rel=1e-4)),
+    )
+    # A bare number is handed over by value: there is nowhere to write, and nothing is written.
+    assert minimizer.GetMinosError(0, 0.0, 0.0)
+
+
+def test_minos_says_so_when_it_finds_no_error():
+    pytest.importorskip("iminuit")
+    minimizer = ROOT.Math.Minimizer()
+    # A linear direction never converges, so there is no minimum for MINOS to start from.
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 1) ** 2 + 1e-6 * v[1], 2))
+    minimizer.SetVariable(0, "x", 0.0, 0.01)
+    minimizer.SetVariable(1, "y", 0.0, 0.01)
+    assert not minimizer.Minimize()
+    low, high = np.array([7.0]), np.array([7.0])
+    expect(
+        (bool(minimizer.GetMinosError(1, low, high)), False),
+        (low[0], 0.0),
+        (high[0], 0.0),
+    )
+    minimizer._found = types.SimpleNamespace(
+        valid=True,
+        parameters=("a",),
+        merrors={"a": types.SimpleNamespace(is_valid=False, lower=-2.0, upper=2.0)},
+        minos=lambda name: None,
+    )
+    assert not minimizer.GetMinosError(0, low, high)
+    assert (low[0], high[0]) == (0.0, 0.0)
+    minimizer._found.merrors = {}  # MINOS says nothing at all of this parameter
+    assert not minimizer.GetMinosError(0, low, high)
+    # No minimisation done at all - as after Clear - is ROOT's False too, with zeros.
+    minimizer.Clear()
+    assert not minimizer.GetMinosError(0, low, high)
+    assert not minimizer.GetMinosError(0)
+
+
+def test_a_cleared_minimizer_keeps_its_variables_and_has_no_minimum():
+    pytest.importorskip("iminuit")
+    minimizer = ROOT.Math.Minimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 2) ** 2, 1))
+    minimizer.SetVariable(0, "a", 0.0, 0.1)
+    assert minimizer.Minimize()
+    minimizer.Clear()
+    expect(
+        (minimizer.NDim(), 1),
+        (minimizer.MinValue(), 0.0),
+        (minimizer.Edm(), 0.0),
+        (minimizer.NCalls(), 0),
+        (minimizer.Status(), 0),
+        (list(minimizer.X()), []),
+        (list(minimizer.Errors()), []),
+    )
+    # The same minimiser takes a new function and runs again, as ROOT's test programs reuse one.
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 4) ** 2, 1))
+    assert minimizer.Minimize()
+    assert minimizer.X()[0] == pytest.approx(4.0, abs=1e-3)
+
+
+def test_the_chi_square_named_as_a_template_makes_the_same_chi_square():
+    """``ROOT::Fit::Chi2FCN<IMultiGenFunction>``: C++'s argument written out, and dropped."""
+    data = ROOT.Fit.BinData()
+    data.Add(1.0, 2.0, 0.5)
+    function = ROOT.Math.WrappedMultiTF1(ROOT.TF1("f", "[0]*x", 0, 1))
+    made = ROOT.Fit.Chi2FCN[ROOT.Math.IMultiGenFunction](data, function)
+    assert isinstance(made, ROOT.Fit.Chi2Function)
+    assert made.NDim() == 1
+
+
+def test_the_genetic_minimizer_finds_a_minimum_inside_the_limits():
+    minimizer = ROOT.Math.GeneticMinimizer()
+    minimizer.SetFunction(
+        ROOT.Math.Functor(lambda v: (v[0] - 2.0) ** 2 + (v[1] + 1.0) ** 2, 2)
+    )
+    minimizer.SetLimitedVariable(0, "a", 0.0, 0.1, -10.0, 10.0)
+    minimizer.SetLimitedVariable(1, "b", 0.0, 0.1, -10.0, 10.0)
+    assert minimizer.Minimize()
+    assert list(minimizer.X()) == pytest.approx([2.0, -1.0], abs=0.5)
+    assert minimizer.MinValue() < 0.5
+    assert minimizer.NCalls() > 0
+    # the search stopped on the generations ROOT allows itself, which ROOT calls status 1
+    expect((minimizer.Edm(), 0.0), (minimizer.Status(), 1), (minimizer.NDim(), 2))
+
+
+def test_the_genetic_minimizer_searches_around_an_unbounded_variables_start():
+    """A variable given no limits is searched fifty steps either side of its start, as
+    ROOT says it is - a range wide enough to hold the parabola's own minimum."""
+    minimizer = ROOT.Math.GeneticMinimizer()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: v[0] ** 2, 1))
+    minimizer.SetVariable(0, "a", 3.0, 0.5)
+    assert minimizer.Minimize()
+    assert 3.0 - 50 * 0.5 <= minimizer.X()[0] <= 3.0 + 50 * 0.5
+    assert minimizer.X()[0] == pytest.approx(0.0, abs=0.1)
+
+
+def test_the_genetic_minimizers_settings_are_its_own_and_its_minimum_is_dropped():
+    parameters = ROOT.Math.GeneticMinimizerParameters()
+    parameters.fPopSize, parameters.fNsteps, parameters.fSeed = 4, 2, 7
+    minimizer = ROOT.Math.GeneticMinimizer()
+    minimizer.SetParameters(parameters)
+    assert minimizer.Parameters() is parameters
+    # nothing has been searched, which ROOT's base Minimizer calls status -1
+    expect((minimizer.MinValue(), 0.0), (minimizer.Status(), -1), (list(minimizer.X()), []))
+    # No function at all, then a function but no variable: nothing to minimise either way.
+    assert not minimizer.Minimize()
+    minimizer.SetFunction(ROOT.Math.Functor(lambda v: v[0] ** 2, 1))
+    assert not minimizer.Minimize()
+    minimizer.SetVariable(0, "a", 1.0, 0.1)
+    assert minimizer.Minimize()
+    minimizer.Clear()
+    # Clear keeps the status of the search that ran, as ROOT's own Clear does
+    expect((minimizer.MinValue(), 0.0), (minimizer.NCalls(), 0), (minimizer.Status(), 1),
+           (list(minimizer.X()), []))  # fmt: skip
+
+
+def test_a_fit_handed_its_function_starts_where_that_functions_parameters_stand():
+    """``Fit(d, f)``: the model given with the data, as ROOT's own fit programs call it."""
+    data = ROOT.Fit.BinData(1, 1)
+    for x in (-2.0, -1.0, 0.0, 1.0, 2.0):
+        data.Add(x, 1.0 + 2.0 * x, 0.1)
+    fitter = ROOT.Fit.Fitter()
+    assert fitter.Fit(data, ROOT.Math.WrappedMultiTF1(ROOT.TF1("g", "[0] + [1]*x", -3, 3)))
+    result = fitter.Result()
+    assert (result.Parameter(0), result.Parameter(1)) == pytest.approx((1.0, 2.0), abs=1e-4)
+
+
+def test_a_fit_with_neither_a_model_nor_a_function_says_which_it_wants():
+    with pytest.raises(ValueError, match="fits the model SetFunction gave it"):
+        ROOT.Fit.Fitter().Fit(ROOT.Fit.BinData())
+
+
+def test_the_genetic_minimizers_seed_and_its_cycles_are_the_search_it_makes():
+    """``GeneticMinimizer(seed)`` and ``SetRandomSeed``: the same populations, drawn again."""
+    seeded = ROOT.Math.GeneticMinimizer(111)
+    assert seeded.Parameters().fSeed == 111
+    seeded.SetRandomSeed(7)
+    assert seeded.Parameters().fSeed == 7
+    # Two searches from the same seed and the same starting point are the same search.
+    runs = []
+    for _ in range(2):
+        minimizer = ROOT.Math.GeneticMinimizer(3)
+        minimizer.SetFunction(ROOT.Math.Functor(lambda v: (v[0] - 1.0) ** 2 + v[1] ** 2, 2))
+        minimizer.SetLimitedVariable(0, "a", 0.0, 0.1, -5.0, 5.0)
+        minimizer.SetLimitedVariable(1, "b", 0.0, 0.1, -5.0, 5.0)
+        assert minimizer.Minimize()
+        runs.append((list(minimizer.X()), minimizer.MinValue()))
+    assert runs[0] == runs[1]
+    assert runs[0][0] == pytest.approx([1.0, 0.0], abs=0.2)
+
+
+def test_the_gsl_solvers_take_a_c_function_and_the_pointer_gsl_hands_it():
+    """``ROOT::Math::Roots::Brent`` and its siblings are GSL's own algorithms: each takes a
+    ``GSLFuncPointer`` - ``double f(double x, void *p)`` - with the ``void *p`` GSL passes
+    to every call, and answers ``Name`` with the name GSL gives that algorithm."""
+    def root(x, params):
+        return x - params
+
+    for kind, name in ((ROOT.Math.Roots.Brent, "brent"),
+                       (ROOT.Math.Roots.Bisection, "bisection"),
+                       (ROOT.Math.Roots.FalsePos, "falsepos")):
+        solver = kind()
+        solver.SetFunction(root, 0.25, 0.0, 1.0)
+        expect(
+            (bool(solver.Solve()), True),
+            (solver.Root(), pytest.approx(0.25)),
+            (solver.Name(), name),
+            (bool(solver.Iterations() > 0), True),
+        )
+
+
+def test_a_gsl_solver_that_takes_the_derivative_uses_it_or_the_pair_that_gives_both():
+    """``Roots::Newton``/``Secant``/``Steffenson`` are ``GSLRootFinderDeriv``: they take the
+    function, its derivative, and the ``fdf`` GSL can be given instead - a function that
+    writes both through the two pointers it is handed."""
+    def square(x, params):
+        return x * x - 5
+
+    def slope(x, params):
+        return 2 * x
+
+    def both(x, params, y, dy):
+        y[0], dy[0] = x * x - 5, 2 * x
+
+    for kind in (ROOT.Math.Roots.Newton, ROOT.Math.Roots.Secant, ROOT.Math.Roots.Steffenson):
+        solver = kind()
+        solver.SetFunction(square, slope, None, None, 5.0)
+        expect(
+            (bool(solver.Solve()), True),
+            (solver.Root(), pytest.approx(np.sqrt(5.0))),
+            (solver.Name(), kind.algorithm),
+        )
+    paired = ROOT.Math.Roots.Newton()
+    paired.SetFunction(square, None, both, None, 5.0)
+    assert paired.Solve()
+    assert paired.Root() == pytest.approx(np.sqrt(5.0), rel=1e-12)
+    # ``exp`` has no root, so Newton's step never shrinks: it takes the steps it is given.
+    stuck = ROOT.Math.Roots.Secant()
+    stuck.SetFunction(np.exp, np.exp, None, None, 1.0)
+    assert stuck.Solve(3)
+    assert stuck.Iterations() == 3
+
+
+def test_the_gsl_solver_base_is_root_maths_own_named_class():
+    """``GSLRootFinder`` and ``GSLRootFinderDeriv`` are ``ROOT::Math``'s, not only the
+    namespace ``Roots`` holds, because ROOT's own macros name them there."""
+    assert ROOT.Math.Roots is not None
+    assert issubclass(ROOT.Math.Roots.Brent, ROOT.Math.GSLRootFinder)
+    assert issubclass(ROOT.Math.Roots.Newton, ROOT.Math.GSLRootFinderDeriv)
+    assert ROOT.Math.GSLRootFinder().Name() == "GSL"
+    assert issubclass(ROOT.Math.GSLRootFinder, ROOT.Math.IRootFinderMethod)
+    assert issubclass(ROOT.Math.GSLRootFinderDeriv, ROOT.Math.IRootFinderMethod)

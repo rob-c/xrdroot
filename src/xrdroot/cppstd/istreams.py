@@ -14,7 +14,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-__all__ = ["istream", "ifstream", "istringstream", "stream_after", "find_if", "stream_rest"]
+__all__ = ["istream", "ifstream", "istringstream", "stream_after", "extracted", "find_if",
+           "stream_rest"]  # fmt: skip
 
 #: What ``>>`` reads for each kind of target: the text it takes, from the front of the rest.
 PATTERNS = {
@@ -63,6 +64,11 @@ class istream:
         if kind == "floating":
             return float(word)
         return ord(word) if kind == "char" else word
+
+    @property
+    def failed(self) -> bool:
+        """``fail()``: whether a read has run out of input or found none of its kind."""
+        return self._failed
 
     def getline(self, delimiter: Any = "\n") -> str:
         """``std::getline(stream, line[, delimiter])``: the text up to the next delimiter."""
@@ -130,6 +136,16 @@ class istringstream(istream):
             self._text, self._at, self._failed = f"{text}", 0, False
             return ""
         return self._text
+
+
+def extracted(stream: Any, current: Any, ctype: str) -> Any:
+    """``in >> x``: the next value, or ``x``'s own where the stream has already failed or fails
+    now - which is what C++ leaves in the variable, and sets failbit: it never assigns through
+    a stream that is already bad, and an extraction that fails stores nothing."""
+    if stream.failed:
+        return current
+    found = stream.extract(ctype)
+    return current if stream.failed else found
 
 
 def stream_after(stream: Any, *stored: Any) -> Any:

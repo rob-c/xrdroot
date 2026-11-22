@@ -63,8 +63,7 @@ class _Profiled:
         count = self.DIM + 1
         given = [float(value) for value in args[:count]]
         weight = float(args[count]) if len(args) > count else 1.0
-        self._xrd.fill(*given, weight=None if weight == 1.0 else weight)
-        return int(self._xrd.find_bin(*given[: self.DIM]))
+        return int(self._xrd.fill_one(given, None if weight == 1.0 else weight))
 
     def FillN(self, ntimes: int, x: Any, y: Any, w: Any = None, stride: int = 1) -> None:
         count = int(ntimes)
@@ -74,6 +73,18 @@ class _Profiled:
 
     def _contents(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd.values(flow=True)).ravel(order="F")
+
+    def _one_content(self, bin: int) -> float:
+        """A profile's bin is a mean, which is an array of its own: one bin's content comes
+        out of it as it always did."""
+        cells = self._contents()
+        return float(cells[bin]) if 0 <= bin < len(cells) else 0.0
+
+    def _one_error(self, bin: int) -> float:
+        """A profile's error is its spread, which is an array of its own: one bin's comes
+        out of it as it always did."""
+        errors = self._errors()
+        return float(errors[bin]) if 0 <= bin < len(errors) else 0.0
 
     def _errors(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd.errors(flow=True)).ravel(order="F")

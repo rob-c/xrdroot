@@ -261,6 +261,29 @@ def test_a_profile_drops_a_value_outside_its_range_before_counting_it():
     assert open_ended.entries == 2  # with no range, a NaN is filled like anything else
 
 
+def test_a_profile_filled_an_entry_at_a_time_holds_what_one_filled_at_once_holds():
+    """``Fill`` of one entry is the arithmetic ``fill`` does for an entry of a column, and a
+    profile filled in a loop - ROOT's own tests' way - must hold the same sums to the last bit:
+    the same contents, the same errors, the same moments, the same squared weights."""
+    drew = root_uniforms(600).reshape(200, 3)
+    xs, values = drew[:, 0] * 1.4 - 0.2, drew[:, 2] * 20
+    weights = [1.0] * 50 + [1.0 + 3 * value for value in drew[50:, 0]]
+    together = Profile.book("p", (10, 0, 1), value_range=(0, 15))
+    one_at_a_time = Profile.book("p", (10, 0, 1), value_range=(0, 15))
+    together.fill(xs, values, weight=np.array(weights))
+    for x, value, weight in zip(xs, values, weights, strict=True):
+        one_at_a_time.fill_one([x, value], weight)
+    assert physics(one_at_a_time.members) == physics(together.members)
+
+
+def test_a_profile_filled_an_entry_at_a_time_drops_what_lies_outside_its_range():
+    p = Profile.book("p", (1, 0, 1), value_range=(0, 1))
+    assert p.fill_one([0.5, 0.25]) == 1
+    assert p.fill_one([0.5, 2.0]) == 1  # dropped, and counted nowhere
+    assert p.fill_one([0.5, np.nan]) == 1
+    assert p.entries == 1 and p.values().tolist() == [0.25] and not p.weighted
+
+
 def test_a_weighted_profile_keeps_the_squares_of_its_weights_from_the_first_heavy_fill():
     p = Profile.book("p", (2, 0, 2))
     p.fill([0.5, 1.5], [1.0, 2.0])

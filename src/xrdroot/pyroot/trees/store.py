@@ -71,6 +71,9 @@ class Slot:
         self.counter = counter
         self.title = name if title is None else title
         self.kind = _kind(code, address, size, counter)
+        #: The bytes one value of the leaf takes, for the kinds that are a number or a row of
+        #: them: what a fill adds up, without asking NumPy the size of every value it read.
+        self.itemsize = _itemsize(code)
         self.pending: list[Any] = []
         self.chunks: list[Any] = []
         #: ``TTree::Branch``'s split level and basket size, which a vector's branch keeps.
@@ -111,6 +114,14 @@ class Slot:
 
     def keep(self, value: Any) -> None:
         self.pending.append(value)
+
+    def takes(self, value: Any) -> int:
+        """How many bytes of a basket one entry of this leaf takes."""
+        if self.itemsize and self.kind == SCALAR:
+            return self.itemsize  # one number, which every entry of a scalar leaf is
+        if self.kind == TEXT:
+            return len(str(value)) + 1
+        return int(np.size(value)) * self.itemsize
 
     def seal(self) -> None:
         """Turn what has been filled so far into a column, joined to what went before."""
@@ -206,7 +217,7 @@ class Store:
         self.entries += 1
         if self.circular and self.entries > self.circular:
             self._keep_last(self.circular - self.circular // 10)
-        return sum(_nbytes(slot, value) for slot, value in read)
+        return sum(slot.takes(value) for slot, value in read)
 
     def _keep_last(self, count: int) -> None:
         """``TTree::KeepCircular``: only the newest ``count`` entries stay.
@@ -281,12 +292,13 @@ class Store:
         self.clusters = []
 
 
-def _nbytes(slot: Slot, value: Any) -> int:
-    if slot.kind == OBJECT:
-        return int(slot.nbytes(value))  # type: ignore[attr-defined]
-    if slot.kind == TEXT:
-        return len(str(value)) + 1
-    return int(np.size(value)) * int(slot.dtype.itemsize)
+def _itemsize(code: str) -> int:
+    """The bytes one value of a leaf of the type ``code`` takes, or zero for a leaf that is
+    not a number of that size - text, which is measured as it comes."""
+    try:
+        return int(np.dtype(code).itemsize)
+    except TypeError:
+        return 0
 
 
 def memory_tree(name: str, write: Any, compression: tuple[str | None, int | None] = ZLIB) -> Any:

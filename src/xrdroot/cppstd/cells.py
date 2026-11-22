@@ -20,10 +20,11 @@ for an interpreter to run, is the very object (:func:`pointer_at`).
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 __all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast",
-           "byte_offset", "pointer_now"]
+           "byte_offset", "ObjectAddress", "pointer_now"]
 
 
 class Cell:
@@ -74,13 +75,23 @@ def _only_zero(index: Any) -> None:
 
 
 class ItemRef:
-    """``&a[i]``: element ``key`` of ``container``, read and written as ``.value``."""
+    """``&a[i]``: a pointer at element ``key`` of ``container``, read and written as ``.value``.
+
+    C++ takes the address of an element because the element is where a pointer
+    points, so this is a pointer rather than that one element: ``p[n]``, ``*p``
+    and a range ``p[0:n]`` an algorithm sorts or copies into all reach into the
+    container itself, and a call that wants an array - ``TGraph(n, &x[0], ...)``
+    - converts this to the ``len(container) - key`` elements from ``key`` on.
+    """
 
     __slots__ = ("container", "key")
 
     def __init__(self, container: Any, key: Any) -> None:
         self.container = container
         self.key = key
+
+    def __repr__(self) -> str:
+        return f"ItemRef({self.container!r}, {self.key!r})"
 
     @property
     def value(self) -> Any:
@@ -90,11 +101,29 @@ class ItemRef:
     def value(self, value: Any) -> None:
         self.container[self.key] = value
 
-    def __getitem__(self, index: int) -> Any:
-        return self.container[self.key + index]
+    def __len__(self) -> int:
+        return len(self.container) - int(self.key)
 
-    def __setitem__(self, index: int, value: Any) -> None:
-        self.container[self.key + index] = value
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self.container[self.key:])
+
+    def _shifted(self, index: Any) -> Any:
+        """``index`` as the container sees it: a pointer's offset moved into the container.
+
+        The slice that starts nowhere starts at the pointer, since a pointer has no
+        elements before itself: ``p[0:n]`` is the ``n`` elements from ``p`` onward.
+        """
+        if not isinstance(index, slice):
+            return self.key + index
+        start = self.key if index.start is None else self.key + index.start
+        stop = None if index.stop is None else self.key + index.stop
+        return slice(start, stop, index.step)
+
+    def __getitem__(self, index: Any) -> Any:
+        return self.container[self._shifted(index)]
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        self.container[self._shifted(index)] = value
 
 
 class AttrRef:
@@ -175,6 +204,33 @@ def byte_offset(obj: Any, offset: Any) -> Any:
         f"an object's address moved by {int(offset)} bytes, into the middle of it, which "
         "names nothing here: only an offset of 0 - a base at the object's start - is followed"
     )
+
+
+class ObjectAddress:
+    """``(char *)obj``: an object's address, which indexing moves through its own bytes.
+
+    C++ casts an object to ``char *`` to move it by a base class's offset and cast it back -
+    ``(T *)((char *)obj + off)``, which is how ``TDirectory::CloneObject`` makes a copy. Python
+    has no address to hand out, so this holds the object and answers the one operation a program
+    performs on the address, ``p[off:]``: the object moved by that offset, which is what
+    :func:`byte_offset` follows (an offset of 0 is the object itself).
+    """
+
+    __slots__ = ("_object",)
+
+    def __init__(self, obj: Any) -> None:
+        self._object = obj
+
+    def __getitem__(self, index: Any) -> Any:
+        offset = index.start if isinstance(index, slice) else index
+        return byte_offset(self._object, 0 if offset is None else offset)
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        raise TypeError("an object's address moved by an offset names the object itself, and a "
+                        "whole object is not written through its address; assign its members")
+
+    def __repr__(self) -> str:
+        return f"ObjectAddress({self._object!r})"
 
 
 def pointer_now(value: Any) -> Any:

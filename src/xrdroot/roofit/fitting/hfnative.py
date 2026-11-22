@@ -36,6 +36,12 @@ def _function(value: Any) -> bool:
 
 
 def _attribute(value: Any) -> bool:
+    if isinstance(value, type):
+        # A class written in a class body is the namespace of an enum - ``TH1::EStatOverflows``
+        # - which reading gives back whole and whose own members are the constants: no
+        # descriptor runs, so it is metadata as an ``int`` is.
+        return all(_attribute(each) for name, each in value.__dict__.items()
+                   if not name.startswith("__"))  # fmt: skip
     if isinstance(value, property):
         return all(_function(fn) for fn in (value.fget, value.fset, value.fdel) if fn is not None)
     if callable(value) or isinstance(value, (classmethod, staticmethod)):

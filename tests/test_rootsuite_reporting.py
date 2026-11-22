@@ -150,6 +150,34 @@ def test_a_baseline_needs_a_full_run_of_the_oracle_free_kinds(tmp_path):
     assert json.loads((tmp_path / "b.json").read_text()) == {"a": "PASS"}
 
 
+def test_a_merge_raises_only_the_rows_the_run_passed_and_leaves_the_rest(tmp_path):
+    """A subset run may only ever add a promise: its FAIL says nothing about whether the
+    test ever passed, so the row keeps what the last full run said about it."""
+    out = tmp_path / "b.json"
+    out.write_text(json.dumps({"a": "FAIL", "b": "UNSUPPORTED", "c": "PASS",
+                               "d": "TIMEOUT"}))
+    ratchet.merge_baseline(results(record("a", "PASS"), record("b", "FAIL"),
+                                  record("c", "PASS"), record("e", "PASS"),
+                                  kinds=["gtest"]), out)
+    assert json.loads(out.read_text()) == {"a": "PASS", "b": "UNSUPPORTED", "c": "PASS",
+                                          "d": "TIMEOUT", "e": "PASS"}
+
+
+def test_a_merge_with_no_baseline_yet_starts_one_from_the_passes_it_saw(tmp_path):
+    out = tmp_path / "b.json"
+    ratchet.merge_baseline(results(record("a", "PASS"), record("b", "FAIL")), out)
+    assert json.loads(out.read_text()) == {"a": "PASS"}
+
+
+def test_a_merge_refuses_a_run_whose_statuses_it_cannot_trust(tmp_path):
+    out = tmp_path / "b.json"
+    with pytest.raises(ValueError, match="nonempty results with known statuses"):
+        ratchet.merge_baseline(results(), out)
+    with pytest.raises(ValueError, match="nonempty results with known statuses"):
+        ratchet.merge_baseline(results(record("a", "GREAT")), out)
+    assert not out.exists()
+
+
 def test_the_ratchet_command_fails_on_a_regression_and_passes_without_one(tmp_path, capsys):
     report.write(results(record("a", "PASS"), record("b", "TIMEOUT")), tmp_path)
     baseline = tmp_path / "baseline.json"
@@ -166,6 +194,16 @@ def test_the_baseline_command_writes_every_status_of_a_full_run(tmp_path):
     out = tmp_path / "baseline.json"
     assert cli.main(["baseline", str(tmp_path / "results.json"), "--output", str(out)]) == 0
     assert json.loads(out.read_text()) == {"a": "PASS", "b": "SKIP"}
+
+
+def test_the_baseline_command_merges_the_passes_of_a_subset_run(tmp_path):
+    report.write(results(record("a", "PASS"), record("b", "FAIL"), kinds=["gtest"]),
+                 tmp_path)
+    out = tmp_path / "baseline.json"
+    out.write_text(json.dumps({"a": "FAIL", "c": "UNSUPPORTED"}))
+    assert cli.main(["baseline", str(tmp_path / "results.json"), "--output", str(out),
+                     "--merge"]) == 0
+    assert json.loads(out.read_text()) == {"a": "PASS", "c": "UNSUPPORTED"}
 
 
 # --- listing ------------------------------------------------------------------------------

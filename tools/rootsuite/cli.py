@@ -5,7 +5,7 @@ python -m tools.rootsuite run --root ROOT [--kind K] [--only GLOB] [--jobs N] [-
                               [--out DIR]
 python -m tools.rootsuite report [--results DIR/results.json]
 python -m tools.rootsuite ratchet RESULTS.json [--baseline FILE] [--rerun-timeouts]
-python -m tools.rootsuite baseline RESULTS.json [--output FILE]
+python -m tools.rootsuite baseline RESULTS.json [--output FILE] [--merge]
 """
 
 from __future__ import annotations
@@ -76,6 +76,8 @@ def parser() -> argparse.ArgumentParser:
     baseline = commands.add_parser("baseline", help="record every status from a full run")
     baseline.add_argument("results", type=Path)
     baseline.add_argument("--output", type=Path, default=ratchet.BASELINE)
+    baseline.add_argument("--merge", action="store_true",
+                          help="record only the tests this run passed, leaving other rows")
     return top
 
 
@@ -244,7 +246,10 @@ def _recheck(doc: dict[str, Any], ids: list[str], parent: Path) -> set[str]:
 
 
 def _baseline(args: argparse.Namespace) -> int:
-    ratchet.write_baseline(_load(args.results), args.output)
+    if args.merge:
+        ratchet.merge_baseline(_load(args.results), args.output)
+    else:
+        ratchet.write_baseline(_load(args.results), args.output)
     print(args.output)
     return 0
 

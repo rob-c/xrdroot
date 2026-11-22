@@ -11,6 +11,7 @@ docs show for ``staff.C``'s one branch of nine leaves. ``Show`` is
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -278,3 +279,84 @@ def test_a_draw_replaces_the_histogram_it_made_last_time_and_says_nothing(tmp_pa
         ROOT.TH1D("hand", "", 10, 0, 10)
         hooks.registry()["hand"] = hooks.wrap(ROOT.TH1D("hand", "", 10, 0, 10))
         assert "Replacing existing TH1D: hand (Potential memory leak)." in capsys.readouterr().err
+
+
+def test_a_member_of_one_string_per_object_is_printed_as_the_names_it_holds():
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="N.fName", text=False, vector=False, classname="")
+    lines = show_lines(0, [(leaf, np.array(["N_0_0", "N_0_1"]))])
+    assert lines[-1] == " N.fName         = N_0_0, N_0_1"
+
+
+def test_a_member_of_whole_objects_is_printed_as_the_class_or_the_pointer_it_is():
+    """ROOT prints the type the member was declared with: ``TRef`` for a ``TRef``.
+
+    ``roottest/root/io/tree``'s ``.ref`` files say ``TRef`` where this test used to pin
+    ``->``: a ``TRef`` writes neither its class nor a pointer, so what it is has to be read
+    from the members it does write.
+    """
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="r1.fRef", text=False, vector=False, classname="")
+    lines = show_lines(0, [(leaf, [{"TObject": {"fUniqueID": 1}, "fPID": 0}])])
+    assert lines[-1] == " r1.fRef         = TRef"
+    array = [{"TObject": {"fUniqueID": 1}, "fLowerBound": 0, "fPID": 0, "fUIDs": [1]}]
+    assert show_lines(0, [(leaf, array)])[-1] == " r1.fRef         = TRefArray"
+    named = [{"classname": "TNamed", "TObject": {"fUniqueID": 1}}]
+    assert show_lines(0, [(leaf, named)])[-1] == " r1.fRef         = TNamed"
+    # A record that names neither a class nor a reference is the pointer ROOT would show.
+    lines = show_lines(0, [(leaf, [{"TObject": {"fUniqueID": 1}}])])
+    assert lines[-1] == " r1.fRef         = ->"
+
+
+def test_a_leaf_that_is_text_prints_the_text_it_holds():
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="N.fType", text=True, vector=False, classname="")
+    lines = show_lines(0, [(leaf, np.array([1, 2]))])
+    assert lines[-1] == " N.fType         = [1 2]"
+
+
+def test_a_member_of_a_record_that_is_one_string_per_object_prints_them_joined():
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="r1", branch="r1", text=False, vector=False, classname="")
+    lines = show_lines(0, [(leaf, {"fName": np.array(["N_0_0", "N_0_1"])})])
+    assert lines[-1] == " fName           = N_0_0, N_0_1"
+
+
+def test_a_collection_branch_prints_how_many_objects_it_holds_and_nothing_else():
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(name="N_", branch="N", text=False, vector=False, classname="")
+    record = {"TObject": {"fUniqueID": 1}, "fName": np.array(["N_0_0", "N_0_1"])}
+    assert show_lines(0, [(leaf, record)]) == ["======> EVENT:0", " N               = 2"]
+    # The first member that is one value per object gives the count, whatever it holds; one
+    # object's own members - a base's - say nothing about it.
+    other = SimpleNamespace(name="r1_", branch="r1", text=False, vector=False, classname="")
+    counts = [show_lines(0, [(other, {"fName": np.array(["a"])})])[-1]]
+    counts.append(show_lines(0, [(other, {"fRef": np.zeros((3, 2), "f")})])[-1])
+    counts.append(show_lines(0, [(other, {"f": "text"})])[-1])
+    counts.append(show_lines(0, [(other, {"e": 2})])[-1])
+    assert counts == [
+        " r1              = 1",
+        " r1              = 3",
+        " r1              = 0",
+        " r1              = 1",
+    ]
+
+
+def test_a_collections_members_are_printed_without_a_line_break_between_them():
+    """``TBranchElement::PrintValue`` prints a split member value after value."""
+    from xrdroot.pyroot.trees.printing import show_lines
+
+    leaf = SimpleNamespace(
+        name="N.fUniqueID",
+        branch="N.fUniqueID",
+        text=False,
+        vector=False,
+        classname="TLeafElement",
+    )
+    lines = show_lines(0, [(leaf, np.arange(9, 0, -1))])
+    assert lines == ["======> EVENT:0", " N.fUniqueID     = 9, 8, 7, 6, 5, 4, 3, 2, 1"]

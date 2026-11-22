@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._base import hooks as hooks
+from .basket import TBasket
 from .branches import TBranch, TBranchElement, TBranchObject, TLeaf
 from .chain import TChain
 from .entrylist import TEntryList
@@ -42,6 +43,7 @@ __all__ = [
     "TTreeReaderValue",
     "TTreeReaderArray",
     "TSelector",
+    "TBasket",
 ]
 
 #: The class each of ROOT's tree classes is read back as.

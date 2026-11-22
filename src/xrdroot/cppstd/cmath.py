@@ -112,6 +112,10 @@ def set_vector_result(constructor: Callable[[Any], Any]) -> None:
 
 def _c(function: Callable[..., float], name: str) -> Callable[..., float]:
     def c_function(*args: Any) -> Any:
+        if len(args) == 1 and type(args[0]) is float:
+            # One number of the function's own type: what a formula's evaluation is, and
+            # which the complex check and the conversion of the arguments change nothing by.
+            return _plain_c(function, args[0])
         held = _complex_c(name, args)
         if held is not None:
             return held
@@ -129,6 +133,16 @@ def _c(function: Callable[..., float], name: str) -> Callable[..., float]:
     c_function.__name__ = name
     c_function.__doc__ = f"C's {name}: nan and inf where Python's would raise."
     return c_function
+
+
+def _plain_c(function: Callable[[float], float], value: float) -> float:
+    """One number's answer: nan and inf where Python's raises, as the C library gives them."""
+    try:
+        return function(value)
+    except ValueError:
+        return NAN
+    except OverflowError:
+        return INF
 
 
 def _complex_c(name: str, args: tuple[Any, ...]) -> Any:

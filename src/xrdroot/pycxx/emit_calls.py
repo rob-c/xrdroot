@@ -19,7 +19,7 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from .base import Out, P
-from .ctype import SMART, CType
+from .ctype import SMART, STD_TYPEDEFS, CType
 from .cursor import looks_like_type
 from .dialect import active
 from .emit_expr import ExprEmitter, _copy_store, _is_null, _lvalue, zero
@@ -32,10 +32,12 @@ from .nodes import (
     Call,
     Expr,
     Function,
+    Index,
     InitList,
     Literal,
     Member,
     Name,
+    Unary,
 )
 from .operators import conversion
 from .program import by_reference
@@ -135,9 +137,12 @@ class CallEmitter(ExprEmitter):
         if instance is not None:
             return instance, P.POSTFIX
         if symbol is not None:
-            given = [self.arguments(node), self._template_values(func, symbol)]
-            args = ", ".join(filter(None, given))
-            return f"{self.use(symbol)[0]}({args})", P.POSTFIX
+            # A member function named through its class is called on the object C++ gives it
+            # implicitly, ``Base::Init()`` in a method being ``Base.Init(self)``: the plain
+            # function is not bound to anything, so the call has to hand ``self`` over.
+            own = ["self"] if symbol.kind == "member" else []
+            given = [*own, self.arguments(node), self._template_values(func, symbol)]
+            return f"{self.use(symbol)[0]}({', '.join(filter(None, given))})", P.POSTFIX
         if is_limit(func.parts, func.targs) and func.last in LIMIT_FUNCTIONS:
             return self.limit(func, node, "()"), P.ATOM
         if self._smart_alias(func):
@@ -152,6 +157,9 @@ class CallEmitter(ExprEmitter):
     def library_call(self, func: Name, node: Call) -> Out:
         """A function the program did not declare: an inherited member's, a C text writer's
         that has to give its character array its text back, or the library's own call."""
+        cast = self._typedef_cast(func, node)
+        if cast is not None:
+            return cast, P.POSTFIX
         inherited = self.inherited_call(func)
         if inherited is not None:
             return f"{inherited}({self.arguments(node)})", P.POSTFIX
@@ -159,6 +167,14 @@ class CallEmitter(ExprEmitter):
         if written is not None:
             return written, P.POSTFIX
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def _typedef_cast(self, func: Name, node: Call) -> str | None:
+        """``std::size_t(1)`` or ``uint8_t(x)``: written as a call, a standard typedef's name
+        is the scalar cast it is in C++ - ``int(1)`` here - and not a name of the runtime."""
+        name = "::".join(func.parts)
+        if func.targs or len(node.args) != 1 or name not in STD_TYPEDEFS:
+            return None
+        return self.store(CType(STD_TYPEDEFS[name]), node.args[0])
 
     def text_written(self, func: Name, node: Call) -> str | None:
         """``sscanf(line, "%s %d", name, &n)`` where ``name`` is a ``char[]`` the translation
@@ -205,7 +221,7 @@ class CallEmitter(ExprEmitter):
         instance, written = self.function_instance(func, node, symbol) or (None, None)
         if instance is None:
             return None
-        own = "self" if symbol is not None and symbol.kind == "method" else ""
+        own = "self" if symbol is not None and symbol.kind in ("method", "member") else ""
         assert written is not None
         arguments, given_back = self.instance_arguments(node, written)
         call = f"{instance}({', '.join(filter(None, (own, arguments)))})"
@@ -270,7 +286,7 @@ class CallEmitter(ExprEmitter):
 
     def _valued(self, symbol: Symbol) -> Function | None:
         """The function template with value parameters that ``symbol`` names, if it is one."""
-        if symbol.kind not in ("function", "static", "method"):
+        if symbol.kind not in ("function", "static", "method", "member"):
             return None
         return next((f for f in self.function_named(symbol) if f.values), None)
 
@@ -283,6 +299,15 @@ class CallEmitter(ExprEmitter):
         if kind.scalar:
             first = self.store(kind, node.args[0]) if node.args else zero(kind)
             return f"Cell({first}, {kind.name!r})", P.POSTFIX
+        if kind.dims:
+            # ``std::make_unique<A[]>(n)``: n default-built objects, which the pointer owns and
+            # destroys as its scope ends - the array ``A a[n]`` is, built the same way.
+            count = self.value(node.args[0]) if node.args else "1"
+            element = kind.element()
+            if element.scalar:
+                return f"array({element.name!r}, {count})", P.POSTFIX
+            made = self.class_expr(element)
+            return f"array({self.spelled(element)!r}, {count}, make={made})", P.POSTFIX
         return f"{self.class_expr(kind)}({self.arguments(node)})", P.POSTFIX
 
     def _smart_alias(self, func: Name) -> bool:
@@ -326,10 +351,21 @@ class CallEmitter(ExprEmitter):
         stream = self._stream(root)
         stores = []
         for target in targets:
-            kind = self.typeof(target)
-            read = f"{stream}.extract({kind.name if kind is not None else 'double'!r})"
-            stores.append(self.store_expression(target, read)[0])
+            stores.append(self.store_expression(target, self.read_expression(stream, target))[0])
         return f"stream_after({stream}, {', '.join(stores)})", P.POSTFIX
+
+    def read_expression(self, stream: str, target: Expr) -> str:
+        """``extracted(stream, target, 'kind')``: the next value, or the one ``target`` holds
+        where the stream has failed - C++ stores nothing through a failed extraction - of the
+        class the target is, when that is one of the dialect's string classes, since an
+        extraction alone gives the plain ``str`` a ``TString`` is not.
+        """
+        kind = self.typeof(target)
+        name = kind.name if kind is not None else "double"
+        read = f"extracted({stream}, {self.value(target)}, {name!r})"
+        if kind is not None and not kind.pointer and name in active().string_classes:
+            return f"{self.class_expr(kind.value())}({read})"
+        return read
 
     def _stream(self, node: Expr) -> str:
         """The stream a read in an expression reads from, which the Python names twice."""
@@ -388,12 +424,42 @@ class CallEmitter(ExprEmitter):
         if ends is not None:
             return ends
         if isinstance(it, Binary) and it.op == "+":
-            base, _ = self._iterator(it.left, node, end)
-            return base, self.value(it.right)
+            base, start = self._iterator(it.left, node, end)
+            moved = self.value(it.right)
+            return base, moved if start == "0" else f"{start} + {moved}"
+        addressed = self._element_pointer(it)
+        if addressed is not None:
+            return addressed
         found = self.typeof(it)
         if found is not None and (found.is_array or found.is_pointer):
             return self.value(it), "0"
         raise self.refuse("an iterator this translator cannot follow back to its container", node)
+
+    def _element_pointer(self, it: Expr) -> tuple[str, str] | None:
+        """``&v[i]`` and ``&v.front()`` as the range end they are: the vector, and the offset.
+
+        C++ hands an algorithm the pointer into the vector's own buffer, and the
+        algorithm writes back through it, so the range names the vector and an
+        index rather than a copy of the elements from there on.
+        """
+        if not isinstance(it, Unary) or it.op != "&":
+            return None
+        target = it.operand
+        if isinstance(target, Index):
+            return self.value(target.obj), self.value(target.index)
+        if isinstance(target, Call) and isinstance(target.func, Member):
+            return self._element_call_end(target)
+        return None
+
+    def _element_call_end(self, call: Call) -> tuple[str, str] | None:
+        """``&v.front()`` as ``(v, 0)`` and ``&v.at(i)`` as ``(v, i)``."""
+        assert isinstance(call.func, Member)
+        first = self.value(call.func.obj)
+        if call.func.name == "front" and not call.args:
+            return first, "0"
+        if call.func.name == "at" and len(call.args) == 1:
+            return first, self.value(call.args[0])
+        return None
 
     def _container_end(self, it: Expr) -> tuple[str, str] | None:
         """``v.begin()`` as ``(v, 0)`` and ``v.end()`` as ``(v, None)``: where a range starts."""

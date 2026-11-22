@@ -23,7 +23,9 @@ from typing import Any
 
 import numpy as np
 
+from ..formula.functions import CASTS
 from ..formula.functions import FUNCTIONS as TREE_FUNCTIONS
+from ..formula.ops import cast
 from ..random import libm
 from . import bessel, densities, special
 
@@ -173,10 +175,35 @@ def _from_tree(name: str, function: Any) -> Call:
     return Call(function.least, function.most, function.apply, _PARTIALS.get(name))
 
 
+def _converted(dtype: Any) -> Callable[..., Array]:
+    """A number made the type ``dtype`` names, as C++ converts it.
+
+    ``UInt_t(-1)`` is 4294967295 and ``int(-2.7)`` is -2 - truncated toward zero and wrapped
+    at the type's width, which is ``formula.ops.cast``'s rule and ROOT's.
+    """
+    kind = np.dtype(dtype).type
+
+    def apply(values: Any) -> Array:
+        whole, _ = cast(np.asarray(values, dtype=np.float64), kind, "a cast")
+        return whole
+
+    return apply
+
+
+#: ROOT's number types written as functions: ``UInt_t(3)``, ``int(-2.7)``, ``Double_t(x)``.
+#: ``TFormula`` compiles its expression as C++, where each of those is a cast. A conversion
+#: has no slope to give - it is a step of the number - so ``partials`` is left to the caller,
+#: which differentiates a formula that has none numerically.
+CAST_CALLS: dict[str, Call] = {
+    name: Call(1, 1, _converted(dtype)) for name, dtype in CASTS.items()
+}
+
+
 #: Every function a formula may call, by every spelling ROOT accepts.
 CALLS: dict[str, Call] = {
     **{name: _from_tree(name, function) for name, function in TREE_FUNCTIONS.items()},
     **_ROOT,
+    **CAST_CALLS,
 }
 
 #: The constants ``TFormula`` defines, by the names a formula writes them.

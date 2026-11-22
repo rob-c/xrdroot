@@ -42,49 +42,65 @@ def from_gdml(filename: str, title: str = "Geometry imported from GDML") -> TGeo
     manager = TGeoManager("GDMLImport", title)
     manager.SetName(geometry.setup or manager.GetName())
     materials = _materials(geometry)
-    media = {name: TGeoMedium(name, number, material)
+    media = {name: TGeoMedium(_short(name), number, material)
              for number, (name, material) in enumerate(materials.items())}
     shapes = _solids(geometry)
-    volumes = {name: TGeoVolume(name, shapes[volume.solid], media[volume.material])
+    volumes = {name: TGeoVolume(_short(name), shapes[volume.solid], media[volume.material])
                for name, volume in geometry.volumes.items()}
     for volume in geometry.volumes.values():
         for number, placed in enumerate(volume.placements):
             volumes[volume.name].AddNode(volumes[placed.volume], number,
-                                         _placed(f"{volume.name}_{number}", placed))
+                                         _placed(f"{_short(volume.name)}_{number}", placed))
     manager.SetTopVolume(volumes[geometry.world])
     _said("TGeoNavigator::BuildCache", "--- Maximum geometry depth set to 100")
     manager.CloseGeometry()
     return manager
 
 
+def _short(name: str) -> str:
+    """A name as ROOT's ``TGDMLParse::NameShort`` registers it: cut at the first ``0x``.
+
+    A GDML file appends a hexadecimal address to a name - ``Iron0xccc`` - to keep
+    it unique in the XML, since ROOT's tables need no such help. ROOT drops
+    everything from the first ``0x`` the name states, not a trailing one only,
+    and states no case of its own: ``0X`` is part of the name.
+    """
+    return name.partition("0x")[0]
+
+
 def _elements(geometry: gdml.Geometry) -> dict[str, TGeoElement]:
-    """``TGeoElement`` per ``<element>``, in the order the file lists them."""
-    return {name: TGeoElement(name, element.formula, element.z, element.a)
+    """``TGeoElement`` per ``<element>``, in the order the file lists them.
+
+    ROOT names an element by its ``formula`` and titles it with the ``name`` the
+    file gives, the other way round from the attribute order, so that a mixture's
+    element reads ``FE``: its name is what a table of elements is keyed on.
+    """
+    return {name: TGeoElement(element.formula, _short(name), element.z, element.a)
             for name, element in geometry.elements.items()}
 
 
 def _materials(geometry: gdml.Geometry) -> dict[str, TGeoMaterial]:
-    """``TGeoMaterial`` per ``<material>``: one element's numbers, or a mixture of parts."""
+    """``TGeoMixture`` per ``<material>``: every part by weight, as ROOT reads the file.
+
+    A ``<material>`` stating ``<fraction>`` or ``<composite>`` parts is a mixture
+    even when it states one, which is how ROOT reads every such material; only a
+    ``<material>`` of its own ``<atom>`` is one element's numbers.
+    """
     elements = _elements(geometry)
     made: dict[str, TGeoMaterial] = {}
     for name, material in geometry.materials.items():
-        parts = material.parts
-        if len(parts) == 1 and parts[0][0] in elements:
-            element = elements[parts[0][0]]
-            made[name] = TGeoMaterial(name, element.A(), element.Z(), material.density)
-            continue
-        mixture = TGeoMixture(name, len(parts), material.density)
-        for part, fraction in parts:
-            mixture.AddElement(*_numbers(part, elements, made), fraction)
+        mixture = TGeoMixture(_short(name), len(material.parts), material.density)
+        for part, fraction in material.parts:
+            mixture.AddElement(*_part(part, elements, made), fraction)
         made[name] = mixture
     return made
 
 
-def _numbers(name: str, elements: dict[str, TGeoElement],
-             made: dict[str, TGeoMaterial]) -> tuple[float, float]:
-    """The ``(a, z)`` of a mixture's part: its element's, or an earlier material's."""
+def _part(name: str, elements: dict[str, TGeoElement],
+          made: dict[str, TGeoMaterial]) -> tuple[Any, ...]:
+    """A mixture's part as ROOT adds it: the element itself, or an earlier material's numbers."""
     if name in elements:
-        return elements[name].A(), elements[name].Z()
+        return (elements[name],)
     if name in made:
         return made[name].GetA(), made[name].GetZ()
     raise gdml.GdmlError(f"a <material> is part {name!r}, which the file defines as neither "
@@ -101,7 +117,7 @@ def _solids(geometry: gdml.Geometry) -> dict[str, Any]:
 
 def _solid(solid: gdml.Solid, made: dict[str, Any]) -> Any:
     """One solid: a shape of its kind, or the two operands of a ``<subtraction>``."""
-    name, p = solid.name, solid.params
+    name, p = _short(solid.name), solid.params
     if solid.shape == "box":
         return TGeoBBox(name, *p)
     if solid.shape == "tube":
@@ -138,13 +154,13 @@ def _cone(name: str, p: tuple[float, ...]) -> Any:
 
 def _subtraction(solid: gdml.Solid, made: dict[str, Any]) -> TGeoCompositeShape:
     """A composite of ``first`` less ``second``, the second where the file puts it."""
-    first, second = solid.operands
+    first, second = (_short(operand) for operand in solid.operands)
     origin, angles = solid.params[:3], solid.params[3:]
     expression = f"{first}-{second}"
     if any(origin) or any(angles):
-        matrix = _named_matrix(f"{solid.name}_operand", origin, angles)
+        matrix = _named_matrix(f"{_short(solid.name)}_operand", origin, angles)
         expression = f"{first}-{second}:{matrix.GetName()}"
-    return TGeoCompositeShape(solid.name, expression)
+    return TGeoCompositeShape(_short(solid.name), expression)
 
 
 def _named_matrix(name: str, origin: Any, angles: Any) -> Any:

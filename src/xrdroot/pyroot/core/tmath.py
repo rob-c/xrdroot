@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import sys
+from bisect import bisect_left
 from typing import Any
 
 import numpy as np
@@ -649,6 +650,62 @@ def Laplacian(n: Any, f: Any, h: Any = 1.0) -> Any:
     made[1:-1] = (values[2:] - 2 * values[1:-1] + values[:-2]) / square
     made[-1] = (values[-1] - 2 * values[-2] + values[-3]) / square
     return made
+
+
+#: The distance ``KNNDensity`` calls "no neighbour this way": C++'s ``numeric_limits<double>::max``.
+_FAR = sys.float_info.max
+
+
+def KNNDensity(observations: Any, queries: Any, result: Any, k: int, dmin: float = 0.0) -> None:
+    """``KNNDensity``: the k-nearest-neighbour density of ``observations`` at ``queries``.
+
+    ROOT walks outwards from each query through the sorted sample, and stops
+    when it has ``k`` neighbours *and* the one it has reached is further than
+    ``dmin`` - so ``dmin`` is a floor on the distance the density divides by,
+    which is how a program asks ``k = 0`` for the density at the sample's own
+    scale. The factor ``n / (2 (n + 1))`` is ROOT's, and a query that is itself
+    a sample point is at distance zero from it and so answers by ``dmin``.
+    """
+    count = len(observations)
+    if k < 0:
+        message("Error", "TMath::KNNDensity", "k must be positive")
+        return
+    if k >= count:
+        k = count - 1
+    if len(result) != len(queries):
+        message("Error", "TMath::KNNDensity", "Result span size must match query span size")
+        return
+    ordered = sorted(observations)
+    factor = count * 0.5 / (count + 1.0)
+    for index in range(len(queries)):
+        closest, reached = _walk_outwards(ordered, queries[index], k, dmin)
+        result[index] = 0.0 if factor == 0.0 else factor * reached / closest
+
+
+def _walk_outwards(ordered: list[float], query: float, k: int, dmin: float) -> tuple[float, int]:
+    """The distance to the neighbour ROOT's walk stops at, and how many it passed.
+
+    Two pointers step away from where the query would be sorted in, taking the nearer side
+    each time, until ``k`` neighbours have been passed *and* one of them is further than
+    ``dmin`` - or until the sample runs out both ways, which is where an empty sample or a
+    query outside it stops. A distance of zero - the query is a sample point - is ``dmin``.
+    """
+    right = bisect_left(ordered, query)
+    left = right - 1
+    closest = 0.0
+    reached = 0
+    while reached + 1 <= k or closest <= dmin:
+        near_left = abs(ordered[left] - query) if left >= 0 else _FAR
+        near_right = abs(ordered[right] - query) if right < len(ordered) else _FAR
+        if left < 0 and right >= len(ordered):
+            break
+        closest = min(near_left, near_right)
+        if near_left < near_right:
+            left -= 1
+        else:
+            right += 1
+        reached += 1
+    return (dmin if closest == 0.0 else closest), reached
 
 
 __all__ = sorted(

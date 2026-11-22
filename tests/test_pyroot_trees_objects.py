@@ -242,3 +242,42 @@ def test_a_collection_of_objects_whose_own_width_is_unknown_is_still_refused():
     tree = ROOT.TTree("t", "t")
     with pytest.raises(UnsupportedFeatureError, match="carry sizes of their own"):
         tree.Branch("hv", held)
+
+
+def test_a_branch_of_a_bare_tobject_is_split_into_the_members_of_its_class():
+    """``Branch("Abc", "TObject", &obj, 4000, 99)`` splits an object of a class ROOT
+    describes member by member, as the 6.40 oracle's ``tref_test.root`` does: a branch per
+    member, ``fUniqueID`` and ``fBits``, under the branch named for the object. ``fBits``
+    is the object's whole bit word - the heap's bits are ROOT's to add when it reads it."""
+    out = ROOT.TFile("obj.root", "RECREATE")
+    tree = ROOT.TTree("T", "t")
+    obj = Cell(ROOT.TObject())
+    branch = tree.Branch("Abc", "TObject", obj, 4000, 99)
+    assert [child.GetName() for child in branch.GetListOfBranches()] == ["fUniqueID", "fBits"]
+    obj.value.SetUniqueID(7)
+    obj.value.SetBit(4)
+    tree.Fill()
+    obj.value.SetUniqueID(0)
+    obj.value.ResetBit(4)
+    tree.Fill()
+    tree.Write()
+    out.Close()
+
+
+def test_a_branch_of_an_object_this_writer_has_no_layout_for_is_refused_by_name():
+    """The address says its type - it holds an object of a ROOT class - so the advice a
+    branch of a bare number gets would be wrong: what is missing is a layout for the class,
+    which is what a ``TRef`` branch of ``roottest``'s ``tref_test.C`` has none of."""
+    tree = ROOT.TTree("t", "t")
+    ref = Cell(ROOT.TRef())
+    with pytest.raises(UnsupportedFeatureError, match="no layout for a TRef"):
+        tree.Branch("Refs", "TRef", ref, 4000, 0)
+
+
+def test_a_branch_of_an_address_that_names_no_class_reads_the_leaf_it_holds():
+    """An address holding no object of a class - an array of numbers - says its own type, so
+    asking it for a class's layout answers nothing and the leaf comes from what it holds."""
+    tree = ROOT.TTree("t", "t")
+    x = np.zeros(3)
+    branch = tree.Branch("x", x)
+    assert [leaf.GetName() for leaf in branch.GetListOfLeaves()] == ["x"]

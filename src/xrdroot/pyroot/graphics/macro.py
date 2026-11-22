@@ -30,6 +30,7 @@ ROUNDED = ("fX1", "fY1", "fR1", "fR2", "fPhimin", "fPhimax")
 CTORS: dict[str, tuple[str, ...]] = {
     "TLine": CORNERS, "TBox": CORNERS, "TWbox": CORNERS,
     "TText": ("fX", "fY", "fTitle"), "TLatex": ("fX", "fY", "fTitle"),
+    "TMathText": ("fX", "fY", "fTitle"),
     "TMarker": ("fX", "fY", "fMarkerStyle"),
     "TArrow": (*CORNERS, "fArrowSize", "fOption"),
     "TPave": (*CORNERS, "fBorderSize", "fOption"),
@@ -37,9 +38,28 @@ CTORS: dict[str, tuple[str, ...]] = {
     "TEllipse": (*ROUNDED, "fTheta"),
     "TArc": ("fX1", "fY1", "fR1", "fPhimin", "fPhimax"),
     "TCrown": ROUNDED,
+    "TPaveText": (*CORNERS, "fOption"),
+    #: An axis drawn on a pad: where it runs, the range it says, its divisions and its options.
+    "TGaxis": (*CORNERS, "fWmin", "fWmax", "fNdiv", "fChopt"),
 }  # fmt: skip
 #: A member only a ``Set`` of its own reaches, which ROOT's macro writes as that ``Set``.
-EXTRAS: dict[str, tuple[tuple[str, str], ...]] = {"TArrow": (("Angle", "fAngle"),)}
+EXTRAS: dict[str, tuple[tuple[str, str], ...]] = {
+    "TArrow": (("Angle", "fAngle"),), "TPaveText": (("Label", "fLabel"),),
+    #: An axis carries its labels' and its title's size, font, colour and offset of its own,
+    #: no attribute group's: they are the ``Set`` ROOT's macro writes for each.
+    "TGaxis": (
+        ("LabelSize", "fLabelSize"), ("LabelFont", "fLabelFont"),
+        ("LabelColor", "fLabelColor"), ("LabelOffset", "fLabelOffset"),
+        ("TitleSize", "fTitleSize"), ("TitleOffset", "fTitleOffset"),
+        ("TickSize", "fTickSize"),
+    ),
+}  # fmt: skip
+#: Each class that holds lines and adds them back one at a time, by the member holding them:
+#: a pave of text is made empty and its lines are added to it, as ROOT's own macro adds them.
+LINES: dict[str, str] = {"TPaveText": "fLines"}
+#: The ``Add`` each kind of line is added with: a dividing line by its corners, a line of text
+#: by the text it says and, if it was placed in the pave's fractions, by where.
+ADDS = {"TLine": "AddLine", "TText": "AddText", "TLatex": "AddText"}
 #: A ``Set`` ROOT's macro writes that takes more than one member: a pie's circle is its
 #: centre and its radius together, and its formats are what its labels are made of.
 CALLS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
@@ -62,6 +82,22 @@ CALLS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
 POINTS: dict[str, tuple[str, str, str]] = {
     "TPolyLine": ("fN", "fX", "fY"), "TPolyMarker": ("fN", "fX", "fY"),
 }  # fmt: skip
+#: Each graph written from its public API: a graph keeps no members this can read by name,
+#: so it is made by its count and its points set one at a time through ``SetPoint``, which
+#: is how ROOT's own ``SavePrimitive`` writes the arrays its constructor was given.
+GRAPHS: dict[str, tuple[str, str]] = {"TGraph": ("GetN", "SetPoint")}
+#: Each graph whose points carry errors, by the calls ``SetPointError`` takes them from: a
+#: symmetric error pair, or the four an asymmetric one has.
+ERRORS: dict[str, tuple[str, ...]] = {
+    "TGraphErrors": ("GetErrorX", "GetErrorY"),
+    "TGraphAsymmErrors": ("GetErrorXlow", "GetErrorXhigh", "GetErrorYlow", "GetErrorYhigh"),
+}  # fmt: skip
+#: Each one-dimensional histogram written from its public API, by the axis its binning is:
+#: a macro makes it from its bin count and its edges, then gives each bin its content.
+HISTS = frozenset({"TH1C", "TH1S", "TH1I", "TH1F", "TH1D", "TH1L"})
+#: The attribute groups a graph or a histogram is written with, in the order ROOT's macro
+#: sets them: neither carries text of its own, its title being the pad's.
+API_GROUPS = ("line", "fill", "marker")
 #: Each class made by its count and then given its pieces one at a time, by the member
 #: holding them and the setters a piece takes: a pie's constructor is told how many slices
 #: it has, and each slice's title, value, offset and fill are then set on it by number.
@@ -73,6 +109,8 @@ PIECES: dict[str, tuple[str, tuple[str, ...]]] = {
          "LineColor", "LineStyle", "LineWidth"),
     ),
 }  # fmt: skip
+#: Each class that holds other drawn objects, by the call that asks it for them.
+HOLDS: dict[str, str] = {"TMultiGraph": "GetListOfGraphs"}
 #: The class of a pad inside the canvas, which a macro makes and then draws into.
 PAD = "TPad"
 #: A canvas this cannot measure is written at ROOT's default window, 700 by 500.
@@ -134,6 +172,101 @@ def _pieces(obj: Any, classname: str, variable: str) -> list[str]:
     return lines
 
 
+def _graph(obj: Any, classname: str, variable: str) -> list[str]:
+    """A graph made by its count and then given each of its points, and their errors, by name."""
+    count, points = GRAPHS.get(classname, ("GetN", "SetPoint"))
+    total, xs, ys = int(getattr(obj, count)()), obj.GetX(), obj.GetY()
+    lines = [f"   {classname} *{variable} = new {classname}({total});"]
+    for at in range(min(total, len(xs), len(ys))):
+        right = f"{_literal(float(xs[at]))}, {_literal(float(ys[at]))}"
+        lines.append(f"   {variable}->{points}({at}, {right});")
+        lines += _point_errors(obj, classname, variable, at)
+    return lines
+
+
+def _point_errors(obj: Any, classname: str, variable: str, at: int) -> list[str]:
+    """The errors of ``obj``'s ``at``-th point, for the graph classes that carry any."""
+    asked = ERRORS.get(classname)
+    if not asked:
+        return []
+    given = ", ".join(_literal(float(getattr(obj, one)(at))) for one in asked)
+    return [f"   {variable}->SetPointError({at}, {given});"]
+
+
+def _api_setters(obj: Any, variable: str) -> list[str]:
+    """A ``Set`` for each attribute a graph has, read back with the ``Get`` of the same name.
+
+    A graph is not a :class:`.drawn.Drawn`, so its members are only reachable through the
+    Set and Get ROOT gives it: what the pad drew is what those Get return.
+    """
+    lines = [
+        f"   {variable}->Set{setter}({_literal(getattr(obj, f'Get{setter}')())});"
+        for group in API_GROUPS
+        for setter in GROUPS[group]
+        if hasattr(obj, f"Get{setter}")
+    ]
+    if str(obj.GetTitle()):
+        lines.append(f"   {variable}->SetTitle({_literal(str(obj.GetTitle()))});")
+    return lines + [
+        f"   {variable}->Get{axis}axis()->SetTitle({_literal(title)});"
+        for axis, title in _axis_titles(obj)
+    ]
+
+
+def _axis_titles(obj: Any) -> list[tuple[str, str]]:
+    """The axes of ``obj`` that a title was given to, and the title each draws."""
+    return [
+        (axis, str(getattr(obj, f"Get{axis}axis")().GetTitle()))
+        for axis in "XY"
+        if str(getattr(obj, f"Get{axis}axis")().GetTitle())
+    ]
+
+
+def _hist(obj: Any, classname: str, variable: str) -> list[str]:
+    """A histogram made from its binning and then given every bin's content, and its error."""
+    axis = obj.GetXaxis()
+    given = ", ".join([
+        _literal(str(obj.GetName())), _literal(str(obj.GetTitle())),
+        str(int(obj.GetNbinsX())), _literal(float(axis.GetXmin())),
+        _literal(float(axis.GetXmax())),
+    ])
+    lines = [f"   {classname} *{variable} = new {classname}({given});"]
+    for at in range(1, int(obj.GetNbinsX()) + 1):
+        lines.append(
+            f"   {variable}->SetBinContent({at}, {_literal(float(obj.GetBinContent(at)))});"
+        )
+        error = float(obj.GetBinError(at))
+        if error:
+            lines.append(f"   {variable}->SetBinError({at}, {_literal(error)});")
+    return lines
+
+
+def _line_arguments(line: Any, kind: str) -> str:
+    """The arguments a pave's line is added back with: its corners, or its text where it was put.
+
+    A line of text no ``AddText(x, y, text)`` placed - ROOT's own macro's test, both
+    coordinates zero - is the one the pave stacks from its top, so only its text is given.
+    """
+    members = line.members
+    if kind == "TLine":
+        return ", ".join(_literal(float(members[one])) for one in CORNERS)
+    x, y = float(members["fX"]), float(members["fY"])
+    said = _literal(str(members["fTitle"]))
+    return ", ".join([_literal(x), _literal(y), said]) if x or y else said
+
+
+def _added_lines(obj: Any, classname: str, variable: str) -> list[str]:
+    """Each line ``obj`` holds, added back to it and then given what the pad gave it."""
+    lines: list[str] = []
+    for at, line in enumerate(obj.members[LINES[classname]]):
+        kind = _classname(line)
+        named = f"{variable}_{'line' if kind == 'TLine' else 'text'}{at}"
+        given = _line_arguments(line, kind)
+        lines.append(f"   {kind} *{named} = {variable}->{ADDS[kind]}({given});")
+        lines += _setters(line, kind, named)
+    return lines
+
+
 def _made(obj: Any, classname: str, variable: str) -> list[str]:
     """The one line that makes ``obj``: by its constructor, its points, or its place in the pad."""
     if classname in POINTS:
@@ -148,7 +281,7 @@ def _unknown(classname: str) -> None:
     """Refuse a class this has no constructor for, by name, and say what to save instead."""
     from ...errors import UnsupportedFeatureError
 
-    known = ", ".join(sorted({*CTORS, *POINTS, *PIECES, PAD}))
+    known = ", ".join(sorted({*CTORS, *POINTS, *PIECES, *GRAPHS, *ERRORS, *HOLDS, *HISTS, PAD}))
     raise UnsupportedFeatureError(
         f"A pad drawing a {classname} is not yet written as the C macro the '.C' name asks "
         f"for: xrdroot writes the calls that draw a pad again for {known}, and knows no "
@@ -174,16 +307,43 @@ def _setters(obj: Any, classname: str, variable: str) -> list[str]:
     ]
 
 
-def _object(obj: Any, index: int) -> list[str]:
-    """The lines that make ``obj``, as ROOT's ``SavePrimitive`` of it would."""
+def _known(classname: str) -> bool:
+    """Whether this writes a ``classname`` at all: by a constructor, or by its public API."""
+    return classname in {*CTORS, *POINTS, *PIECES, *GRAPHS, *ERRORS, PAD, *HOLDS, *HISTS}
+
+
+def _object(obj: Any, counted: list[int]) -> list[str]:
+    """The lines that make ``obj``, as ROOT's ``SavePrimitive`` of it would.
+
+    ``counted`` is the macro's one counter of variables, so an object held by another - a
+    graph of a multigraph - takes the next name rather than one already spoken for.
+    """
     classname = _classname(obj)
-    if classname not in CTORS and classname not in POINTS and classname != PAD:
-        if classname not in PIECES:
-            _unknown(classname)
-    variable = _variable(index, classname)
+    if not _known(classname):
+        _unknown(classname)
+    variable = _variable(counted[0], classname)
     if classname in PIECES:
         return _pieces(obj, classname, variable)
-    return _made(obj, classname, variable) + _setters(obj, classname, variable)
+    if classname in HOLDS:
+        return _holder(obj, classname, variable, counted)
+    if classname in GRAPHS or classname in ERRORS:
+        return _graph(obj, classname, variable) + _api_setters(obj, variable)
+    if classname in HISTS:
+        return _hist(obj, classname, variable) + _api_setters(obj, variable)
+    lines = _made(obj, classname, variable) + _setters(obj, classname, variable)
+    if classname in LINES:
+        lines += _added_lines(obj, classname, variable)
+    return lines
+
+
+def _holder(obj: Any, classname: str, variable: str, counted: list[int]) -> list[str]:
+    """Something that holds other drawn objects - a multigraph - made and then given them."""
+    lines = [f"   {classname} *{variable} = new {classname}();", *_api_setters(obj, variable)]
+    for held in getattr(obj, HOLDS[classname])():
+        counted[0] += 1
+        child = _variable(counted[0], _classname(held))
+        lines += [*_object(held, counted), f"   {variable}->Add({child});"]
+    return lines
 
 
 def _subpad(pad: Any, variable: str) -> list[str]:
@@ -218,7 +378,7 @@ def _contents(pad: Any, counted: list[int]) -> list[str]:
     for obj, option in pad.primitives:
         counted[0] += 1
         classname, variable = _classname(obj), _variable(counted[0], _classname(obj))
-        lines += _object(obj, counted[0])
+        lines += _object(obj, counted)
         lines.append(f"   {variable}->Draw({_literal(option)});")
         if classname == PAD:
             lines.append(f"   {variable}->cd();")

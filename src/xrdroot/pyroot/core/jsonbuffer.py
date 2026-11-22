@@ -17,7 +17,9 @@ streamer, not every data member: ``TPolyMarker3D`` writes ``fN``, ``fP``,
 ``fOption`` and ``fName`` and never ``fLastPoint``. A class a macro declared
 needs no table: the translator read its declaration, and
 :func:`_declared` writes the members - its bases' first - in the order that
-declaration gives them.
+declaration gives them. A class of the table that the namespace has is read
+back too, into that class's object, which is what ``ConvertFromJSONAny``
+means by naming its ``_typename``.
 
 The numbers are :func:`_float_text`'s: whole values below ``1e15`` (a float)
 or ``1e25`` (a double) written out digit by digit, and everything else from
@@ -43,9 +45,21 @@ from typing import Any
 
 import numpy as np
 
-from ...cppstd.containers import _Map, cpp_name, std, string
+from ...cppstd.containers import (
+    _Container,
+    _Map,
+    _MultiMap,
+    _Pair,
+    _Set,
+    _split_arguments,
+    cpp_name,
+    element_type,
+    std,
+    string,
+)
 from ...errors import UnsupportedFeatureError
 from ..vectors import TArrayC, TArrayD, TArrayF, TArrayI, TArrayL, TArrayS
+from .collections import TList, TMap, TSeqCollection
 from .strings import TString
 
 __all__ = ["TBufferJSON"]
@@ -142,6 +156,9 @@ class _Member:
     kind: Any
     array: bool = False
     dims: tuple[int | None, ...] = ()
+    #: The C++ type the declaration spells, which is what a pointer to a container the
+    #: constructor left empty is made of when JSON turns out to hold values for it.
+    decl: str = ""
 
 
 #: Each class this writes, its members in the order ROOT's streamer writes them, with the
@@ -163,6 +180,12 @@ MEMBERS: dict[str, tuple[_Member, ...]] = {
                     _Member("fLineColor", np.int16), _Member("fLineStyle", np.int16),
                     _Member("fLineWidth", np.int16), _Member("fN", np.int32),
                     _Member("fP", np.float32, True), _Member("fOption", "string")),
+    "TBox": (_Member("fUniqueID", np.uint32), _Member("fBits", np.uint32),
+             _Member("fLineColor", np.int16), _Member("fLineStyle", np.int16),
+             _Member("fLineWidth", np.int16), _Member("fFillColor", np.int16),
+             _Member("fFillStyle", np.int16), _Member("fX1", np.float64),
+             _Member("fY1", np.float64), _Member("fX2", np.float64),
+             _Member("fY2", np.float64)),
 }
 
 #: Where a core class keeps a member ROOT names otherwise: ``TObject``'s ``fUniqueID`` is
@@ -195,6 +218,7 @@ SCALARS = {"bool": np.bool_, "char": np.int8, "signed char": np.int8,
 #: there is nothing there.
 TEXTS = {("std::string", False): "string", ("TString", False): "string",
          ("std::string", True): "strings", ("std::string*", True): "strptrs",
+         ("TString", True): "tstrings", ("TString*", True): "tstrings",
          ("char", True): "chars", ("char*", False): "cstring",
          ("std::string*", False): "strptr"}  # fmt: skip
 
@@ -207,6 +231,12 @@ CONTAINERS = ("std::vector", "std::list", "std::deque", "std::set", "std::multis
 #: The ``_Member.kind`` a container is written as, which is also what the reader looks at:
 #: a sequence or map of values, one that names itself an object of its keys, or its bits.
 CONTAINER_KINDS = ("container", "map_object", "bitset")
+
+#: The ``_Member.kind`` a member of one of ROOT's own classes is written as - the object's
+#: own JSON, member for member, since ROOT's streamer writes a member of a class type by
+#: streaming it - and the kind its declaration makes an array of: ``TNamed fName[10]`` is
+#: ten objects in one JSON array. A pointer to one that holds nothing is ``null``.
+OBJECT_KINDS = ("object", "objects")
 
 
 def _remainder(value: int, mod: int) -> int:
@@ -277,6 +307,21 @@ def _scalar(value: Any, name: str, stored: bool) -> str:
     if kind.kind in "iu":
         return str(int(value))
     return _float_text(float(value), name, stored)
+
+
+def _nothing_at(member: _Member, value: Any, depth: int) -> bool:
+    """Is there no string at the pointer ``member`` is: ``None`` for a pointer here, or - a
+    ``char*`` written on its own, which ``depth`` below zero is - the empty text.
+
+    ROOT writes a null ``char*`` as ``""`` inside an object, since the empty string is what
+    it streams one as, and only a member written on its own from the pointer itself is
+    ``null``: a class holding ``const char* fNull{nullptr}`` and ``const char* fEmpty{""}``
+    writes ``""`` for both whole and ``null`` and ``""`` for the two members. The
+    translation keeps a null ``char*`` as that same empty text - ``cstr(None)`` - so at that
+    depth a ``char*`` with nothing in it is the pointer with nothing at it, and a ``char*``
+    that really points at ``""`` is the one case this cannot tell apart from a null one.
+    """
+    return not value if depth < 0 and member.kind == "cstring" else value is None
 
 
 def _pointer_bits(bits: Any) -> int:
@@ -372,24 +417,49 @@ def _declared_member(classname: str, entry: tuple[str, str, str, tuple[int, ...]
     """
     name, kind, comment = entry[0], entry[1], entry[2]
     dims: tuple[int | None, ...] = entry[3]
+    style = _length_style(kind, comment)
+    if style is not None:  # the length is the comment's: written from what it points at
+        return _Member(name, style, bool(dims), dims, kind.rstrip("* ").strip())
     if not dims and kind.endswith("*") and LENGTH.search(comment or ""):
         kind, dims = kind.rstrip("*").strip(), (None,)
     of = f"an array of {kind}" if dims else f"a {kind}"
-    style = _container_style(kind, comment)
+    style = _member_style(kind, comment, dims)
     if style is not None:
-        return _Member(name, style, bool(dims), dims)
-    text = TEXTS.get((kind, bool(dims)))
-    if text is not None:
-        return _Member(name, text, bool(dims), dims)
-    scalar = SCALARS.get(kind)
-    if scalar is not None:
-        return _Member(name, scalar, bool(dims), dims)
+        return _Member(name, style, bool(dims), dims, kind)
     raise UnsupportedFeatureError(
         f"TBufferJSON::ConvertToJSON does not yet write {classname}::{name}, which is "
         f"declared as {of}. It writes the members a class declares of a number type "
-        f"({', '.join(SCALARS)}) and of text (std::string, TString, char[N], char*), and "
-        f"the members of the classes in its table ({', '.join(sorted(MEMBERS))}); a "
-        "container member needs a writer for the container it holds first"
+        f"({', '.join(SCALARS)}), of text (std::string, TString, char[N], char*), of a "
+        f"container, and of the classes in its table ({', '.join(sorted(MEMBERS))}); any "
+        "other member type needs a writer of its own first"
+    )
+
+
+def _length_style(kind: str, comment: str) -> Any:
+    """How a pointer whose declaration comment gives its length is written, when its type is
+    no number and no container: the text it points at, or ``nested`` for anything else.
+
+    ROOT's streamer reads ``//[fCnt]`` as "as many as fCnt says", so such a pointer is the
+    array the comment declares rather than an address. A text goes out flat, but an object or
+    a ``TArray`` - and a pointer to a pointer, which is an array of arrays - is written at the
+    depth the object holds it at, which is the one thing the declaration cannot say."""
+    if not (kind.endswith("*") and LENGTH.search(comment or "")):
+        return None
+    bare = kind.rstrip("*").strip()
+    if bare in SCALARS or bare.startswith(CONTAINERS):
+        return None
+    return TEXTS.get((bare, True)) or "nested"
+
+
+def _member_style(kind: str, comment: str, dims: tuple[int | None, ...]) -> Any:
+    """What a declared member of type ``kind`` is written as: the container it holds, one of
+    ROOT's own classes, the text it is, or the ``$arr`` type of the number - and ``None`` for
+    a type this writer has nothing for."""
+    return (
+        _container_style(kind, comment)
+        or _object_style(kind, dims)
+        or TEXTS.get((kind, bool(dims)))
+        or SCALARS.get(kind)
     )
 
 
@@ -403,6 +473,33 @@ def _container_style(kind: str, comment: str) -> str | None:
     if bare.startswith("std::bitset"):
         return "bitset"
     return "map_object" if "JSON_object" in (comment or "") else "container"
+
+
+def _object_style(kind: str, dims: tuple[int | None, ...]) -> str | None:
+    """How ROOT writes a member declared as a class type - ``TNamed fName``, ``TJsonEx1
+    fObj1``, or a pointer to one - or as an array of that class: the object's own JSON, and
+    one object per element where the declaration makes it an array. ``None`` for any other
+    type.
+
+    A class is only written this way when it is one this can write whole - in :data:`MEMBERS`,
+    or declared by the translation, which knows its members from the declaration. A class
+    whose members this cannot write is refused by name rather than written short, since ROOT
+    writes a member of a class type by streaming it.
+    """
+    if not _writes_object(kind.rstrip("* ").strip()):
+        return None
+    return "objects" if dims else "object"
+
+
+def _writes_object(name: str) -> bool:
+    """Can the whole of a ``name`` be written: is it one of the classes in :data:`MEMBERS`, or
+    one the translation declared? A member of such a class is written as the object it is,
+    which is how ``TJsonEx5``'s ``TJsonEx1 fObj1`` gets the JSON of its own members."""
+    if name in MEMBERS:
+        return True
+    from .declared import find_class
+
+    return find_class(name) is not None
 
 
 def _held(obj: Any, member: _Member) -> Any:
@@ -542,6 +639,15 @@ def _nested_dimensions(dims: tuple[int | None, ...]) -> bool:
     return len(dims) > 1 and all(isinstance(dim, int) for dim in dims)
 
 
+def _flatten(value: Any) -> list[Any]:
+    """A member's value as one flat list, however deeply the object nests it: a declared
+    ``TJsonEx6::fSafePtr33[3][3]`` arrives as lists of lists, and :func:`_nest` cuts the flat
+    run into the rows the declaration gives it."""
+    if isinstance(value, (list, tuple)):
+        return [item for each in value for item in _flatten(each)]
+    return [value]
+
+
 def _nest(values: list[Any], dims: tuple[int | None, ...],
           leaf: Callable[[list[Any]], Any]) -> Any:  # fmt: skip
     """``values``, a flat array, as the nested lists ``dims`` describe, each group of the
@@ -550,6 +656,14 @@ def _nest(values: list[Any], dims: tuple[int | None, ...],
         return leaf(values)
     step = int(np.prod(dims[1:]))
     return [_nest(values[at : at + step], dims[1:], leaf) for at in range(0, len(values), step)]
+
+
+def _text_tree(value: Any, comma: str) -> str:
+    """The strings of a ``TString`` array as the JSON ROOT writes them, at whatever depth the
+    object holds them: ``null`` for a pointer with nothing there, and one array per level."""
+    if isinstance(value, (list, tuple)):
+        return "[" + comma.join(_text_tree(each, comma) for each in value) + "]"
+    return "null" if value is None else _quoted(str(value))
 
 
 def _list_text(nested: Any, comma: str) -> str:
@@ -567,6 +681,28 @@ def _char_codes(value: Any) -> list[int]:
     if isinstance(value, list):
         return [code for each in value for code in _char_codes(each)]
     return [int(code) for code in np.asarray(value, dtype=np.int8).ravel()]
+
+
+def _char_rows(value: Any, dims: tuple[int | None, ...]) -> Any:
+    """The codes a ``char`` member holds, cut into the rows the declaration gives it: one
+    list of codes per innermost length, nested as deeply as the declaration is.
+
+    ROOT writes a ``char[N][M]`` as one JSON string per row - ``TJsonEx2``'s ``fChar`` is
+    ``[["0123", "1234", "2345"], ...]`` - so the rows are cut here from the object's own
+    nesting rather than from one flattened run of codes: a row that ends in a NUL is shorter
+    than the one beside it, and flattening the two first would shift every row after it.
+    """
+    if len(dims) > 1 and not isinstance(value, str):
+        return [_char_rows(each, dims[1:]) for each in value]
+    return _nest(_char_codes(value), dims, lambda row: row)
+
+
+def _char_strings(rows: Any, depth: int) -> Any:
+    """One JSON string per row of a ``char[N][M]``, at the depth the declaration nests them:
+    the characters up to the row's first NUL."""
+    if depth:
+        return [_char_strings(each, depth - 1) for each in rows]
+    return [_quoted("".join(chr(code) for code in row).split("\0")[0]) for row in rows]
 
 
 def _flat_numbers(value: Any) -> list[Any]:
@@ -591,6 +727,10 @@ class _Writer:
         self._map_as_object = level >= 5
         self._skip_typename = _digit(compact, 100) == 1
         self._store_inf = _digit(compact, 1000) == 1
+        #: How many objects have been written whole, which is what a ``$ref`` counts: ROOT
+        #: writes an object that another member or element already holds as ``{"$ref":N}``,
+        #: the N-th object of the export, so a graph of pointers is one tree in the JSON.
+        self._written: dict[int, int] = {}
 
     # -- what to write ----------------------------------------------------------------
 
@@ -599,11 +739,18 @@ class _Writer:
 
     def member(self, obj: Any, name: str) -> str:
         """The JSON of one member of ``obj``, which is what ``ToJSON(obj, level, member)``
-        writes in place of the whole object."""
+        writes in place of the whole object - at the depth the object itself is at, which is
+        why the member is written as though it were a member of an object one level out.
+
+        A member that is an array or a map is ``<not supported>``: ROOT writes a member on
+        its own only as the one value it is, and ``Objects.ref`` has that text for
+        ``ToJSON(&ex6, 0, "fObj1")``, whose member is an array of objects."""
         members = _writable(obj)
         for member in members:
             if member.name == name:
-                return self._member(member, obj, 0)
+                if member.kind in ("objects", "container", "map_object"):
+                    return "<not supported>"  # ROOT writes no array or map as one member
+                return self._member(member, obj, -1)
         raise UnsupportedFeatureError(
             f"{_classname(obj) or type(obj).__name__} has no member {name!r} for "
             "TBufferJSON to write on its own; it writes a whole object of a class whose "
@@ -614,18 +761,25 @@ class _Writer:
             )
         )
 
-    def _value(self, obj: Any, depth: int) -> str:
-        """``obj`` as JSON: a number, a string, an array, a map, or an object."""
+    def _value(self, obj: Any, depth: int, by_value: bool = False) -> str:
+        """``obj`` as JSON: a number, a string, an array, a map, or an object - ``by_value``
+        for one a container or a member holds by value rather than through a pointer."""
         for kind, write in WRITERS:
             if isinstance(obj, kind):
                 return write(self, obj, depth)
-        if _writable(obj):
-            return self._object(obj, depth)
+        if isinstance(obj, TSeqCollection):
+            return self._collection(obj, depth)
+        if isinstance(obj, TMap):
+            return self._map_collection(obj, depth)
+        if _writable(obj):  # a class of its own, even one that derives from a container
+            return self._object(obj, depth, by_value)
+        if isinstance(obj, _Container):
+            return self._nested_container(obj, depth)
         raise UnsupportedFeatureError(
             "TBufferJSON::ConvertToJSON does not yet write the JSON of a "
             f"{_classname(obj) or type(obj).__name__}: it writes numbers and strings, the "
             f"TArrays ({', '.join(sorted(ARRAY_CLASSES))}), a std::map with the pairs it "
-            "holds, and the classes whose members are in its table "
+            "holds, a collection's objects, and the classes whose members are in its table "
             f"({', '.join(sorted(MEMBERS))}). Writing another one means adding its "
             "members there, in the order its streamer writes them"
         )
@@ -653,9 +807,70 @@ class _Writer:
 
     # -- objects ----------------------------------------------------------------------
 
-    def _object(self, obj: Any, depth: int) -> str:
+    def _object(self, obj: Any, depth: int, by_value: bool = False) -> str:
+        """``obj`` as a JSON object, numbered in the table a ``{"$ref":N}`` counts off.
+
+        ``by_value`` is a member or an element ROOT streams in place rather than through a
+        pointer: a pointer is one object and goes out as a reference to the one written
+        before, but a value is a copy of the object wherever it is written, so it is written
+        whole every time - and numbered, since the numbers count every object in the export."""
+        repeated = None if by_value else self._written.get(id(obj))
+        if repeated is not None:
+            return '{"$ref":' + str(repeated) + "}"
+        if depth:  # the object the export is of is no entry of the table ROOT numbers
+            self._written[id(obj)] = len(self._written) + 1
         members = [self._pair(member, obj, depth) for member in _writable(obj)]
         return self._braced(self._typed(members, _classname(obj), self._layout.colon), depth)
+
+    def _collection(self, obj: TSeqCollection, depth: int) -> str:
+        """A collection - a ``TList``, a ``TClonesArray`` - as ROOT writes one: the objects
+        it holds as one JSON array, after the name it holds them under, which is what its
+        reader makes the collection for.
+
+        A ``TList`` keeps its objects in links, and ROOT writes one ``opt`` entry per link
+        beside the objects - ``null`` for a link added without an option. The objects here
+        are the ones added, and a collection of this kit keeps no option to write, so every
+        entry is ``null``: a list whose links carry an option is what the object cannot hold
+        and :func:`_rebuilt_collection` refuses to read one of."""
+        held = [self._value(each, depth + 1) for each in obj]
+        colon = self._layout.colon
+        comma = self._layout.item_comma
+        members = [_quoted("name") + colon + _quoted(str(obj.GetName())),
+                   _quoted("arr") + colon + "[" + comma.join(held) + "]"]
+        if isinstance(obj, TList):
+            options = ["null"] * len(held)
+            members.append(_quoted("opt") + colon + "[" + comma.join(options) + "]")
+        return self._braced(self._typed(members, _classname(obj), colon), depth)
+
+    def _map_collection(self, obj: TMap, depth: int) -> str:
+        """A ``TMap``: the name it holds its pairs under and the pairs themselves, which is
+        what :func:`_rebuilt_map_pairs` reads back into a map of the pairs the JSON holds.
+
+        ROOT writes the pairs of a map as a collection, not as the pairs of a ``std::map``:
+        ``TMap`` shares its ``arr`` with ``TList``, and each entry of it is a ``$pair`` in a
+        layout of its own - see :meth:`_held_pair`."""
+        held = [self._held_pair(pair.Key(), pair.Value(), depth) for pair in obj]
+        colon = self._layout.colon
+        members = [_quoted("name") + colon + _quoted(str(obj.GetName())),
+                   _quoted("arr") + colon + "[" + self._layout.item_comma.join(held) + "]"]
+        return self._braced(self._typed(members, _classname(obj), colon), depth)
+
+    def _held_pair(self, key: Any, value: Any, depth: int) -> str:
+        """One pair of a ``TMap``, as ROOT writes it inside the ``arr`` of one: over three
+        lines whose indentation is the depth of the array that holds them - one step out
+        from what :meth:`_braced` gives an object at that depth, since ROOT's writer opens
+        the pair on the line the array does - and with a space after each comma, which a
+        ``std::map``'s ``$pair`` does not have. A pair keeps its ``TPair`` name at every
+        level, even the one that skips the type of everything else."""
+        colon = self._layout.colon
+        members = ['"$pair"' + colon + _quoted("TPair"),
+                   '"first"' + colon + self._value(key, depth + 1),
+                   '"second"' + colon + self._value(value, depth + 1)]
+        if not self._layout.newline:
+            return "{" + (self._layout.item_comma).join(members) + "}"
+        pad = " " * (self._layout.indent * (depth + 1))
+        sep = self._layout.item_comma + "\n" + pad
+        return "{\n" + pad + sep.join(members) + "\n" + pad + "}"
 
     def _typed(self, written: list[str], classname: str, colon: str) -> list[str]:
         """``written`` with the ``_typename`` ROOT puts in front of it, unless the level
@@ -677,12 +892,16 @@ class _Writer:
         """A member that is not a number: text, an array of text, or a container."""
         if member.kind == "chars":
             return self._char_text(value, member)
-        if member.kind in ("strings", "strptrs"):
+        if member.kind == "nested":
+            return self._trees(value, depth)
+        if member.kind in ("strings", "strptrs", "tstrings"):
             return self._texts(member, value, depth)
+        if member.kind in OBJECT_KINDS:
+            return self._objects(member, value, depth)
         if member.kind in CONTAINER_KINDS:
             return self._containers(member, value, depth)
         if member.kind in ("cstring", "strptr"):
-            return "null" if value is None else _quoted(value)
+            return "null" if _nothing_at(member, value, depth) else _quoted(value)
         return _quoted("" if value is None else value)
 
     def _number_member(self, member: _Member, value: Any, depth: int) -> str:
@@ -700,19 +919,39 @@ class _Writer:
     def _char_text(self, value: Any, member: _Member) -> str:
         """A ``char`` array of a declared class: one JSON string up to its first NUL, or - a
         ``char[N][M]``, which ROOT writes as a string per row - the arrays of them."""
-        codes = [chr(code) for code in _char_codes(value)]
         if not _nested_dimensions(member.dims):
-            return _quoted("".join(codes).split("\0")[0])
-        rows = _nest(codes, member.dims,
-                     lambda group: _quoted("".join(group).split("\0")[0]))  # fmt: skip
+            return _quoted("".join(chr(code) for code in _char_codes(value)).split("\0")[0])
+        rows = _char_strings(_char_rows(value, member.dims), len(member.dims) - 2)
         return _list_text(rows, self._layout.item_comma)
 
     def _texts(self, member: _Member, value: Any, depth: int) -> str:
         """A ``std::string[N]``: one JSON array of its strings, a pointer with nothing there
-        written as ``null``, or - a ``std::string[N][M]`` - an array of those."""
-        nested = _nest(list(value or []), member.dims,
+        written as ``null``, or - a ``std::string[N][M]`` - an array of those.
+
+        A ``TString`` array is the one ROOT's ``kStreamerLoop`` writes: it goes out at the
+        depth the object holds it at rather than the depth its declaration gives it, since
+        what a ``TString *fStr; // [fCnt]`` holds is as many strings as another member's
+        counter says, and ``fStr2[3]`` is three of those."""
+        if member.kind == "tstrings":
+            return _text_tree(value, self._layout.item_comma)
+        nested = _nest(_flatten(value or []), member.dims,
                        lambda group: self._text_row(member, group))  # fmt: skip
         return _list_text(nested, self._layout.item_comma)
+
+    def _trees(self, value: Any, depth: int) -> str:
+        """A member the comment gives the length of and whose type is no number or text -
+        ``TNamed **fNm6[3]; //[fCnt]``: one JSON array per row, and a row an array of what
+        the object holds there, ``null`` where a pointer has nothing.
+
+        The depth is the object's, not the declaration's: the lengths in the declaration and
+        in the comment say how many rows and how many in a row, and whether a row's entries
+        are objects, arrays or text is what the values are."""
+        if value is None:
+            return "null"
+        if isinstance(value, list):
+            items = [self._trees(each, depth) for each in value]
+            return "[" + self._layout.item_comma.join(items) + "]"
+        return self._value(value, depth + 1)
 
     def _text_row(self, member: _Member, group: list[Any]) -> str:
         """One row of a text array: its strings, or ``null`` for a ``std::string *`` with
@@ -721,12 +960,31 @@ class _Writer:
                  else _quoted("" if each is None else str(each)) for each in group]
         return "[" + self._layout.item_comma.join(items) + "]"
 
+    def _objects(self, member: _Member, value: Any, depth: int) -> str:
+        """A member declared as one of ROOT's classes: the object written as one - ROOT
+        streams a member of a class type, so it is a JSON object of its own - or, where its
+        declaration makes it an array, the nested arrays of them. A pointer with nothing
+        there is ``null`` at every depth."""
+        by_value = _held_by_value(member.decl)
+        if member.kind == "object":
+            return self._value(value, depth + 1, by_value)
+        if value is None:
+            return "null"
+        nested = _nest(_flatten(value), member.dims,
+                       lambda group: self._object_row(group, depth, by_value))  # fmt: skip
+        return _list_text(nested, self._layout.item_comma)
+
+    def _object_row(self, group: list[Any], depth: int, by_value: bool) -> str:
+        """One row of an array of objects: each written as the object it is."""
+        items = [self._value(each, depth + 1, by_value) for each in group]
+        return "[" + self._layout.item_comma.join(items) + "]"
+
     def _containers(self, member: _Member, value: Any, depth: int) -> str:
         """A member holding a container - or, declared ``vector<T>[N]``, an array of them,
         which ROOT writes as an array of the containers."""
         if not member.array:
             return self._container_text(member, value, depth)
-        nested = _nest(list(value or []), member.dims,
+        nested = _nest(_flatten(value or []), member.dims,
                        lambda group: self._container_row(member, group, depth))  # fmt: skip
         return _list_text(nested, self._layout.item_comma)
 
@@ -743,11 +1001,18 @@ class _Writer:
         if member.kind == "map_object":
             return self._map_object(value, list(value.items()), depth)
         if isinstance(value, _Map):
-            return self._map(value, depth)
+            return self._map(value, depth, _pair_name(member.decl))
         if member.kind == "bitset":
             bits = ["true" if value[at] else "false" for at in range(value.size())]
             return "[" + self._layout.item_comma.join(bits) + "]"
-        held = [self._value(each, depth + 1) for each in value]
+        held = [self._value(each, depth + 1, _element_by_value(value)) for each in value]
+        return "[" + self._layout.item_comma.join(held) + "]"
+
+    def _nested_container(self, obj: Any, depth: int) -> str:
+        """A container that is a value of its own - the ``set`` a ``map`` holds - written as
+        the array of the values it holds, and a ``std::multimap``'s as the ``$pair`` per entry
+        a map's is: ROOT streams the container where the value is, not behind a name."""
+        held = [self._value(each, depth, _element_by_value(obj)) for each in obj]
         return "[" + self._layout.item_comma.join(held) + "]"
 
     def _braced(self, pairs: list[str], depth: int) -> str:
@@ -814,29 +1079,38 @@ class _Writer:
 
     # -- collections ------------------------------------------------------------------
 
-    def _map(self, obj: _Map, depth: int) -> str:
+    def _map(self, obj: Any, depth: int, named: str | None = None) -> str:
         """A ``std::map``: a ``$pair`` object per entry, or - with ``kMapAsObject`` - one
-        JSON object whose keys are the map's."""
+        JSON object whose keys are the map's.
+
+        ``named`` is what the member's declaration calls the types it holds, which is what
+        ROOT writes and what the values may no longer say: a ``TString`` key is a ``string``
+        by the time it reaches the writer."""
         entries = list(obj.items())
         if self._map_as_object:
             return self._map_object(obj, entries, depth)
-        name = f"pair<{cpp_name(obj.kinds[0])},{cpp_name(obj.kinds[1])}>"
-        pairs = [self._pair_entry(name, entry, depth) for entry in entries]
+        name = named or f"pair<{cpp_name(obj.kinds[0])},{cpp_name(obj.kinds[1])}>"
+        kinds = (_held_by_value(str(obj.kinds[0])), _held_by_value(str(obj.kinds[1])))
+        pairs = [self._pair_entry(name, entry, depth, kinds) for entry in entries]
         return "[" + self._layout.item_comma.join(pairs) + "]"
 
-    def _pair_entry(self, name: str, entry: tuple[Any, Any], depth: int) -> str:
-        """One ``std::pair`` of a map, as ROOT writes it: the types it holds - or, at a
-        level that skips them, their number - and its two values."""
+    def _pair_entry(self, name: str, entry: tuple[Any, Any] | _Pair, depth: int,
+                    by_value: tuple[bool, bool] = (True, True)) -> str:
+        """One ``std::pair``, as ROOT writes it: the types it holds - or, at a level that
+        skips them, their number - and its two values. A map's entry arrives as the two
+        things a pair unpacks to, and a ``std::multimap``'s value as the pair itself."""
         colon = self._layout.colon
         pairs = ['"$pair"' + colon + ("1" if self._skip_typename else _quoted(name)),
-                 '"first"' + colon + self._value(entry[0], depth + 1),
-                 '"second"' + colon + self._value(entry[1], depth + 1)]  # fmt: skip
+                 '"first"' + colon + self._value(entry[0], depth + 1, by_value[0]),
+                 '"second"' + colon + self._value(entry[1], depth + 1, by_value[1])]  # fmt: skip
         return self._keys(pairs)
 
     def _map_object(self, obj: _Map, entries: list[tuple[Any, Any]], depth: int) -> str:
         """A map written as a JSON object: its keys, each with the value it holds."""
         colon = ":" if self._layout.colon == ":" else ": "
-        pairs = [_quoted(key) + colon + self._value(value, depth + 1) for key, value in entries]
+        by_value = _held_by_value(str(obj.kinds[1]))
+        pairs = [_quoted(key) + colon + self._value(value, depth + 1, by_value)
+                 for key, value in entries]
         return self._keys(self._typed(pairs, str(obj.__cpp_name__), colon))
 
 
@@ -848,6 +1122,13 @@ def _number_array(self: _Writer, obj: Any, depth: int) -> str:
 def _numpy_array(self: _Writer, obj: np.ndarray[Any, Any], depth: int) -> str:
     """The numbers a drawn object keeps, as the array of the type NumPy holds them in."""
     return self._array(obj, NUMPY_NAMES[obj.dtype], depth)
+
+
+def _std_pair(self: _Writer, obj: _Pair, depth: int) -> str:
+    """A ``std::pair`` written on its own: a ``std::multimap``'s values are pairs rather than
+    a map's entries, and ROOT writes each one the way it writes a map's - a ``$pair`` object
+    naming the types it holds."""
+    return self._pair_entry(str(obj.__cpp_name__), obj, depth)
 
 
 #: Which writer takes which Python type, in the order they are tried: ``bool`` before the
@@ -866,6 +1147,7 @@ WRITERS: tuple[tuple[Any, Callable[[_Writer, Any, int], str]], ...] = (
     ((TArrayD, TArrayF, TArrayI, TArrayL, TArrayS), _number_array),
     (np.ndarray, _numpy_array),
     (_Map, _Writer._map),
+    (_Pair, _std_pair),
 )
 
 
@@ -912,6 +1194,40 @@ def _expanded(data: dict[str, Any], name: str) -> list[Any]:
         index += 1
 
 
+def _held_by_value(kind: Any) -> bool:
+    """Does a container of ``kind``, or a member declared as ``kind``, hold its object by
+    value rather than through a pointer?
+
+    A pointer is one object, so ROOT writes the second link to it as a ``{"$ref":N}`` to the
+    first; a value is a copy wherever it is streamed, so ROOT writes it whole every time.
+    """
+    spelled = kind if isinstance(kind, str) else str(getattr(kind, "__cpp_name__", ""))
+    return not spelled.strip().endswith("*")
+
+
+def _element_by_value(container: Any) -> bool:
+    """Whether a sequence or a set keeps the elements it holds by value, by the type it was
+    made of - ``std.vector["TJsonEx1"]`` holds copies and ``std.vector["TJsonEx1*"]`` links."""
+    for name in ("element", "kind", "dtype"):
+        found = getattr(container, name, None)
+        if found is not None:
+            return _held_by_value(found)
+    return True
+
+
+def _pair_name(decl: str) -> str | None:
+    """ROOT's spelling of the types a map holds, as its declaration gives them:
+    ``std::map<TString,int>`` is ``pair<TString,int>``, and a nested template keeps the space
+    ROOT writes between two ``>``. ``None`` for a member no declaration of a map describes,
+    which is then named by the types the values happen to have."""
+    bare = decl.rstrip("* ").strip()
+    if not bare.replace("std::", "").startswith(("map<", "multimap<", "unordered_map<")):
+        return None
+    held = _split_arguments(bare[bare.index("<") + 1 : bare.rindex(">")])
+    kinds = [each.replace("std::", "").replace(" ", "") for each in held]
+    return ("pair<" + ",".join(kinds) + ">").replace(">>", "> >")
+
+
 def _entries(data: Any) -> list[tuple[Any, Any]]:
     """The key and value of each entry of a map written either way ROOT writes one: a list
     of ``$pair`` objects, or - with ``kMapAsObject`` - an object whose keys are the map's."""
@@ -942,6 +1258,7 @@ def _decoded(text: str) -> Any:
 
 def _rebuilt(text: str, kind: str | None) -> Any:
     """What the JSON in ``text`` stands for, built as the class ``kind`` names it."""
+    _READ.clear()
     data = _decoded(text)
     name = _named(kind)
     if name.startswith("map<"):
@@ -984,35 +1301,122 @@ def _class_for(name: str) -> type[Any]:
     if found is None:
         found = ARRAY_CLASSES.get(name)
     if found is None:
+        found = _namespace_class(name)
+    if found is None:
         raise UnsupportedFeatureError(
             "TBufferJSON::ConvertFromJSONAny does not know the class "
             f"{name or 'this JSON gives no name of'}: it reads back an object of a class a "
-            f"macro declared, and the TArrays ({', '.join(sorted(ARRAY_CLASSES))}). Read "
-            "anything else with a class this kit has, or ask FromJSON<T>(json) for the "
-            "class it names"
+            f"macro declared, the TArrays ({', '.join(sorted(ARRAY_CLASSES))}), a collection "
+            "of the namespace's, and the classes whose members are in its table "
+            f"({', '.join(sorted(MEMBERS))}). Read anything else with a class this kit has, "
+            "or ask FromJSON<T>(json) for the class it names"
         )
     return found
 
 
+def _namespace_class(name: str) -> type[Any] | None:
+    """The namespace's class of ROOT's called ``name``, for a class :data:`MEMBERS` describes
+    or for a collection ROOT writes as the objects it holds - a ``TList``, a
+    ``TClonesArray``, whose JSON is those objects and the name they are held under.
+
+    What this writes it reads back, which is what ``ConvertFromJSONAny`` promises of a JSON
+    that names its ``_typename``: ``TObject``'s members are known here, so its JSON becomes
+    the ``TObject`` the namespace has. A class in the table that the namespace does not have
+    - ``TPolyMarker3D``, which only a file ever holds - is left to the refusal.
+    """
+    import xrdroot.pyroot as namespace  # asked for a name, it gathers the module holding it
+
+    found = getattr(namespace, name, None)  # a name it does not have is left to the refusal
+    if not isinstance(found, type):
+        return None
+    holds_objects = name in MEMBERS or issubclass(found, (TSeqCollection, TMap))
+    return found if holds_objects else None
+
+
+#: The objects read so far, in the order they were made: what a ``{"$ref":N}`` stands for,
+#: and the mirror of the writer's own table. The object the export is of is entry 0, which
+#: is the number ROOT never gives it - a reference counts the objects *inside* the export.
+#: Emptied at the start of each read.
+_READ: list[Any] = []
+
+
+def _referenced(data: dict[str, Any]) -> Any:
+    """The object a ``{"$ref":N}`` names: the N-th object read out of this JSON, which is the
+    one a second member or element points at rather than a copy of it."""
+    at = int(data["$ref"])
+    if not 0 < at < len(_READ):
+        raise UnsupportedFeatureError(
+            f"TBufferJSON::FromJSON cannot read the reference to object {at} of this JSON: "
+            f"it holds {len(_READ) - 1} objects, so the reference points at one that was "
+            "never written. Read JSON that TBufferJSON::ConvertToJSON wrote, or one it wrote "
+            "without the references"
+        )
+    return _READ[at]
+
+
 def _rebuilt_object(data: dict[str, Any]) -> Any:
     """The object a JSON object describes: the class its ``_typename`` names, made, and given
-    back the members that JSON holds."""
+    back the members that JSON holds - or, a ``$ref``, the object already read."""
+    if "$ref" in data:
+        return _referenced(data)
     name = _named(str(data.get("_typename", "")))
     made = _class_for(name)()
+    _READ.append(made)
+    if isinstance(made, TSeqCollection):
+        _rebuilt_collection(made, data)
+        return made
+    if isinstance(made, TMap):
+        _rebuilt_map_pairs(made, data)
+        return made
     for member in _writable(made):
         if member.name in data:
             _restore(made, member, data[member.name])
     return made
 
 
+def _rebuilt_collection(made: TSeqCollection, data: dict[str, Any]) -> None:
+    """Fill a collection with the objects of the ``arr`` ROOT writes for one, under the name it
+    had, which is how ``RootClasses`` reads a ``TList`` back and writes it the same again.
+
+    A link's option is refused rather than dropped: ROOT writes a list whose links carry one
+    as an ``opt`` array beside the objects, and a collection here keeps no option to give
+    them back to, so reading one would say the list holds less than the JSON does.
+    """
+    if "opt" in data and any(option is not None for option in data["opt"]):
+        raise UnsupportedFeatureError(
+            "TBufferJSON::FromJSON does not yet read back a collection whose links carry an "
+            'option, which ROOT writes as an entry of the "opt" array beside the objects, '
+            "since a collection here keeps no option to give them back to. Read a "
+            f"{_classname(made)} whose links have none, or make the collection again and "
+            "Add each object with the option it had"
+        )
+    if data.get("name"):
+        made.SetName(str(data["name"]))
+    for each in data.get("arr", []):
+        made.Add(_rebuilt_named(each, ""))
+
+
+def _rebuilt_map_pairs(made: TMap, data: dict[str, Any]) -> None:
+    """Fill a ``TMap`` with the pairs of the ``arr`` ROOT writes for one, under the name the
+    map had and in the order the JSON holds them, which is how it is written back whole.
+
+    The order is the JSON's and not a hash's: a map here keeps its pairs in the order they
+    were added, so a ``TMap`` written from a JSON keeps the order ROOT wrote - which for
+    ROOT's own text is the order of its buckets, not of its ``Add`` calls."""
+    if data.get("name"):
+        made.SetName(str(data["name"]))
+    for entry in data.get("arr", []):
+        made.Add(_rebuilt_named(entry["first"], ""), _rebuilt_named(entry["second"], ""))
+
+
 def _restore(obj: Any, member: _Member, value: Any) -> None:
     """Put ``value``, read from JSON, in the attribute a declared class declares ``member``
     as, which is where the writer reads it back from.
 
-    A container member keeps the container its constructor made: what such a JSON says is
-    the values the container holds, and reading values back into a ``std::map`` keyed by an
-    object - or into a ``bitset`` of a length its type fixes - is a writer and reader of its
-    own. An empty one is what the constructor made, so it needs nothing read into it."""
+    A container member keeps the container its constructor made and is given the values the
+    JSON holds, since what such a JSON says is what the container holds rather than another
+    container; a ``bitset`` of a length its type fixes is the one container filled bit by
+    bit here."""
     if member.kind == "bitset":
         held = getattr(obj, member.name, None)
         if not isinstance(value, list) or held is None:
@@ -1027,33 +1431,111 @@ def _restore(obj: Any, member: _Member, value: Any) -> None:
             held[at] = bool(bit)
         return
     if member.kind in CONTAINER_KINDS:
-        if not _blank(value):
-            raise UnsupportedFeatureError(
-                "TBufferJSON::FromJSON does not yet fill a member that holds values, and "
-                f"{_classname(obj)}::{member.name} holds some: it reads back an object "
-                "whose containers are empty, which is what a class's constructor makes "
-                "them. Ask for the members of a number type and of text, or read this JSON "
-                "with the class it names"
-            )
+        _refilled(obj, member, value)
         return
-    setattr(obj, member.name, _converted(member, value))
+    _stored(obj, member, _converted(member, value))
 
 
-def _blank(value: Any) -> bool:
-    """Does this JSON hold no value at all: ``null``, an empty array, a map with nothing in
-    it, or arrays of those?"""
-    if value is None or value == []:
-        return True
-    if isinstance(value, dict):
-        return set(value) <= {"_typename"}
+def _refilled(obj: Any, member: _Member, value: Any) -> None:
+    """Fill the container ``member`` holds in ``obj`` with the values the JSON ``value``
+    carries, as ROOT gives the containers of an object it reads into the values the JSON
+    holds - the object the constructor made, not another one.
+
+    A ``null`` is what ROOT writes for a pointer with nothing there and leaves the member as
+    the constructor left it; a member declared ``vector<T>[N]`` is one container per slot,
+    which the declaration's lengths shape as they shape the arrays it writes."""
+    if member.array:
+        _refilled_rows(_recorded(obj, member), member, member.dims, value or [])
+        return
+    held = _recorded(obj, member)
+    if held is None and _inherits_container(obj, member):
+        held = obj  # the class inherits the container: the object is the container
+    if value is None:
+        return
+    if held is None:
+        _stored(obj, member, _given(None, member, value))
+        return
+    _given(held, member, value)
+
+
+def _refilled_rows(held: Any, member: _Member, dims: tuple[int | None, ...],
+                   rows: list[Any]) -> None:
+    """Fill each slot of an array of containers with the container its row holds, one array
+    of them per length the declaration gives - ``vector<double> f[3]`` is three containers."""
+    if len(dims) > 1:
+        for slot, row in zip(held or [], rows, strict=False):
+            _refilled_rows(slot, member, dims[1:], row or [])
+        return
+    for at, row in enumerate(rows[: len(held or [])]):
+        if row is not None:
+            held[at] = _given(held[at], member, row)
+
+
+def _given(held: Any, member: _Member, value: Any) -> Any:
+    """The container the JSON ``value`` holds: ``held`` - the one the class's constructor
+    made - emptied and given those values, or, where the constructor left a pointer holding
+    none, a container of the type the declaration spells.
+
+    What an element is is the container's own business: each value goes to it as the object,
+    the nested container or the number the JSON describes, and it converts that to its
+    element type exactly as C++ converts what a macro hands it."""
+    made = held if held is not None else _container_of(member)
+    made.clear()
+    if isinstance(made, _MultiMap):
+        for key, each in _entries(value):
+            made.insert((_unpacked(key), _unpacked(each)))
+    elif isinstance(made, _Map):
+        for key, each in _entries(value):
+            made[_unpacked(key)] = _unpacked(each)
+    elif isinstance(made, _Set):
+        for each in value:
+            made.insert(_unpacked(each))
+    else:
+        for each in value:
+            made.push_back(_unpacked(each))
+    return made
+
+
+def _container_of(member: _Member) -> Any:
+    """The empty container a member's declaration spells, for the pointer whose constructor
+    left nothing there: ``std::vector<double>*`` is a ``std::vector<double>``."""
+    return element_type(member.decl.rstrip("* ").strip())()
+
+
+def _unpacked(value: Any) -> Any:
+    """The JSON value with the objects it describes made: a JSON object rebuilt as the class
+    its ``_typename`` names, and a ``$ref`` as the very object read before it - so that a
+    container can be handed what is left, the numbers and the nested arrays of a container
+    of containers, and build its own elements from them."""
     if isinstance(value, list):
-        return all(_blank(each) for each in value)
-    return False
+        return [_unpacked(each) for each in value]
+    if isinstance(value, dict):
+        return _rebuilt_object(value)
+    return value
+
+
+
+def _stored(obj: Any, member: _Member, value: Any) -> None:
+    """Put ``value`` where :func:`_recorded` reads it back from: in the dict a drawn object
+    keeps its members in - ``TBox``'s ``fX1`` - in the attribute a declared class declares,
+    or in the one a class of ROOT's keeps it in, ``TObject``'s ``fUniqueID`` being
+    ``_unique_id``."""
+    kept = getattr(obj, "members", None)
+    if isinstance(kept, dict):
+        kept[member.name] = value
+        return
+    declared = getattr(type(obj), "_cxx_layout_", None)
+    if isinstance(declared, tuple):
+        setattr(obj, member.name, value)
+        return
+    setattr(obj, ATTRIBUTES.get(member.name) or "_" + member.name, value)
 
 
 def _converted(member: _Member, value: Any) -> Any:
     """What a member of a declared class holds, as the JSON wrote it: a number, a string of
     characters, or the array of them its declared lengths shape."""
+    if member.kind in OBJECT_KINDS:
+        return _converted_objects(value)
     if isinstance(member.kind, str):
         return _converted_text(member, value)
     return _converted_number(member, value)
@@ -1062,7 +1544,15 @@ def _converted(member: _Member, value: Any) -> Any:
 def _converted_text(member: _Member, value: Any) -> Any:
     """What a member of text, of an array of it, or of characters holds."""
     if member.kind == "chars":
-        return "".join(chr(code) for code in _char_codes(value))
+        if not _nested_dimensions(member.dims):
+            return "".join(chr(code) for code in _char_codes(value))
+        rows = np.zeros(member.dims, dtype=np.int8)
+        _place_chars(rows, value)
+        return rows
+    if member.kind == "nested":
+        return _converted_nested(member.decl, len(member.dims) + 1, value)
+    if member.kind == "tstrings":
+        return _converted_tree(value)
     if member.kind in ("strings", "strptrs"):
         return _converted_texts(member, value)
     if member.kind in ("cstring", "strptr"):
@@ -1070,9 +1560,69 @@ def _converted_text(member: _Member, value: Any) -> Any:
     return "" if value is None else str(value)
 
 
-def _converted_texts(member: _Member, value: Any) -> list[str | None]:
+def _converted_objects(value: Any) -> Any:
+    """A member of a class type read back: the object the JSON describes, and - an array of
+    them, which ROOT nests as deeply as the declaration does - one object per element, with
+    ``None`` where a pointer held nothing.
+
+    A class the reader does not know is refused by :func:`_rebuilt_object`, which names it,
+    rather than kept as the dict the JSON happens to be.
+    """
+    if isinstance(value, list):
+        return [_converted_objects(each) for each in value]
+    return None if value is None else _rebuilt_object(value)
+
+
+def _converted_nested(decl: str, depth: int, value: Any) -> Any:
+    """A member a comment gives the length of, read back at the depth the JSON nests it: the
+    rows of arrays the declaration and the comment shape, and at the end of each row what
+    the member points at - a ``TArray`` the JSON gives as its numbers, an object, or text.
+
+    The depth is what the JSON says, and not what its values look like: a ``TArrayI``'s own
+    numbers are one array inside the row's, and telling the two apart by their shape alone
+    would read a row of numbers as the row itself.
+    """
+    if depth and isinstance(value, list):
+        return [_converted_nested(decl, depth - 1, each) for each in value]
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return _rebuilt_named(value, decl)
+    if decl in ARRAY_CLASSES:
+        return _rebuilt_bare(value, ARRAY_CLASSES[decl])
+    return _rebuilt_named(value, decl)  # an object, or the refusal that it is none
+
+
+def _place_chars(placed: Any, rows: Any) -> None:
+    """The characters of a ``char[N][M]``'s JSON - one string per row, nested as the
+    declaration nests them - into ``placed``, the buffer the member is.
+
+    A row is cut at the width its declaration gives it, and what it does not fill stays the
+    NUL a C buffer holds there, which is what the writer reads back as its shorter string.
+    """
+    if placed.ndim == 1:
+        codes = [ord(char) for char in rows]
+        kept = codes[: placed.shape[0]]
+        placed[: len(kept)] = kept
+        return
+    for row, each in zip(placed, rows, strict=False):
+        _place_chars(row, each)
+
+
+def _converted_tree(value: Any) -> Any:
+    """A ``TString`` array the JSON wrote, at the depth it wrote it: the strings it holds
+    and ``None`` where a pointer had nothing there."""
+    if isinstance(value, list):
+        return [_converted_tree(each) for each in value]
+    return None if value is None else str(value)
+
+
+def _converted_texts(member: _Member, value: Any) -> Any:
     """An array of ``std::string`` - or of pointers to one - as the strings it holds, with
-    ``None`` where a pointer had nothing there."""
+    ``None`` where a pointer had nothing there, nested as deeply as a ``std::string[N][M]``
+    declaration nests the rows the JSON holds."""
+    if _nested_dimensions(member.dims) and isinstance(value, list):
+        return _nest(_flatten(value), member.dims, list)
     items = value if isinstance(value, list) else [value]
     return [None if each is None and member.kind == "strptrs" else str(each or "")
             for each in items]
@@ -1132,10 +1682,25 @@ class _FromJSON:
             )
         return _filled(target, _rebuilt(_untext(text), getattr(target, "ctype", None)))
 
-    def __getitem__(self, kind: Any) -> Callable[[Any], Any]:
-        """``FromJSON<T>(json)``: the reader for the class ``T`` names - ``TArrayI``,
-        ``std::map<std::string,int>``."""
-        return lambda text: _rebuilt(_untext(text), str(kind))
+    def __getitem__(self, kind: Any) -> Callable[..., Any]:
+        """``FromJSON<T>(json)`` and ``FromJSON<T>(obj, json)``: the reader for the class
+        ``T`` names - ``TArrayI``, ``std::map<std::string,int>`` - which ROOT has as two
+        overloads, one making the object and one filling the pointer it is handed."""
+
+        def read(text: Any, *rest: Any) -> Any:
+            if not rest:
+                return _rebuilt(_untext(text), str(kind))
+            if text is None:
+                raise UnsupportedFeatureError(
+                    "TBufferJSON::FromJSON<T> writes the object it read into the pointer "
+                    "it is given, and this one arrived as its value rather than as a cell "
+                    "holding it, so there is nowhere to write; read what FromJSON<T> "
+                    "returns instead - FromJSON<T>(json), or the cell a translated "
+                    "pointer arrives in"
+                )
+            return _filled(text, _rebuilt(_untext(rest[0]), str(kind)))
+
+        return read
 
 
 class TBufferJSON:
@@ -1196,6 +1761,7 @@ class TBufferJSON:
         """``ConvertFromJSONAny(json, &cl)``: the object the JSON describes, and - in the
         cell ``cl`` - the class it was read as, since ROOT writes the object back through
         that class and ``roottest`` compares the two JSON strings."""
+        _READ.clear()
         data = _decoded(_untext(text))
         named = str(data.get("_typename", "")) if isinstance(data, dict) else ""
         made = _rebuilt_named(data, _named(named))

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import xrdroot.pyroot as ROOT
+from pyrootsupport import expect
 from xrdroot.pyroot.core import messages
 
 
@@ -60,3 +61,17 @@ def test_take_gives_a_std_vector_of_numbers_which_compares_with_a_list():
     taken = df.Take["Long64_t"]("x").GetValue()
     assert isinstance(taken, ROOT.std.vector["Long64_t"]) and taken == [0, 1, 2]
     assert list(df.Take["std::string"]("s").GetValue()) == ["a", "a", "a"]
+
+
+def test_take_of_a_column_of_vectors_is_a_vector_of_vectors_as_roots_is():
+    """``Take<std::vector<bool>>`` gives ``std::vector<std::vector<bool>>``: ROOT's value, whose
+    two levels both answer ``size()`` - a row of a ``Jagged`` is a NumPy array, whose ``size``
+    is a number and not a call."""
+    frame = ROOT.RDataFrame(1).Define("x", "std::vector<bool>({true, false})")
+    taken = frame.Take["std::vector<bool>"]("x").GetValue()
+    expect(
+        (taken.size(), 1),
+        (taken[0].size(), 2),
+        (taken[0][0], True),
+        (taken[0][1], False),
+    )

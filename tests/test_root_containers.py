@@ -264,6 +264,15 @@ def test_a_record_read_by_the_wrong_layout_reports_the_bytes_it_took():
     assert buf.check_count(start, start + 14) is None  # everything the count held was read
 
 
+def test_a_run_of_members_the_record_has_no_room_for_is_refused():
+    """A run read for a class of numbers is one read; one that overruns the record says so
+    rather than reading the next object's bytes."""
+    buf = Buffer(struct.pack(">ii", 1, 2))
+    _first, _second = buf.scalars(struct.Struct(">ii"))  # the record's two numbers
+    with pytest.raises(FormatError, match="the record ends 8 bytes before it said it would"):
+        buf.scalars(struct.Struct(">ii"))
+
+
 def test_a_record_without_a_byte_count_has_no_length_to_be_checked_against():
     buf = Buffer(struct.pack(">Hi", 3, 5))
     _version, end = buf.header()
@@ -478,6 +487,42 @@ def test_a_vector_of_bool_is_a_byte_an_element_not_a_bit():
         assert tree["ArrayBool[10]"].array(2, 3).tolist() == [[True] * 10]
         assert tree["StlVecBool"].array(0, 3).tolist() == [[], [0], [1, 1]]
         assert tree["SliceBool"].array(0, 3).tolist() == [[], [0], [1, 1]]
+
+
+class Held:
+    """A source describing one class, ``Held``, as a file's streamer information does."""
+
+    name = "held.root"
+
+    def streamers(self) -> dict[str, dict[str, Member]]:
+        return {"Held": {"fX": Member("fX", "", 3, "int", 1)}}
+
+
+def test_a_container_a_member_points_at_reads_as_the_container_it_names():
+    """ROOT describes ``vector<Held> *fHeld`` with ``kSTLp`` and the container's own type,
+    because it writes the container where the pointer stands; the bigevent roottest's
+    ``Event::fVectorTobject`` is the member that asks for it. A container of objects is a
+    record of its class's version and count and then each member as a column, which is the
+    reading a container held by value already has."""
+    from xrdroot import interp
+
+    step = interp._container_step(Member("fHeld", "", 71, "vector<Held>*", 0), Held(), ())
+    assert step is not None
+    body = struct.pack(">hi", 1, 3) + struct.pack(">iii", 1, 2, 3)
+    buf = Buffer(record(interp.MEMBER_WISE, body))
+    assert step(buf, {}) == [{"fX": 1}, {"fX": 2}, {"fX": 3}]
+    assert buf.pos == len(buf.data)
+
+
+def test_a_pointer_to_a_container_of_numbers_still_reads_by_the_type_it_names():
+    """``vector<int> *fNumbers`` is still the container its type parses into, so the
+    pointer is taken off by the type's own reading and the count of items follows."""
+    from xrdroot import interp
+
+    step = interp._container_step(Member("fNumbers", "", 71, "vector<int>*", 0), Held(), ())
+    assert step is not None
+    buf = Buffer(record(10, struct.pack(">iiii", 3, 1, 2, 3)))
+    assert [int(item) for item in step(buf, {})] == [1, 2, 3]
 
 
 # -- refusing, by name ----------------------------------------------------
@@ -1073,10 +1118,15 @@ def test_the_rvec_an_rdataframe_writes_reads_back_as_the_vector_it_is():
         assert tree.unreadable == {}
         momenta = tree["MC_px"].array(0, 1)
         assert momenta.lengths() == [192]
-        # float(), because round() of a NumPy scalar keeps its own dtype on NumPy 1 and
-        # returns a Python float on NumPy 2 - the same number, rounded differently.
+        # The three numbers of the last Lorentz vector read back out of an RVEC column, to
+        # the five decimals the reference gives: the file holds them as float32, so what is
+        # asserted is the reading at that precision, not the decimal spelling of a float.
+        # float() first, because round() of a NumPy float32 scalar keeps the float32, and a
+        # float32 against a Python float widens to float64 on NumPy 1 where NumPy 2 compares
+        # it as float32 - the same number, so only the version decides the answer.
         assert [round(float(value), 5) for value in momenta[0][6:9]] == [0.0, 30.39946, -30.39946]
         assert tree["MC_pdg"].array(0, 1)[0][:5].tolist() == [11.0, -11.0, 11.0, -11.0, 23.0]
+        # The same five-decimal reading of a plain branch; see the note above.
         assert round(float(tree["EVT_thrust_x"].array(0, 1)[0]), 5) == -5.89043
 
 
@@ -1264,3 +1314,15 @@ def test_the_items_of_a_member_wise_collection_are_read_as_the_class_is_today(mo
         assert interp._read_by_memory(source, "ParticleImplVec") is source
     finally:
         interp.DECLARED.clear()
+
+
+def test_a_member_of_a_type_this_writer_does_not_lay_out_is_refused_by_name():
+    """A class's elements are asked once, when it is first written, which write each takes -
+    and a member whose streamer type is none of them is refused by its name and type."""
+    from xrdroot.winfo import Element
+    from xrdroot.writer import WBuffer, _kind_of, _written_element
+
+    element: Element = ("TStreamerBasicType", "fOdd", "", 4242, 0, 1, (0, 0, 0, 0, 0), 0, "int", ())
+    assert _kind_of(element) == ""
+    with pytest.raises(UnsupportedFeatureError, match="fOdd is of streamer type 4242"):
+        _written_element(WBuffer(), "", element, {"fOdd": 1}, {})

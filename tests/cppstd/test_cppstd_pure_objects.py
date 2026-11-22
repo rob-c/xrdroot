@@ -81,3 +81,57 @@ def test_thrown_exceptions_preserve_the_original_value_and_exception_identity() 
     with pytest.raises(objects.CppException) as caught:
         objects.throw(7)
     assert caught.value.value == 7 and caught.value.what() == "7"
+
+
+def test_generate_puts_one_call_into_each_element_of_the_span_and_no_other() -> None:
+    from xrdroot.cppstd import objects
+
+    values = [0, 0, 9, 9]
+    objects.generate_range(values, 0, 2, lambda: 7)
+    assert values == [7, 7, 9, 9]
+    objects.generate_range(values, 1, None, lambda: 1)
+    assert values == [7, 1, 1, 1]
+
+
+def test_shuffle_permutes_the_span_in_place_with_the_default_or_given_engine() -> None:
+    from xrdroot.cppstd import objects, random
+
+    values = list(range(20))
+    objects.shuffle_range(values, 0, None, random.default_random_engine(3))
+    assert sorted(values) == list(range(20)) and values != sorted(values)
+    again = list(range(20))
+    objects.shuffle_range(again, 0, 20, random.default_random_engine(3))
+    assert again == values  # the same engine and seed draw the same swaps
+    tail = [1, 2, 3]
+    objects.shuffle_range(tail, 0, 1)
+    assert tail == [1, 2, 3]  # a span of one has nowhere to swap
+
+
+def test_next_permutation_walks_the_orders_and_rewinds_to_the_first() -> None:
+    """Each call is one step of the lexicographic order, with a duplicate treated as C++ does:
+    the last order rewinds to the first and answers false."""
+    from xrdroot.cppstd import objects
+
+    values = [1, 2, 3]
+    assert objects.next_permutation_range(values, 0, None) is True
+    assert values == [1, 3, 2]
+    assert objects.next_permutation_range(values, 0, 3) is True
+    assert values == [2, 1, 3]
+    assert objects.next_permutation_range([3, 2, 1], 0, None) is False
+    assert objects.next_permutation_range([1, 2, 2], 0, 3) is True
+    # The suffix is descending, so its last element is its smallest and the successor is
+    # often one back: ``[2, 3, 1]`` takes the 3, not the 1 it ends with.
+    backwards = [2, 3, 1]
+    assert objects.next_permutation_range(backwards, 0, 3) is True
+    assert backwards == [3, 1, 2]
+
+
+def test_next_permutation_rewinds_the_last_order_and_leaves_one_element_alone() -> None:
+    from xrdroot.cppstd import objects
+
+    rewind = [3, 2, 1]
+    assert objects.next_permutation_range(rewind, 0, 3) is False
+    assert rewind == [1, 2, 3]
+    single = [5]
+    assert objects.next_permutation_range(single, 0, None) is False
+    assert single == [5]

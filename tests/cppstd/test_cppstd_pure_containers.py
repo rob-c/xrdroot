@@ -166,3 +166,129 @@ def test_the_stream_names_std_has_are_the_streams_own() -> None:
     assert containers.std.setw is streams.setw
     with pytest.raises(AttributeError, match=r"ROOT has std\.nothing"):
         containers.std.nothing  # noqa: B018
+
+
+#: Every template of the family whose C++ declarations name ``::iterator`` and
+#: ``::const_iterator`` - the names the translator emits for a declared iterator.
+CONTAINER_TEMPLATES = ("vector", "list", "deque", "set", "multiset", "map", "multimap",
+                       "forward_list", "unordered_map", "unordered_set",
+                       "unordered_multimap", "unordered_multiset")  # fmt: skip
+
+
+def test_every_container_template_names_the_iterator_a_declaration_makes() -> None:
+    """``std::list<std::pair<TBranch*,TClonesArray*> >::iterator iBranch;`` of a macro: the
+    translator drops the template arguments of a nested name, so every template answers the
+    one class, and its ``const_iterator`` is the same one."""
+    for name in CONTAINER_TEMPLATES:
+        template = containers.TEMPLATES[name]
+        assert template.const_iterator is template.iterator
+        assert repr(template.iterator()) == "<iterator, no container given>"
+
+
+def test_a_declared_iterator_is_walked_from_begin_to_end_as_cpp_walks_one() -> None:
+    """The loop of ``readauto``: assign ``begin()``, compare against ``end()``, ``iBranch->first``
+    and ``iBranch++`` - over the containers a macro declares one of."""
+    declared = containers.TEMPLATES["list"].iterator
+    branches = containers.std.list["std::pair<int,double>"]()
+    branches.push_back(containers.std.make_pair(1, 2.0))
+    branches.push_back(containers.std.make_pair(3, 4.0))
+    walked = []
+    it = declared()
+    it = branches.begin()
+    while it != branches.end():
+        walked.append((it.first, it.second))
+        it += 1
+    assert walked == [(1, 2.0), (3, 4.0)]
+
+    numbers = containers.std.vector["int"]([7, 8])
+    held = []
+    at = numbers.begin()
+    while at != numbers.end():
+        held.append((int(at), float(at)))
+        at = at + 1
+    assert held == [(7, 7.0), (8, 8.0)]
+
+    table = containers.std.map["std::string","int"]()
+    table["a"] = 1
+    pairs = []
+    key = containers.std.map.iterator()
+    key = table.find("a")
+    while key != table.end():
+        pairs.append((key.first, key.second))
+        key += 1
+    assert pairs == [("a", 1)]
+
+
+def test_an_iterator_no_container_gave_out_reads_nothing_and_steps_nowhere() -> None:
+    """An unassigned one is compared and stepped before ``begin()`` replaces it; reading
+    through it refuses with what to do instead of failing on an index."""
+    unassigned = containers.std.deque.iterator()
+    assert unassigned == containers.std.deque.iterator()
+    assert unassigned != containers.std.vector["int"]([1]).begin()
+    assert unassigned.__iadd__(1) is unassigned and unassigned + 1 is unassigned
+    with pytest.raises(TypeError, match="assign it a container's begin"):
+        unassigned.__deref__()
+    with pytest.raises(TypeError, match="assign it a container's begin"):
+        unassigned.second  # noqa: B018
+    assert not hasattr(unassigned, "__wrapped__")
+
+
+def test_a_sets_iterator_steps_the_elements_in_the_order_iteration_gives() -> None:
+    """``std::set<float>::const_iterator i = s.begin(); i != s.end(); ++i``: a set is indexed
+    by no position, so its iterator counts off the elements in the order iteration gives."""
+    values = containers.std.set["double"]()
+    for value in (3.0, 1.0, 2.0):
+        values.insert(value)
+    walked = []
+    at = values.begin()
+    while at != values.end():
+        walked.append(float(at))
+        at += 1
+    assert walked == [1.0, 2.0, 3.0]
+    assert values.end() - values.begin() == 3
+    assert float(values.begin() + 2) == 3.0 and float(values.end() - 1) == 3.0
+    assert at == values.end()
+
+    names = containers.std.set["std::string"]()
+    names.insert("b")
+    assert names.begin().c_str() == "b"
+
+    repeats = containers.std.multiset["int"]()
+    repeats.insert(1)
+    repeats.insert(2)
+    repeats.insert(1)
+    seen = []
+    each = repeats.begin()
+    while each != repeats.end():
+        seen.append(int(each))
+        each += 1
+    assert seen == [1, 1, 2]
+
+
+def test_the_std_algorithms_take_the_range_a_translated_call_hands_them() -> None:
+    """``std.shuffle(v.begin(), v.end(), g)``, ``std.generate(x, x + n, f)``: the emitter
+    lowers an algorithm it does not name to an attribute of ``std``, so the namespace must
+    read a range back to the container it came from and write there."""
+    std = containers.std
+    values = std.vector["int"]([3, 1, 2])
+    std.shuffle(values.begin(), values.end())
+    assert sorted(values) == [1, 2, 3]
+    std.next_permutation(values.begin(), values.end())
+    ordered = list(values)
+    assert ordered == [1, 3, 2] or ordered == [2, 1, 3]
+    doubles = std.vector["double"]([0.0, 0.0])
+    std.generate(doubles.begin(), doubles.end(), lambda: 2.5)
+    assert list(doubles) == [2.5, 2.5]
+    array = np.zeros(3)
+    std.generate(array, array[3:], lambda: 1.0)
+    assert array.tolist() == [1.0, 1.0, 1.0]
+
+
+def test_a_std_algorithm_refuses_a_range_it_cannot_follow_back_to_one_container() -> None:
+    std = containers.std
+    left = std.vector["int"]([1, 2]).begin()
+    right = std.vector["int"]([3, 4]).end()
+    with pytest.raises(TypeError, match=r"the ends of two different containers"):
+        std.shuffle(left, right)
+    with pytest.raises(TypeError, match=r"cannot follow back to its container"):
+        std.generate(3, 4, lambda: 0)

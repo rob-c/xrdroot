@@ -302,6 +302,8 @@ class Runner:
         post = [self._step(step, invocation.env, timeout) for step in invocation.after]
         steps += list(zip(invocation.after, post, strict=True))
         verdict = self._judged(test, invocation, result, post[0] if post else None)
+        if test.store_out:
+            _store_output(test, invocation, result)
         write_log(logs, invocation, result, verdict, steps)
         self._record(test, verdict, result, logs)
 
@@ -383,6 +385,19 @@ def write_log(logs: Path, invocation: plan.Invocation, result: Result, verdict: 
     (logs / "run.log").write_text("\n".join(lines + header + body), encoding="utf-8")
     if verdict.diff:
         (logs / "output.diff").write_text(verdict.diff, encoding="utf-8")
+
+
+def _store_output(test: Test, invocation: plan.Invocation, result: Result) -> None:
+    """``STOREOUT``: the run's output in ``<build dir>/<name>.log``, where the next test reads it.
+
+    ROOT's own macro passes ``OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${testname}.log`` to the test
+    driver, so a test that follows it - ``schemaRun1``'s ``.log`` read by ``schemaRun2check``'s
+    ``sed`` - finds the file its sibling wrote.
+    """
+    name = test.id.rsplit("/", 1)[-1]
+    (invocation.cwd / f"{name}.log").write_text(
+        result.stdout + result.stderr, encoding="utf-8", errors="surrogateescape"
+    )
 
 
 def _copy_to_build(files: Iterable[Path], directory: Path) -> None:

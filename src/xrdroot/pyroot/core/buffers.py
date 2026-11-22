@@ -15,11 +15,18 @@ import struct
 from typing import Any
 
 from ...buffer import Buffer as Cursor
-from ...rdobjects import reader_for
+from ...rdobjects import flat_reader_for, reader_for
 from ...wdeclared import Catalogue, parse_type
 from ...wdobjects import write_value
 from ...writer import WBuffer
-from .declared import catalogue_for, converted, new_value, plain_value
+from .declared import (
+    _plan,
+    catalogue_for,
+    converted,
+    flat_bytes,
+    new_value,
+    plain_value,
+)
 from .objects import TObject
 
 __all__ = ["TBuffer", "TBufferFile"]
@@ -76,6 +83,15 @@ class TBuffer(TObject):
 
     def SetBufferOffset(self, offset: int = 0) -> None:
         self._pos = int(offset)
+
+    def ResetMap(self, classCount: int = -1, objectCount: int = -1) -> None:
+        """``ResetMap``: forget the objects and classes this buffer has already read.
+
+        ROOT keeps a map so that an object written twice is read once; this kit reads each
+        object out of the bytes as they come, so there is nothing to forget - and the call
+        is what a program makes before reading a buffer it has just written from the start.
+        """
+        _ = (classCount, objectCount)
 
     def GetBufferOffset(self) -> int:
         """Not ROOT's name, but what ``Length`` is: how far in the next byte goes."""
@@ -163,7 +179,13 @@ class TBuffer(TObject):
         """What was written as a ``written``, read into ``into`` - or a new ``wanted`` - as
         a member of that type is read, converted as schema evolution converts it."""
         buf = self._cursor()
-        value = reader_for(written, catalogue_for(written))(buf)
+        catalogue: Catalogue = catalogue_for(written)
+        if into is not None and written == wanted:
+            flat = _read_flat(buf, written, catalogue, into)
+            if flat is not None:
+                self._pos = buf.pos
+                return flat  # a class of plain numbers, read straight into the object
+        value = reader_for(written, catalogue)(buf)
         self._pos = buf.pos
         target = into if into is not None else new_value(wanted)
         return converted(value, parse_type(wanted), target)
@@ -173,9 +195,35 @@ class TBufferFile(TBuffer):
     """``TBufferFile``: the buffer ROOT streams objects into on their way to a file."""
 
 
+def _read_flat(buf: Cursor, classname: str, catalogue: Catalogue, into: Any) -> Any:
+    """``into`` given the record that reads as one struct of plain numbers - or ``None`` when
+    the class is more than that, a class the catalogue does not declare, or a file whose
+    members are not the ones the class declares now.
+
+    The bulk loop of roottest's ``WriteBuffer`` reads ten million records of nine numbers,
+    and each of them built a dictionary of them for the object to be given from.
+    """
+    if catalogue.declared(classname) is None:
+        return None
+    made = flat_reader_for(classname, catalogue)
+    if made is None:
+        return None
+    read, labels = made
+    plan = _plan(catalogue, classname)
+    if plan.flat is None or tuple(field.name for field, _at, _found in plan.fields) != labels:
+        return None  # a class that is more than numbers, or a file that has evolved
+    for attribute, value in zip(plan.flat, read(buf), strict=True):
+        setattr(into, attribute, value)
+    return into
+
+
 def _written(obj: Any, classname: str, tagged: bool) -> bytes:
     """The bytes of ``obj`` as a ``classname`` - naming its class first when ``tagged``."""
     catalogue: Catalogue = catalogue_for(classname)
+    if not tagged:
+        flat = flat_bytes(obj, classname, catalogue)
+        if flat is not None:
+            return flat  # a class of plain numbers, written straight from the object
     out = WBuffer()
     at = out.tag(classname) if tagged else None
     write_value(out, classname, plain_value(obj, classname, catalogue), catalogue)

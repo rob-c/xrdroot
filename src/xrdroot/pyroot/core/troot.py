@@ -787,6 +787,10 @@ gROOT = TROOT()
 class TInterpreter:
     """``gInterpreter``: C++ declared and run - by :mod:`xrdroot.pycint`, when it is there."""
 
+    #: ``TInterpreter::EErrorCode``: what a declaration or a call reports back, which a macro
+    #: compares ``gInterpreter->Declare(...)`` with.
+    kNoError, kRecoverable, kDangerous, kFatal, kProcessing = 0, 1, 2, 3, 99
+
     def Declare(self, code: Any) -> bool:
         """``Declare``: C++ declarations, translated, and what they declare put in the namespace.
 
@@ -807,11 +811,29 @@ class TInterpreter:
                 namespace[name] = value  # a function, a class - or a global it declared
         return True
 
+    def LoadText(self, code: Any) -> None:
+        """``LoadText``: C++ read as a file's contents - declared now, as if a header were
+        included, so a script can call what it declares straight away.
+
+        ROOT keeps the text in the interpreter and parses it there; nothing is compiled
+        here, so what the text declares is what :meth:`Declare` puts in the namespace.
+        """
+        if _translator("run_source") is None:
+            _processor("gInterpreter.LoadText")(str(code))
+            return
+        self.Declare(code)
+
     def ProcessLine(self, line: Any, error: Any = None) -> Any:
         return gROOT.ProcessLine(line, error)
 
     def Calc(self, line: Any, error: Any = None) -> Any:
-        return gROOT.ProcessLine(line, error)
+        """``Calc``: an expression evaluated and its value given back, with nothing printed.
+
+        ROOT's ``TCling::Calc`` reads the value out of the interpreter without cling's prompt
+        echo - ``gInterpreter->Calc("1+2")`` prints nothing where ``ProcessLine("1+2")``
+        prints ``(int) 3`` - so this is the silent path, the one ``ProcessLineFast`` takes.
+        """
+        return _fast_processor(f"gInterpreter.Calc({str(line)!r})")(str(line))
 
     def Load(self, filename: Any, system: bool = False) -> int:
         """``Load``: ``gSystem->Load`` of the library."""

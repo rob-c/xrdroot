@@ -25,6 +25,7 @@ from ..execute import arguments, called, exists, load, run_program, split_call
 from ..library.aclic import split as split_aclic
 from ..library.build import BuildError
 from ..library.manifest import stem_of
+from ..runtime.application import TRINT
 
 if TYPE_CHECKING:
     from .interpreter import Interpreter
@@ -143,7 +144,7 @@ def _run(interp: Interpreter, rest: str) -> list[Said]:
     if not exists(called(rest)):
         return [_missing(path, "TApplication::ExecuteFile")]
     try:
-        interp.last_status = run_program([called(rest)], arguments(given))
+        interp.last_status = run_program([called(rest)], arguments(given), session=TRINT)
     except CintError as why:
         return [failure(why)]
     except TypeError as why:

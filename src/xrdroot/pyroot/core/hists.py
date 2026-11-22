@@ -32,10 +32,31 @@ __all__ = [
 ]  # fmt: skip
 
 
+class _EStatOverflows:
+    """``TH1::EStatOverflows``: the per-histogram flag as the enum a macro names it through,
+    ``TH1::EStatOverflows::kConsider`` being a value of ``0``, ``1`` or ``2``."""
+
+    kIgnore, kConsider, kNeutral = 0, 1, 2
+
+
 class TH1(
     UnifiedHistogram, Booked, Bins, Stats, Operations, TNamed, TAttLine, TAttFill, TAttMarker
 ):
     """``TH1``: a histogram of one axis - and the base of every other."""
+
+    def _one_content(self, bin: int) -> float:
+        """One bin's content straight out of the storage: a fit walks every bin of a
+        histogram on every turn of its minimiser, and the array of them is not remade."""
+        if not 0 <= bin < len(self._xrd._bins):
+            return 0.0
+        return float(self._xrd.bin_content(bin))
+
+    def _one_error(self, bin: int) -> float:
+        """One bin's error straight from its squared weights, without the array of every
+        bin's: a fit's objective asks for them a bin at a time, ten thousand times a call."""
+        if not 0 <= bin < len(self._xrd._bins):
+            return 0.0
+        return float(self._xrd.bin_error(bin))
 
     CLASS_TITLE = "1-Dim histogram base class"
     kNoStats = 1 << 9
@@ -48,6 +69,46 @@ class TH1(
     kIsHighlight = 1 << 21
     #: ``EStatusBits`` for ``SetCanExtend``: the axes that may grow.
     kNoAxis, kXaxis, kYaxis, kZaxis, kAllAxes = 0, 1, 2, 4, 7
+    #: ``TH1::EStatOverflows``: whether the statistics count the under- and overflow bins.
+    #: ``kIgnore`` and ``kConsider`` say so for this histogram; ``kNeutral`` asks the
+    #: global ``TH1::StatOverflows``. The values are also the enumerators' own, since a macro
+    #: writes ``TH1::EStatOverflows::kConsider``, which is the name set below.
+    kIgnore, kConsider, kNeutral = 0, 1, 2
+    #: ``TH1::EStatOverflows``, as the enum's own name: ``TH1::EStatOverflows::kNeutral``.
+    EStatOverflows: Any
+    #: ``TH1::fgStatOverflows``: whether a statistical method counts the flow bins - what a
+    #: histogram made ``kNeutral`` asks, and what ``TH1::StatOverflows(on)`` sets.
+    _stat_overflows = False
+
+    def GetStatOverflows(self) -> int:
+        """``GetStatOverflows``: this histogram's own flag, ``kNeutral`` until it is set."""
+        return int(self._xrd.stat_overflows())
+
+    def SetStatOverflows(self, value: Any = 0) -> None:
+        """``SetStatOverflows(flag)``: say for this histogram what the global flag says for
+        the rest - ``kIgnore``, ``kConsider`` or ``kNeutral`` for the global one."""
+        self._xrd.set_stat_overflows(int(value))
+
+    @staticmethod
+    def SmoothArray(nn: Any, yy: Any, ntimes: Any = 1) -> None:
+        """``TH1::SmoothArray(nn, yy[, ntimes])``: HBOOK's ``hsmoof`` - J. Friedman's 353QH
+        twice, ``ntimes`` over - over the ``nn`` values of ``yy``, in place.
+
+        ``yy`` is a C array a program hands over as a pointer, so it is written where it lies:
+        an array of numbers in place, or a view a ``std::vector`` gave up. An array already
+        smooth - a ramp, or one value repeated - comes back as it went in, which is what
+        ROOT's own ``TH1.SmoothArrayCrossCheck`` case asserts.
+        """
+        from ...stats import smooth_array
+
+        target = np.asarray(yy) if not isinstance(yy, np.ndarray) else yy
+        values = smooth_array(target[: int(nn)], int(ntimes))
+        target[: len(values)] = values
+
+    @staticmethod
+    def StatOverflows(value: Any) -> None:
+        """``TH1::StatOverflows(on)``: the global flag, which a ``kNeutral`` histogram asks."""
+        TH1._stat_overflows = bool(value)
 
     def SetHighlight(self, set: bool = True) -> None:
         """``SetHighlight``: mark the histogram for highlighting its bin under the mouse - which,
@@ -174,6 +235,10 @@ AXIS_SETTERS = ("SetAxisColor", "SetLabelColor", "SetLabelFont", "SetLabelOffset
 
 for _name in AXIS_SETTERS:
     setattr(TH1, _name, _on_axes(_name))
+
+
+#: ``TH1::EStatOverflows``'s own name, ``TH1::EStatOverflows::kConsider`` being ``1``.
+TH1.EStatOverflows = _EStatOverflows
 
 
 class TH2(TH1):

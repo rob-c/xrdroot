@@ -92,7 +92,7 @@ noshowpos = Manipulator("noshowpos", plus=False)
 
 
 def setw(width: int) -> Manipulator:
-    return Manipulator("setw", width=int(width))
+    return Manipulator("setw", _width=int(width))
 
 
 def setprecision(digits: int) -> Manipulator:
@@ -120,7 +120,9 @@ class ostream:
         self.alpha = False
         self.base = 10
         self.plus = False
-        self.width = 0
+        #: ``width()``'s state, kept under another name because ``width`` is the method
+        #: C++ declares - ``cout.width(12)`` sets the next field's width.
+        self._width = 0
         self.digits = 6
         self.fill = " "
         self._pending = ""
@@ -151,7 +153,7 @@ class ostream:
         self.target.write(text)
 
     def pad(self, text: str) -> str:
-        width, self.width = self.width, 0
+        width, self._width = self._width, 0
         if len(text) >= width:
             return text
         filler = self.fill * (width - len(text))
@@ -194,6 +196,14 @@ class ostream:
         old = self.digits
         if digits is not None:
             self.digits = int(digits)
+        return old
+
+    def width(self, columns: int | None = None) -> int:
+        """``width(n)``: the next field is ``n`` wide, and the call answers the width that
+        was in force - which the one field then uses up, as ``ios_base::width`` does."""
+        old = self._width
+        if columns is not None:
+            self._width = int(columns)
         return old
 
     def setf(self, *flags: Any) -> None:
@@ -275,6 +285,15 @@ class ofstream(ostream):
         if self.is_open():
             self.target.flush()
         return self
+
+    def _destruct(self) -> None:
+        """``~ofstream``: the file closed, which writes out what the stream still holds.
+
+        C++'s stream writes through a buffer of its own, so a program that writes a file in one
+        scope and reads it in the same run reads what this closed - ROOT's own tests write a
+        header and then load it (``dictgen_base``'s ``myextra.h``).
+        """
+        self.close()
 
 
 cout = ostream(None, "stdout")

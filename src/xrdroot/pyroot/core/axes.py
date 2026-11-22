@@ -9,6 +9,7 @@ keeps it, and the statistics and extremes of the histogram honour it.
 
 from __future__ import annotations
 
+import itertools
 import math
 from typing import Any
 
@@ -78,10 +79,50 @@ for _member in AXIS_ATTRIBUTES:
 TAttAxis.SetTickSize = TAttAxis.SetTickLength  # type: ignore[attr-defined]
 
 
+def _checked(spec: Any) -> Any:
+    """``TAxis::Set``: the axis's limits as ROOT checks them, and the axis ROOT leaves.
+
+    ROOT reports and returns rather than raising - ``Error in <TAxis::Set>: Axis limits need
+    to be finite numbers``, ``Error in <TAxis::Set>: bin edges must be in increasing order``
+    - and the axis it leaves is the default one bin from 0 to 1. ROOT's own
+    ``TAxis.EqualBinEdges`` case expects exactly those two messages.
+    """
+    from .messages import Error
+
+    if isinstance(spec, tuple):
+        if np.isfinite(spec[1]) and np.isfinite(spec[2]):
+            return spec
+        Error("TAxis::Set", "Axis limits need to be finite numbers")
+        return (1, 0.0, 1.0)
+    edges = [float(one) for one in spec]
+    if not any(not later > earlier for earlier, later in itertools.pairwise(edges)):
+        return spec
+    Error("TAxis::Set", "bin edges must be in increasing order")
+    return (1, 0.0, 1.0)
+
+
 class TAxis(TNamed, TAttAxis):
     """``TAxis``: the bins of one axis, where they are, and what the axis is called."""
 
     CLASS_TITLE = "Axis class"
+
+    #: ``TAxis::EStatusBits``: an axis's status word - which it shares with ``TAxis3D`` and
+    #: its siblings, so that a macro may ask ``axis.TestBit(TAxis.kAxisRange)``.
+    kDecimals = 1 << 7
+    kTickPlus = 1 << 9
+    kTickMinus = 1 << 10
+    kAxisRange = 1 << 11
+    kCenterTitle = 1 << 12
+    kCenterLabels = 1 << 14
+    kRotateTitle = 1 << 15
+    kPalette = 1 << 16
+    kNoExponent = 1 << 17
+    kLabelsHori = 1 << 18
+    kLabelsVert = 1 << 19
+    kLabelsDown = 1 << 20
+    kLabelsUp = 1 << 21
+    kIsInteger = 1 << 22
+    kMoreLogLabels = 1 << 23
 
     def __init__(self, *args: Any) -> None:
         """``TAxis(nbins, xlow, xup)`` or ``TAxis(nbins, edges)``, standing alone."""
@@ -89,9 +130,13 @@ class TAxis(TNamed, TAttAxis):
 
         super().__init__()
         spec: Any = (int(args[0]), float(args[1]), float(args[2])) if len(args) == 3 else None
-        if spec is None:
+        if spec is None and len(args) == 1 and not isinstance(args[0], (int, np.integer)):
+            # ``TAxis(edges)``: ROOT's constructor from a vector of bin edges, which a macro
+            # writes as ``TAxis _({1, 1})``.
+            spec = [float(one) for one in args[0]]
+        elif spec is None:
             spec = list(args[1])[: int(args[0]) + 1] if len(args) == 2 else (1, 0.0, 1.0)
-        made = binning(spec)
+        made = binning(_checked(spec))
         self._row = axis_members("xaxis", made.nbins, made.low, made.high, made.stored)
         self._owner: Any = None
 

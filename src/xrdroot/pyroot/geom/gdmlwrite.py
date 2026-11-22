@@ -84,7 +84,7 @@ def _parts(name: str, material: Any, geometry: Geometry) -> tuple[tuple[str, flo
                                              a=float(material.GetA()))
         return ((element, 1.0),)
     found = []
-    for index, (a, z, weight) in enumerate(getattr(material, "_elements", ())):
+    for index, (a, z, weight, _element) in enumerate(getattr(material, "_elements", ())):
         element = f"{name}_el{index}"
         geometry.elements[element] = Element(name=element, formula=f"Z{z:g}",
                                              z=round(float(z)), a=float(a))

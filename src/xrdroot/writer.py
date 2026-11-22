@@ -39,7 +39,6 @@ from collections.abc import Callable, Iterator, Mapping
 from typing import IO, TYPE_CHECKING, Any
 
 import numpy as np
-from xrdclient.url import parse
 
 from .buffer import BYTE_COUNT_MASK, CLASS_MASK, IS_REFERENCED, MAP_OFFSET, NEW_CLASS_TAG, Buffer
 from .compression import CODES, LEVELS, compress, spelled
@@ -53,6 +52,7 @@ from .interp import MEMBER_WISE, OFFSET_L, OFFSET_P
 from .profile import PROFILES
 from .rootarrays import ARRAYS
 from .stacks import MultiGraph
+from .transport import parse
 from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
@@ -521,8 +521,8 @@ def _record(buf: WBuffer, classname: str, row: Any, used: dict[str, None]) -> No
         )
     used[classname] = None
     index = buf.start(info[1])
-    for element in info[2]:
-        _element(buf, element, row, used)
+    for kind, element in _steps_of(classname, info):
+        _written_element(buf, kind, element, row, used)
     buf.end(index)
 
 
@@ -539,38 +539,92 @@ def _pointed(buf: WBuffer, typename: str, value: Any, used: dict[str, None]) -> 
     buf.end(index)
 
 
+#: The streamer types one element kind covers: the bases and the string, the objects and
+#: pointers, the numbers, and STL's own.
+BASE_STYPES = frozenset({0, 65, 66, 67})
+OBJECT_STYPES = frozenset({61, 62, 63, 64, 68, 69})
+NUMBER_STYPES = frozenset(
+    set(FORMS) | {OFFSET_L + kind for kind in FORMS} | {OFFSET_P + kind for kind in FORMS}
+)
+STL_STYPE = 500
+
+#: Which write each of a class's elements takes, by class name: worked out once, because a
+#: class's elements are the same every time it is written and a file of ten thousand
+#: histograms writes each class's elements ten thousand times over. ``""`` is a member this
+#: writer does not lay out, which writing one refuses by name.
+_STEPS: dict[str, tuple[tuple[str, Element], ...]] = {}
+
+
+def _steps_of(classname: str, info: Any) -> tuple[tuple[str, Element], ...]:
+    """Each of a class's elements with the kind of write it takes, in the order they come."""
+    found = _STEPS.get(classname)
+    if found is None:
+        found = _STEPS[classname] = tuple(
+            (_kind_of(element), element) for element in info[2]
+        )
+    return found
+
+
+def _kind_of(element: Element) -> str:
+    """The write one element takes: a base, a histogram's locked list, an object, a number,
+    an STL member - or nothing this writer lays out."""
+    stype, name, typename = element[3], element[1], element[8]
+    if stype in BASE_STYPES:
+        return "base"
+    if name == "fFunctions":
+        return "list"  # a histogram's, which ROOT locks - or an object when it is not one
+    if stype in OBJECT_STYPES:
+        return "object"
+    if stype in NUMBER_STYPES:
+        return "number"
+    if _an_stl_member(stype, typename):
+        return "stl"
+    return ""
+
+
+def _an_stl_member(stype: int, typename: str) -> bool:
+    """Is this element an STL member of a kind this writer lays out?"""
+    if stype != STL_STYPE:
+        return False
+    return typename == PAIRS or typename in STL_WRITERS
+
+
 def _element(buf: WBuffer, element: Element, row: dict[str, Any], used: dict[str, None]) -> None:
-    """One member of one class, laid out exactly as its element describes."""
-    _kind, name, _title, stype, _size, alen, _adim, _maxidx, typename, extras = element
+    """One member of one class, laid out exactly as its element describes - decided afresh,
+    which is what writing one member of a class by hand does."""
+    _written_element(buf, _kind_of(element), element, row, used)
+
+
+def _written_element(
+    buf: WBuffer, kind: str, element: Element, row: dict[str, Any], used: dict[str, None]
+) -> None:
+    """One member of one class, written by the write its kind was decided to take."""
+    name, stype, alen, typename, extras = element[1], element[3], element[5], element[8], element[9]
     value = row.get(name, DEFAULTS.get(name))
-    if _base_element(buf, name, stype, value, used, row):
-        return
-    if name == "fFunctions" and "fNcells" in row:  # a histogram's, which ROOT locks
+    if kind == "base":
+        _base_element(buf, name, stype, value, used, row)
+    elif kind == "list" and "fNcells" in row:  # a histogram's fFunctions, which ROOT locks
         _list(buf, "TList", value, used, BITS | USE_RWLOCK)
-        return
-    if _object_element(buf, stype, typename, value, used):
-        return
-    if _number_element(buf, name, stype, alen, extras, value, row):
-        return
-    if stype == 500 and _stl_element(buf, name, typename, value):
-        return
-    raise UnsupportedFeatureError(
-        f"{name} is of streamer type {stype}, which this writer does not lay out"
-    )
+    elif kind == "object" or kind == "list":
+        _object_element(buf, stype, typename, value, used)
+    elif kind == "number":
+        _number_element(buf, name, stype, alen, extras, value, row)
+    elif kind == "stl":
+        _stl_element(buf, name, typename, value)
+    else:
+        raise UnsupportedFeatureError(
+            f"{name} is of streamer type {stype}, which this writer does not lay out"
+        )
 
 
-def _stl_element(buf: WBuffer, name: str, typename: str, value: Any) -> bool:
+def _stl_element(buf: WBuffer, name: str, typename: str, value: Any) -> None:
     """An STL member: the prior a ``TEfficiency`` keeps, or a function's vectors and map."""
     if typename == PAIRS:
         _pairs(buf, value)
-        return True
-    writer = STL_WRITERS.get(typename)
-    if writer is None:
-        return False
+        return
     index = buf.start(STL_VERSION)
-    writer(buf, name, value)
+    STL_WRITERS[typename](buf, name, value)  # which kind it is was decided when it was planned
     buf.end(index)
-    return True
 
 
 def _base_element(
@@ -580,7 +634,7 @@ def _base_element(
     value: Any,
     used: dict[str, None],
     row: dict[str, Any],
-) -> bool:
+) -> None:
     if stype in (0, 66, 67):
         value = _flat_base(row, name, value)
     if stype == 66:  # the TObject base, which streams itself
@@ -589,11 +643,8 @@ def _base_element(
         _write_tnamed(buf, value)
     elif stype == 0:  # any other base, written under its own name
         _write_base(buf, name, value, used)
-    elif stype == 65:  # a TString member: its bytes, no record
+    else:  # stype 65: a TString member, its bytes and no record - the only kind left
         buf.string(str(value if value is not None else ""))
-    else:
-        return False
-    return True
 
 
 def _flat_base(row: dict[str, Any], name: str, value: Any) -> Any:
@@ -714,7 +765,7 @@ def _write_base(buf: WBuffer, name: str, value: Any, used: dict[str, None]) -> N
 
 def _object_element(
     buf: WBuffer, stype: int, typename: str, value: Any, used: dict[str, None]
-) -> bool:
+) -> None:
     if stype in (61, 62):  # an object held by value
         if typename in ARRAYS:
             _array(buf, typename, value)
@@ -722,11 +773,8 @@ def _object_element(
             _record(buf, typename, value if value is not None else {}, used)
     elif stype in (63, 68):  # a pointer promised never null, written in place
         _record(buf, typename.rstrip("*"), value if value is not None else [], used)
-    elif stype in (64, 69):  # a pointer that may be null
+    else:  # 64, 69: a pointer that may be null - the only kind left
         _pointed(buf, typename, value, used)
-    else:
-        return False
-    return True
 
 
 def _number_element(
@@ -737,7 +785,7 @@ def _number_element(
     extras: tuple[Any, ...],
     value: Any,
     row: dict[str, Any],
-) -> bool:
+) -> None:
     if stype in FORMS:  # one number
         buf.raw(struct.pack(">" + FORMS[stype], value))
     elif stype - OFFSET_L in FORMS:  # a fixed-size array, x[10]
@@ -745,11 +793,8 @@ def _number_element(
         if len(values) != alen:
             raise ValueError(f"{name} holds {len(values)} values where {alen} were declared")
         _numbers(buf, FORMS[stype - OFFSET_L], values)
-    elif stype - OFFSET_P in FORMS:  # a counted array, x[n], behind its marker
+    else:  # a counted array, x[n], behind its marker - the only kind left
         _counted(buf, name, FORMS[stype - OFFSET_P], str(extras[1]), value, row)
-    else:
-        return False
-    return True
 
 
 def _counted(
@@ -1786,6 +1831,12 @@ class WritableFile(WritableDirectory):
         #: The file's ``ProcessID`` records, by the UUID each is titled with: what an object
         #: a ``TRef`` may point at is written with the index of.
         self._pids: dict[str, int] | None = None
+        #: The trees and ntuples a checkpoint has already given their own record, by object id,
+        #: and the streamer-info record written last with how many classes it covered - so a
+        #: second checkpoint writes only what is new and a close after one writes nothing twice.
+        self._finished: set[int] = set()
+        self._streamer_record: tuple[int, int] | None = None
+        self._streamers_for = 0
 
     def _processes(self) -> dict[str, int]:
         """The file's ``ProcessID`` records - those it had already, when it is being updated."""
@@ -1822,6 +1873,18 @@ class WritableFile(WritableDirectory):
             seek, nbytes = region
             self._freed.append((seek, seek + nbytes - 1))
 
+    def checkpoint(self) -> None:
+        """Write the file as far as it goes and leave it open - what ROOT's ``TFile::Write`` does.
+
+        Everything written so far becomes a file at this file's path that can be opened and
+        read: the header, the directory's keys, each tree's own record and the streamer info.
+        What is written next is appended, as ROOT appends it, and a second ``Write`` appends a
+        second free list and header of its own. A program that writes a file and reads it back
+        in the same run - as ROOT's own tests do - reads it here too.
+        """
+        self._assemble()
+        self._out.finish()
+
     def close(self) -> None:
         """Lay out the bookkeeping, fill in the header, and let go."""
         if self._closed:
@@ -1834,17 +1897,37 @@ class WritableFile(WritableDirectory):
             if self._owned:
                 self._handle.close()
 
-    def _assemble(self) -> None:
-        """Everything that could only be placed once the objects were in."""
+    def _finish_containers(self) -> None:
+        """Give each tree and ntuple its own record, each one once.
+
+        A record written twice is a second key, so a checkpoint and the close that follows it
+        write it once between them: what is in ``_finished`` has already been written.
+        """
         for tree in self._trees:
-            tree._finish()  # its baskets are in; now it can say where they went
+            if id(tree) not in self._finished:
+                self._finished.add(id(tree))
+                tree._finish()  # its baskets are in; now it can say where they went
         for ntuple in self._rntuples:
-            ntuple._finish()  # likewise its pages; now its header, footer and anchor
-        info = self._write_streamers()
+            if id(ntuple) not in self._finished:
+                self._finished.add(id(ntuple))
+                ntuple._finish()  # likewise its pages; now its header, footer and anchor
+
+    def _assemble(self) -> None:
+        """Everything that could only be placed once the objects were in.
+
+        Each tree's record is written once and the streamer info only when a class new since
+        the last one has been used, so assembling twice - a checkpoint and then the close, or
+        two ``Write`` calls - writes nothing twice. The free list and the header are written
+        every time, each replacing the one before it, as ROOT's own ``WriteFree`` does.
+        """
+        self._finish_containers()
+        if self._streamer_record is None or self._streamers_for != len(self._used):
+            self._streamer_record = self._write_streamers()
+            self._streamers_for = len(self._used)
         for directory in self._walk():
             if directory._dirty:
                 directory._write_keys()
-        self._write_header(*self._write_free(), info)
+        self._write_header(*self._write_free(), self._streamer_record)
 
     def _write_streamers(self) -> tuple[int, int]:
         """The file's ``StreamerInfo`` record, and where it went."""

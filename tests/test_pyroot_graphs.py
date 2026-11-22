@@ -308,7 +308,10 @@ def test_a_stack_prints_each_of_its_histograms(capsys):
     assert capsys.readouterr().out == "TH1.Print Name  = a, Entries= 0, Total sum= 0\n"
 
 
-def test_a_multigraph_fits_every_graph_together():
+def test_a_multigraph_fits_every_graph_together(monkeypatch):
+    from xrdroot.pyroot.graphics import pads
+
+    monkeypatch.setattr(pads, "_CURRENT", [None])  # ROOT's frame is the pad's business
     mg = ROOT.TMultiGraph("mg", "graphs")
     expect(
         (mg.GetListOfFunctions().GetSize(), 0),
@@ -326,8 +329,91 @@ def test_a_multigraph_fits_every_graph_together():
         (bool(mg.GetFunction("pol1") is not None), True),
         (mg.GetListOfFunctions().GetSize(), 1),
         (bool(mg.GetFunction("nothing") is None), True),
-        (mg.GetXaxis().GetXmin(), pytest.approx(0.7)),
+        (mg.GetXaxis().GetXmin(), pytest.approx(0.85)),
         (bool(mg.GetHistogram() is mg.GetHistogram()), True),
+    )
+
+
+def test_a_multigraph_frame_on_a_log_pad_is_widened_by_its_ratios_logarithm():
+    """``TMultiGraph::GetHistogram``: ROOT's own 0.65234 and 79.9602 for two falling graphs on
+    a logarithmic pad, whose ends are pushed out by log10 of their ratio, not by a tenth."""
+    ROOT.TCanvas().SetLogy()
+    energy: list[float] = []
+    steep: list[float] = []
+    shallow: list[float] = []
+    e = 1e-4
+    while e < 2e7:
+        energy.append(e)
+        steep.append(10 * e**-0.1)
+        shallow.append(15 * e**-0.15)
+        e *= 1.1
+    mg = ROOT.TMultiGraph("mg", "curves")
+    mg.Add(ROOT.TGraph(len(energy), energy, steep))
+    mg.Add(ROOT.TGraph(len(energy), energy, shallow))
+    frame = mg.GetHistogram()
+    expect(
+        (frame.GetMinimum(), pytest.approx(0.65233814596432715)),
+        (frame.GetMaximum(), pytest.approx(79.960188962911516)),
+        (frame.GetNbinsX(), len(energy)),
+        (frame.GetXaxis().GetXmin(), pytest.approx(-998097.69466180552)),
+    )
+
+
+def test_a_multigraph_frame_without_a_log_pad_is_a_twentieth_wider(monkeypatch):
+    """A linear frame is ROOT's 5 % either way - not the tenth ``TGraph``'s own frame takes -
+    and a multigraph of no graph still gets one, a unit wide."""
+    from xrdroot.pyroot.graphics import pads
+
+    monkeypatch.setattr(pads, "_CURRENT", [None])
+    mg = ROOT.TMultiGraph("mg", "graphs")
+    mg.Add(ROOT.TGraph())
+    mg.Add(ROOT.TGraph(2, [1.0, 2.0], [1.0, 2.0]))
+    mg.Add(ROOT.TGraph(2, [3.0, 4.0], [3.0, 4.0]))
+    frame, empty = mg.GetHistogram(), ROOT.TMultiGraph().GetHistogram()
+    expect(
+        (frame.GetXaxis().GetXmin(), pytest.approx(0.85)),
+        (frame.GetXaxis().GetXmax(), pytest.approx(4.15)),
+        (frame.GetMinimum(), pytest.approx(0.85)),
+        (frame.GetMaximum(), pytest.approx(4.15)),
+        (frame.GetNbinsX(), 100),
+        (bool(frame.GetDirectory() is None), True),
+        (bool(frame.TestBit(ROOT.TH1.kNoStats)), True),
+        (empty.GetXaxis().GetXmin(), pytest.approx(-0.05)),
+        (empty.GetMaximum(), pytest.approx(1.05)),
+    )
+
+
+def test_a_log_frames_ends_are_floored_at_a_thousandth_when_points_reach_zero():
+    """ROOT reads a bottom at or below zero as a thousandth of the top, a graph at a time, so
+    a positive graph's least point does not rescue one that reaches below zero."""
+    canvas = ROOT.TCanvas()
+    canvas.SetLogx()
+    canvas.SetLogy()
+    mg = ROOT.TMultiGraph()
+    mg.Add(ROOT.TGraph(2, [-5.0, 5.0], [-1.0, 5.0]))
+    mg.Add(ROOT.TGraph(2, [2.0, 30.0], [2.0, 3.0]))
+    frame = mg.GetHistogram()
+    expect(
+        (frame.GetXaxis().GetXmin(), pytest.approx(0.012)),
+        (frame.GetXaxis().GetXmax(), pytest.approx(48.0)),
+        (frame.GetMinimum(), pytest.approx(0.002)),
+        (frame.GetMaximum(), pytest.approx(8.0)),
+    )
+
+
+def test_a_frame_of_one_point_is_widened_from_a_unit_span(monkeypatch):
+    """ROOT makes the top of a span of no width one more than its bottom before padding it."""
+    from xrdroot.pyroot.graphics import pads
+
+    monkeypatch.setattr(pads, "_CURRENT", [None])
+    mg = ROOT.TMultiGraph()
+    mg.Add(ROOT.TGraph(1, [1.0], [1.0]))
+    frame = mg.GetHistogram()
+    expect(
+        (frame.GetXaxis().GetXmin(), pytest.approx(0.95)),
+        (frame.GetXaxis().GetXmax(), pytest.approx(2.05)),
+        (frame.GetMinimum(), pytest.approx(0.95)),
+        (frame.GetMaximum(), pytest.approx(2.05)),
     )
 
 

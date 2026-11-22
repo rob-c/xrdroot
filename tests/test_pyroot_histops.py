@@ -346,3 +346,102 @@ def test_an_integral_already_made_is_used_again_until_the_entries_move(capsys):
     assert empty.GetIntegral()[-1] == 0.0 and capsys.readouterr().err == ""  # still the same
     empty.Fill(0.5)
     assert empty.GetIntegral()[-2] == 1.0 and empty.GetIntegral()[-1] == 1.0
+
+
+def test_normalize_scales_what_its_option_names_to_one_as_root_does():
+    """``TH1::Normalize``: the numbers are ROOT's own ``test_TH1.cxx`` case - no option makes
+    the integral over the bins' widths one (10 for ten unit-width bins holding 18), ``"max"``
+    the largest bin, ``"sum"`` the sum of the weights; and ``GetEntries`` stays as it was."""
+    def made():
+        h = ROOT.TH1F("n", "n", 10, 0, 1)
+        for at, content in ((1, 1.0), (3, 5.0), (5, 10.0), (7, -1.0), (10, 3.0)):
+            h.SetBinContent(at, content)
+        return h
+
+    plain = made()
+    expect(
+        (plain.GetEntries(), 5.0),
+        (plain.GetSumOfWeights(), 18.0),
+        (plain.Integral("width"), pytest.approx(1.8)),
+        (plain.GetMaximum(), 10.0),
+    )
+    for option, weights, width_sum, largest in (("", 10.0, 1.0, 50 / 9),
+                                                ("integral", 10.0, 1.0, 50 / 9),
+                                                ("max", 1.8, 0.18, 1.0),
+                                                ("sum", 1.0, 0.1, 5 / 9)):  # fmt: skip
+        scaled = made()
+        scaled.Normalize(option)
+        assert scaled.GetEntries() == 5.0
+        assert scaled.GetSumOfWeights() == pytest.approx(weights)
+        assert scaled.Integral("width") == pytest.approx(width_sum)
+        assert scaled.GetMaximum() == pytest.approx(largest)
+
+
+def test_a_histogram_asks_a_global_flag_for_its_statistics_overflows():
+    """``TH1::EStatOverflows``: a histogram is ``kNeutral`` until told otherwise - its own
+    flag, which neither ``TH1::StatOverflows`` nor another histogram's flag changes."""
+    neutral, ignoring = ROOT.TH1F("a", "a", 2, 0, 1), ROOT.TH1F("b", "b", 2, 0, 1)
+    expect(
+        (neutral.GetStatOverflows(), ROOT.TH1.EStatOverflows.kNeutral),
+        (ROOT.TH1.EStatOverflows.kConsider, 1),
+    )
+    ignoring.SetStatOverflows(ROOT.TH1.EStatOverflows.kIgnore)
+    ROOT.TH1.StatOverflows(True)
+    expect(
+        (ignoring.GetStatOverflows(), ROOT.TH1.kIgnore),
+        (neutral.GetStatOverflows(), ROOT.TH1.kNeutral),
+        (ROOT.TH1F("c", "c", 2, 0, 1).GetStatOverflows(), ROOT.TH1.kNeutral),
+    )
+    ROOT.TH1.StatOverflows(False)
+
+
+def test_add_bin_content_takes_one_bin_number_per_axis_then_the_weight():
+    """``TH1::AddBinContent(bin[, w])`` and the overloads ``TH2``/``TH3`` add - the bin
+    numbers are one per axis, so a 2-D histogram's third argument is its y bin and not a
+    weight, and only one more than the number of axes is a weight. ROOT's own case
+    ``TH1.AddBinContent`` - ``h2.AddBinContent(1, 1, 1.)`` adds one to the bin (1, 1) -
+    and ``Eval``, which works out a global bin itself, still adds to that one."""
+    h1 = ROOT.TH1F("a1", "", 10, 0, 1)
+    h1.AddBinContent(1, 1.0)
+    h1.AddBinContent(1, 2.0)
+    h2 = ROOT.TH2F("a2", "", 10, 0, 1, 2, 0, 3)
+    h2.AddBinContent(1, 1, 1.0)
+    h2.AddBinContent(2, 2, 0.5)
+    h2.AddBinContent(3, 2, 2.0)
+    h3 = ROOT.TH3F("a3", "", 5, 0, 1, 2, 0, 2, 2, 0, 3)
+    h3.AddBinContent(1, 1, 1, 1.0)
+    expect(
+        (h1.GetBinContent(1), 3.0),
+        ((h2.GetBinContent(1, 1), h2.GetBinContent(2, 2), h2.GetBinContent(3, 2)),
+         (1.0, 0.5, 2.0)),
+        (h2.GetBinContent(2, 1), 0.0),
+        (h3.GetBinContent(1, 1, 1), 1.0),
+    )
+    h1.AddBinContent(2)  # one number per axis and no weight: one entry
+    assert h1.GetBinContent(2) == 1.0
+
+
+def test_the_static_smooth_array_leaves_a_smooth_array_as_it_was_and_writes_in_place():
+    """``TH1::SmoothArray(nn, yy[, ntimes])`` is HBOOK's ``hsmoof`` over a raw array - the
+    static a program calls with ``v.data()`` - and what it writes lands in the array itself.
+    ROOT's ``TH1.SmoothArrayCrossCheck`` case asks for a ramp and one repeated value to come
+    back unchanged; a single wild value is stepped over rather than smeared, and ``ntimes``
+    at zero smooths nothing."""
+    ramp = ROOT.std.vector["double"]([0.0, 1.0, 2.0, 3.0, 4.0])
+    ROOT.TH1.SmoothArray(ramp.size(), ramp.data())
+    flat = ROOT.std.vector["double"]([1.0] * 5)
+    ROOT.TH1.SmoothArray(5, flat.data())
+    expect(
+        (list(ramp), [0.0, 1.0, 2.0, 3.0, 4.0]),
+        (list(flat), [1.0] * 5),
+    )
+    wild = np.array([0.0, 1.0, 99.0, 3.0, 4.0])
+    ROOT.TH1.SmoothArray(5, wild)
+    # A running median steps over a single wild value rather than smearing it: the 99 is
+    # gone and the values beside it are near what they were.
+    assert 99.0 not in wild.tolist()
+    assert abs(wild[1] - 1.0) <= 1.0 and abs(wild[3] - 3.0) <= 1.0
+    untouched = np.array([0.0, 5.0, 0.0])
+    ROOT.TH1.SmoothArray(3, untouched, 0)
+    assert untouched.tolist() == [0.0, 5.0, 0.0]
+    assert ROOT.TH1D("s", "", 5, 0, 5).Smooth(1) is None  # the in-place twin still there

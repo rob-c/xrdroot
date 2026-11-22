@@ -211,6 +211,19 @@ def test_converters_that_cannot_run_leave_the_output_as_it_was(root):
     assert judge(test, run, root, root / "missing").status == "PASS"
 
 
+def test_a_regex_matches_across_newlines_as_cmakes_does(root):
+    """CMake's ``.`` is every character including a newline, so a ``PASS_REGULAR_EXPRESSION``
+    written against three lines of output - ROOT's three-line ``root: unrecognized option``
+    message - matches; Python's ``.`` stops at the newline unless it is told not to."""
+    said = result("", "root: unrecognized option '-e invalid'\n"
+                      "root: unrecognized option '--no_exist'\n"
+                      "Try 'root --help' for more information.\n")  # fmt: skip
+    test = roottest(passregex=("root: unrecognized option '-e invalid'"
+                               ".*--no_exist.*Try 'root --help'",))
+    assert status(test, said, root) == "PASS"
+    assert status(test, result("", "root: unrecognized option '-e invalid'\n"), root) == "FAIL"
+
+
 def test_a_regex_cmake_takes_but_python_does_not_is_matched_literally(root):
     assert status(roottest(passregex=("a[",)), result("x a[ y"), root) == "PASS"
 
@@ -328,3 +341,21 @@ def test_a_test_whose_own_script_lacks_an_optional_package_is_skipped(root):
     # a package the project does not declare is a real failure, and no import error is no skip
     assert missing_package(result(stderr="ModuleNotFoundError: No module named 'zuper'" )) == ""
     assert missing_package(result(stdout="all good")) == ""
+
+
+def test_a_reference_in_the_build_tree_is_read_from_the_working_copy(root):
+    """``OUTREF ${CMAKE_CURRENT_BINARY_DIR}/reference.log`` names a file a previous test wrote
+    there — ROOT's driver stores every test's output as ``<build>/<name>.log`` — so the judge
+    reads it from the working copy rather than looking for it in ROOT's source tree."""
+    from tools.rootsuite.judge import _expected
+
+    (root / "a").mkdir(parents=True, exist_ok=True)
+    (root / "a/source.ref").write_text("from the source tree\n")
+    work = root / "work"
+    work.mkdir()
+    (work / "reference.log").write_text("633554432\n")
+    assert _expected(root, "a/source.ref", work) == "from the source tree\n"
+    assert _expected(root, "${CMAKE_CURRENT_BINARY_DIR}/reference.log", work) == "633554432\n"
+    # neither place: the source path is what raises, naming the reference the test declared
+    with pytest.raises(FileNotFoundError):
+        _expected(root, "a/missing.ref", work)

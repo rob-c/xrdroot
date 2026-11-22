@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .ctype import CType
+from .ctype import SMART, CType
 from .dialect import active
 from .emit_expr import _is_null, is_container, zero
 from .emit_stmt import StmtEmitter
@@ -156,16 +156,30 @@ class VariableEmitter(StmtEmitter):
         (see :meth:`statements`); anywhere else - a ``for``'s first clause, an
         ``if``'s condition - it is refused.
         """
-        if ctype is None or ctype.pointer or ctype.reference or ctype.dims:
+        if ctype is None or ctype.pointer or ctype.reference:
             return False
-        guarded = ctype.name in GUARDS or ctype.name in active().guards
-        if not (guarded or self._destructs(ctype.name)):
+        named = self._owned(ctype)
+        guarded = named.name in GUARDS or named.name in active().guards
+        if not (guarded or self._destructs(named.name)):
             return False
         if self.destructed is None:
             where = "declared in a condition or a for's first part"
             why = f"the local {ctype.name} {decl.name} {where}, whose destructor C++ runs"
             raise self.refuse(f"{why} as that statement ends", decl)
         return True
+
+    def _owned(self, ctype: CType) -> CType:
+        """The type whose destructor C++ runs for a local of ``ctype``: the local's own, the
+        element of an array of them - ``A a[3]``, ``A a[2][3]`` - or the object a smart pointer
+        holds, which this kit keeps as the object itself (``std::unique_ptr<TFile>`` is the
+        ``TFile``) and as the arrays ``cppstd.objects.ObjectArray`` builds, one per dimension,
+        when it is an array of them."""
+        if ctype.dims:
+            return ctype.element()
+        inner = ctype.args[0] if ctype.name in SMART and ctype.args else None
+        if isinstance(inner, CType):
+            return inner.element() if inner.dims else inner
+        return ctype
 
     def _destructs(self, name: str) -> bool:
         """Does the macro's class ``name`` have a destructor with a body?"""
@@ -176,7 +190,7 @@ class VariableEmitter(StmtEmitter):
     def write_variable(self, symbol: Symbol, value: str, decl: VarDecl) -> None:
         if symbol.cell:
             ctype = symbol.ctype
-            kind = f", {ctype.name!r}" if ctype is not None and ctype.scalar else ""
+            kind = cell_type(ctype)
             if _mentions(value, symbol.py):
                 # C++'s own initialiser may take the address of the variable it initialises -
                 # `static int x = (f(&x), 0)` - so the cell is made first and filled after.
@@ -375,13 +389,20 @@ class VariableEmitter(StmtEmitter):
             made = f"array('char', {self._dimensions(decl, ctype, init)})"
             return made if init is None else f"text_into({made}, {self.value(init)})"
         if len(ctype.dims) > 1:
-            items = self.value(init) if init is not None else "[]"
-            dims = self._dimensions(decl, ctype, init)
-            return f"array('char*', {dims.split(',')[0].strip('(')}, {items})"
+            # A ``char[N][M]`` is a buffer of the characters, so ``name[i]`` is its row and
+            # ``name[i][j]`` a byte of it, which a write goes into in place.
+            items = f", {self.value(init)}" if init is not None else ""
+            return f"char_array({self._dimensions(decl, ctype, init)}{items})"
         if init is None:
             return "''"
         if isinstance(init, InitList):
-            return repr(_characters(init, decl, self.refuse))
+            codes = _codes(init, decl, self.refuse)
+            if _spells_text(codes):
+                return repr(_characters(init, decl, self.refuse))
+            # A braced list that is no C string - ``const char bits[] = {0, 1, 3, 7}`` -
+            # is an array of bytes, which C++ indexes and does arithmetic with; a ``str``
+            # truncated at its first NUL would have nothing to index.
+            return f"array('char', {self._dimensions(decl, ctype, init)}, {codes})"
         return self.value(init)
 
     def static_local(self, decl: VarDecl) -> None:
@@ -393,7 +414,7 @@ class VariableEmitter(StmtEmitter):
         anything runs.
         """
         ctype = sized(self.declared_type(decl), decl)
-        kind = f", {ctype.name!r}" if ctype is not None and ctype.scalar else ""
+        kind = cell_type(ctype)
         symbol = self.declare(decl.name, "local", ctype, cell=True)
         symbol.py = self.fresh(f"{self._static_owner()}_{decl.name}")
         if _constant_static(decl, ctype):
@@ -438,12 +459,35 @@ def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
     return not any(isinstance(node, (Name, Call, New, Lambda, This)) for node in walk(decl))
 
 
-def _characters(init: InitList, decl: VarDecl, refuse: Any) -> str:
-    """``char s[8] = {'a', 'b', 0}``: the C string the characters spell, to the first NUL."""
+def _codes(init: InitList, decl: VarDecl, refuse: Any) -> list[int]:
+    """The numbers a braced list of characters gives a ``char`` array, one each."""
     if not all(isinstance(item, Literal) and item.kind in ("char", "int") for item in init.items):
         why = f"the character array {decl.name} initialised one char at a time from variables"
         raise refuse(why, decl)
-    text = "".join(chr(int(item.value)) for item in init.items)  # type: ignore[attr-defined]
+    return [int(item.value) for item in init.items]  # type: ignore[attr-defined]
+
+
+def _spells_text(codes: list[int]) -> bool:
+    """Does a ``char`` array of these values spell a C string - printable characters, then
+    NULs to the end - rather than hold bytes?
+
+    ``{'a', 'b', 0}`` is a string and ``{0, 1, 3, 7}`` is not: what follows its first NUL is
+    not padding, so the array is data a program indexes and does arithmetic with, as C++ lets
+    it. A translation that kept it as text would cut it off at that first NUL.
+    """
+    joined = "".join(chr(code) for code in codes)
+    head, _, tail = joined.partition("\0")
+    return _printable(head) and all(char == "\0" for char in tail)
+
+
+def _printable(text: str) -> bool:
+    """Are these characters a C string's own - printable, or one of C's white-space escapes?"""
+    return all(char.isprintable() or char in "\t\n\r\f\v" for char in text)
+
+
+def _characters(init: InitList, decl: VarDecl, refuse: Any) -> str:
+    """``char s[8] = {'a', 'b', 0}``: the C string the characters spell, to the first NUL."""
+    text = "".join(chr(code) for code in _codes(init, decl, refuse))
     return text.split("\0", 1)[0]
 
 
@@ -458,6 +502,22 @@ def _by_value(ctype: CType) -> bool:
     """An object held by value: not a pointer, smart pointer or reference to one."""
     held = ctype.pointer or ctype.is_smart or ctype.reference or ctype.callable
     return ctype.is_class and not held
+
+
+def cell_type(ctype: CType | None) -> str:
+    """The type name a :class:`~xrdroot.cppstd.cells.Cell` carries, as a ``Cell`` argument.
+
+    A number's width has to be known because C stores it more narrowly than Python does, so
+    ``float x`` and ``double x`` are different cells. An object pointer's *class* has to be
+    known for the same reason one level up: ``TBufferJSON::FromJSON(T *&obj, json)`` makes
+    an object of the class ``T`` the declared pointer names, and while the cell holds the
+    ``None`` the pointer starts as, no value in it can say which class that is. A ``void *``
+    - the opaque handle ROOT's ``XML::NodePointer`` is - names no class at all, so it stays
+    a bare cell.
+    """
+    if ctype is None or ctype.name == "void" or not (ctype.scalar or ctype.is_object_pointer):
+        return ""
+    return f", {ctype.name!r}"
 
 
 def addressable(ctype: CType | None) -> bool:

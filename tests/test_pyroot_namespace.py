@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import importlib
+from typing import Any
 
 import pytest
 
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
+from xrdroot.cppstd.buffers import CharBuffer, text_into
+from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pyroot.core import cformat
 
 
@@ -27,6 +30,40 @@ def test_the_namespace_holds_roots_classes_by_their_names():
 def test_a_name_root_has_and_this_does_not_is_refused_by_that_name():
     with pytest.raises(AttributeError, match=r"TNoSuchThing; xrdroot\.pyroot does not yet"):
         ROOT.TNoSuchThing  # noqa: B018
+
+
+def test_a_module_gathered_later_cannot_change_a_name_the_macro_already_has():
+    """``ROOT.EnableImplicitMT`` and its kin are exported by ``core`` and by ``rdf``: the two
+    are the one function, which is what lets ``rdf`` be gathered after the namespace is made
+    without a macro's name meaning something else than it would have."""
+    eager_names: dict[str, Any] = {}
+    for name in ROOT.EAGER:
+        module = importlib.import_module(f"xrdroot.pyroot.{name}")
+        for exported in getattr(module, "__all__", ()):
+            eager_names.setdefault(exported, getattr(module, exported))
+    for name in ROOT.LATER:
+        module = importlib.import_module(f"xrdroot.pyroot.{name}")
+        for exported in getattr(module, "__all__", ()):
+            if exported in eager_names:
+                assert getattr(module, exported) is eager_names[exported], (name, exported)
+
+
+def test_a_name_of_a_namespace_not_gathered_yet_is_gathered_when_it_is_asked_for(monkeypatch):
+    """The modules a macro rarely names are gathered when one of their names is asked for,
+    so that importing the namespace costs what a macro that reads a tree and draws pays."""
+    monkeypatch.setattr(ROOT, "_gathered_all", False)
+    monkeypatch.delitem(ROOT.__dict__, "TProfile2Poly", raising=False)
+    assert ROOT._gathered_all is False
+    assert ROOT.TProfile2Poly.__name__ == "TProfile2Poly"
+    assert ROOT._gathered_all is True  # and they are gathered for good
+    assert "TProfile2Poly" in ROOT.__all__
+
+
+def test_a_name_no_namespace_offers_is_refused_after_gathering_them_all(monkeypatch):
+    monkeypatch.setattr(ROOT, "_gathered_all", False)
+    with pytest.raises(AttributeError, match=r"TNoSuchThing; xrdroot\.pyroot does not yet"):
+        ROOT.TNoSuchThing  # noqa: B018
+    assert ROOT._gathered_all is True
 
 
 def test_a_listed_module_that_is_not_installed_is_passed_over(monkeypatch):
@@ -129,3 +166,28 @@ def test_ownership_and_addresses_are_what_python_keeps():
         (ROOT.addressof(thing), id(thing)),
         (bool(ROOT.nullptr is None), True),
     )
+
+
+def test_memset_fills_the_memory_a_char_pointer_points_into_in_place():
+    """``memset(buf, 0, n)`` over memory ``new char[n]`` handed out: the bytes are written
+    where they lie, so every pointer into them sees the fill, as in C."""
+    memory = CharBuffer(6)
+    text_into(memory, "abc")
+    assert ROOT.memset(memory, ord("x"), 3) is memory
+    assert str(memory) == "xxx"
+
+
+def test_memset_hands_back_the_text_a_char_array_would_hold():
+    """A ``char name[N]`` is a Python ``str``, which no write reaches in place: the text the
+    fill leaves is what is returned for the variable to keep - here the ``''`` a zeroed
+    buffer holds, which is what ``TJsonEx4``'s constructor asks for."""
+    assert ROOT.memset("", 0, 100) == ""
+    assert ROOT.memset("abc", 0, 100) == ""
+    assert ROOT.memset("abc", ord("y"), 2) == "yyc"
+
+
+def test_memset_refuses_a_fill_that_runs_past_the_characters_it_has():
+    """A ``str`` keeps no capacity, so a fill past the characters it holds has no memory to
+    land in; guessing at the length would write a shorter string than ROOT's."""
+    with pytest.raises(UnsupportedFeatureError, match=r"keeps no capacity"):
+        ROOT.memset("abc", ord("y"), 10)

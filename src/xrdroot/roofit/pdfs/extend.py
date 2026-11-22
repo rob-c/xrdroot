@@ -3,17 +3,23 @@
 ``RooExtendPdf("e", "e", pdf, n)`` is ``pdf`` in shape and ``n`` in number -
 or, given a range name, ``n`` events in that range, so the whole expects
 ``n`` divided by the fraction of ``pdf`` there.
+
+``RooExtendedBinding`` is the same expected number without a density around
+it: a plain function of the model, so anything that can multiply a number by
+a function - an ``RooFormulaVar``, a fit's parameterisation - can use the
+number of events a density expects as one of its terms.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from ..collections import as_list
 from ..pdf import CAN_BE_EXTENDED, RooAbsPdf
-from ..real import Context
+from ..real import Context, RooAbsReal
 from .basic import ref
 
-__all__ = ["RooExtendPdf"]
+__all__ = ["RooExtendPdf", "RooExtendedBinding"]
 
 
 class RooExtendPdf(RooAbsPdf):
@@ -69,3 +75,24 @@ class RooExtendPdf(RooAbsPdf):
 
     def normalized_name(self, observables: Any, rng: Any = None) -> str:
         return self._name
+
+
+class RooExtendedBinding(RooAbsReal):
+    """``pdf.expectedEvents()`` as a function, over the observables it is given.
+
+    A density's expected events depend on the normalisation set the caller
+    asks it about: with none, a density reports the ``1.0`` its own
+    normalisation is worth, and with one, the integral over those
+    observables. The binding holds the set it was made with and passes it on
+    every time, so two bindings of the same density differ by the range they
+    were made over rather than by who evaluates them.
+    """
+
+    def __init__(self, name: Any, title: Any, pdf: Any, normSet: Any = None) -> None:
+        super().__init__(name, title)
+        self.pdf = self._proxy("pdf", pdf)
+        self._obsList = None if normSet is None else self._list_proxy("obsList", as_list(normSet))
+
+    def compute(self, ctx: Context) -> Any:
+        """The density's expected events over the held set - ``ctx`` never changes them."""
+        return self.pdf.expectedEvents(self._obsList)

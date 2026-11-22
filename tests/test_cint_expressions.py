@@ -41,6 +41,8 @@ def method(source: str) -> str:
         ('int *p = nullptr; int *same = &*p; auto *s = &"abc";', "same = p"),
         ("TVirtualPad **pad = &gPad;", "pad = ROOT.gPad"),
         ("int *e = &v[0];", "e = ItemRef(ROOT.v, 0)"),
+        ("int *f = &v.front();", "f = ItemRef(ROOT.v, 0)"),
+        ("int *g = &v.at(2);", "g = ItemRef(ROOT.v, 2)"),
         (
             "int i = 0; int x = a[i]++; int y = o.n++; int *p = nullptr; int z = (*p)++;",
             "z = postinc(ItemRef(p, 0), 1)",
@@ -55,7 +57,7 @@ def method(source: str) -> str:
         ("w.import(x);", "getattr(ROOT.w, 'import')(ROOT.x)"),
         ('std::string s = "abc"; int c = s[0];', "c = char_at(s, 0)"),
         ("TH1F *h = dynamic_cast<TH1F *>(o);", "h = dynamic_cast(ROOT.TH1F, ROOT.o)"),
-        ("const char *c = (const char *)ts;", "c = cstr(ROOT.ts)"),
+        ("const char *c = (const char *)ts;", "c = char_pointer(ROOT.ts)"),
         ("double d = Double_t{2};", "d = 2.0"),
         ("int x = y ? 1 : throw 2;", "throw(2)"),
         ('std::string *s = new std::string("x");', "s = str('x')"),
@@ -180,3 +182,27 @@ def test_address_of_class_pointer_compound_assignment_is_refused() -> None:
     )
     with pytest.raises(Refusal, match="destination is addressable"):
         translate(cpp, "t.C")
+
+
+def test_a_standard_typedef_written_as_a_call_is_the_scalar_cast_it_is():
+    """``std::size_t(3.7)`` is C++'s conversion to the type the typedef names - 3, and not a
+    call of a name the runtime has no ``size_t`` for - and ``uint8_t(300)`` is 44."""
+    assert "= u64(3.7)" in body("double d = std::size_t(3.7);")
+    assert "= 44" in body("double b = uint8_t(300);")
+
+
+@pytest.mark.parametrize(
+    ("source", "fragment"),
+    [
+        # Two arguments is no cast, so the name stays the runtime's namespace's.
+        ("std::size_t a = std::size_t(1, 2);", "ROOT.std.size_t(1, 2)"),
+        # A template argument list is no cast either.
+        ("std::size_t<int> a = std::size_t<int>(1);", "ROOT.std.size_t['int'](1)"),
+        # And a name that is no typedef of the standard's is the runtime's own call.
+        ("double a = std::sqrt(4.0);", "sqrt(4.0)"),
+    ],
+)
+def test_a_call_of_something_that_is_no_standard_typedef_stays_a_call(
+    source: str, fragment: str
+) -> None:
+    assert fragment in body(source)

@@ -117,10 +117,12 @@ class RootModule(ModuleType):
         #: A package, so that ``import ROOT.RDF.Distributed`` looks inside it.
         self.__path__: list[str] = []
         self._namespace = namespace
-        #: What ``from ROOT import *`` takes: every public name of the namespace.
-        self.__all__ = [name for name in dir(namespace) if not name.startswith("_")]
 
     def __getattr__(self, name: str) -> Any:
+        if name == "__all__":
+            #: What ``from ROOT import *`` takes: every public name of the namespace, which
+            #: is gathered on the way - a script that takes them all takes them all.
+            return [each for each in dir(self._namespace) if not each.startswith("_")]
         return getattr(self._namespace, name)
 
     def __dir__(self) -> list[str]:

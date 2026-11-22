@@ -78,9 +78,10 @@ DTYPES = {
 
 
 def _filled(shape: tuple[int, ...], make: Callable[[], Any]) -> list[Any]:
+    """Rows of elements, every level one C++ destroys as its scope ends - ``A a[2][3]``."""
     if len(shape) == 1:
-        return [make() for _ in range(shape[0])]
-    return [_filled(shape[1:], make) for _ in range(shape[0])]
+        return ObjectArray(make() for _ in range(shape[0]))
+    return ObjectArray(_filled(shape[1:], make) for _ in range(shape[0]))
 
 
 def _flat(items: Any) -> list[Any]:
@@ -116,7 +117,29 @@ def _fill(out: Any, init: Any) -> None:
         _fill(row, values)
 
 
-def _object_array(dims: tuple[int, ...], init: Any, make: Callable[..., Any] | None) -> list[Any]:
+class ObjectArray(list[Any]):
+    """A C array of objects: ``A a[3]``, and what a ``std::unique_ptr<A[]>`` holds.
+
+    C++ destroys an array's elements as the array's scope ends, the last one
+    first, which is what :meth:`_destruct` does - the translated local is put
+    in a ``try`` whose ``finally`` runs it (:mod:`xrdroot.pycxx.emit_vars`). The
+    elements are taken out as they are destroyed, as the storage C++ gives
+    back with them, so a second call has nothing left to do.
+    """
+
+    __slots__ = ()
+
+    def _destruct(self) -> None:
+        while self:
+            item = self.pop()
+            destruct = getattr(item, "_destruct", None)
+            if destruct is not None:
+                destruct()
+
+
+def _object_array(
+    dims: tuple[int, ...], init: Any, make: Callable[..., Any] | None
+) -> list[Any]:
     out = _filled(dims, make or (lambda: None))
     for index, value in enumerate(list(init or ())[: dims[0]]):
         # ``TString names[2] = {"a", "b"}``: each literal made into the element's class.
@@ -276,6 +299,53 @@ def reverse_range(container: Any, start: int, stop: Any) -> None:
     """``std::reverse(begin, end)``, in place."""
     end = len(container) if stop is None else int(stop)
     container[start:end] = list(container[start:end])[::-1]
+
+
+def generate_range(container: Any, start: int, stop: Any, generate: Callable[[], Any]) -> None:
+    """``std::generate(begin, end, gen)``: a call of ``gen`` into each element, in order."""
+    end = len(container) if stop is None else int(stop)
+    for at in range(start, end):
+        container[at] = generate()
+
+
+def shuffle_range(
+    container: Any, start: int, stop: Any, engine: Any = None
+) -> None:
+    """``std::shuffle(begin, end, g)``: each element swapped with one drawn before it.
+
+    The engine is the one the macro named - ``std::default_random_engine`` when it gave
+    none, which C++ has no overload for but a shuffle without one plainly means - and
+    each step draws one word and scales it into ``[0, i]``, as
+    ``std::uniform_int_distribution`` does over that engine's own range.
+    """
+    from .random import default_random_engine
+
+    spread = default_random_engine() if engine is None else engine
+    low, span = int(spread.min()), int(spread.max()) - int(spread.min()) + 1
+    end = len(container) if stop is None else int(stop)
+    for at in range(end - 1, start, -1):
+        chosen = start + int((float(spread()) - low) / span * (at - start + 1))
+        container[at], container[chosen] = container[chosen], container[at]
+
+
+def next_permutation_range(container: Any, start: int, stop: Any) -> bool:
+    """``std::next_permutation(begin, end)``: the next permutation in place; ``False``
+    when the range was the last one, which is then rewound to its first, as C++ does."""
+    end = len(container) if stop is None else int(stop)
+    items = list(container[start:end])
+    pivot = len(items) - 2
+    while pivot >= 0 and not items[pivot] < items[pivot + 1]:
+        pivot -= 1
+    if pivot < 0:
+        container[start:end] = items[::-1]
+        return False
+    successor = len(items) - 1
+    while not items[pivot] < items[successor]:
+        successor -= 1
+    items[pivot], items[successor] = items[successor], items[pivot]
+    items[pivot + 1:] = items[pivot + 1:][::-1]
+    container[start:end] = items
+    return True
 
 
 class CppException(Exception):

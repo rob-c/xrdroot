@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 import xrdroot.pyroot as ROOT
-from pyrootsupport import fresh
+from pyrootsupport import expect, fresh
 from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pycint.runtime import Cell
 from xrdroot.pyroot.trees.bind import _class, _member
@@ -113,3 +113,20 @@ def test_a_whole_object_branch_answers_with_the_object_the_pointer_holds():
     half = _Whole.__new__(_Whole)
     with pytest.raises(AttributeError, match="address"):
         half.address  # noqa: B018
+
+
+def test_a_tree_carries_roots_status_bits_and_split_level_by_name():
+    """``TTree::EStatusBits`` names the bits of a tree's status word - ``kOnlyFlushAtCluster``
+    is the one a bulk-API branch sets - and ``kSplitCollectionOfPointers`` is the split
+    level that splits a collection of pointers rather than the collection."""
+    expect(
+        (ROOT.TTree.kOnlyFlushAtCluster, 1 << 14),
+        (ROOT.TTree.kEntriesReshuffled, 1 << 19),
+        (ROOT.TTree.kForceRead, 1 << 11),
+        (ROOT.TTree.kCircular, 1 << 12),
+        (ROOT.TTree.kSplitCollectionOfPointers, 100),
+    )
+    tree = ROOT.TTree("bits", "a tree's own status word")
+    tree.SetBit(ROOT.TTree.kOnlyFlushAtCluster)
+    assert tree.TestBit(ROOT.TTree.kOnlyFlushAtCluster)
+    assert not tree.TestBit(ROOT.TTree.kEntriesReshuffled)

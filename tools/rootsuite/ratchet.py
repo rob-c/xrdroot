@@ -5,6 +5,11 @@ checked against it by :func:`regressions`: every baseline PASS that is not
 PASS now - or is missing - is a regression. A TIMEOUT can be the machine
 rather than xrdroot, so :func:`recheck` reruns the timed-out tests alone,
 one at a time, and only an actual PASS there excuses them.
+
+The promise runs one way only: a PASS is worth recording the moment a run
+sees it, so :func:`merge_baseline` raises the rows a subset run passed and
+leaves every other row alone, while :func:`write_baseline` - the full run -
+replaces the file outright.
 """
 
 from __future__ import annotations
@@ -16,8 +21,8 @@ from typing import Any
 
 from .judge import STATUSES
 
-__all__ = ["BASELINE", "FULL_KINDS", "judged", "regressions", "statuses",
-           "write_baseline", "timeouts"]
+__all__ = ["BASELINE", "FULL_KINDS", "judged", "merge_baseline", "regressions",
+           "statuses", "write_baseline", "timeouts"]
 
 #: Kept in the repository so checking a run never silently starts with no promises.
 BASELINE = Path(__file__).with_name("baseline.json")
@@ -73,6 +78,23 @@ def timeouts(failed: list[dict[str, Any]]) -> list[str]:
     return [record["id"] for record in failed if record["status"] == "TIMEOUT"]
 
 
+def _trusted_records(doc: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The run's records, refused when a status is missing or one we cannot read.
+
+    Both ways of writing a baseline promise the same thing about a row - that
+    the test passed - so both must refuse a run whose verdicts mean nothing.
+    """
+    records = doc["tests"]
+    if not records or any(record["status"] not in STATUSES for record in records):
+        raise ValueError("A baseline requires nonempty results with known statuses.")
+    return records
+
+
+def _write(statuses: Mapping[str, str], destination: Path) -> None:
+    """One row per line, sorted, so a merge shows up as a diff of the rows it changed."""
+    destination.write_text(json.dumps(dict(statuses), indent=1, sort_keys=True) + "\n")
+
+
 def write_baseline(doc: Mapping[str, Any], destination: Path) -> None:
     """Every test's status from a full run of the oracle-free kinds."""
     meta = doc["meta"]
@@ -80,8 +102,24 @@ def write_baseline(doc: Mapping[str, Any], destination: Path) -> None:
     if meta.get("only") or not set(FULL_KINDS) <= kinds:
         raise ValueError("A baseline requires a full run of the gtest, roottest, pyunittest "
                          "and test kinds.")
-    records = doc["tests"]
-    if not records or any(record["status"] not in STATUSES for record in records):
-        raise ValueError("A baseline requires nonempty results with known statuses.")
-    statuses = {record["id"]: record["status"] for record in records}
-    destination.write_text(json.dumps(statuses, indent=1, sort_keys=True) + "\n")
+    records = _trusted_records(doc)
+    _write({record["id"]: record["status"] for record in records}, destination)
+
+
+def merge_baseline(doc: Mapping[str, Any], destination: Path) -> None:
+    """Record the rows a run saw pass, leaving every other row exactly as it was.
+
+    A PASS a run saw is a promise from then on, and a round that gains one cannot
+    wait for a many-hour run of all four kinds to write it down. The converse is
+    not true: a FAIL, DIFF, UNSUPPORTED or TIMEOUT in this run says nothing about
+    whether the test ever passed - the baseline's FAIL may be an old run's, the
+    UNSUPPORTED a refusal the code no longer makes, the TIMEOUT this machine -
+    so a row that is not PASS now is left alone rather than overwritten.
+
+    That keeps the ratchet as strict as it was: :func:`regressions` still fails a
+    baseline PASS the next run loses or does not run, whoever wrote the row.
+    """
+    records = _trusted_records(doc)
+    statuses = json.loads(destination.read_text()) if destination.exists() else {}
+    statuses.update({record["id"]: "PASS" for record in records if record["status"] == "PASS"})
+    _write(statuses, destination)

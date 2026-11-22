@@ -104,3 +104,30 @@ def test_time_is_cs_seconds_since_1970_stored_where_it_is_asked_to_be(
     assert text == "1\n" and rt.c_time() >= before
     cell = rt.Cell(0)
     assert rt.c_time(cell) == cell.value >= before
+
+
+def test_an_ofstream_is_closed_as_the_scope_it_was_made_in_ends(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """C++'s ``std::ofstream`` writes through a buffer that its destructor closes, so a program
+    that writes a file in one scope and reads it back in the same run reads it - ROOT's own
+    ``dictgen_base`` writes a header and then loads it. Measured against the oracle: ROOT prints
+    ``read=[hello]`` for the same macro, and this kit printed ``read=[]`` before."""
+    path = (tmp_path / "closed.txt").as_posix()
+    source = (
+        f'{{ std::ofstream out("{path}"); out << "hello\\n"; }}\n'
+        f'std::ifstream in("{path}"); std::string line; std::getline(in, line);\n'
+        'printf("read=[%s]\\n", line.c_str());'
+    )
+    assert block(capsys, source) == "read=[hello]\n"
+
+
+def test_a_header_a_pragma_extra_include_names_is_translated_beside_the_macro() -> None:
+    """``#pragma extra_include "myextra.h"`` is what rootcling reads into a dictionary and the
+    compiler never sees; the library build here is that pass, so the header's ``f()`` is a name
+    the session has - which is the whole of ROOT's ``dictgen_base``."""
+    from xrdroot.pycint.library.translate import with_extra_includes
+
+    source = '#ifdef __ROOTCLING__\n#pragma extra_include "myextra.h";\n#endif\nvoid a(){}\n'
+    assert with_extra_includes(source).startswith('#include "myextra.h"\n#ifdef __ROOTCLING__')
+    assert with_extra_includes("void a(){}\n") == "void a(){}\n"

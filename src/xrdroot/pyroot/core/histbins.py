@@ -10,6 +10,7 @@ arrays, so a bin set here is a bin written.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -30,6 +31,7 @@ class Bins:
     _xrd: Any
     _core: Any
     DIM: int
+    GetDimension: Any
 
     def _widths(self) -> list[int]:
         """The cells along each axis, flow included, as the global bin number counts them."""
@@ -220,8 +222,13 @@ class Bins:
     def GetBinContent(self, *args: Any) -> float:
         """``GetBinContent(bin)`` or ``(binx, biny[, binz])``."""
         bin = self._global(args)
-        cells = self._contents()
-        return float(cells[bin]) if 0 <= bin < len(cells) else 0.0
+        return self._one_content(bin)
+
+    #: One bin's content and one bin's error, which the class a histogram is answers for
+    #: itself: straight out of its storage, or - for a profile, whose bins are means and
+    #: whose errors are spreads - out of the array of them it keeps.
+    _one_content: Callable[[int], float]
+    _one_error: Callable[[int], float]
 
     def _contents(self) -> np.ndarray[Any, Any]:
         """Every bin's content, flow included, flat in global-bin order."""
@@ -241,9 +248,18 @@ class Bins:
             cells[bin] = content
 
     def AddBinContent(self, *args: Any) -> None:
-        """``AddBinContent(bin[, w])``: add to one bin's content alone, as ROOT's does."""
-        w = float(args[1]) if len(args) > 1 else 1.0
-        self._xrd._cells()[int(args[0])] += w
+        """``AddBinContent(bin[, w])`` - or ``AddBinContent(binx, biny[, binz][, w])``, as
+        each TH2 and TH3 overloads it: the bin numbers are one per axis, so the last argument
+        is the weight only when there are more of them than the histogram has axes."""
+        axes = self.GetDimension()
+        coordinates = args[:axes]
+        weight = float(args[axes]) if len(args) > axes else 1.0
+        self._add_to_bin(self._global(tuple(int(each) for each in coordinates)), weight)
+
+    def _add_to_bin(self, bin: int, weight: float) -> None:
+        """``weight`` added to the **global** bin ``bin``, which the histogram's own loops
+        (``Eval``, a function set bin by bin) use where a macro would name the coordinates."""
+        self._xrd._cells()[int(bin)] += float(weight)
 
     def SetContent(self, content: Any) -> bool:
         """``SetContent(content)``: every cell at once, the flow bins included.
@@ -264,9 +280,7 @@ class Bins:
 
     def GetBinError(self, *args: Any) -> float:
         """``GetBinError``: the root of the bin's squared weights, or of its content."""
-        bin = self._global(args)
-        errors = self._errors()
-        return float(errors[bin]) if 0 <= bin < len(errors) else 0.0
+        return self._one_error(self._global(args))
 
     def _errors(self) -> np.ndarray[Any, Any]:
         return np.asarray(self._xrd._bin_errors())

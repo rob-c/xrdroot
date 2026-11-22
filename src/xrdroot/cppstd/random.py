@@ -14,7 +14,8 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["mt19937", "normal_distribution", "uniform_real_distribution"]
+__all__ = ["default_random_engine", "mt19937", "normal_distribution",
+           "uniform_real_distribution"]
 
 #: The twister's word count, its shift, and the constants of its recurrence and tempering.
 N, M = 624, 397
@@ -62,6 +63,37 @@ class mt19937:
     @staticmethod
     def max() -> int:
         return 0xFFFFFFFF
+
+
+class default_random_engine:
+    """``std::default_random_engine``: libc++'s ``minstd_rand0``, the 31-bit LCG of
+    ``16807 * x mod (2**31 - 1)``, seeded 1. `std::shuffle` and the distributions
+    take one where a macro names no engine of its own."""
+
+    MODULUS = 2147483647
+    MULTIPLIER = 16807
+
+    def __init__(self, seed: int = 1) -> None:
+        self.seed(seed)
+
+    def seed(self, value: int = 1) -> None:
+        self._state = int(value) % self.MODULUS
+
+    def __call__(self) -> int:
+        self._state = (self.MULTIPLIER * self._state) % self.MODULUS
+        return self._state
+
+    def discard(self, count: int) -> None:
+        for _ in range(int(count)):
+            self()
+
+    @staticmethod
+    def min() -> int:
+        return 1
+
+    @staticmethod
+    def max() -> int:
+        return default_random_engine.MODULUS - 1
 
 
 def _tempered(state: np.ndarray[Any, Any]) -> list[int]:

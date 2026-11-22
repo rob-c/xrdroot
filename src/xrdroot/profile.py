@@ -132,8 +132,25 @@ class Profile(Histogram):
                 f"coordinate for each and then the value averaged: {len(self.axes) + 1} "
                 f"arrays or numbers, not {len(given)}"
             )
+        if weight is None or isinstance(weight, filling.SCALARS):
+            if all(isinstance(value, filling.SCALARS) for value in given):
+                self.fill_one(given, weight)  # one entry, without arrays of one
+                return
         coordinates, weights = filling.arrays(given, weight)
         filling.fill_profile(self, coordinates[:-1], coordinates[-1], weights)
+
+    def fill_one(self, given: list[Any], weight: Any = None) -> int:
+        """``Fill`` of one entry: a number per axis, then the value averaged; its bin comes back.
+
+        The same bookkeeping as :meth:`fill`, to the last bit, for the loop that fills a
+        profile an entry at a time - ROOT's own way, and every tutorial's - without the
+        cost of arrays of one.
+        """
+        plane = [float(value) for value in given[:-1]]
+        averaged = float(given[-1])
+        return filling.fill_profile_one(
+            self, plane, averaged, 1.0 if weight is None else float(weight)
+        )
 
     # -- the state a profile keeps beyond a histogram's ------------------------
 

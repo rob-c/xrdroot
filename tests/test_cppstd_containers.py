@@ -241,6 +241,22 @@ def test_a_forward_list_adds_at_its_front_and_iterates_from_it() -> None:
     assert list(forwards) == [1]
 
 
+def _a_numbered_thing() -> _Numbered:
+    """An object of an element type none of the containers here knows: what a set of a
+    macro's own class holds, which the adapter resolves to the object itself."""
+    return _Numbered()
+
+
+class _Numbered:
+    """One member, so that "the copy kept the value it was inserted with" can be read."""
+
+    def __init__(self) -> None:
+        self.fInt = 0
+
+    def __lt__(self, other: _Numbered) -> bool:
+        return self.fInt < other.fInt
+
+
 def test_a_multiset_keeps_an_element_as_often_as_it_is_inserted() -> None:
     multiset = containers.std.multiset["int"]([3, 1, 1])
     assert (list(multiset), len(multiset), multiset.count(1), bool(multiset)) == (
@@ -416,6 +432,65 @@ def test_a_hashed_multi_container_keeps_what_it_was_given_as_cpp_names_it() -> N
     counted = containers.std.unordered_multiset["int"]([3, 1, 1])
     assert counted.__cpp_name__ == "unordered_multiset<int>"
     assert (list(counted), counted.count(1)) == ([1, 1, 3], 2)
+
+
+def test_a_set_keeps_a_copy_of_the_object_it_is_given() -> None:
+    """C++'s ``insert`` copies, which ``TJsonEx13::Init`` leans on: it inserts one
+    ``TJsonEx1`` four times, changing it in between, so the set holds four elements.
+    A Python set given four times the same object would hold one."""
+    containers._opaque("TJsonEx1")
+    thing = _a_numbered_thing()
+    held = containers.std.set["TJsonEx1"]()
+    for number in range(3):
+        thing.fInt = number
+        held.insert(thing)
+    assert [each.fInt for each in held] == [0, 1, 2]
+
+
+def test_a_multiset_keeps_a_copy_of_the_object_it_is_given() -> None:
+    """``multiset::insert`` copies as ``set``'s does, and counts the copies it holds."""
+    thing = _a_numbered_thing()
+    held = containers.std.multiset["TJsonEx1"]()
+    held.insert(thing)
+    thing.fInt = 7
+    held.insert(thing)
+    assert [each.fInt for each in held] == [0, 7]
+
+
+def test_a_map_keeps_copies_of_its_keys_and_values() -> None:
+    """``m[k] = v`` copies both in C++: the key stays as it was when it was put in, and a
+    value that is a container is a container of its own."""
+    thing = _a_numbered_thing()
+    held = containers.std.map["TJsonEx1", "int"]()
+    for number in range(2):
+        thing.fInt = number
+        held[thing] = number
+    assert [(key.fInt, one) for key, one in held.items()] == [(0, 0), (1, 1)]
+    nested = containers.std.map["int", "std::set<int>"]()
+    growing = containers.std.set["int"]()
+    nested[1] = growing
+    growing.insert(2)  # the map kept a set of its own, so this is not its element
+    assert [list(one) for one in nested.values()] == [[]]
+
+
+def test_a_set_of_pointers_holds_the_object_itself() -> None:
+    """A ``std::set<TBox*>`` copies the pointer, which here is the object, so what the
+    caller goes on doing to it is seen through the set - ROOT's own behaviour for one."""
+    thing = _a_numbered_thing()
+    held = containers.std.set["TJsonEx1*"]()
+    held.insert(thing)
+    thing.fInt = 4
+    assert [each.fInt for each in held] == [4]
+
+
+def test_a_set_of_numbers_and_strings_holds_a_value_that_cannot_be_changed() -> None:
+    """A number and a ``std::string`` are already values: nothing to copy."""
+    held = containers.std.set["int"]()
+    held.insert(3)
+    text = containers.std.string("a")
+    words = containers.std.set["std::string"]()
+    words.insert(text)
+    assert (list(held), [str(each) for each in words]) == ([3], ["a"])
 
 
 def test_two_sets_are_equal_when_they_hold_the_same_elements() -> None:

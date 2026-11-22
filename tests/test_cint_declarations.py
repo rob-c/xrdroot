@@ -47,9 +47,9 @@ def body(source: str) -> str:
         ("TLorentzVector v[2];", "v = array('TLorentzVector', 2, make=ROOT.TLorentzVector)"),
         (
             'char names[2][8] = {"a", "b"}; char more[3][4];',
-            "names = array('char*', 2, ['a', 'b'])",
+            "names = char_array((2, 8), ['a', 'b'])",
         ),
-        ("char more[3][4];", "more = array('char*', 3, [])"),
+        ("char more[3][4];", "more = char_array((3, 4))"),
         ('char s[] = "abc"; int n = sizeof(s);', "s = 'abc'"),
         ("double a[3]; void *p = &a;", "a = array('double', 3)"),
         ("Point p = {1, 2};", "p = ROOT.Point(1, 2)"),

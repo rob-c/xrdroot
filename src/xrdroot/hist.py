@@ -24,6 +24,7 @@ from .booking import axis_members as _axis
 from .display import Displayed
 from .draw import bar, missing_picture, shade
 from .errors import FormatError, UnsupportedFeatureError
+from .filling import ONE_NAMES, _one_names
 from .function.attached import listed
 from .rootarrays import ARRAYS
 
@@ -221,6 +222,19 @@ def _moment_homes(row: dict[str, Any], found: dict[str, dict[str, Any]]) -> None
             _moment_homes(value, found)
 
 
+#: The NumPy type each storage's bins are kept in, worked out once: a fill asks for it per
+#: entry, and ``np.dtype`` of a name is a lookup that costs more than the bins do.
+_STORAGE: dict[str, np.dtype[Any]] = {}
+
+
+def _storage(key: str) -> np.dtype[Any]:
+    """The NumPy type a histogram's bins are kept in, by the array member holding them."""
+    found = _STORAGE.get(key)
+    if found is None:
+        found = _STORAGE[key] = np.dtype(ARRAYS[key].typename)
+    return found
+
+
 class Histogram(Displayed):
     """A histogram: its bins, what is in them, and the axes they lie on.
 
@@ -249,7 +263,8 @@ class Histogram(Displayed):
     and the projections make a new one and leave this as it was.
     """
 
-    __slots__ = ("classname", "members", "axes", "_core", "_home", "_key", "_widths", "_homes")
+    __slots__ = ("classname", "members", "axes", "_core", "_home", "_key", "_widths", "_homes",
+                 "_term_homes")  # fmt: skip
 
     def __init__(self, classname: str, members: dict[str, Any]) -> None:
         core, contents = _core(members), _contents(members)
@@ -286,7 +301,7 @@ class Histogram(Displayed):
         puts that in the members, so the members and the change are one.
         """
         held = self._home[self._key]
-        dtype = np.dtype(ARRAYS[self._key].typename)
+        dtype = _storage(self._key)
         if not (isinstance(held, np.ndarray) and held.dtype == dtype and held.flags.writeable):
             held = np.array(held, dtype=dtype)
             self._home[self._key] = held
@@ -329,6 +344,24 @@ class Histogram(Displayed):
         _moment_homes(self.members, found)
         self._homes = (self.members, self._core, found)
         return found
+
+    def _moment_terms(self) -> tuple[tuple[dict[str, Any], str], ...]:
+        """Each moment an entry of this histogram adds to, with the dictionary holding it, in
+        the order :func:`~.filling.one_terms` names them - kept beside the homes.
+
+        A loop of fills adds to them an entry at a time, and a name looked up in the homes for
+        every term of every entry costs more than the additions do.
+        """
+        kept: tuple[Any, Any, tuple[tuple[dict[str, Any], str], ...]] | None = getattr(
+            self, "_term_homes", None
+        )
+        if kept is not None and kept[0] is self.members and kept[1] is self._core:
+            return kept[2]
+        homes = self._moment_homes()
+        names = ONE_NAMES.get(len(self.axes)) or _one_names(len(self.axes))
+        terms = tuple((homes[name], name) for name in names)
+        self._term_homes = (self.members, self._core, terms)
+        return terms
 
     def _moment_names(self) -> tuple[str, ...]:
         """The moments ROOT's ``GetStats`` gives for this class, in its order."""
@@ -595,6 +628,20 @@ class Histogram(Displayed):
         """``GetBinError`` of every bin, flow and all, in the order they are kept."""
         return np.sqrt(np.abs(self._variance_cells()))
 
+    def bin_content(self, cell: int) -> float:
+        """``GetBinContent`` of one bin, out of the array the bins are kept in."""
+        return float(self._bins[cell])
+
+    def bin_error(self, cell: int) -> float:
+        """``GetBinError`` of one bin: the root of its squared weights, or of its content.
+
+        What :meth:`_bin_errors` gives for that bin, and in the same double precision,
+        without building the array of every bin's - which a fit's objective asks for a bin
+        at a time, ten thousand times a call.
+        """
+        squares = self._sumw2()
+        return float(np.sqrt(abs(float(self._bins[cell] if squares is None else squares[cell]))))
+
     def _variance_cells(self) -> np.ndarray[Any, Any]:
         """``GetBinErrorSqUnchecked`` of every bin: the square of weights, or the content."""
         squares = self._sumw2()
@@ -812,6 +859,14 @@ class Histogram(Displayed):
     def add(self, other: Histogram, c: float = 1.0) -> None:
         """``Add(other, c)``: add ``c`` times ``other`` to this one, in place."""
         arithmetic.add(self, other, float(c))
+
+    def stat_overflows(self) -> int:
+        """``GetStatOverflows``: this histogram's own ``EStatOverflows``, ``kNeutral`` until set."""
+        return int(self._core["fStatOverflows"])
+
+    def set_stat_overflows(self, value: int) -> None:
+        """``SetStatOverflows(flag)``: ``kIgnore``, ``kConsider`` or ``kNeutral``."""
+        self._core["fStatOverflows"] = int(value)
 
     def scale(self, c: float, width: bool = False) -> None:
         """``Scale(c)``, in place; ``width`` is ROOT's ``"width"``, dividing by bin size too."""

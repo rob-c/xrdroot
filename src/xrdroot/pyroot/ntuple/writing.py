@@ -284,6 +284,15 @@ class RNTupleWriter(Guarded, _Filling):
         ``reset`` does in ROOT's wrapper."""
         self._let_go()
 
+    def _destruct(self) -> None:
+        """``~unique_ptr``, which C++ runs as the writer's scope ends: the same letting go.
+
+        ROOT's ``RNTupleWriter::Recreate`` gives a ``std::unique_ptr`` back, so a macro that
+        fills a local writer in a block writes its file at the block's end - and the reader
+        it opens afterwards sees what was filled.
+        """
+        self._let_go()
+
     def _let_go(self) -> None:
         if not self._sink.closed:
             self._flush()

@@ -184,6 +184,23 @@ def test_a_base_reached_twice_and_a_members_call_keep_their_meaning():
     assert "self.fHelper()" in python
 
 
+def test_a_default_answered_through_self_is_worked_out_as_the_body_starts():
+    """``Bool_t dir = kIterForward`` in a class deriving from ROOT's ``TListIter``: the name
+    is ROOT's, which the translation answers through ``inherited(self, ...)`` - and Python
+    builds a default list as the class is defined, where there is no ``self``. C++ reads the
+    default in the class's own scope, so the body stands in for the list."""
+    python = translate(
+        "class Walk : public TListIter {\n"
+        "public:\n"
+        "   Walk(TList *l, Bool_t dir = kIterForward) : TListIter(l, dir) {}\n"
+        "};\n",
+        "walk.C",
+    )
+    assert "dir_=UNGIVEN" in python or "dir=UNGIVEN" in python
+    assert "is UNGIVEN" in python
+    assert "inherited(self, 'kIterForward'" in python.split("is UNGIVEN")[1]
+
+
 def test_an_override_takes_its_bases_defaults_where_it_has_none_of_its_own():
     import xrdroot.pyroot as ROOT
 

@@ -406,6 +406,12 @@ class TRandom:
 
     def uniform(self, a: Any = 1.0, b: Any = None, n: Count = None) -> Any:
         """``Uniform(a)`` in ]0, a[, or ``Uniform(a, b)`` in ]a, b[."""
+        if n is None and isinstance(a, (int, float)) and (b is None or isinstance(b, (int, float))):
+            # One number, drawn one at a time: the arithmetic is the array arithmetic of
+            # two floats, which is what a loop over a histogram's fills costs ten million
+            # times over, done without the array.
+            draw = self._next()
+            return float(a * draw) if b is None else float(a + (b - a) * draw)
         if b is None:
             count, shape = _count(n, a)
             return _shaped(_float(a) * _like(self._take(count), shape), shape)
@@ -430,6 +436,14 @@ class TRandom:
         These are the ``Double_t`` overload's; the ``Float_t`` one's are these
         rounded to single precision, ``np.float32(a)``.
         """
+        if n is None:
+            # One pair, drawn a number at a time: the same two draws, the same arithmetic,
+            # without a column of one pair - which is most of what a macro that fills a
+            # histogram from ``Rannor`` does, a pair at a time.
+            first, second = self._next(), self._next()
+            angle = second * RANNOR_TWO_PI
+            radius = math.sqrt(-2 * libm.log(first))
+            return radius * libm.sin(angle), radius * libm.cos(angle)
         count, shape = _count(n)
         draws = self._take(2 * count).reshape(count, 2)
         x = draws[:, 1] * RANNOR_TWO_PI
@@ -438,6 +452,9 @@ class TRandom:
 
     def exp(self, tau: Any, n: Count = None) -> Any:
         """``Exp(tau)``: a number from an exponential of mean ``tau``."""
+        if n is None and isinstance(tau, (int, float)):
+            # one number, drawn one at a time: the same draw and the same logarithm
+            return -float(tau) * libm.log(self._next())
         count, shape = _count(n, tau)
         return _shaped(-_float(tau) * libm.log(_like(self._take(count), shape)), shape)
 
@@ -449,6 +466,9 @@ class TRandom:
 
     def breit_wigner(self, mean: Any = 0.0, gamma: Any = 1.0, n: Count = None) -> Any:
         """``BreitWigner(mean, gamma)``: a Cauchy number of that peak and full width."""
+        if n is None and isinstance(mean, (int, float)) and isinstance(gamma, (int, float)):
+            draw = 2 * self._next() - 1
+            return float(mean) + 0.5 * float(gamma) * libm.tan(draw * HALF_PI)
         count, shape = _count(n, mean, gamma)
         rval = 2 * _like(self._take(count), shape) - 1
         return _shaped(_float(mean) + 0.5 * _float(gamma) * libm.tan(rval * HALF_PI), shape)
@@ -462,6 +482,9 @@ class TRandom:
         count, shape = _count(n, mean)
         if spread <= 0:
             return _shaped(np.zeros(count), shape)
+        if n is None and isinstance(mean, (int, float)):
+            # One number, drawn a number at a time: the same quantile of the same draw.
+            return float(mean) + landau.quantile_one(self._next(), spread)
         values = landau.quantile(self._take(count), spread)
         return _shaped(_float(mean) + _like(values, shape), shape)
 
@@ -493,6 +516,9 @@ class TRandom:
         A ``prob`` outside [0, 1] is 0, and draws nothing, as in ROOT.
         """
         trials, chance = _how_many(ntot), _scalar("prob", prob)
+        if n is None and 0 <= chance <= 1 and trials:
+            # One count, drawn a uniform at a time, as the column counts the draws it holds.
+            return sum(1 for _ in range(trials) if not self._next() > chance)
         count, shape = _count(n)
         if chance < 0 or chance > 1 or not trials:
             return _shaped(np.zeros(count, dtype=np.int64), shape)
@@ -508,6 +534,15 @@ class TRandom:
         mu = _poisson_mean(mean)
         if mu >= 2.0**62:
             raise ValueError(f"A Poisson count of mean {mu} does not fit 64 bits; use poisson_d.")
+        if n is None and mu < 2.0**62:
+            # One count, drawn one at a time: the algorithm's own loop, without the column of
+            # one - the shape a toy study asking for a count per toy asks for.
+            if mu >= 1e9:
+                return int(np.trunc(self._poisson_gaus(mu, 1))[0])
+            if mu <= 0:
+                return 0
+            make = poisson.product_one if mu < 25 else poisson.rejection_one
+            return int(make(self._next, mean=mu))
         count, shape = _count(n)
         if mu >= 1e9:
             return _shaped(np.trunc(self._poisson_gaus(mu, count)).astype(np.int64), shape)

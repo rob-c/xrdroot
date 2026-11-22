@@ -22,7 +22,7 @@ from .limits import is_limit, limit_text
 from .nodes import Binary, Function, Literal, Name, Node, SizeOf, Unary
 from .operators import python_operator
 from .sizes import size_of
-from .symbols import Symbol
+from .symbols import Symbol, member_name
 from .traits import is_trait, trait
 
 __all__ = ["NameEmitter", "STD", "type_text"]
@@ -159,10 +159,43 @@ class NameEmitter(Inference):
             return self.lookup(klass)
         if name in info.statics or name in info.constants:
             found = info.statics.get(name)
-            return Symbol(name, "static", f"{klass}.{name}", found.ctype if found else None)
+            return Symbol(name, "static", self._class_body_name(klass, name),
+                          found.ctype if found else None)  # fmt: skip
         if name in info.methods:
-            return Symbol(name, "static", f"{klass}.{python_operator(name)}", owner=klass)
+            kind = self._method_kind(info.methods[name])
+            return Symbol(name, kind, f"{klass}.{python_operator(name)}", owner=klass)
         return None
+
+    def _method_kind(self, overloads: list[Any]) -> str:
+        """How ``Cls::method`` is reached: ``member`` when it is called on the object C++
+        gives it, ``static`` when there is no object to give.
+
+        A member function named through its own class - ``Init()`` of ``TJsonEx4`` calling
+        ``TJsonEx1::Init()`` - is called on ``*this`` in C++, and ``this`` is what the call
+        has to hand over: ``Base.Init`` is the plain Python function, not a method of an
+        object, so writing ``Base.Init()`` loses the object and is the ``TypeError`` of a
+        missing ``self``. A static member is reached through the class and takes no object,
+        and one named where ``this`` is no object - a static member function, a free
+        function - is left as it was, since such a call is not one C++ allows either.
+        """
+        if all(func.static for func in overloads):
+            return "static"
+        function = self.scope.function
+        if self.scope.klass is None or getattr(function, "static", False):
+            return "static"
+        return "member"
+
+    def _class_body_name(self, klass: str, name: str) -> str:
+        """Where ``klass``'s member ``name`` is read from in the body of ``klass`` itself.
+
+        A class's Python body runs before its name is bound, so ``A::k`` written in it -
+        ``static int n = A::k;`` - could not be read by the name ``A``; the body's own name
+        for it is ``k``, which C++'s lookup in the class finds first anyway. A static is a
+        body name as an attribute is spelled, an enumerator as the body writes it.
+        """
+        if self.scope.kind == "class" and self.scope.klass == klass:
+            return member_name(name) if name in self.program.classes[klass].statics else name
+        return f"{klass}.{name}"
 
     def use(self, symbol: Symbol) -> Out:
         """What a use of ``symbol`` reads: its Python name, through a cell or ``self``."""

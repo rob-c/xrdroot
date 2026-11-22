@@ -166,6 +166,9 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     ("GetParameter", 3): (1, 2),
     ("GetBinXYZ", 4): (1, 2, 3),
     ("GetObject", 2): (1,),
+    # ``TBufferJSON::FromJSON(T*& obj, json)`` fills the pointer the macro hands it, so the
+    # local is a cell - which is what makes ``arr2`` hold the array the JSON described.
+    ("FromJSON", 2): (0,),
     ("DecodeNameCycle", 3): (2,),
     ("DecodeNameCycle", 4): (2,),
     ("HLS2RGB", 6): (3, 4, 5),
@@ -217,6 +220,7 @@ RETURNED = {
     **{(kind, "str"): "std::string" for kind in ("HijackMessageStream",
                                                   "RooHelpers::HijackMessageStream")},
     **{(kind, "Invert"): "TMatrixDSym" for kind in ("TDecompChol", "TDecompBK")},
+    **{("RNTupleWriter", name): "RNTupleWriter" for name in ("Recreate", "Append")},
 }
 
 #: ROOT's getters, whose call leaves the object as it was: a loop bound using them is fixed.
@@ -374,8 +378,12 @@ ROOT = Dialect(
     layouts=LAYOUTS,
     string_classes=frozenset({"TString"}),
     buffer_methods=frozenset({"Branch", "SetBranchAddress", "DecodeNameCycle"}),
+    buffer_functions=frozenset({"memset", "memcpy"}),
     string_methods={"Data": _data},
-    guards=frozenset({"TFile", "TMemFile", "FileRaii", "ROOT::TestSupport::FileRaii"}),
+    guards=frozenset({"TFile", "TMemFile", "FileRaii", "ROOT::TestSupport::FileRaii",
+                     "TIter", "RNTupleWriter",
+                     "TServerSocket",
+                     "ofstream", "std::ofstream"}),  # TIter deletes the iterator it holds
     value_readers=frozenset({"TTreeReaderValue"}),
     array_readers=frozenset({"TTreeReaderArray"}),
     held_results=frozenset({"RResultPtr", "RDF::RResultPtr", "ROOT::RDF::RResultPtr"}),

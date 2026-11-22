@@ -36,6 +36,13 @@ __all__ = [
     "nullptr",
 ]
 
+#: ``TObject::kIsOnHeap | kNotDeleted``: the two private bits ROOT's ``fBits`` carries for an
+#: object made with ``new`` and not yet deleted, which every object here is. A file never
+#: holds them - ``TObject::Streamer`` masks them out when it writes, since where the reading
+#: process made the object is not the writer's to say - so a reader puts them back, and they
+#: are in every bits word an object hands out.
+HEAP_BITS = 0x03000000
+
 #: ROOT's ``nullptr``, which PyROOT spells as Python's ``None``.
 nullptr = None
 
@@ -289,11 +296,17 @@ class TObject:
     # -- bits --------------------------------------------------------------------
 
     def _bitword(self) -> int:
-        """The object's bits; a wrapper keeps them in its xrdroot object's ``fBits``."""
-        return int(self.__dict__.get("_bits", 0))
+        """The object's bits; a wrapper keeps them in its xrdroot object's ``fBits``.
+
+        The heap's two bits are always there, as they are in ROOT's own objects: they say
+        what the *reader* did, not what the file says, so :meth:`_store_bits` drops them and
+        they come back here. ``TTree::Show`` prints this word, which is what makes it ROOT's.
+        """
+        return int(self.__dict__.get("_bits", 0)) | HEAP_BITS
 
     def _store_bits(self, bits: int) -> None:
-        self.__dict__["_bits"] = int(bits)
+        """Keep the bits a file or a script set; the heap's own are not its to keep."""
+        self.__dict__["_bits"] = int(bits) & ~HEAP_BITS
 
     def SetBit(self, bit: int, value: bool = True) -> None:
         """``SetBit(f, set)``: set - or with ``set`` false, clear - the bits ``f``."""
@@ -371,6 +384,17 @@ class TObject:
         from .directories import current_directory
 
         return int(current_directory().WriteTObject(self, name, option))
+
+    def Streamer(self, buffer: Any) -> None:
+        """``Streamer``: this object into a ``TBuffer``, or the buffer's bytes into this object.
+
+        Every class of ROOT's has one, made from its dictionary, and a program that hands an
+        object back and forth through a ``TBufferFile`` calls it on the object itself rather
+        than on its ``TClass`` - which asks the buffer the same question the file format does,
+        so what is written here is what a file would hold, and what is read back is made by
+        the same description of the class.
+        """
+        buffer.StreamObject(self, self.IsA())
 
     def SaveAs(self, filename: str = "", option: str = "") -> None:
         """``SaveAs``: a ``.root`` file holding this object alone."""

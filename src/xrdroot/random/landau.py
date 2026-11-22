@@ -18,7 +18,7 @@ import numpy as np
 
 from . import libm
 
-__all__ = ["quantile"]
+__all__ = ["quantile", "quantile_one"]
 
 # fmt: off
 #: The quantile at every thousandth of probability, ``f[982]`` in ROOT's source.
@@ -167,6 +167,32 @@ def quantile(z: Any, xi: float) -> Any:
     out[curved] = _parabola(i[curved], u[curved])
     out[low] = _lower(z[low])
     out[high] = _upper(z[high])
+    return xi * out
+
+
+def quantile_one(z: float, xi: float) -> float:
+    """``landau_quantile(z, xi)`` of one probability: the same table, read one value at a time.
+
+    A draw of ``Landau`` was twenty NumPy operations on arrays of one - the masks, the four
+    regions and their assignments - where the arithmetic on one number is a table lookup
+    and two multiplications. A loop over draws, which is how a ROOT test makes a Landau
+    distribution, is 20 times what it needs to be through the array.
+    """
+    u = 1000 * z
+    i = int(u)  # truncated towards zero, as the column's ``astype(np.int64)`` truncates
+    u -= i
+    if 70 <= i < 800:
+        below, here = float(TABLE[i - 1]), float(TABLE[i])
+        out = below + u * (here - below)
+    elif 7 <= i <= 980:
+        f = TABLE
+        below, here = float(f[i - 1]), float(f[i])
+        bend = float(f[i + 1]) - here - below + float(f[i - 2])
+        out = below + u * (here - below - 0.25 * (1 - u) * bend)
+    elif i < 7:
+        out = _lower(z)
+    else:
+        out = _upper(z)
     return xi * out
 
 

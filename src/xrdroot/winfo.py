@@ -67,6 +67,45 @@ so the version 12 this writer gives it is read as one. ``TClonesArray``,
 ``LorentzVector<PxPyPzE4D<double> >`` and its coordinates, come from
 ``object-branches-6.40.root``, which ROOT 6.40 wrote from ``object_branches.C``.
 
+A class a *program* declares is not here, even where ROOT's own record of one can be read
+out of a file. An instance of a template the program itself declares -
+``roottest/root/io/bigevent``'s ``Event::fTemplateMember``, a ``template2<template1<int> >`` -
+is described by that declaration: ROOT writes its record as version 1, no elements, checksum
+``0xf1819316``, and writes *objects* of it as a foreign class of no ``ClassDef`` - version 0
+and that checksum after it, which is what the declaration reproduces to the byte.
+``pyroot/core/declared._reach`` stops at a name this table holds, so an entry here would take
+the class away from the declaration and write the member's record as ``40000002 0001`` where
+ROOT writes ``40000006 0000`` and ``f1819316``.
+
+The arrays ROOT builds its histograms on - ``TArray``, ``TArrayF``, ``TArrayI``,
+``TArrayD`` - are the one family deliberately absent from this table although a program's
+class can hold one: ``roottest/root/io/bigevent``'s ``Event`` has ``TArrayF fArrayF`` by
+value and ``TArrayI *fArrayI``, and its ``Track`` a ``TArrayI fInts``. Each streams itself,
+``TArray::Streamer`` writing version 1, ``fN`` and then that many values, and
+``TArrayF::Streamer`` writing nothing of its own - so a member of one is written as an
+*object*: a ``TStreamerObjectAny`` of type 62, type 69 behind a pointer, naming the class,
+with those bytes inside it, which is what the declaration's ``Catalogue`` makes of the
+member.
+
+They are absent for two measured reasons. This table is what the *writer* walks for the
+classes a file describes (:func:`~.writer._closure`, over the bases each element names), and
+``TArrayF`` is a base of every ``TH1F``: an entry here would put ``TArrayF``, and ``TArray``
+through it, into the streamer record of every file holding a histogram, where ROOT names
+neither. And a file ROOT 6.40.04 writes describes them only when a tree carries them: a
+``TTree`` with a branch element of a ``ClassDef`` class holding the five arrays says
+``TArray``, ``TArrayC``, ``TArrayS``, ``TArrayI``, ``TArrayF`` and ``TArrayD``, where a bare
+``TObject`` holding a ``TArrayF`` and a ``TArrayI *``, written with ``WriteObject``, makes a
+file of one ``TStreamerInfo``, the holder's. Their own descriptions - the version, ``fN``
+and the counted ``fArray``, as ROOT 6.40.04's own file says them - are
+:data:`ARRAY_LAYOUTS`, and that is what a file which carries them must be told.
+
+The counting word is where the vintages part, and it is what the ``Element`` tuple has to
+spell exactly. ROOT 6.40.04 says ``int``: streamer type 6, four bytes, and the base's
+checksum in the second maximum index of an array's ``TArray`` element. ``g4-like.root``, an
+older ROOT's, says ``Int_t`` instead: type 3, no size, no base checksum, and titles the
+counted pointer of each array ``[fN] Array of fN integers`` - a different checksum for every
+one of them (``0x007021b2`` against ``0x03f126b3`` for ``TArray`` alone).
+
 Writing carries these descriptions back out verbatim, checksums and all, so a
 file written here says exactly what a ROOT of that vintage would say about the
 same classes, and anything reading it - ROOT, this library, or another - walks
@@ -78,7 +117,7 @@ guess, and a guess about layout is how physics data gets misread.
 
 from __future__ import annotations
 
-__all__ = ["INFOS", "SUBVERSIONS", "WRITER_VERSION"]
+__all__ = ["ARRAY_LAYOUTS", "INFOS", "SUBVERSIONS", "WRITER_VERSION"]
 
 #: The ROOT version the donor descriptions came from, written into the header.
 WRITER_VERSION = 60806
@@ -105,6 +144,54 @@ SUBVERSIONS = {
 #: and class for a ``TStreamerBasicPointer``, and the kind of container and
 #: of what it holds for a ``TStreamerSTL``.
 Element = tuple[str, str, str, int, int, int, int, tuple[int, ...], str, tuple[object, ...]]
+
+#: What ROOT 6.40.04 says a file describes of the arrays it builds its histograms on - the
+#: ``TArray`` a class of a program's holds by value as ``TArrayF fArrayF`` or by pointer as
+#: ``TArrayI *fArrayI``. They are not in :data:`INFOS`; the module docstring says why, and
+#: what the counted ``fArray`` of each is worth. The donor is a ``TTree`` written by ROOT
+#: 6.40.04 through ACLiC, whose branch element is a ``ClassDef`` class holding one of each:
+#:
+#:   root -l -b -q -e 't.Branch("h", "HoldAll", &h); t.Fill(); t.Write()'
+#:
+#: An older ROOT's file, ``g4-like.root``, spells the count ``Int_t`` and titles each counted
+#: pointer ``[fN] Array of fN integers`` - different bytes and checksums - so a reader is
+#: handed whichever file's word it read, and this is what the writer must say.
+ARRAY_LAYOUTS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
+    "TArray": (0x007021B2, 1, (
+        ("TStreamerBasicType", "fN", "Number of array elements",
+         6, 4, 0, 0, (0, 0, 0, 0, 0), "int", ()),
+    )),
+    "TArrayC": (0xAE879936, 1, (
+        ("TStreamerBase", "TArray", "Abstract array base class",
+         0, 0, 0, 0, (0, 0x007021B2, 0, 0, 0), "BASE", (1,)),
+        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN chars",
+         41, 1, 0, 0, (0, 0, 0, 0, 0), "char*", (1, "fN", "TArray")),
+    )),
+    "TArrayS": (0x035C9314, 1, (
+        ("TStreamerBase", "TArray", "Abstract array base class",
+         0, 0, 0, 0, (0, 0x007021B2, 0, 0, 0), "BASE", (1,)),
+        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN shorts",
+         42, 2, 0, 0, (0, 0, 0, 0, 0), "short*", (1, "fN", "TArray")),
+    )),
+    "TArrayI": (0xD9D571C7, 1, (
+        ("TStreamerBase", "TArray", "Abstract array base class",
+         0, 0, 0, 0, (0, 0x007021B2, 0, 0, 0), "BASE", (1,)),
+        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN 32 bit integers",
+         43, 4, 0, 0, (0, 0, 0, 0, 0), "int*", (1, "fN", "TArray")),
+    )),
+    "TArrayF": (0x5A0BF6F1, 1, (
+        ("TStreamerBase", "TArray", "Abstract array base class",
+         0, 0, 0, 0, (0, 0x007021B2, 0, 0, 0), "BASE", (1,)),
+        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN floats",
+         45, 4, 0, 0, (0, 0, 0, 0, 0), "float*", (1, "fN", "TArray")),
+    )),
+    "TArrayD": (0x7139EF34, 1, (
+        ("TStreamerBase", "TArray", "Abstract array base class",
+         0, 0, 0, 0, (0, 0x007021B2, 0, 0, 0), "BASE", (1,)),
+        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN doubles",
+         48, 8, 0, 0, (0, 0, 0, 0, 0), "double*", (1, "fN", "TArray")),
+    )),
+}
 
 #: Every class this library can write: its checksum, version and elements,
 #: exactly as the donor files describe them.
@@ -982,9 +1069,9 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
     #     c->GetStreamerInfo()->GetElements()->ls(); }'
     #
     # ``TArray`` and the arrays built on it, which that test reaches next as ``fArrayF`` and
-    # ``fArrayI``, are in :data:`~.wdeclared.CARRIED_LAYOUTS` instead: a file says what they
-    # look like only when one of the program's own objects holds one, and this table is what a
-    # file that merely holds a histogram says - which ROOT writes without them.
+    # ``fArrayI``, are in :data:`~.wdeclared.CARRIED_LAYOUTS` instead: each streams version 1,
+    # ``fN`` then the values, and this table is what a file describes - which ROOT 6.40.04
+    # writes without a word about them (see the module docstring).
     "TDatime": (0xb44671ee, 1, (
         ('TStreamerBasicType', 'fDatime', 'Date (relative to 1995) + time',
          13, 4, 0, 0, (0, 0, 0, 0, 0), 'unsigned int', ()),

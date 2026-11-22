@@ -52,6 +52,30 @@ def _sides(made: Any) -> dict[str, Any]:
             "eyl": upward[0], "eyh": upward[1]}  # fmt: skip
 
 
+def _frame_histogram(
+    name: Any, title: Any, count: int, low: float, high: float, down: float, up: float
+) -> Any:
+    """The ``TH1F`` a graph's or a multigraph's axes are drawn in.
+
+    ``count`` bins over ``low`` to ``high`` in x, ``down`` to ``up`` in y, and no
+    statistics box - ROOT's ``kNoStats``. The frame is nobody's directory entry, so it
+    is made while ``AddDirectory`` says not to file it.
+    """
+    from .hists import TH1F
+
+    kept = TH1F.AddDirectoryStatus()
+    TH1F.AddDirectory(False)
+    try:
+        made = TH1F(name, title, count, low, high)
+    finally:
+        TH1F.AddDirectory(kept)
+    made.SetMinimum(down)
+    made.SetMaximum(up)
+    made.SetStats(False)
+    made.GetYaxis().SetLimits(down, up)
+    return made
+
+
 class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     """``TGraph``: points, joined or marked."""
 
@@ -441,6 +465,19 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         return (float(np.min(x - left)), float(np.min(y - down)),
                 float(np.max(x + right)), float(np.max(y + up)))  # fmt: skip
 
+    def _point_range(self) -> tuple[float, float, float, float]:
+        """``TGraph::ComputeRange`` over the points themselves, the bars left out.
+
+        ``TMultiGraph::GetHistogram`` merges this, one graph at a time, and pads the
+        result its own way; :meth:`ComputeRange` is the other question, how far a drawn
+        graph reaches, and answers it with the bars. ROOT's log-axis rule - the least
+        positive value rather than the least - keeps the minimum whenever that minimum
+        is positive, and changes nothing when it is not, so the plain minimum is what it
+        comes to. The caller leaves a graph of no points out.
+        """
+        x, y = self._points
+        return float(np.min(x)), float(np.min(y)), float(np.max(x)), float(np.max(y))
+
     def GetHistogram(self) -> Any:
         """``GetHistogram``: the frame - a ``TH1F`` a tenth wider than the points - made once."""
         if self._histogram is None:
@@ -448,21 +485,11 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         return self._histogram
 
     def _frame(self) -> Any:
-        from .hists import TH1F
-
         low, high, minimum, maximum = self._frame_range()
-        kept = TH1F.AddDirectoryStatus()
-        TH1F.AddDirectory(False)
-        try:
-            count = max(100, self.GetN())
-            made = TH1F(self.GetName() or "Graph", self.GetTitle(), count, low, high)
-        finally:
-            TH1F.AddDirectory(kept)
-        made.SetMinimum(minimum)
-        made.SetMaximum(maximum)
-        made.SetStats(False)
-        made.GetYaxis().SetLimits(minimum, maximum)
-        return made
+        return _frame_histogram(
+            self.GetName() or "Graph", self.GetTitle(), max(100, self.GetN()),
+            low, high, minimum, maximum,
+        )  # fmt: skip
 
     def _frame_range(self) -> tuple[float, float, float, float]:
         """``GetHistogram``'s range: the points', a tenth wider, kept off zero's other side."""

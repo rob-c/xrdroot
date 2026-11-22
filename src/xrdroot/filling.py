@@ -36,15 +36,21 @@ if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .profile import Profile
 
 __all__ = [
+    "SCALARS",
     "add_to_cells",
     "axis_terms",
     "arrays",
     "fill_histogram",
     "fill_profile",
+    "fill_profile_one",
     "global_bins",
     "running",
     "store_cells",
 ]
+
+#: What fills as one number rather than as an array of them: the numbers Python and NumPy
+#: give, which fill one entry - a loop over fills is ROOT's own way, and every tutorial's.
+SCALARS = (int, float, np.integer, np.floating)
 
 #: How far each integer storage goes before it saturates: ROOT stops one
 #: short of the type's most negative value, so a bin never flips sign.
@@ -249,20 +255,45 @@ def _add_one_cell(cells: Any, cell: int, weight: float) -> None:
 def fill_one(histogram: Histogram, coordinates: Sequence[float], weight: float) -> int:
     """``TH1::Fill`` of one entry, in plain floats - the same doubles :func:`fill_histogram`
     adds, without the cost of arrays of one; the global bin it went to comes back."""
+    bins: list[int] = []
+    inside = True  # on every axis, rather than in a flow bin of one
+    for axis, x in zip(histogram.axes, coordinates, strict=False):
+        found = one_bin(axis, x)
+        bins.append(found)
+        inside = inside and 1 <= found <= axis.nbins
+    cell = bins[0] if len(bins) == 1 else _global_one(bins, histogram._widths)
     cells = histogram._cells()
     squares = histogram._sumw2()
     if weight != 1.0 and squares is None:
         squares = histogram._ensure_sumw2()  # before the first weight that is not one
-    bins = [one_bin(axis, x) for axis, x in zip(histogram.axes, coordinates, strict=False)]
-    cell = _global_one(bins, histogram._widths)
     core = histogram._core
     core["fEntries"] = float(core["fEntries"]) + 1
     _add_one_cell(cells, cell, weight)
     if squares is not None:
         squares[cell] += weight * weight
-    if all(1 <= found <= axis.nbins for found, axis in zip(bins, histogram.axes, strict=False)):
-        _add_one(histogram._moment_homes(), one_terms(weight, coordinates))
+    if inside:
+        _add_one_terms(histogram._moment_terms(), weight, coordinates)
     return cell
+
+
+def _add_one_terms(
+    terms: Sequence[tuple[dict[str, Any], str]], weight: float, coordinates: Sequence[float]
+) -> None:
+    """:func:`one_terms` added to the moments each belongs to, without the list of them.
+
+    The same values in the same order as :func:`one_terms` and :func:`_add_one` together,
+    which is what an entry of a column adds; a loop of fills asks for it a million times
+    over, and both the list of pairs and the homes looked up by name cost more than the
+    additions do.
+    """
+    values = [weight, weight * weight]
+    for value in coordinates:
+        values += [weight * value, weight * value * value]
+    for first in range(len(coordinates)):
+        for second in range(first + 1, len(coordinates)):
+            values.append(weight * coordinates[first] * coordinates[second])
+    for (home, name), value in zip(terms, values, strict=True):
+        home[name] = float(home[name]) + value
 
 
 def _add_one(homes: dict[str, dict[str, Any]], terms: list[tuple[str, float]]) -> None:
@@ -317,6 +348,58 @@ def fill_profile(profile: Profile, coordinates: Sequence[Any], values: Any, weig
         if part.start == split and split < len(weights):
             profile._ensure_sumw2()  # before the first weight that is not one
         _profile_part(profile, cells[part], values[part], weights[part], coordinates, inside, part)
+
+
+def fill_profile_one(
+    profile: Profile, coordinates: Sequence[float], value: float, weight: float
+) -> int:
+    """``TProfile::Fill`` of one entry, in plain floats - the global bin it went to.
+
+    The same sums :func:`fill_profile` adds for an entry of its own, in the order it adds
+    them, without the cost of arrays of one - which for a profile filled in a loop, as
+    ROOT's own tests fill one, was seven times what the arithmetic costs. A value outside
+    the range the profile was booked with, or a NaN, is counted nowhere, as ROOT drops it
+    before counting it at all.
+    """
+    bins = [one_bin(axis, x) for axis, x in zip(profile.axes, coordinates, strict=False)]
+    cell = _global_one(bins, profile._widths)
+    if not _counted_value(profile, value):
+        return cell
+    _profile_sums(profile, cell, weight, value)
+    if all(1 <= found <= axis.nbins for found, axis in zip(bins, profile.axes, strict=False)):
+        _profile_moments(profile, coordinates, weight, value)
+    return cell
+
+
+def _counted_value(profile: Profile, value: float) -> bool:
+    """Does the profile count this value, or is it outside the range it was booked with?"""
+    low, high = profile._value_range()
+    return low == high or low <= value <= high
+
+
+def _profile_sums(profile: Profile, cell: int, weight: float, value: float) -> None:
+    """What one entry adds to a bin: its sums, the count of them and the weight."""
+
+    squares = profile._bin_sumw2()
+    if squares is None and weight != 1.0:
+        squares = profile._ensure_sumw2()  # before the first weight that is not one
+    core = profile._core
+    core["fEntries"] = float(core["fEntries"]) + 1
+    _add_one_cell(profile._cells(), cell, weight * value)
+    _add_one_cell(profile._value_squares(), cell, weight * value * value)
+    if squares is not None:
+        _add_one_cell(squares, cell, weight * weight)
+    _add_one_cell(profile._bin_weights(), cell, weight)
+
+
+def _profile_moments(
+    profile: Profile, coordinates: Sequence[float], weight: float, value: float
+) -> None:
+    """What one entry inside every axis adds to the profile's moments."""
+    letter = profile._value_letter()
+    terms = one_terms(weight, coordinates)
+    terms += [(f"fTsumw{letter}", weight * value), (f"fTsumw{letter}2", weight * value * value)]
+    _add_one(profile._moment_homes(), terms)
 
 
 def _profile_part(

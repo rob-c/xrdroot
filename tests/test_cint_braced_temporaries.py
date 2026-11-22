@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 import xrdroot.pyroot as ROOT
+from cintfake import fake
 from xrdroot.pycint import translate
+from xrdroot.pycint.execute import run_source
 
 
 def expression(source: str) -> str:
@@ -45,3 +49,27 @@ def test_a_braced_hashed_container_holds_its_items_rather_than_taking_them_as_ar
     )
     assert "'float']([1.5])" in expression("std::multiset<float>{1.5}")
     assert "'int']([b])" in expression("std::forward_list<int>{b}")
+
+
+def test_a_lambdas_container_parameter_is_made_from_the_braced_list_it_is_handed():
+    """``[](std::vector<double> v) { ... }({1.0, 2.0})`` is C++'s ``initializer_list``
+    constructor for the parameter. A lambda's call site carries no signature to convert at,
+    so the conversion is the first line of its body."""
+    text = translate(
+        "void t() { auto count = [](std::vector<double> v) { return (int)v.size(); }; }\n",
+        "t.C",
+    )
+    assert "if isinstance(v, list): v = ROOT.std.vector['double'](v)" in text
+
+
+def test_a_lambda_converts_a_braced_list_the_same_way_its_parameter_is_declared(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = (
+        "void t() {\n"
+        "  auto count = [](std::vector<double> v) { return (int)v.size(); };\n"
+        '  printf("%d %d\\n", count({1.0, 2.0}), count(std::vector<double>{1.0, 2.0, 3.0}));\n'
+        "}\n"
+    )
+    run_source(source, "t.C", root=fake())
+    assert capsys.readouterr().out == "2 3\n"

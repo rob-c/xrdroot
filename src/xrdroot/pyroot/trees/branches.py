@@ -242,6 +242,45 @@ def _referenced(value: Any) -> Iterator[Any]:
             yield from _referenced(item)
 
 
+def read_referenced(ref: Any) -> None:
+    """File the objects of the entry being read, so that ``ref`` finds the one it names.
+
+    A file ROOT writes says in its ``TRefTable`` which branch holds each referenced object,
+    and ROOT reads that branch when a reference asks for an object no branch was given. A
+    tree read here keeps no such table, so every collection of the entry is read instead -
+    once per entry, because a process numbers its objects from the start in each of them,
+    and an object of the entry before would answer to a reference of this one.
+    """
+    tree = TRefTable._tree
+    if tree is None:
+        return
+    entry = int(tree.GetReadEntry())
+    if TRefTable._filed == (id(tree), entry):
+        return
+    TRefTable._filed = (id(tree), entry)
+    TRefTable._kept[:] = _filed_collections(tree, entry)
+
+
+def _filed_collections(tree: Any, entry: int) -> list[Any]:
+    """Read every split collection of one entry, which files what a reference may name.
+
+    What comes back is kept by the caller: a process's table holds its objects weakly, and a
+    reference to one of these finds it only while something else still has it - here the
+    element the entry was read into, as ROOT's own tree keeps what it read.
+    """
+    from .copying import _element
+    from .rebuild import rebuilt
+
+    backing, made = tree._backing(), []
+    for leaf in tree._leaves():
+        found = _element(leaf, backing)
+        if found is None or entry < 0:
+            continue
+        made.append(rebuilt("TClonesArray", tree._batch.value(leaf.column, entry), None,
+                            found[0]))  # fmt: skip
+    return made
+
+
 class TRefTable(_TObjectLike):
     """``TRefTable``: which branch holds each object a ``TRef`` points at.
 
@@ -257,6 +296,12 @@ class TRefTable(_TObjectLike):
 
     #: ``fgRefTable``: the table of the tree an entry is being read or written for.
     _current: ClassVar[TRefTable | None] = None
+    #: The tree an entry is being read from, which a reference may need an object of.
+    _tree: ClassVar[Any] = None
+    #: Which tree's entry the objects of have been filed already: ``(id(tree), entry)``.
+    _filed: ClassVar[tuple[int, int] | None] = None
+    #: The collections of that entry, which the references filed in it point into.
+    _kept: ClassVar[list[Any]] = []
 
     def __init__(self, owner: Any = None, size: int = 100) -> None:
         super().__init__("", "")

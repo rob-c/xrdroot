@@ -16,7 +16,7 @@ import math
 from typing import Any
 
 from ..real import Context, value_of
-from .anaconv import RooAbsAnaConvPdf, decay_type
+from .anaconv import RooAbsAnaConvPdf, decay_type, declares_decay_type
 from .basic import ref
 
 __all__ = ["RooBMixDecay", "RooDecay", "draw_time", "value"]
@@ -177,3 +177,6 @@ class RooBMixDecay(RooAbsAnaConvPdf):
             if inside(t, bounds) and accept:
                 found[self.t.GetName()] = t
                 return found
+
+
+declares_decay_type(RooDecay, RooBMixDecay)

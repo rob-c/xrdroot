@@ -173,6 +173,129 @@ def test_print_and_ls_list_every_entry_one_level_in(capsys):
     ]
 
 
+def test_a_collection_makes_the_iterator_root_gives_it():
+    """``MakeIterator`` is what ``TIter`` walks through, and ROOT's collections each make
+    their own kind of iterator: a list a ``TListIter``, an array a ``TObjArrayIter`` which
+    leaves the array's empty slots out, a map a ``TMapIter`` of its pairs, a hash table a
+    ``THashTableIter``."""
+    held = ROOT.TList()
+    for item in named("a", "b"):
+        held.Add(item)
+    walked = held.MakeIterator()
+    expect(
+        (type(walked).__name__, "TListIter"),
+        ([item.GetName() for item in walked], ["a", "b"]),
+        (type(ROOT.TObjArray().MakeIterator()).__name__, "TObjArrayIter"),
+        (type(ROOT.TMap().MakeIterator()).__name__, "TMapIter"),
+        (type(ROOT.THashTable().MakeIterator()).__name__, "THashTableIter"),
+        (type(ROOT.TClonesArray().MakeIterator()).__name__, "TObjArrayIter"),
+        (type(ROOT.TOrdCollection().MakeIterator()).__name__, "TCollectionIter"),
+    )
+
+
+def test_an_arrays_iterator_leaves_its_empty_slots_out():
+    """An array's empty slot holds nothing to walk, so ROOT's iterator steps over it."""
+    held = ROOT.TObjArray()
+    held.AddAt(ROOT.TNamed("a", "A"), 0)
+    held.AddAt(None, 1)
+    held.AddAt(ROOT.TNamed("b", "B"), 2)
+    walked = held.MakeIterator()
+    expect(
+        ([item.GetName() for item in walked], ["a", "b"]),
+        (walked.Next(), None),
+    )
+    backwards = held.MakeIterator(False)
+    assert backwards.Next().GetName() == "b"
+
+
+def test_a_maps_iterator_hands_out_the_pairs_and_their_values():
+    """A map's walk gives the ``TPair``s a map holds, which is what ``TMapIter::GetValue``
+    reads the value of."""
+    held = ROOT.TMap()
+    held.Add(ROOT.TNamed("k", ""), ROOT.TNamed("v", ""))
+    walked = held.MakeIterator()
+    pair = walked.Next()
+    expect(
+        (pair.GetName(), "k"),
+        (walked.GetValue().GetName(), "v"),
+        (bool(walked.Next() is None), True),
+        (walked.GetValue(), None),
+    )
+
+
+def test_an_iterator_answers_its_place_steps_and_the_object_it_is_at():
+    """``operator*`` is the object the walk is at, ``Skip`` passes over one without keeping
+    it, ``Reset`` starts again, and two walks at the same place are equal."""
+    held = ROOT.TList()
+    for item in named("a", "b", "c"):
+        held.Add(item)
+    walked = held.MakeIterator()
+    expect(
+        (walked(), None),
+        (walked.Next().GetName(), "a"),
+        (walked().GetName(), "a"),
+        (walked.GetOption(), ""),
+    )
+    walked.Skip(2)
+    assert walked().GetName() == "c"
+    walked.Reset()
+    twin = held.MakeIterator()
+    expect(
+        (bool(walked == twin), True),
+        (bool(walked != twin), False),
+        (bool(walked == "a"), False),
+        (bool(walked != "a"), True),
+    )
+
+
+def test_an_iterator_is_deleted_with_the_titer_that_holds_it():
+    """ROOT's ``TIter`` owns the iterator its collection made and deletes it as it is
+    destroyed - which is what a macro's scoped ``TIter`` relies on, and what a class
+    derived from ``TIterator`` sees its destructor run for."""
+
+    class Counted(ROOT.TListIter):
+        destroyed = 0
+
+        def _destruct(self) -> None:
+            Counted.destroyed += 1
+
+    held = ROOT.TList()
+    held.Add(ROOT.TNamed("a", "A"))
+    walk = ROOT.TIter(Counted(held))
+    expect((type(walk._iterator).__name__, "Counted"))
+    walk._destruct()
+    expect((Counted.destroyed, 1))
+    del walk
+    expect((Counted.destroyed, 1), (bool(ROOT.TIter(None).Next() is None), True))
+    empty = ROOT.TIter(None)
+    empty.Reset()
+    empty._destruct()
+    released = ROOT.TIter(Counted(held))
+    released._cxx_released = True
+    del released
+    expect((Counted.destroyed, 1))
+
+
+def test_a_titer_walks_a_python_list_and_a_collections_own_iterator():
+    """A ``TIter`` is given a collection, an iterator it takes as it is, or - as the macros
+    that walk a list of things here do - anything else iterable."""
+    items = named("a", "b")
+    expect(
+        ([item.GetName() for item in ROOT.TIter(items)], ["a", "b"]),
+        ([item.GetName() for item in ROOT.TIter(items, False)], ["b", "a"]),
+        (ROOT.TIter(None).GetCollection(), None),
+    )
+    held = ROOT.TList()
+    held.Add(ROOT.TNamed("only", ""))
+    own = held.MakeIterator()
+    walk = ROOT.TIter(own)
+    expect(
+        (walk.Next().GetName(), "only"),
+        (bool(walk.GetCollection() is held), True),
+        (bool(walk._iterator is own), True),
+    )
+
+
 def test_an_iterator_hands_out_none_at_the_end():
     held = ROOT.THashList()
     for item in named("a", "b"):

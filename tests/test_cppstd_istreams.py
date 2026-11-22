@@ -63,3 +63,19 @@ with tempfile.TemporaryDirectory() as directory:
     absent = ifstream(path.with_name('absent'))
     assert absent.fail() and not absent.is_open()
 """)
+
+
+def test_an_extraction_that_fails_leaves_what_was_there_and_a_bad_stream_reads_nothing() -> None:
+    """``extracted(stream, current, ctype)``: C++'s ``in >> x`` - a read that fails stores
+    nothing, and a stream that has already failed is not read again at all."""
+    from xrdroot.cppstd.istreams import extracted, istringstream
+
+    stream = istringstream("7")
+    assert extracted(stream, 0, "int") == 7
+    assert (stream.failed, False) == (stream.failed, False)
+    assert extracted(stream, 7, "int") == 7  # nothing left: the 7 stays
+    assert stream.failed
+    assert extracted(stream, 7, "int") == 7 and stream.failed
+    words = istringstream("one")
+    assert extracted(words, "keep", "TString") == "one"
+    assert extracted(words, "keep", "TString") == "keep"

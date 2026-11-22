@@ -22,6 +22,7 @@ from weakref import WeakKeyDictionary
 
 from ...wdeclared import ROOT_TYPEDEFS as TYPEDEFS
 from ...winfo import INFOS, Element
+from . import datatypes as _datatypes
 from .classedit import TClassEdit
 from .messages import message
 from .objects import TNamed, TObject
@@ -153,6 +154,14 @@ FILE_INFOS: dict[str, list[Layout]] = {}
 #: which ROOT warns of once per class, however many files its layouts are read from.
 DISAGREED: set[str] = set()
 
+#: The flat lists of persistent data members built so far, by class: ``BuildRealData`` builds
+#: one and ``GetListOfRealData`` hands it back, as ROOT caches it with the class.
+REAL_INFOS: dict[str, list[Any]] = {}
+
+#: ``TStreamerElement``'s ``kMissingOffset``: the offset ROOT gives an element of a file's
+#: layout it cannot set against the class in memory.
+_MISSING_OFFSET = 99999
+
 #: The numeric types a member can be declared with, whose width - and not whose spelling -
 #: is what ROOT compares: they are as wide on every machine ROOT builds on.
 NUMBERS = frozenset({
@@ -218,6 +227,11 @@ DATA_TYPES: dict[int, tuple[str, int]] = {
     18: ("bool", 1), 19: ("Float16_t", 2), 20: ("void", 0),
 }  # fmt: skip
 
+#: The typedefs that name how many bits a float is stored in - ``Double32_t`` is a ``double``
+#: written as a float, ``Float16_t`` a ``float`` written in 16 bits - spelled as the type
+#: they are, which is the only spelling the translation keeps of them.
+PRECISION = {"Double32_t": "double", "Float16_t": "float"}
+
 #: ``kIsTObject`` and the other bits ``TClass::Property`` and ``GetState`` answer with.
 K_IS_TOBJECT = 0x00008000
 #: ``TClass::EState``: ``kInterpreted``, a class the interpreter describes and no dictionary
@@ -233,10 +247,80 @@ def note_generated_dictionary(classes: Any) -> None:
     Nothing is compiled here, so what a dictionary adds to a class this kit already builds is
     that ``TClass`` reports it as one a dictionary describes, which is what a program asking
     for a dictionary and then asking the state of the class checks for.
+
+    A dictionary arriving for a class a file has already described is ROOT's
+    ``TClass::PostLoadCheck``: :func:`_post_load_check` says what the two layouts disagree
+    about, which the file could not have said itself - the class had no dictionary when it
+    was read.
     """
     for name in str(classes).split(";"):
         if name.strip():
-            GENERATED.add(_known_as(name))
+            known = _known_as(name)
+            GENERATED.add(known)
+            _post_load_check(known)
+
+
+def _post_load_check(name: str) -> None:
+    """``TClass::PostLoadCheck``: the class's dictionary has arrived, so the layouts a file
+    gave it can at last be held against the class in memory.
+
+    A class a file described while it had no dictionary kept the file's layout as that
+    version's - it was the only description there was - so a dictionary of the same version
+    with another checksum is the class having been changed since, and ROOT says so once per
+    class: ``roottest``'s ``checkWarn0`` reads ``data1.root`` and then ``.L data2.C+`` and is
+    warned, where ``checkWarn2`` loads the class first and is warned as the file opens.
+
+    Only a class a file has described is looked at, so loading a dictionary computes nothing
+    about the classes no file has read: what a class's layout costs is its writer's knowledge
+    of every type it holds, which is asked for when it is written, not when it is loaded.
+    """
+    mine = TClass(name)._layout() if name in FILE_INFOS else None
+    if mine is None or name in DISAGREED:
+        return
+    on_file = _layout_of_version(name, mine)
+    if on_file is None or not TClass(name)._versioned():
+        return
+    _post_load_warnings(name, mine, on_file)
+
+
+def _layout_of_version(name: str, mine: Layout) -> Layout | None:
+    """The layout a file gave ``name`` of the version the class in memory has, if its
+    checksum is not the class's own - the disagreement ``PostLoadCheck`` is about."""
+    return next((info for info in FILE_INFOS.get(name, [])
+                 if info[1] == mine[1] and info[0] != mine[0]), None)
+
+
+def _post_load_warnings(name: str, mine: Layout, on_file: Layout) -> None:
+    """The two warnings ROOT prints for a dictionary that arrives after the class's file
+    layouts were read: ``TClass::PostLoadCheck``, that the file's version of the class is not
+    the one in memory, and ``TStreamerInfo::CompareContent``, which lists the members the
+    file's layout has and the class in memory does not declare - ``int myvar_one; //`` beside
+    ``double mydouble_two; //``.
+
+    The file's layout stays the version's current one, as ROOT keeps it, so what the class's
+    streamer information lists afterwards is the file's, which is why ``checkWarn0`` prints
+    ``myvar_one`` after loading the class that declares ``mydouble_two``.
+    """
+    DISAGREED.add(name)
+    message("Warning", "TClass::PostLoadCheck",
+            "\n   The StreamerInfo version %d for the class %s which was read\n"
+            "   from a file previously opened has the same version as the active class\n"
+            "   but a different checksum. You should update the version to ClassDef(%s,%d).\n"
+            "   Do not try to write objects with the current class definition,\n"
+            "   the files will not be readable.\n",
+            on_file[1], name, name, on_file[1] + 1)
+    message("Warning", "TStreamerInfo::CompareContent",
+            "The following data member of\nthe in-memory layout version %d of class '%s' "
+            "is missing from\nthe on-file layout version %d:\n   %s",
+            on_file[1], name, mine[1],
+            "\n   ".join(_declaration(element) for element in _lost(mine, on_file)))
+
+
+def _lost(mine: Layout, on_file: Layout) -> list[Element]:
+    """The members a file's layout records that the class in memory declares by other names,
+    which is what ``CompareContent`` lists as missing."""
+    declared = {element[1] for element in mine[2]}
+    return [element for element in on_file[2] if element[1] not in declared]
 
 
 def _known_as(name: str) -> str:
@@ -265,15 +349,65 @@ def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None
     :mod:`xrdroot.streamers` read them from.
     """
     origin = _origin(source)
-    for name, (checksum, version, elements) in infos:
+    for name in _as_root_lists_them(infos):
         if name not in FILE_INFOS and _undictionaried(name):
             message("Warning", "TClass::Init", "no dictionary for class %s is available", name)
+    for name, (checksum, version, elements) in infos:
         met = _met(name, (checksum, version, elements), origin)
         if met or _in_memory(name, checksum, version):
             continue
         held = FILE_INFOS[name]
         taken = {found[1] for found in held}
         held.append((checksum, _free_version(name, version, taken), elements))
+
+
+def _as_root_lists_them(infos: list[tuple[str, Layout]]) -> list[str]:
+    """The classes a file describes, in the order ROOT warns of them: a class before the
+    classes its layout is built on.
+
+    ROOT registers a class's streamer information as it first streams an object of it, and a
+    base's after the derived class's - ``roottest/root/io/tree``'s ``write.C`` streams a
+    ``TEmcl``, whose base is ``TPhysObj``, so the file ROOT wrote lists ``TEmcl`` first and
+    ``missingClass.ref`` names it first. The writer here lays a base down before its derived
+    class, which is ROOT's order read backwards, so the order ROOT would have read is worked
+    out from the layouts: a class whose base the file lists before it is warned of first, and
+    the base with it.
+    """
+    bases = {}
+    for name, (_sum, _version, elements) in infos:
+        bases[name] = _bases_of(elements)
+    deferred: set[str] = set()
+    for found in bases.values():
+        deferred.update(found)
+    order: list[str] = []
+    warned: set[str] = set()
+    for name, _layout in infos:
+        if name not in deferred:
+            _warn_order(name, bases, order, warned)
+    for name, _layout in infos:
+        _warn_order(name, bases, order, warned)
+    return order
+
+
+def _bases_of(elements: tuple[Element, ...]) -> list[str]:
+    """The classes a layout is built on: the names of its ``TStreamerBase`` elements."""
+    found = []
+    for element in elements:
+        if element[0] == "TStreamerBase":
+            found.append(element[1])
+    return found
+
+
+def _warn_order(name: str, bases: dict[str, list[str]], order: list[str],
+                warned: set[str]) -> None:  # fmt: skip
+    """``name``, then the classes its layout is built on, each once - which is the order a
+    file ROOT wrote lists them in."""
+    if name in warned:
+        return
+    warned.add(name)
+    order.append(name)
+    for base in bases.get(name, ()):
+        _warn_order(base, bases, order, warned)
 
 
 def _origin(source: Any) -> str:
@@ -301,8 +435,9 @@ def _met(name: str, on_file: Layout, origin: str) -> bool:
     return met
 
 
-def _differing(mine: Layout, on_file: Layout) -> list[Element]:
-    """The members of the file's layout ROOT says the class in memory declares differently.
+def _differing(mine: Layout, on_file: Layout) -> list[tuple[Element, Element]]:
+    """The members of the file's layout ROOT says the class in memory declares differently,
+    each with the class's own member it is set against.
 
     A member of a number differs when the file records it at another *width*: ROOT reports
     ``AddVersion-1-6``'s ``int a`` against ``Long64_t a`` and stays silent about
@@ -314,7 +449,27 @@ def _differing(mine: Layout, on_file: Layout) -> list[Element]:
     wrote the file as on this one.
     """
     here = {element[1]: element for element in mine[2]}
-    return [e for e in on_file[2] if e[1] in here and _differs(e, here[e[1]])]
+    named = {element[1] for element in on_file[2]}
+    found = []
+    for index, element in enumerate(on_file[2]):
+        ours = here.get(element[1]) or _renamed(mine, named, index)
+        if ours is not None and _differs(element, ours):
+            found.append((element, ours))
+    return found
+
+
+def _renamed(mine: Layout, named: set[str], index: int) -> Element | None:
+    """The class's member a file's member is set against when the two spell it differently.
+
+    ROOT pairs the members of two layouts of a version by where they come rather than by
+    name, so ``roottest``'s ``checkWarn`` reads a file whose ``int myvar_one`` the class in
+    memory declares as ``double mydouble_two`` and is told the two differ. A member the file
+    names is only ever set against the class's member of that name, so a name both layouts
+    have is never paired here.
+    """
+    if index >= len(mine[2]) or mine[2][index][1] in named:
+        return None
+    return mine[2][index]
 
 
 def _differs(on_file: Element, mine: Element) -> bool:
@@ -383,14 +538,13 @@ def _compare_content(name: str, mine: Layout, on_file: Layout) -> None:
     """``TStreamerInfo::CompareContent``: each member of a versioned class whose type the file
     records differently from the class in memory, the two declarations one above the other -
     called for a file whose layout differs, which is what :func:`_differing` says."""
-    here = {element[1]: element for element in mine[2]}
     differ = _differing(mine, on_file)
     message("Warning", "TStreamerInfo::CompareContent",
             "The following data member of\nthe on-file layout version %d of class '%s' "
             "differs from\nthe in-memory layout version %d:\n   %s\nvs\n   %s",
             on_file[1], name, mine[1],
-            "\n   ".join(_declaration(e) for e in differ),
-            "\n   ".join(_declaration(here[e[1]]) for e in differ))
+            "\n   ".join(_declaration(theirs) for theirs, _ours in differ),
+            "\n   ".join(_declaration(ours) for _theirs, ours in differ))
 
 
 def _free_version(name: str, version: int, taken: set[int]) -> int:
@@ -436,16 +590,82 @@ def _is_constant(name: str, value: Any) -> bool:
     return bool(_CONSTANT.match(name)) and isinstance(value, int) and not isinstance(value, bool)
 
 
-#: What the names of ROOT's own classes look like: each has a dictionary in ROOT.
-ROOT_NAMES = re.compile(r"^(T[A-Z]|Roo|ROOT::|TMVA::|RooStats::|HistFactory::)")
-
-
 def _undictionaried(name: str) -> bool:
     """Has nothing here a dictionary of the class ``name`` - neither the program nor ROOT -
     which ROOT warns of when a file it opens describes one?"""
-    if ROOT_NAMES.match(name) or _template(name) or _synthetic_pair(name):
+    if _template(name) or _synthetic_pair(name):
+        return False
+    if _pair_base(name) or _instantiable(name) or _modelled(name):
         return False
     return TClass(name)._class() is None
+
+
+#: Classes ROOT's own libraries carry a dictionary for that this kit implements nothing of
+#: and so has no layout for - it never reads one into an object of its own. They are named
+#: here because ROOT names no warning for them either: a geometry file describes ``TGeoAtt``,
+#: ``TGeoVoxelFinder`` and ``TGeoParallelWorld``, and ROOT opens it in silence, which
+#: ``tests/test_pyroot_geom_rootfile.py`` pins line by line.
+ROOT_CLASSES = frozenset({"TGeoAtt", "TGeoVoxelFinder", "TGeoParallelWorld"})
+
+
+def _modelled(name: str) -> bool:
+    """Is ``name`` a class of ROOT's own, one of those ROOT's libraries carry a dictionary
+    for, so that opening a file which describes it says nothing?
+
+    A name's spelling is no help: a user's class is called ``TEmcl`` or ``TCedarEvent`` as
+    readily as ROOT's own is called ``TBasket``, and ROOT warns of the program's four
+    emulated classes in ``roottest/root/io/tree``'s ``missingClass`` while staying silent
+    about the ``TTree`` beside them. What tells them apart is knowledge of the class, not of
+    its name, and what the kit knows of ROOT's classes is what it implements - as a Python
+    class of the namespace's, ``TCanvas`` and ``TUUID`` too, which derive from no ``TObject``
+    here - and what it streams: the layouts of :data:`xrdroot.winfo.INFOS`, and the readers
+    of :mod:`xrdroot.objects` and :mod:`xrdroot.known` for the classes the kit writes itself.
+    A name none of those knows is emulated from the file with ROOT's warning.
+    """
+    from ...known import KNOWN
+    from ...objects import CLASSES
+    from ...sparse import SPARSE
+
+    if name in INFOS or name in GENERATED or name in ROOT_CLASSES:
+        return True
+    if name in CLASSES or name in KNOWN or name in SPARSE:
+        return True
+    return _implemented(name)
+
+
+def _implemented(name: str) -> bool:
+    """Does the namespace hold a class called ``name``, whether or not it derives from
+    ``TObject`` - which is how ``TEventList``, ``TUUID``, ``TStyle`` and ``TColor`` are known
+    to be ROOT's own, whose files ROOT describes without a warning."""
+    for module in list(sys.modules.values()):
+        if getattr(module, "__name__", "").startswith("xrdroot.pyroot"):
+            if isinstance(getattr(module, name, None), type):
+                return True
+    return False
+
+
+def _pair_base(name: str) -> bool:
+    """Is ``name`` the ``__pair_base<A,B>`` a standard library's ``pair`` derives from?
+
+    ROOT never reports that class, which is not one a program can ask for: its
+    ``TClass::Init`` skips the warning for a ``pair``'s base (``TClassEdit::IsStdPairBase``),
+    and a file which describes one - ``roottest/root/io/stdpair``'s ``ab02.root`` - opens with
+    no warning about it, as the 6.40 oracle does.
+    """
+    return name.removeprefix("std::").startswith("__pair_base<")
+
+
+def _instantiable(name: str) -> bool:
+    """Is ``name`` an instance of a template whose class a dictionary describes?
+
+    ROOT asks the interpreter for the class of a name a file describes, and the interpreter
+    answers a template's instance from the template itself: with a dictionary for ``Ref`` in
+    the session, ``Ref<vector<...>>`` is a type cling can declare, so ``TClass::Init`` warns
+    about no missing dictionary for it - which is why ``pairEnumEvo``'s runs that load the
+    library before the file print none of the warnings the runs that read the file first do.
+    """
+    head = name.split("<", 1)[0]
+    return bool(head) and _last(_known_as(head)) in GENERATED
 
 
 def _synthetic_pair(name: str) -> bool:
@@ -467,9 +687,26 @@ def _class_named(name: str) -> type | None:
 
 
 def _declared(name: str) -> type | None:
+    """The class declared as ``name``, or - for a template instance whose argument is one of
+    :data:`PRECISION` - the class declared under the plain spelling of that argument.
+
+    A macro's linkdef names the instance as ROOT's dictionary does, ``MyVector<Double32_t>``,
+    but a declaration writes the typedef's type, so that is the one class here: the
+    translation makes ``Double32_t`` a ``double`` and the instance it records is
+    ``MyVector<double>``. roottest's ``io/double32`` asks for the class by the linkdef's
+    spelling, and ROOT answers it because its dictionary is under that spelling too.
+    """
     from .declared import find_class
 
-    return find_class(name)
+    return find_class(name) or find_class(_plain_spelling(name))
+
+
+def _plain_spelling(name: str) -> str:
+    """``name`` with each :data:`PRECISION` typedef in it written as the type it is."""
+    spelled = name
+    for typedef, plain in PRECISION.items():
+        spelled = spelled.replace(typedef, plain)
+    return spelled
 
 
 def _template(name: str) -> bool:
@@ -513,7 +750,9 @@ class TDataType(TNamed):
 
     An enumeration answers ``TEnum::GetUnderlyingType`` with an ``EDataType`` code, and ROOT
     turns that code into a type with ``TDataType::GetDataType`` - which is how roottest's
-    ``enumSize`` checks that ``enum E : short`` is stored as a ``short``.
+    ``enumSize`` checks that ``enum E : short`` is stored as a ``short``. The question the
+    other way round is ``GetType``: a C++ type's ``type_info`` answers with the ``EDataType``
+    code ROOT keeps for it, which is how a branch, a leaf and a streamer name what they hold.
     """
 
     def __init__(self, name: str = "", code: int = 0, size: int = 0) -> None:
@@ -521,9 +760,16 @@ class TDataType(TNamed):
         self._code = int(code)
         self._size = int(size)
 
-    def GetType(self) -> int:
-        """``GetType``: the ``EDataType`` code of the type."""
-        return self._code
+    def GetType(self, info: Any = None) -> int:
+        """``GetType``: ROOT declares this twice, and Python has the one name for both.
+
+        On a ``TDataType`` - ``TDataType::GetDataType(kShort_t)->GetType()`` - it is the
+        type's own ``EDataType`` code; called on the class with a C++ type's ``type_info``,
+        as ``TDataType::GetType(typeid(T))`` is, it is the code ROOT gives that type.
+        """
+        if isinstance(self, TDataType):
+            return self._code
+        return _code_of_type(self)  # ROOT's static overload, asked with a ``type_info``
 
     def Size(self) -> int:
         """``Size``: how many bytes a value of the type takes, as ROOT's ``sizeof`` does."""
@@ -759,8 +1005,15 @@ class TClass(TNamed):
 
     def GetClassVersion(self) -> int:
         """``GetClassVersion``: ``ClassDef``'s - -1 for a class declared without one, whose
-        layouts are told apart by checksum - and ROOT's own as the donors say."""
-        info = self._layout()
+        layouts are told apart by checksum - and ROOT's own as the donors say.
+
+        A class nothing in memory describes has the version the files that describe it give
+        it, which is the class's version for the rest of the session: ``roottest``'s
+        ``io/tree/read`` unloads ``classes_C`` and asks a class only ``copy.root`` describes
+        for its ``ClassDef``, and ROOT answers with the file's - ``0`` for a class whose
+        file says so - where the class in memory would be no answer at all.
+        """
+        info = self._layout() or self._file_layout()
         if info is not None:
             return -1 if self.IsForeign() and info[1] <= 1 else info[1]
         version = getattr(self._class(), "Class_Version", None)
@@ -837,6 +1090,18 @@ class TClass(TNamed):
         """
         return self.IsVersioned() and not _synthetic_pair(self._name)
 
+    def _current_layout(self) -> Layout | None:
+        """The layout ROOT keeps as the class's current one: the class's own as it is in
+        memory, or, where a file has already given a layout of that version a checksum of its
+        own, the file's - which ROOT keeps as that version's and warns over instead of
+        replacing, saying the class should be given the next version.
+        """
+        current = self._layout()
+        if current is None:
+            return self._file_layout()
+        return next((info for info in FILE_INFOS.get(self._name, [])
+                     if info[1] == current[1] and info[0] != current[0]), current)
+
     def GetStreamerInfo(self, version: int = 0) -> TStreamerInfo | None:
         """``GetStreamerInfo``: the layout of the class in memory - or, given a version, the
         layout of that version, from a file read if it is not the one in memory.
@@ -845,16 +1110,17 @@ class TClass(TNamed):
         gave it, and ROOT builds what it hands back - so its elements are listed with the
         action each is read with - where a layout it merely lists stays unbuilt.
         """
-        current = self._layout()
-        emulated = current is None
-        if emulated:
-            current = self._file_layout()
+        mine = self._layout()
+        emulated = mine is None
+        current = self._current_layout()
         if current is not None and version in (0, current[1]):
-            return TStreamerInfo(self._name, current, built=True, versioned=self._versioned())
+            return TStreamerInfo(self._name, current, built=True, versioned=self._versioned(),
+                                 from_file=current is not mine)
         found = [i for i in FILE_INFOS.get(self._name, []) if i[1] == version]
         if not found:
             return None
-        return TStreamerInfo(self._name, found[0], built=emulated, versioned=self._versioned())
+        return TStreamerInfo(self._name, found[0], built=emulated, versioned=self._versioned(),
+                             from_file=True, memory=mine[2] if mine else None)
 
     def FindStreamerInfo(self, checksum: int) -> TStreamerInfo | None:
         """``FindStreamerInfo``: the layout with that checksum, in memory or read."""
@@ -884,7 +1150,9 @@ class TClass(TNamed):
         if versioned:
             held.sort(key=_version_of)
         for info, in_memory in held:
-            made.Add(TStreamerInfo(self._name, info, built=in_memory, versioned=versioned))
+            made.Add(TStreamerInfo(self._name, info, built=in_memory, versioned=versioned,
+                                   memory=None if in_memory or current is None
+                                   else current[2]))
         return made
 
     # -- members and bases --------------------------------------------------------------------
@@ -1062,6 +1330,35 @@ class TClass(TNamed):
             return True
         return _declared(name) is not None or _class_named(name) is None
 
+    def BuildRealData(self, name: Any = None) -> None:
+        """``BuildRealData``: work out the flat list of the class's persistent members.
+
+        ROOT builds it from the interpreter's description of the class and caches it, which
+        is what makes it right to ask once ``gInterpreter->Declare`` has made the class known:
+        asking before that would have been too soon, and ROOT's own comment on
+        ``execInitOrder`` says so. ``name`` is a ``TClass`` to build the real data of instead,
+        as ROOT lets a caller hand one in.
+        """
+        target = name if isinstance(name, TClass) else self
+        REAL_INFOS[target.GetName()] = _real_data_of(target)
+
+    def GetListOfRealData(self) -> Any:
+        """``GetListOfRealData``: the persistent members, each at the offset it is held at.
+
+        A class's members as an object of it holds them: the class's own, then the ones it
+        inherits with nothing in front of their names, and a member that is an object of a
+        class of its own followed by that object's members named after it. A class nothing
+        has asked the real data of yet is built here, as ROOT builds one on demand.
+        """
+        from .collections import TList
+
+        if self._name not in REAL_INFOS:
+            REAL_INFOS[self._name] = _real_data_of(self)
+        made = TList()
+        for data in REAL_INFOS[self._name]:
+            made.Add(data)
+        return made
+
     def GetListOfMethods(self, load: bool = True) -> Any:
         """``GetListOfMethods``: the class's own functions, by name.
 
@@ -1186,8 +1483,13 @@ class TClass(TNamed):
         view.__dict__["_cast_of"] = obj
         return view
 
-    def Streamer(self, obj: Any, buf: Any, onfile_class: Any = None) -> None:
-        """``Streamer``: ``obj`` written into ``buf`` - or read from it, as it goes."""
+    def Streamer(self, obj: Any, buf: Any, onfile_class: Any = None) -> None:  # type: ignore[override]
+        """``Streamer``: ``obj`` written into ``buf`` - or read from it, as it goes.
+
+        C++ overloads this name in ``TClass``: ``Streamer(obj, buf)`` here hides
+        ``TObject::Streamer(buf)`` there, an object streamed by its class, and Python's one
+        name for both is why the signature differs from the base's.
+        """
         buf.StreamObject(obj, self)
 
     def Destructor(self, obj: Any, dtorOnly: bool = False) -> None:
@@ -1313,20 +1615,211 @@ class TDataMember(TNamed):
         return self._title
 
 
+#: The bytes and alignment of the types whose width nothing else here needs - the kit writes
+#: a container member by member and never had to know how wide one is. ROOT's ``std::vector``
+#: is three pointers and ``std::string`` a pointer and a small buffer, the same on every
+#: machine this runs on.
+_FIXED_SIZES: dict[str, tuple[int, int]] = {
+    "vector": (24, 8), "string": (32, 8), "map": (48, 8), "set": (48, 8), "list": (24, 8),
+}  # fmt: skip
+
+
+def _aligned(offset: int, align: int) -> int:
+    """The first place at or after ``offset`` a value aligned to ``align`` starts."""
+    return (offset + align - 1) // align * align
+
+
+def _dims_of(spelled: str, dims: tuple[Any, ...]) -> tuple[int, ...]:
+    """The dimensions a member declared as ``spelled`` with ``dims`` holds.
+
+    ``std::array<T, N>`` is an array of ``N`` as far as a real-data listing goes, which ROOT
+    names ``m_a[3]`` rather than ``m_a``, and which is the one container whose width the
+    declaration itself gives.
+    """
+    from ...wdeclared import parse_type
+
+    found = tuple(int(dim) for dim in dims if dim is not None)
+    parsed = parse_type(str(spelled).strip())
+    if parsed.name == "array" and len(parsed.args) == 2:
+        found += (int(parsed.args[1].name),)
+    return found
+
+
+def _size_align(spelled: str, seen: tuple[str, ...] = ()) -> tuple[int, int]:
+    """``sizeof`` and ``alignof`` of one value of a member declared as ``spelled``, which is
+    what places the member after it: a type nothing here knows - a class only a file describes,
+    a template instantiation with no layout - takes no room. ``std::array<T, N>`` is one value
+    of ``T`` here, so that a caller counting its ``N`` does not count them twice."""
+    from ...wclasses import TYPES
+    from ...wdeclared import parse_type
+
+    text = str(spelled).strip()
+    if text.endswith("*"):
+        return (8, 8)
+    parsed = parse_type(text)
+    if parsed.name == "array" and len(parsed.args) == 2:
+        return _size_align(parsed.args[0].name, seen)
+    if not parsed.args and parsed.name in TYPES:
+        return (TYPES[parsed.name][2], TYPES[parsed.name][2])
+    if parsed.name in _FIXED_SIZES:
+        return _FIXED_SIZES[parsed.name]
+    return _class_size(TClass(parsed.name), seen)
+
+
+def _class_size(cls: TClass, seen: tuple[str, ...] = ()) -> tuple[int, int]:
+    """The bytes an object of ``cls`` takes and what it is aligned to: each base's and then
+    each own member's place, every one of them aligned to what it holds."""
+    if cls.GetName() in seen:
+        return (0, 1)
+    seen += (cls.GetName(),)
+    offset, align = 0, 1
+    for base in cls._base_names():
+        size, base_align = _class_size(TClass(base), seen)
+        offset, align = _aligned(offset, base_align) + size, max(align, base_align)
+    for _name, spelled, comment, dims in cls._fields():
+        if comment.startswith("!"):
+            continue
+        size, member_align = _size_align(spelled, seen)
+        count = 1
+        for dim in _dims_of(spelled, dims):
+            count *= dim
+        offset, align = _aligned(offset, member_align) + size * count, max(align, member_align)
+    return (_aligned(offset, align), align)
+
+
+def _object_class(spelled: str) -> TClass | None:
+    """The class a member declared as ``spelled`` is an object of, whose own members are that
+    member's - a pointer's are not held by the object, and a container's are a listing of its
+    own.
+
+    A member of a class template's instantiation - ``MyVector<Double32_t> v1`` - is such an
+    object too, and ROOT lists its members as ``v1.d32``: the instantiation is asked for by
+    the whole spelling, since it is the instantiation and not the template that holds the
+    layout. A standard container declares none, so a member of one has none either.
+    """
+    from ...wdeclared import parse_type
+
+    text = str(spelled).strip()
+    if text.endswith("*"):
+        return None
+    parsed = parse_type(text)
+    if parsed.name in _FIXED_SIZES or parsed.name == "array":
+        return None
+    deeper = TClass(text)
+    return deeper if deeper._fields() else None
+
+
+def _bases_at(cls: TClass, prefix: str, base: int,
+              seen: tuple[str, ...]) -> tuple[list[TRealData], int]:  # fmt: skip
+    """Each base's members at the place the base starts, and the first offset after them."""
+    made: list[TRealData] = []
+    offset = 0
+    for name in cls._base_names():
+        size, align = _class_size(TClass(name), seen)
+        offset = _aligned(offset, align)
+        made.extend(_real_members(TClass(name), prefix, base + offset, seen))
+        offset += size
+    return made, offset
+
+
+def _members_from(cls: TClass, prefix: str, base: int, offset: int,
+                  seen: tuple[str, ...]) -> list[TRealData]:  # fmt: skip
+    """Each persistent member of the class at the place it is held from ``offset`` on, and the
+    members of the object it holds after it."""
+    made: list[TRealData] = []
+    listed = {member.GetName(): member for member in cls.GetListOfDataMembers()}
+    for name, spelled, comment, dims in cls._fields():
+        member = listed.get(name)
+        if comment.startswith("!") or member is None:
+            continue
+        size, align = _size_align(spelled, seen)
+        offset = _aligned(offset, align)
+        found = _dims_of(spelled, dims)
+        where = prefix + name + "".join(f"[{dim}]" for dim in found)
+        made.append(TRealData(where, cls, member, base + offset))
+        deeper = _object_class(spelled)
+        if deeper is not None:
+            made.extend(_real_members(deeper, prefix + name + ".", base + offset, seen))
+        offset += size * max(1, _count(found))
+    return made
+
+
+def _real_members(cls: TClass, prefix: str, base: int,
+                  seen: tuple[str, ...] = ()) -> list[TRealData]:  # fmt: skip
+    """``TClass::BuildRealData``'s walk of one class: each persistent member at the place it
+    is held, and, for a member that is an object of a class of its own, that class's members
+    after it, named the member's name and then their own after a dot.
+
+    A base's members are the object's own with no name in front of them. ROOT lists them
+    after the class's own, though they are held before them, so the offset a base's members
+    are given is the one the base really starts at and the order is ROOT's."""
+    if cls.GetName() in seen:
+        return []
+    seen += (cls.GetName(),)
+    inherited, offset = _bases_at(cls, prefix, base, seen)
+    # ROOT lists a class's own members before the ones it inherits - ``Derived``'s ``fValue``
+    # is its first real data and its base ``TObject``'s two come after - which is not the
+    # order they are held in, as the base's bytes are the object's first.
+    return _members_from(cls, prefix, base, offset, seen) + inherited
+
+
+def _count(dims: tuple[int, ...]) -> int:
+    """How many values a member of those dimensions holds."""
+    count = 1
+    for dim in dims:
+        count *= dim
+    return count
+
+
+def _real_data_of(cls: TClass) -> list[TRealData]:
+    """The flat list of a class's persistent members, as ROOT builds one on demand."""
+    return _real_members(cls, "", 0)
+
+
+class TRealData(TNamed):
+    """``TRealData``: one persistent data member of an object, where the object holds it."""
+
+    CLASS_TITLE = "Description of persistent data members"
+
+    def __init__(self, name: str, owner: TClass, member: TDataMember, this_offset: int) -> None:
+        TNamed.__init__(self, name, self.CLASS_TITLE)
+        self._owner, self._member, self._this_offset = owner, member, this_offset
+
+    def GetClass(self) -> TClass:
+        return self._owner
+
+    def GetDataMember(self) -> TDataMember:
+        return self._member
+
+    def GetThisOffset(self) -> int:
+        return self._this_offset
+
+    def GetOffset(self) -> int:
+        return self._this_offset
+
+    def IsPointer(self) -> bool:
+        return self._member.IsaPointer()
+
+
 class TStreamerInfo(TNamed):
     """``TStreamerInfo``: one layout of one class - its checksum, version and elements."""
 
     CLASS_TITLE = "Streamer information for one class version"
 
-    def __init__(self, name: Any = "", info: tuple[int, int, tuple[Element, ...]] | None = None,
-                 built: bool = False, versioned: bool = True) -> None:  # fmt: skip
+    def __init__(
+        self, name: Any = "", info: tuple[int, int, tuple[Element, ...]] | None = None,
+        built: bool = False, versioned: bool = True, from_file: bool = False,
+        memory: tuple[Element, ...] | None = None,
+    ) -> None:  # fmt: skip
         TNamed.__init__(self, str(name), "")
         self._checksum, self._version, elements = info if info is not None else (0, 1, ())
+        self._memory = memory
         self._elements = [element_of(e) for e in elements]
         for element in self._elements:
             element._on_file = not built
         self._built = built
         self._versioned = versioned
+        self._from_file = from_file
 
     def GetClass(self) -> TClass:
         return TClass(self._name)
@@ -1360,18 +1853,56 @@ class TStreamerInfo(TNamed):
     def IsCompiled(self) -> bool:
         return self._built
 
+    def _unmatched(self) -> bool:
+        """Are the elements listed as ROOT lists those of a file's layout it cannot set
+        against the class in memory - the class having a layout of that version now, with a
+        checksum the file's does not have?
+
+        ROOT then marks each element with no counterpart as a pointer to what the file
+        recorded - a type a hundred above the file's own - its offset missing, and no new
+        type, which is what ``checkWarn`` reads back.
+        """
+        mine = TClass(self._name)._layout()
+        return self._from_file and mine is not None and mine[0] != self._checksum
+
+    def _new_types(self) -> list[int]:
+        """Each element's *new* type: the code the same member has in the layout in memory,
+        where a file spelled it another way - an enum a file wrote as the ``int`` it was
+        declared as, which today's ROOT reads as ``kEnum``.
+
+        ROOT keeps that code on the element - ``fNewType``, which its listing names and which
+        adds two hundred to the action the element is read with - and it is what
+        ``BuildCheck`` reads back when it compares a file's layout with the one in memory.
+        """
+        if self._memory is None:
+            return [0] * len(self._elements)
+        mine = {element[1]: element for element in self._memory}
+        found: list[int] = []
+        for element in self._elements:
+            other = mine.get(element._name)
+            spelled_alike = other is not None and other[8] == element.GetTypeName()
+            new_type = other[3] if other is not None else element.GetType()
+            found.append(new_type if spelled_alike and new_type != element.GetType() else 0)
+        return found
+
     def ls(self, option: str = "") -> None:
         """``ls``: ROOT's ``StreamerInfo for class`` line, each element, and - for the layout
         in memory, which ROOT builds - the actions each element is read with."""
         version = f", version={self._version}" if self._versioned else ""
+        unmatched = self._unmatched()
+        new_types = self._new_types()
         print(f"\nStreamerInfo for class: {self._name}{version}, checksum={self._checksum:#x}")
-        for element in self._elements:
-            element.ls(option)
+        for element, new_type in zip(self._elements, new_types, strict=True):
+            element.ls(option, unmatched, new_type)
         if not self._built:
             return
-        for index, element in enumerate(e for e in self._elements):
-            print(f"   i={index:2d}, {element.GetName():<15} type={element.GetType():3d}, "
-                  f"offset={0:3d}, len={max(1, element.GetArrayLength())}, method=0")  # fmt: skip
+        pairs = zip(self._elements, new_types, strict=True)
+        for index, (element, new_type) in enumerate(pairs):
+            kind = element.GetType() + (200 if new_type else 100 if unmatched else 0)
+            offset = _MISSING_OFFSET if unmatched else 0
+            length = max(1, element.GetArrayLength())
+            print(f"   i={index:2d}, {element.GetName():<15} type={kind:3d}, "
+                  f"offset={offset:3d}, len={length}, method=0")  # fmt: skip
 
 
 #: ``TVirtualStreamerInfo``: the interface ``TStreamerInfo`` fills in.
@@ -1456,10 +1987,17 @@ class TStreamerElement(TNamed):
     def _sequence(self) -> str:
         return ""
 
-    def ls(self, option: str = "") -> None:
-        """``ls``: the element's line of a ``TStreamerInfo`` listing."""
-        print(f"  {self._typename:<14} {self.GetFullName():<15} offset={0:3d} "
-              f"type={self._stype:2d} {self._sequence()}{self._title:<20}")  # fmt: skip
+    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0) -> None:
+        """``ls``: the element's line of a ``TStreamerInfo`` listing.
+
+        An element of a file's layout the class in memory cannot be set against - one
+        ``unmatched`` says so of the whole layout - is listed at ROOT's missing offset, with
+        no new type; one the class in memory types another way names that code instead.
+        """
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+        new = "newtype=-1 " if unmatched else f"newtype={newtype:2d} " if newtype else ""
+        print(f"  {self._typename:<14} {self.GetFullName():<15} {where} "
+              f"type={self._stype:2d} {new}{self._sequence()}{self._title:<20}")  # fmt: skip
 
 
 class TStreamerBase(TStreamerElement):
@@ -1469,9 +2007,11 @@ class TStreamerBase(TStreamerElement):
     def GetBaseVersion(self) -> int:
         return int(str(self._extras[0])) if self._extras else 0
 
-    def ls(self, option: str = "") -> None:
-        print(f"  {self._name:<14} {'BASE':<15} offset={0:3d} "
-              f"type={self._stype:2d} {self._title:<20}")  # fmt: skip
+    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0) -> None:
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+        new = "newtype=-1 " if unmatched else f"newtype={newtype:2d} " if newtype else ""
+        print(f"  {self._name:<14} {'BASE':<15} {where} "
+              f"type={self._stype:2d} {new}{self._title:<20}")  # fmt: skip
 
 
 class TStreamerBasicType(TStreamerElement):
@@ -1521,9 +2061,11 @@ class TStreamerSTL(TStreamerElement):
         nodelete = self.GetSTLtype() in (4, 5, 12, 13) or self.GetCtype() == 63
         return " (nodelete) " if nodelete and self._on_file else ""
 
-    def ls(self, option: str = "") -> None:
-        print(f"  {self._typename:<14} {self.GetFullName():<15} offset={0:3d} "
-              f"type={self._stype:2d} stl={self.GetSTLtype()} ctype={self.GetCtype()} "
+    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0) -> None:
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+        new = "newtype=-1 " if unmatched else f"newtype={newtype:2d} " if newtype else ""
+        print(f"  {self._typename:<14} {self.GetFullName():<15} {where} "
+              f"type={self._stype:2d} {new}stl={self.GetSTLtype()} ctype={self.GetCtype()} "
               f"{self._sequence()}{self._title:<20}")  # fmt: skip
 
 
@@ -1677,6 +2219,14 @@ def _built_in(spelled: str) -> bool:
     return text in NUMBERS or text in ("string", "bool", "char")
 
 
+def _code_of_type(info: Any) -> int:
+    """``TDataType::GetType``: the ``EDataType`` code ROOT gives the C++ type ``info``.
+
+    The identity a ``type_info`` answers with is the Itanium mangled name, which is the key
+    :mod:`.datatypes` - the family that keeps the table of codes - looks it up by.
+    """
+    return _datatypes.BY_MANGLED.get(str(info.name()), _datatypes.kOther_t)
+
 
 class TMethod(TNamed):
     """``TMethod``: one function of a class, as ``GetListOfMethods`` lists it.
@@ -1755,3 +2305,13 @@ class TFunctionTemplate(TMethod):
     """
 
     CLASS_TITLE = "Template function descriptor"
+
+
+# ROOT has one ``TDataType``, and this merge found it written twice: the class a dictionary
+# reports - ``GetDataType``, the name, the size - is the one above, and the codes a C++
+# type's ``type_info`` is looked up in landed in :mod:`.datatypes`, with a ``TDataType`` of
+# its own that the namespace gathers after this family's and so would have hidden the
+# dictionary's, without ``GetDataType`` on it at all. The two independent additions are one
+# class, and it is left under that name too: whether a program asks the namespace or the
+# family the codes came from, it gets the one class that answers both of ROOT's questions.
+_datatypes.TDataType = TDataType  # type: ignore[misc, assignment]  # one class, two names

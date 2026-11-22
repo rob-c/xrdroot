@@ -346,6 +346,24 @@ def test_reset_stats_of_a_grid_and_a_profile_takes_every_bin():
     assert p.GetEntries() == pytest.approx(72.00000000000001, rel=1e-15)
 
 
+def test_a_profile_fills_a_column_at_a_time_or_an_entry_at_a_time():
+    """``TProfile::Fill`` takes one entry and ``FillN`` a column of them, and the two must
+    hold the same sums: a loop of ``Fill`` is how ROOT's own tests fill a profile."""
+    xs = np.array([0.5, 1.5, 0.5, 0.5, -3.0])
+    values = np.array([1.0, 3.0, 5.0, 2.0, 7.0])
+    weights = np.array([1.0, 2.0, 1.0, 4.0, 1.0])
+    looped = ROOT.TProfile("looped", "", 2, 0, 2)
+    for x, value, weight in zip(xs, values, weights, strict=True):
+        assert looped.Fill(x, value, weight) == looped.FindBin(x)
+    column = ROOT.TProfile("column", "", 2, 0, 2)
+    column.FillN(len(xs), xs, values, weights)
+    expect(*(
+        (list(looped.values(flow=True)), list(column.values(flow=True))),
+        (list(looped.variances(flow=True)), list(column.variances(flow=True))),
+        (looped.GetEntries(), column.GetEntries()),
+    ))
+
+
 def test_python_sees_a_histogram_as_uhi_does():
     h = ROOT.TH1D("h", "", 3, 0, 3)
     h.Fill(0.5, 2.0)

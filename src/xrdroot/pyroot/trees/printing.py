@@ -6,7 +6,10 @@ it - at a colon, before the line would pass column 77, the next line
 starting ``*         |``. ``Show`` is ``TTree::Show``'s: a leaf's name in
 fifteen columns, at most twenty of its values, and the line broken after the
 first value and then every five (for floating point and text) or ten (for
-integers) - ROOT's own arithmetic, kept exactly.
+integers) - ROOT's own arithmetic, kept exactly. A leaf of a split branch is
+the exception, because ``TTree::Show`` hands it to ``TLeafElement::PrintValue``:
+its branch prints the whole line itself, so a collection's own leaf is one line
+of how many objects it holds and a split member's values are never broken.
 
 The byte counts are this reader's: the baskets' sizes as the file records
 them, which for a tree written here are the sizes this writer's baskets
@@ -36,6 +39,11 @@ DOTS = "*" + "." * 76 + "*"
 SHOW_MAX = 20
 #: The leaf classes ``Show`` puts five values to a line for, rather than ten.
 FIVE_A_LINE = ("TLeafF", "TLeafD", "TLeafC", "TLeafF16", "TLeafD32")
+#: The class of a record that names none, by a member only that class's streamer writes, the
+#: more specific first: ``TRefArray`` writes the identifiers it refers to as ``TRef`` does not.
+#: ROOT prints the type the member was *declared* with - ``TRef`` for a ``TRef`` - which only
+#: the file's streamer information names here, so the record's own members have to say it.
+RECORD_CLASSES = (("fUIDs", "TRefArray"), ("fPID", "TRef"))
 
 
 def _ratio(tot: int, zipped: int) -> float:
@@ -175,15 +183,47 @@ def element_lines(branch: BranchInfo, count: int) -> tuple[list[str], int]:
 
 
 def _printed(leaf: LeafInfo, value: Any) -> str:
-    """One value as ``TLeaf::PrintValue`` prints it: ``%g`` for floating point, else whole."""
+    """One value as ``TLeaf::PrintValue`` prints it: ``%g`` for floating point, else whole.
+
+    A value that is one object's members rather than a number is an object ROOT streams
+    itself - a ``TRef`` - which it prints as the class the value names, or, when the record
+    names no class, as the reference its members are, and failing that as the pointer ROOT
+    would have shown.
+    """
+    if isinstance(value, Mapping):
+        return _record_class(value) or "->"
     number = np.asarray(value).item()
     if isinstance(number, float):
         return f"{number:g}"
     return str(int(number))
 
 
+def _record_class(value: Mapping[str, Any]) -> str | None:
+    """The class a record of one object's members names, or ``None`` when nothing says it."""
+    named = value.get("classname")
+    if named:
+        return str(named)
+    found = [name for member, name in RECORD_CLASSES if member in value]
+    return found[0] if found else None
+
+
 def _values(value: Any) -> list[Any]:
     return list(np.asarray(value).reshape(-1)[:SHOW_MAX])
+
+
+def _per_line(leaf: LeafInfo) -> int:
+    """How many values of one leaf go to a line, zero for a leaf that does not break lines.
+
+    A leaf of a split branch - a ``TLeafElement`` - is printed by
+    ``TLeafElement::PrintValue``, which hands the work to its branch: a
+    ``TBranchElement`` prints a collection's member value after value with
+    nothing but a comma between them, whatever their type. Only
+    ``TTree::Show``'s own loop breaks a line, after the first value and then
+    every five for floating point and text, every ten for integers.
+    """
+    if leaf.classname == "TLeafElement":
+        return 0
+    return 5 if leaf.classname in FIVE_A_LINE or leaf.vector else 10
 
 
 def _joined(leaf: LeafInfo, value: Any) -> str:
@@ -191,13 +231,42 @@ def _joined(leaf: LeafInfo, value: Any) -> str:
         return str(value)
     if leaf.vector:  # ROOT prints where the vector is, not what is in it
         return f"({leaf.typename}*)0x{id(value):x}"
-    per_line = 5 if leaf.classname in FIVE_A_LINE or leaf.vector else 10
+    per_line = _per_line(leaf)
     text = ""
     for at, each in enumerate(_values(value)):
         if at:  # after every value but the last, and a new line after the first and each run
-            text += ", " + ("\n" + " " * 18 if (at - 1) % per_line == 0 else "")
+            broke = per_line and (at - 1) % per_line == 0
+            text += ", " + ("\n" + " " * 18 if broke else "")
         text += _printed(leaf, each)
     return text
+
+
+def _count_leaf(leaf: LeafInfo) -> bool:
+    """Is this leaf the count ``ROOT`` keeps in a branch of objects?
+
+    A branch of a ``TClonesArray`` - or of any other collection - has one leaf that
+    stands for the whole collection and is named after its branch with an
+    underscore (``TLeafElement::GetFullName`` makes that name), whose value is
+    the members of every object in it. ROOT prints that leaf as the branch's name
+    and the number of objects, and nothing else: the members come on the leaves of
+    the branches split out of it.
+    """
+    return leaf.name == f"{leaf.branch}_"
+
+
+def _objects_in(record: Mapping[str, Any]) -> int:
+    """How many objects of a collection a count leaf's own record holds.
+
+    Every member of it holds one value per object, so the first member's outer length is
+    the count; a member that is one object's member rather than every object's says
+    nothing about it.
+    """
+    for held in record.values():
+        if isinstance(held, (str, bytes, Mapping)):
+            continue
+        shape = np.shape(held)
+        return int(shape[0]) if shape else 1
+    return 0  # a collection with nothing in it holds no member to count
 
 
 def show_lines(entry: int, leaves: Sequence[tuple[LeafInfo, Any]]) -> list[str]:
@@ -205,20 +274,35 @@ def show_lines(entry: int, leaves: Sequence[tuple[LeafInfo, Any]]) -> list[str]:
     lines = [f"======> EVENT:{entry}"]
     for leaf, value in leaves:
         if isinstance(value, Mapping):
+            if _count_leaf(leaf):  # a collection: ROOT prints how many objects it holds
+                lines.append(f" {leaf.branch:<15} = {_objects_in(value)}")
+                continue
             # A branch that holds a whole object with nothing split out of it hands back the
             # object's members, not a number: ROOT prints the object's members, one a line.
             lines += _record_lines(leaf, value)
             continue
         if not leaf.text and not leaf.vector and np.size(value) == 0:
             continue
-        lines.append(f" {leaf.name:<15} = {_joined(leaf, value)}")
+        texts = _texts(value)
+        printed = _joined(leaf, value) if texts is None else ", ".join(texts)
+        lines.append(f" {leaf.name:<15} = {printed}")
     return lines
 
 
 def _numbers_or_text(value: Any) -> bool:
-    """Is this a value ``TLeaf::PrintValue`` can print - numbers, or the text of a ``char[]``?"""
+    """Is this a value ``TLeaf::PrintValue`` can print as numbers - a ``char[]``'s text is not,
+    which the caller has already taken out?"""
     flat = np.asarray(value).reshape(-1)
-    return bool(flat.size) and flat.dtype.kind in "biufcUS"
+    return bool(flat.size) and flat.dtype.kind in "biufc"
+
+
+def _texts(value: Any) -> list[str] | None:
+    """The strings a member of a ``TString`` per object holds - one name per object of a split
+    collection - or ``None`` when the member is not text."""
+    flat = np.asarray(value).reshape(-1)
+    if not flat.size or flat.dtype.kind not in "US":
+        return None
+    return [_text_of(each) for each in flat[:SHOW_MAX]]
 
 
 def _is_characters(value: Any) -> bool:
@@ -258,6 +342,9 @@ def _one_member(leaf: LeafInfo, name: str, held: Any, depth: int) -> str | None:
     marker = f" {'  ' * (depth - 1)}{name:<15} ="
     if isinstance(held, (str, bytes)) or _is_characters(held):  # a char[] member: its text
         return f"{marker} {_text_of(held)}"
+    texts = _texts(held)
+    if texts is not None:  # a TString member: every object of the collection's own
+        return f"{marker} {', '.join(texts)}"
     if _numbers_or_text(held):
         return f"{marker} {_joined(leaf, held)}"
     return None if held is None or np.size(held) == 0 else f"{marker} ->"

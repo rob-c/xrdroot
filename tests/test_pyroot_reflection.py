@@ -129,6 +129,50 @@ def test_data_members_are_described_as_the_dictionary_describes_them():
     )
 
 
+#: A class template, whose instance a macro's linkdef asks for by the spelling it was written
+#: with - ``Holder<Double32_t>`` - while the declaration settles on the typedef's type.
+HOLDER = """
+template <typename T>
+class Holder { public: T value; double reg; };
+Holder<Double32_t> held;
+"""
+
+
+def test_a_template_instance_is_found_by_the_double32_spelling_its_linkdef_asked_for():
+    """roottest's ``io/double32`` asks ``TClass::GetClass("MyVector<Double32_t>")`` for the
+    class a ``#pragma link C++ class MyVector<Double32_t>+`` selected, and ROOT answers it:
+    the dictionary was generated under that spelling. The translation makes ``Double32_t`` a
+    ``double``, so the class here is ``Holder<double>``, and the typedef's spelling has to
+    find it or the class is one nothing describes and ``GetStreamerInfo`` is ``nullptr``.
+    """
+    run_source(HOLDER, "holder.C", call=False)
+    found = ROOT.TClass.GetClass("Holder<Double32_t>")
+    members = found.GetListOfDataMembers()
+    expect(
+        (found.GetName(), "Holder<Double32_t>"),
+        (found.HasDictionary(), True),
+        (found.GetState(), reflection.K_HAS_TCLASS_INIT),
+        (found.GetStreamerInfo() is not None, True),
+        ([(m.GetName(), m.GetTypeName()) for m in members],
+         [("value", "Double32_t"), ("reg", "double")]),
+    )  # fmt: skip
+    assert found.GetStreamerInfo().GetCheckSum() == ROOT.TClass.GetClass(
+        "Holder<double>"
+    ).GetCheckSum()
+
+
+def test_a_name_that_is_not_a_template_instance_finds_nothing_by_its_plain_spelling():
+    """Only a ``Double32_t``/``Float16_t`` argument is looked for under the type it spells, so
+    a name nothing declares is still a class with no dictionary rather than a cousin's."""
+    _declared()
+    assert reflection._plain_spelling("Named") == "Named"
+    expect(
+        (reflection._plain_spelling("Holder<Float16_t>"), "Holder<float>"),
+        (ROOT.TClass.GetClass("Holder<Float16_t>").GetStreamerInfo(), None),
+        (ROOT.TClass.GetClass("Nothing<Double32_t>").HasDictionary(), False),
+    )
+
+
 def test_bases_are_listed_and_found_at_any_depth():
     _declared()
     named = ROOT.TClass.GetClass("Named")
@@ -182,6 +226,26 @@ def test_a_class_only_files_describe_is_built_from_the_first_layout_read(capfd):
     # A class only a file describes is versioned: ROOT prints the version the file gave it.
     assert "StreamerInfo for class: Evo, version=1, checksum=" in printed
     assert "   i= 0, a               type=  3, offset=  0, len=1, method=0" in printed
+
+
+def test_a_class_only_files_describe_takes_the_version_its_files_give_it():
+    """``TClass::GetClassVersion`` answers the version the file gave a class nothing in memory
+    describes - ``roottest``'s ``io/tree/read`` unloads ``classes_C`` and asks what its file
+    records for ``TNonPhysObj``, which is version 0 - where an in-memory answer would be no
+    answer at all. A class the session does describe keeps the version it is declared with.
+    """
+    _declared()
+    reflection.note_file_infos([("FromFile", (0x2468, 0, (LONG64,)))], "one.root")
+    reflection.note_file_infos([("Later", (0x9876, 7, (LONG64,)))], "two.root")
+    reflection.note_file_infos([("Named", (0x1357, 9, (LONG64,)))], "three.root")
+    from_file = ROOT.TClass.GetClass("FromFile")
+    expect(
+        ((from_file.GetClassVersion(), from_file.IsForeign()), (0, False)),
+        (from_file.GetState(), 2),
+        (ROOT.TClass.GetClass("Later").GetClassVersion(), 7),
+        (ROOT.TClass.GetClass("Named").GetClassVersion(), 2),  # its own, not the file's 9
+        (ROOT.TClass("TNoSuch").GetClassVersion(), 1),  # no file describes it
+    )
 
 
 def test_a_pair_names_no_version_where_a_plain_class_names_the_files_own(capsys):
@@ -427,6 +491,7 @@ def test_a_tbufferfile_reads_and_writes_numbers_strings_and_objects_of_roots():
     assert buf.Length() == len(buf.Buffer()) and buf.GetBufferOffset() == buf.Length()
     buf.SetReadMode()
     buf.SetBufferOffset(0)
+    buf.ResetMap()  # ROOT's, before reading a buffer back from its start
     assert (buf.ReadInt(), buf.ReadDouble(), buf.ReadString(), len(buf.ReadTString())) == (
         7,
         2.5,
@@ -441,6 +506,46 @@ def test_a_tbufferfile_reads_and_writes_numbers_strings_and_objects_of_roots():
     buf.Reset()
     buf.StreamObject(named, "TNamed")
     assert buf.Length() > 0
+
+
+def test_a_tf1_streamed_into_a_buffer_is_read_back_into_the_object_asked_for():
+    """ROOT's ``hist/hist/test/test_tf1_simple.cxx``: ``Streamer(buffer)`` each way, into a
+    fresh ``TF1``, whose parameters are its formula's rather than its own members."""
+    f = ROOT.TF1("f1", "gaus")
+    f.SetParameters(2.0, 0.5, 1.5)
+    buf = ROOT.TBufferFile(ROOT.TBuffer.kWrite, 10000)
+    f.Streamer(buf)
+    assert buf.Length() == 461  # a TF1's record, as 6.40 writes one
+    buf.SetReadMode()
+    buf.ResetMap()
+    buf.SetBufferOffset(0)
+    copy = ROOT.TF1()
+    assert copy.Streamer(buf) is None
+    assert (copy.GetName(), copy.GetTitle()) == ("f1", "gaus")
+    assert [copy.GetParameter(index) for index in range(3)] == [2.0, 0.5, 1.5]
+    assert (copy.GetXmin(), copy.GetXmax(), copy.GetNpar()) == (0.0, 1.0, 3)
+    assert copy.Eval(0.5) == f.Eval(0.5)
+
+
+def test_a_histogram_fits_the_tf1_read_back_out_of_a_buffer_as_the_original():
+    """ROOT's issue #16184, as ``test_tf1_simple.cxx`` proves it: the copy is the fit."""
+    h = ROOT.TH1F("myHist", "myTitle", 64, -4, 4)
+    h.FillRandom("gaus")
+    f = ROOT.TF1("f1", "gaus")
+    buf = ROOT.TBufferFile(ROOT.TBuffer.kWrite, 10000)
+    f.Streamer(buf)
+    buf.SetReadMode()
+    buf.ResetMap()
+    buf.SetBufferOffset(0)
+    copy = ROOT.TF1()
+    copy.Streamer(buf)
+    assert h.Fit(f, "SQN").Status() == 0
+    assert h.Fit(copy, "SQN").Status() == 0
+    # The two starts are the same three numbers and the fit is what ROOT's is, so the two
+    # minima are the same digit for digit.
+    assert [copy.GetParameter(index) for index in range(3)] == [
+        f.GetParameter(index) for index in range(3)
+    ]
 
 
 def test_a_collection_proxy_says_what_a_container_is_and_holds():
@@ -564,6 +669,74 @@ def test_the_last_file_read_names_the_layout_it_described(capfd, monkeypatch):
     run_source(VERSED, "versed.C", call=False)
     reflection.note_file_infos([("Versed", (0x1234, 1, (LONG64,)))])
     assert "class Versed read from the file read.root" in capfd.readouterr().err
+
+
+def test_a_files_pair_base_is_no_missing_dictionary(capfd):
+    """``__pair_base<A,B>`` is not a class a program can ask for - ROOT's ``TClass::Init``
+    skips the warning for a ``pair``'s base - so the file ``roottest/root/io/stdpair`` reads,
+    which describes one beside its pair, opens without a word about it."""
+    reflection.note_file_infos(
+        [("__pair_base<edm::Hash<1>,edm::ParameterSetBlob>", (0x2829819F, 1, ()))]
+    )
+    assert capfd.readouterr().err == ""
+    reflection.note_file_infos([("std::__pair_base<int,int>", (0x2829819F, 1, ()))])
+    assert capfd.readouterr().err == ""
+
+
+def test_a_files_instance_of_a_dictionarys_template_needs_no_dictionary(capfd):
+    """ROOT asks the interpreter for the class of a name a file describes, and the interpreter
+    answers a template's instance from the template: with ``Ref``'s dictionary in the session,
+    ``edm::Ref<vector<int>>`` is a type cling can declare, so ``TClass::Init`` makes no
+    complaint about it - and without that dictionary it does, as ``pairEnumEvo``'s runs that
+    read the file before loading the library print."""
+    described = [("edm::Ref<vector<int> >", (0x251EA0D5, 11, ()))]
+    reflection.note_file_infos(described)
+    assert (
+        "no dictionary for class edm::Ref<vector<int> > is available"
+        in capfd.readouterr().err
+    )
+    ROOT.TClassTable.Add("Ref", 11)
+    reflection.note_file_infos(described)
+    assert capfd.readouterr().err == ""
+
+
+def test_a_name_that_is_no_instance_of_anything_needs_its_dictionary(capfd):
+    """``<`` alone is no template's instance - a name without one, or whose head is empty, is
+    judged by its own dictionary alone."""
+    reflection.note_file_infos([("Nowhere", (0x1, 1, ())), ("<odd>", (0x2, 1, ()))])
+    printed = capfd.readouterr().err
+    assert "no dictionary for class Nowhere is available" in printed
+    assert "no dictionary for class <odd> is available" in printed
+
+
+def test_a_user_class_named_like_roots_own_needs_its_dictionary(capfd):
+    """A name's spelling says nothing about whose class it is: ``roottest/root/io/tree``'s
+    ``missingClass`` reads a file describing ``TEmcl``, ``TPhysObj``, ``TNonEmcl`` and
+    ``TNonPhysObj``, a program's own classes all four, and ROOT warns of each beside the
+    ``TTree`` its file describes without a word."""
+    reflection.note_file_infos([("TEmcl", (0x7D5A2E11, 1, ()))])
+    assert (
+        "Warning in <TClass::Init>: no dictionary for class TEmcl is available"
+        in capfd.readouterr().err
+    )
+
+
+def test_a_root_class_the_kit_streams_needs_no_dictionary(capfd):
+    """ROOT's own classes have the dictionaries its libraries were built with, and the kit
+    knows them by what it streams: the layout ``TH1F`` is written with, ``TBasket``'s reader,
+    ``THnSparseD``'s branches and ``TRef``'s."""
+    described = [(name, (index, 1, ())) for index, name in enumerate(
+        ("TH1F", "TBasket", "THnSparseD", "TRef"))]
+    reflection.note_file_infos(described)
+    assert capfd.readouterr().err == ""
+
+
+def test_a_root_class_the_kit_implements_without_a_tobject_needs_no_dictionary(capfd):
+    """``TStyle``, ``TCanvas`` and ``TColor`` are ROOT's own classes and have their
+    dictionaries, though the namespace's implementations of them derive from no ``TObject``
+    - a file describing one opens as quietly as ROOT opens it."""
+    reflection.note_file_infos([("TStyle", (0x11, 1, ())), ("TColor", (0x12, 1, ()))])
+    assert capfd.readouterr().err == ""
 
 
 def test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory(capfd):
@@ -1041,3 +1214,159 @@ def test_a_hash_table_says_itself_when_it_holds_nothing():
     assert not held.Empty()
     held.Clear()
     assert held.Empty()
+#: A file's layout of a versioned class, naming the member ``int myvar_one`` where the class
+#: in memory declares ``double mydouble_two`` - ``roottest``'s ``checkWarn``, whose class is
+#: given a version of its own in each macro.
+ON_FILE_INT = ("TStreamerBasicType", "myvar_one", "", 3, 4, 1, 0, (0, 0, 0, 0, 0), "int", ())
+
+
+def _renamed_class(name, spelling):
+    run_source(VERSED.replace("Versed", name).replace("int a = 1", f"{spelling} = 1"),
+               f"{name}.C", call=False)  # fmt: skip
+
+
+def test_a_member_the_file_names_differently_is_set_against_the_class_s_own(capfd):
+    """``roottest``'s ``checkWarn`` opens a file recording ``int myvar_one`` where the class in
+    memory declares ``double mydouble_two``: ROOT pairs the two members by where each comes,
+    not by name, and sets the two declarations out."""
+    _renamed_class("Renamed", "double mydouble_two")
+    reflection.note_file_infos([("Renamed", (0x1234567, 1, (ON_FILE_INT,)))], "data1.root")
+    printed = capfd.readouterr().err
+    assert "Warning in <TStreamerInfo::BuildCheck>:" in printed
+    assert "   int myvar_one; //\nvs\n   double mydouble_two; //" in printed
+
+
+def test_a_member_named_in_both_layouts_is_never_paired_by_position(capfd):
+    """A file that names a member the class has is set against that member, so a layout with
+    one member the class shares and one it does not names only the one it cannot read."""
+    run_source(VERSED, "versed.C", call=False)
+    somewhere = (*ON_FILE_INT[:1], "b", *ON_FILE_INT[2:])
+    reflection.note_file_infos([("Versed", (0x1234567, 1, (LONG64, somewhere)))], "one.root")
+    printed = capfd.readouterr().err
+    assert "   Long64_t a; //\nvs\n   int a; //" in printed
+    assert "myvar_one" not in printed
+
+
+def test_a_dictionary_loaded_after_the_file_is_a_post_load_check(capfd):
+    """``roottest``'s ``checkWarn0`` reads ``data1.root`` and then loads the class: the file's
+    layout is the only description of the class there was, so ROOT says the version should be
+    updated and lists the members the class in memory does not declare."""
+    reflection.note_file_infos([("Renamed", (0x1234567, 1, (ON_FILE_INT,)))], "data1.root")
+    _renamed_class("Renamed", "double mydouble_two")
+    capfd.readouterr()
+    reflection.note_generated_dictionary("Renamed")
+    printed = capfd.readouterr().err
+    assert (
+        "Warning in <TClass::PostLoadCheck>: \n"
+        "   The StreamerInfo version 1 for the class Renamed which was read\n"
+        "   from a file previously opened has the same version as the active class\n"
+        "   but a different checksum. You should update the version to ClassDef(Renamed,2).\n"
+        "   Do not try to write objects with the current class definition,\n"
+        "   the files will not be readable.\n" in printed
+    )
+    assert (
+        "Warning in <TStreamerInfo::CompareContent>: The following data member of\n"
+        "the in-memory layout version 1 of class 'Renamed' is missing from\n"
+        "the on-file layout version 1:\n   int myvar_one; //" in printed
+    )
+
+
+def test_a_dictionary_is_checked_against_the_file_once(capfd):
+    """ROOT warns once per class however many dictionaries a session loads of it, so a second
+    load of the class says nothing."""
+    reflection.note_file_infos([("Renamed", (0x1234567, 1, (ON_FILE_INT,)))], "data1.root")
+    _renamed_class("Renamed", "double mydouble_two")
+    reflection.note_generated_dictionary("Renamed")
+    capfd.readouterr()
+    reflection.note_generated_dictionary("Renamed")
+    assert "PostLoadCheck" not in capfd.readouterr().err
+
+
+def test_a_dictionary_of_a_class_no_file_disagrees_with_says_nothing(capfd):
+    """A class whose layout in memory nothing disagrees with - no file read it, or a file whose
+    checksum is the class's own - is loaded without a word."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_generated_dictionary("Versed;Nonesuch")
+    assert "PostLoadCheck" not in capfd.readouterr().err
+    checksum = reflection.TClass("Versed")._layout()[0]
+    reflection.note_file_infos([("Versed", (checksum, 1, (LONG64,)))], "same.root")
+    reflection.note_generated_dictionary("Versed")
+    assert "PostLoadCheck" not in capfd.readouterr().err
+
+
+def test_a_file_layout_of_a_class_with_no_classdef_is_no_post_load_check(capfd):
+    """A class declared without ``ClassDef`` is told apart by checksum rather than by version,
+    so a file's layout of it is no version the class failed to update."""
+    run_source("class Forin {\npublic:\n   int a = 1;\n};\n", "forin.C", call=False)
+    reflection.note_file_infos([("Forin", (0x1234567, 1, (ON_FILE_INT,)))], "data1.root")
+    reflection.note_generated_dictionary("Forin")
+    assert "PostLoadCheck" not in capfd.readouterr().err
+
+
+def test_a_layout_the_class_in_memory_disowns_is_listed_as_roots_file_layout(capfd):
+    """A file's layout of a version the class in memory also has, with a checksum of its own,
+    stays the class's current one - ROOT warns the class should be given the next version
+    rather than replacing it - and is listed with each element set against nothing: a type a
+    hundred above the file's own, no new type, and the missing offset."""
+    reflection.note_file_infos([("Owned", (0x589374F7, 1, (ON_FILE_INT,)))], "data1.root")
+    _renamed_class("Owned", "double mydouble_two")
+    info = ROOT.TClass.GetClass("Owned").GetStreamerInfo()
+    assert (info.GetCheckSum(), info.GetClassVersion()) == (0x589374F7, 1)
+    info.ls()
+    printed = capfd.readouterr().out
+    assert "checksum=0x589374f7" in printed
+    assert "  int            myvar_one       offset=99999 type= 3 newtype=-1" in printed
+    assert "   i= 0, myvar_one       type=103, offset=99999, len=1, method=0" in printed
+
+
+def test_a_class_whose_members_a_file_names_alike_lists_them_at_their_offsets(capfd):
+    """The class in memory's own layout - the one ROOT builds - is listed with each element's
+    offset and the action it is read with, and a file's layout that agrees with it changes
+    nothing."""
+    run_source(VERSED, "versed.C", call=False)
+    reflection.note_file_infos([("Versed", (0x1234, 1, (AS_WIDE,)))], "one.root")
+    ROOT.TClass.GetClass("Versed").GetStreamerInfo().ls()
+    printed = capfd.readouterr().out
+    assert "offset=  0 type= 3" in printed and "newtype" not in printed
+
+
+def test_an_element_a_file_spelled_another_way_names_the_type_in_memory(capsys):
+    """ROOT lists a file's element with the *new* type the class in memory gives that member,
+    and reads it with an action numbered two hundred above the file's - ``kHasNewType``. An
+    enum a file wrote as the ``int`` it is declared as is the case the roottest pair shows."""
+    spelled = [("TStreamerBasicType", "first", "", 3, 4, 0, 0, (0,) * 5, "AnEnum", ())]
+    today = [("TStreamerBasicType", "first", "", 13, 4, 0, 0, (0,) * 5, "AnEnum", ())]
+    from xrdroot.pyroot.core.reflection import TStreamerInfo
+
+    TStreamerInfo("Spelled", (0xB15D1241, 2, tuple(spelled)), built=True, from_file=True,
+                  memory=tuple(today)).ls()
+    printed = capsys.readouterr().out
+    assert "  AnEnum         first           offset=  0 type= 3 newtype=13" in printed
+    assert "   i= 0, first           type=203, offset=  0, len=1, method=0" in printed
+
+
+def test_a_member_the_two_layouts_type_alike_names_no_new_type(capsys):
+    """The same type in both layouts is no new type: ROOT's listing is the file's own."""
+    same = [("TStreamerBasicType", "first", "", 3, 4, 0, 0, (0,) * 5, "int", ())]
+    extra = [("TStreamerBasicType", "gone", "", 3, 4, 0, 0, (0,) * 5, "int", ())]
+    from xrdroot.pyroot.core.reflection import TStreamerInfo
+
+    info = TStreamerInfo("Alike", (1, 2, tuple(same + extra)), built=True, memory=tuple(same))
+    info.ls()
+    printed = capsys.readouterr().out
+    assert "newtype" not in printed
+    assert "   i= 0, first           type=  3, offset=  0, len=1, method=0" in printed
+    # A member the layout in memory does not have is the file's own, new type or no.
+    assert "   i= 1, gone            type=  3, offset=  0, len=1, method=0" in printed
+
+
+def test_a_files_classes_are_warned_of_in_the_order_root_wrote_them(capfd):
+    """ROOT registers a class's streamer information as it first streams an object of it and a
+    base's after the derived class's, so ``roottest/root/io/tree``'s file lists ``TEmcl``
+    before its base ``TPhysObj`` and ``missingClass.ref`` names it first. The writer here lays
+    a base down first, so the warnings are put in ROOT's order before they are given."""
+    base = ("TStreamerBase", "TPhysObj", "", 0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (0,))
+    described = [("TPhysObj", (0x1, 1, ())), ("TEmcl", (0x2, 1, (base,)))]
+    reflection.note_file_infos(described)
+    printed = capfd.readouterr().err
+    assert printed.index("class TEmcl") < printed.index("class TPhysObj")

@@ -152,12 +152,70 @@ def test_a_subtraction_places_its_second_operand_where_the_file_puts_it(tmp_path
 
 
 def test_a_material_is_one_element_or_a_mixture_of_parts(tmp_path: Path) -> None:
+    """ROOT reads every ``<material>`` stating parts as a mixture, even a single part."""
     ROOT.TGeoManager.Import(str(written(tmp_path)))
     argon = ROOT.gGeoManager.GetMaterial("LAr")
     mixture = ROOT.gGeoManager.GetMaterial("Mix")
     expect((argon.GetA(), 39.948), (argon.GetZ(), 18.0), (argon.GetDensity(), 1.396),
+           (isinstance(argon, TGeoMixture), True), (argon.GetNelements(), 1),
+           (argon.GetElement(0).GetName(), "Ar"), (argon.GetWmixt().tolist(), [1.0]),
            (isinstance(mixture, TGeoMixture), True), (mixture.GetNelements(), 2),
            (mixture.GetDensity(), 2.0), (mixture.GetA(), 39.948))  # fmt: skip
+
+
+#: ROOT's own ``geom/test/material_name_collision.gdml``: names unique in the XML by a
+#: ``0x`` address, and an element whose ``name`` is not the symbol a mixture is read by.
+COLLIDING = """<?xml version="1.0"?>
+<gdml>
+  <materials>
+    <element Z="26" formula="FE" name="Iron0xaaa"><atom unit="g/mole" value="55.845"/></element>
+    <element Z="28" formula="NI" name="Nickel0xbbb"><atom unit="g/mole" value="58.693"/></element>
+    <material name="Iron0xccc" state="solid">
+      <D unit="g/cm3" value="7.87"/><fraction n="1" ref="Iron0xaaa"/>
+    </material>
+    <material name="Alloy0xddd" state="solid">
+      <D unit="g/cm3" value="8.2"/>
+      <fraction n="0.5" ref="Iron0xaaa"/><fraction n="0.5" ref="Nickel0xbbb"/>
+    </material>
+  </materials>
+  <solids>
+    <box lunit="mm" name="world0x1a" x="1000" y="1000" z="1000"/>
+    <box lunit="mm" name="cube0x1b" x="100" y="100" z="100"/>
+  </solids>
+  <structure>
+    <volume name="ironVol0x2a"><materialref ref="Iron0xccc"/><solidref ref="cube0x1b"/></volume>
+    <volume name="World0x2c"><materialref ref="Alloy0xddd"/><solidref ref="world0x1a"/>
+      <physvol name="ironPV"><volumeref ref="ironVol0x2a"/></physvol></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World0x2c"/></setup>
+</gdml>
+"""
+
+
+def test_a_hexadecimal_address_in_a_name_is_dropped_as_root_drops_it(tmp_path: Path) -> None:
+    """A GDML name's ``0x`` tail is unique in the XML only; ROOT registers the head."""
+    ROOT.TGeoManager.Import(str(written(tmp_path, COLLIDING, "collision.gdml")))
+    manager = ROOT.gGeoManager
+    expect(([volume.GetName() for volume in manager.GetListOfVolumes()], ["ironVol", "World"]),
+           ([shape.GetName() for shape in manager.GetListOfShapes()], ["world", "cube"]),
+           ([medium.GetName() for medium in manager.GetListOfMedia()], ["Iron", "Alloy"]),
+           ([material.GetName() for material in manager.GetListOfMaterials()],
+            ["Iron", "Alloy"]),
+           (manager.GetTopVolume().GetName(), "World"),
+           (manager.GetTopVolume().GetNode(0).GetName(), "ironVol_0"))  # fmt: skip
+
+
+def test_an_element_is_named_by_its_formula_and_titled_by_its_name(tmp_path: Path) -> None:
+    """``<element formula="FE" name="Iron0xaaa">`` reads as element ``FE``: ROOT keys
+    its table of elements on the symbol, so the file's own name is only the title."""
+    ROOT.TGeoManager.Import(str(written(tmp_path, COLLIDING, "collision.gdml")))
+    iron = ROOT.gGeoManager.GetMaterial("Iron")
+    alloy = ROOT.gGeoManager.GetMaterial("Alloy")
+    expect((iron.IsMixture(), True), (iron.GetNelements(), 1),
+           (iron.GetElement(0).GetName(), "FE"), (iron.GetElement(0).GetTitle(), "Iron"),
+           (iron.GetWmixt().tolist(), [1.0]),
+           ([alloy.GetElement(index).GetName() for index in range(2)], ["FE", "NI"]),
+           (alloy.GetWmixt().tolist(), [0.5, 0.5]), (alloy.GetElement(2), None))  # fmt: skip
 
 
 def test_a_placement_is_a_matrix_of_the_kind_the_file_states(tmp_path: Path) -> None:

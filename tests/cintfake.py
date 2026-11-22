@@ -148,6 +148,11 @@ class TFile(Named):
 
     opened: ClassVar[list[TFile]] = []
 
+    def _destruct(self) -> None:
+        """``~TFile`` writes the file: a translated macro's local is a guard, so the scope it
+        was declared in calls this, and it is logged as every other method call is."""
+        self.calls.append(("_destruct", ()))
+
     @staticmethod
     def Open(name: str, *rest: Any) -> TFile:
         made = TFile(name, *rest)
