@@ -18,7 +18,6 @@ import pytest
 import xrdroot.pyroot as ROOT
 from pyrootsupport import fresh
 from xrdroot import Graph, UnsupportedFeatureError, create, open_root
-from xrdroot.pyroot.graphics.multierrors import _attach
 
 DATA = pathlib.Path(__file__).parent / "data"
 
@@ -247,10 +246,8 @@ def test_the_x_error_is_the_mean_of_the_two_sides_squares():
     assert graph.GetErrorX(99) == -1.0
 
 
-def test_a_key_the_directory_does_not_hold_is_nothing_to_attach_to():
-    graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.3] * 5, *STAT)
+def test_a_name_the_file_does_not_hold_is_no_object_at_all():
     holder = ROOT.TFile("absent.root", "RECREATE")
-    assert _attach(ROOT.gDirectory, "nothing_by_that_name", graph._xrd) is None
     assert holder.Get("nothing_by_that_name") is None
     holder.Close()
 

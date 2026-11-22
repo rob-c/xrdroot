@@ -34,6 +34,7 @@ from ...cppstd.containers import std
 from ...errors import ROOTError
 from ...wdeclared import COMPLEX_TEMPLATES, Catalogue, parse_type
 from ...wdobjects import write_value
+from ...writer import Record as _Record
 from ...writer import WBuffer, info_entry
 from .collections import THashList
 from .declared import catalogue_for, made_from, payload_of, plain_value
@@ -381,8 +382,10 @@ class TDirectoryFile(TDirectory):
             key = self._note_key(called, declared.title, declared.classname)
             key._key = _Written(declared)
             return 1
-        writer.write(called, recorded(obj, writer), title=obj.GetTitle())
-        self._note_key(called, obj.GetTitle(), obj.ClassName())
+        made = recorded(obj, writer)
+        writer.write(called, made, title=obj.GetTitle())
+        key = self._note_key(called, obj.GetTitle(), obj.ClassName())
+        key._key = _WrittenObject(made)
         return 1
 
     def WriteObjectAny(
@@ -567,6 +570,24 @@ def _tree(read: Any, key: TKey) -> Any:
         return None
     trees = importlib.import_module("xrdroot.pyroot.trees")
     return trees.wrap(read, key.GetClassName(), key._key)
+
+
+class _WrittenObject:
+    """A record of an object this session wrote, kept so that the file, still open for
+    writing, can read it back: the very object the record was made from.
+
+    A histogram and a tree stay in this directory's list, as ROOT appends them, and ``Get``
+    finds them there. Everything else is only in the file's bytes, which ``_reader`` reads
+    once the file is closed - so, open, it is this that answers.
+    """
+
+    def __init__(self, made: Any) -> None:
+        self.made = made
+
+    def read(self) -> Any:
+        """What this file's reader answers for the record once the file is closed: the members
+        a ``Record`` was made of, or the engine object the record already is."""
+        return self.made.members if isinstance(self.made, _Record) else self.made
 
 
 class _Written:

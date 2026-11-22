@@ -68,17 +68,6 @@ class _WrittenObject:
         return self._written
 
 
-def _attach(directory: Any, name: str, xrd: Any) -> None:
-    """Keep what was written beside the key it went in under, for a file still open to find.
-
-    A key that is not there is nothing to attach to, which is what a directory the object
-    was kept in none the worse for - ``Get`` then answers as it would for any other class.
-    """
-    key = directory.GetKey(name, 9999)
-    if key is not None:
-        key._key = _WrittenObject(xrd)
-
-
 class TGraphMultiErrors(TGraph):
     """``TGraphMultiErrors(n, x, y, exl, exh, eyl, eyh[, mode])``: a graph of layers.
 
@@ -159,15 +148,12 @@ class TGraphMultiErrors(TGraph):
         """``Write``: the graph into the open file, and readable back out of it at once.
 
         A program that writes a graph and asks the same file for it - as ROOT's own test of
-        this class does - gets it: the key it went in under is handed what the record was
-        made from, so ``Get`` answers with it rather than with nothing.
+        this class does - gets it back: ``TDirectoryFile.WriteTObject`` keeps what it wrote by
+        the key, which is what a file still open reads while its bytes are out of reach.
         """
         from ..core.directories import current_directory
 
-        directory = current_directory()
-        count = int(directory.WriteTObject(self, name, option))
-        _attach(directory, str(name) if name else self.GetName(), self._xrd)
-        return count
+        return int(current_directory().WriteTObject(self, name, option))
 
     # -- the layers -------------------------------------------------------------------------
 

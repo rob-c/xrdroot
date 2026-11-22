@@ -740,3 +740,44 @@ def test_an_ntuple_written_into_a_file_is_readable_when_the_file_is_written(tmp_
     made.Close()
     with ROOT.TFile(str(tmp_path / "ntuple.root")) as read:
         expect((read.Get("events") is not None, True))
+
+
+def test_a_graph_written_to_a_file_still_open_is_read_back_from_it() -> None:
+    """ROOT appends what it writes to the directory, and a file whose bytes are not on disk
+    yet still answers for it - which a graph, unlike a histogram, was never found in."""
+    made = ROOT.TFile("still-open.root", "RECREATE")
+    graph = ROOT.TGraph(3, [0.0, 1.0, 2.0], [0.0, 2.0, 4.0])
+    graph.SetName("g")
+    graph.SetTitle("a graph")
+    assert graph.Write() == 1
+    back = made.Get("g")
+    expect(
+        (back.GetName(), "g"),
+        (back.GetTitle(), "a graph"),
+        (back.GetN(), 3),
+        (back.GetPointX(2), 2.0),
+        (back.GetPointY(2), 4.0),
+    )
+    made.Close()
+    again = ROOT.TFile("still-open.root")
+    expect((again.Get("g").GetN(), 3))  # fmt: skip
+    again.Close()
+
+
+def test_a_named_string_written_to_a_file_still_open_is_read_back_from_it() -> None:
+    made = ROOT.TFile("still-open.root", "RECREATE")
+    text = ROOT.TObjString("hello")
+    text.Write("text")
+    expect((made.Get("text").GetString(), "hello"))  # fmt: skip
+    made.Close()
+
+
+def test_an_object_the_file_kept_in_memory_is_the_one_written_and_not_a_second_reading() -> None:
+    """A histogram is in the directory's list as ROOT appends it, so ``Get`` answers that
+    object - the same one, and not a reading of bytes that are still being written."""
+    made = ROOT.TFile("kept.root", "RECREATE")
+    histogram = ROOT.TH1D("h", "h", 2, 0.0, 2.0)
+    histogram.Fill(0.5)
+    histogram.Write()
+    expect((made.Get("h") is histogram, True), (made.Get("h").GetEntries(), 1.0))
+    made.Close()
