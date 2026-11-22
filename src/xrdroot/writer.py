@@ -900,7 +900,23 @@ def _container_element_class(typename: str) -> str | None:
     ``vector<TArrayD>`` - so the classes a container holds are what the record describes.
     """
     inner = typename[len("vector<") : -1] if typename.startswith("vector<") else ""
-    return inner if layout_of(inner) is not None else None
+    return inner or None
+
+
+def _described(owner: str, name: str, stype: int) -> bool:
+    """Whether :func:`_closure` takes ``name`` in along with ``owner``, the class it was
+    found in.
+
+    Any class ROOT describes is; an array is described only beside the class that keeps one -
+    a ``TGraphMultiErrors``'s layers are ``vector<TArrayD>`` - or as the base of an array that
+    already is. A ``TH1F``'s ``TArrayF`` base is neither, which is where the arrays stay out
+    of a histogram's file, as they do of ROOT's.
+    """
+    if stype == STL_STYPE:
+        return name in ARRAY_LAYOUTS
+    if name in INFOS:
+        return True
+    return owner in ARRAY_LAYOUTS and name in ARRAY_LAYOUTS
 
 
 def _closure(seeds: dict[str, None]) -> list[str]:
@@ -908,12 +924,13 @@ def _closure(seeds: dict[str, None]) -> list[str]:
     ordered = dict.fromkeys(seeds)
     queue = list(ordered)
     while queue:
-        info = layout_of(queue.pop(0))
+        owner = queue.pop(0)
+        info = layout_of(owner)
         if info is None:
             continue
         for kind, name, _t, stype, _s, _a, _d, _m, typename, _x in info[2]:
             held = _held(kind, name, stype, typename)
-            if held is not None and layout_of(held) is not None and held not in ordered:
+            if held is not None and held not in ordered and _described(owner, held, stype):
                 ordered[held] = None
                 queue.append(held)
     return list(ordered)
