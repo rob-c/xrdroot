@@ -46,6 +46,11 @@ nav:
       - ROOT adapters and application: components/applications.md
       - Providers and adapters: components/providers.md
       - Boundary checks: components/boundaries.md
+  - Project knowledge:
+      - Tutorials ROOT vetoes for no display: instructions/running-the-tutorials-root-vetoes-for-no-display-also-vetoed.md
+      - Landing work on main: instructions/landing-work-on-main-here-a-worktree-off-origin-main-pushed-at.md
+      - /tmp is wiped mid-session: gotchas/tmp-is-wiped-mid-session-keep-root-s-sources-and-every-run.md
+      - Tutorial work is 2-for-1 on twin pairs: discoveries/tutorial-work-is-2-for-1-on-twin-pairs-roofit-s-text-diffs-have.md
   - Maintainability metrics: maintainability.md
 
 markdown_extensions:
