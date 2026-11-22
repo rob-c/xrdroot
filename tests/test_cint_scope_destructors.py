@@ -104,13 +104,17 @@ def test_an_array_of_numbers_has_no_destructor_to_run():
     expect(("_destruct()" in text, False))
 
 
-def test_an_array_of_arrays_is_not_destroyed_one_row_at_a_time():
-    """A two-dimensional array of objects keeps plain lists for rows, which say nothing of
-    their elements, so the translator runs no destructor for it rather than raising."""
+def test_an_array_of_arrays_is_destroyed_row_by_row():
+    """``A a[2][2]`` destroys four times: each row is an array of objects in its own right."""
     text = translate(
-        "struct A { A(){} ~A(){} };\nvoid t() {\n{\nA a[2][2];\n}\n}\n", "c.C"
+        "struct A { static int n; A(){n++;} ~A(){n--;} };\n"
+        "int A::n = 0;\n"
+        "int count() {\n{\nA a[2][2];\n}\nreturn A::n;\n}\n",
+        "c.C",
     )
-    expect((text.count("a._destruct()"), 0))
+    namespace: dict[str, object] = {}
+    exec(compile(text, "c.C", "exec"), namespace)
+    expect((namespace["count"](), 0), (text.count("a._destruct()"), 1))
 
 
 def test_letting_an_array_of_objects_go_twice_leaves_it_empty():

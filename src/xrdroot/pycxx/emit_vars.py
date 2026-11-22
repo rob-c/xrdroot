@@ -159,8 +159,6 @@ class VariableEmitter(StmtEmitter):
         if ctype is None or ctype.pointer or ctype.reference:
             return False
         named = self._owned(ctype)
-        if named is None:
-            return False
         guarded = named.name in GUARDS or named.name in active().guards
         if not (guarded or self._destructs(named.name)):
             return False
@@ -170,16 +168,16 @@ class VariableEmitter(StmtEmitter):
             raise self.refuse(f"{why} as that statement ends", decl)
         return True
 
-    def _owned(self, ctype: CType) -> CType | None:
+    def _owned(self, ctype: CType) -> CType:
         """The type whose destructor C++ runs for a local of ``ctype``, which is the local's own
-        unless it is a one-dimensional array of them - ``A a[3]``, or the ``A[]`` a
-        ``std::unique_ptr`` holds, which this kit keeps as the array ``cppstd.objects.ObjectArray``
-        builds. ``None`` for an array of arrays, whose rows this kit keeps as plain lists."""
+        unless it is an array of them - ``A a[3]``, ``A a[2][3]``, or the ``A[]`` a
+        ``std::unique_ptr`` holds, which this kit keeps as the arrays
+        ``cppstd.objects.ObjectArray`` builds, one per dimension."""
         if ctype.dims:
-            return ctype.element() if len(ctype.dims) == 1 else None
+            return ctype.element()
         inner = ctype.args[0] if ctype.name in SMART and ctype.args else None
         if isinstance(inner, CType) and inner.dims:
-            return inner.element() if len(inner.dims) == 1 else None
+            return inner.element()
         return ctype
 
     def _destructs(self, name: str) -> bool:

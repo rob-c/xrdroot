@@ -78,9 +78,10 @@ DTYPES = {
 
 
 def _filled(shape: tuple[int, ...], make: Callable[[], Any]) -> list[Any]:
+    """Rows of elements, every level one C++ destroys as its scope ends - ``A a[2][3]``."""
     if len(shape) == 1:
-        return [make() for _ in range(shape[0])]
-    return [_filled(shape[1:], make) for _ in range(shape[0])]
+        return ObjectArray(make() for _ in range(shape[0]))
+    return ObjectArray(_filled(shape[1:], make) for _ in range(shape[0]))
 
 
 def _flat(items: Any) -> list[Any]:
@@ -144,7 +145,7 @@ def _object_array(
         # ``TString names[2] = {"a", "b"}``: each literal made into the element's class.
         literal = isinstance(value, (str, int, float))
         out[index] = make(value) if make is not None and literal else value
-    return ObjectArray(out) if len(dims) == 1 else out
+    return out
 
 
 #: What an argument for an integer parameter may be: a Python or a NumPy integer.
