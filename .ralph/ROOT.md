@@ -1635,6 +1635,35 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   average of 20-42; ruff clean, mypy 1022 files, maintainability 31 252 functions, components 1021 modules /
   0 undeclared.
 
+## Round 54's close (recorded here for the next iteration)
+
+- Base `2a668e00`, closed at **`2ce1f188`**. **Two commits, +1 gtest PASS (58 -> 59)**, and the round's real
+  product is a bug of the general kind: **a local C++ destroys at its scope's end, and one spelling never did.**
+- **`98df6a2e`**: `RNTupleWriter::Recreate` gives a `std::unique_ptr` back, so a macro that fills a writer inside
+  `{ ... }` writes its file at the closing brace - and ours did not, so the file stayed 0 bytes and the reader
+  refused it (`test_ntuple_readstring.root ends at 0`). Three things were missing and only the three together
+  move it: `pycxx`'s inference answered `None` for a **qualified static call** `T::f(...)` (its `method_returns`
+  table was consulted only for a call on an object; `_library_call` now asks it for `parts[-2], parts[-1]`), the
+  ROOT dialect says what the two RNTuple writer factories give back, and `RNTupleWriter` - already a `Guarded` -
+  needed the `_destruct` a dialect guard is called through. **`gtest/tree/ntuple/ntuple_randomaccess` PASSES.**
+- **`2ce1f188` closes `W0-133`**: `TInterpreter::Calc` takes the silent path `ProcessLineFast` takes, because
+  ROOT's `TCling::Calc` prints nothing where `ProcessLine` echoes `(int) 3` (`/tmp/r54calc.C` measures both).
+  **The row was wrong about its cost**: it claimed two existing tests pinned the echo and would have to be
+  corrected. They did not - `_fast_processor` falls back to `process_line` when a translator has only that one -
+  and both files pass untouched. A queue row's *measurement* is worth more than its *prediction*.
+- **`W0-134` is the wall behind it**: `gtest/tree/ntuple/rfield_string` now wants
+  `RNTupleDescriptor::GetClusterDescriptor`/`GetPageRange`/`GetPageInfos` - the page-level introspection that is
+  that test's own subject. `W0-135` records `gtest/tree/tree/testTChainSaveAsCxx`'s three `TFile`s in one scope
+  (whose the third `TTree` registers with is unmeasured against the oracle), and `W0-136` the harness hazard this
+  round paid for.
+- **`W0-136` cost this round a whole-kind measurement**: a `--kind gtest` run at `--jobs 3` sat at 226/350 for
+  25 minutes with its own three workers in state `Ts` (suspended) while two stale `xrdroot run` processes from
+  `/private/tmp/suite-9c38` burned 84 % CPU. The kind was therefore measured in its two areas instead
+  (`/tmp/r54/ntuple`, `/tmp/r54/core`), which is honest but is not the same claim.
+- Gates: **`TOTAL 119669 0 30000 0 100%`** by the two-command decomposition (13 017 passed, then 44) at a load
+  average of 10-78; ruff clean, mypy 1022 files, maintainability 31 263 functions, components 1021 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1697,6 +1726,9 @@ For the round's work, the evidence is, in this order:
   load average of 20-42; ruff clean, mypy 1022 files, maintainability 31 252 functions, components 1021 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r53/gate1.log` is the first command's output (the tree was committed
   exactly as measured, in the two commits above).
+- Round 54's result of them, at `2ce1f188`: **`TOTAL 119669 0 30000 0 100%`** - 13 017 passed then 44 passed - at a
+  load average of 10-78; ruff clean, mypy 1022 files, maintainability 31 263 functions, components 1021 modules /
+  0 undeclared. `/tmp/r54/gate1.log` is the first command's output (the tree was committed exactly as measured).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -1911,6 +1943,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 51 | `b9570d8d` | **one commit**: `TH1::SmoothArray`, the static 353QH-twice smoother over a raw array a program hands as a pointer (`4227df45`) | **no harness PASS**, but ROOT's own `test_TH1.cxx` goes **9 -> 8 failing cases** (`TH1.SmoothArrayCrossCheck` now OK) | 0 new: `W0-129` down to eight cases, each measured, with `SetBufferedSumw2` and `DumpOutput` named as the expensive two |
 | 52 | `0537d989` | **one commit**: a collection's element carries the type C++'s range gives it (`TypedElement`), `iterate` hands a `TCollection`'s objects out as the `TObject *` C++ iterates, and `ROOT::Detail::TRangeStaticCast<T>`/`TRangeDynCast<T>` (`5f58c997`) | **gtest +2: `gtest/core/cont/coreconttestUnit` and `gtest/core/cont/testTypedIteration` PASS** (`/tmp/r52/cont`), the kind **54 -> 56**; nothing lost in `io/tree` (18/0/0/2), `io/json` (11/0/0/1) or 66 `io`/`hist`/`graf2d` gtest programs (`/tmp/r52/gtest-iohist`) | 3: `W0-130` (a wrapper a macro can keep - `TCollection` should unwrap), `W0-131` (the round-44 gtest bucket table is eight rounds stale), `W0-132` (`test_THBinIterator`: 64 s for 20 cases, 7 failing); `W0-113` closed |
 | 53 | `6f1b71a9` | **two commits**: `ROOT::RangeStaticCast`/`ROOT::RangeDynCast` over any range, a C array of pointers included, with a class the program declared found in the interpreter's table (`7f90083d`); `TDataType::GetType(typeid(T))` over `EDataType`'s codes, with them under the bare names a macro writes (`f93144fd`) | **gtest +2: `gtest/core/foundation/testRRangeCast` and `gtest/core/meta/testTDataType` PASS** (`/tmp/r53/corefm`), the kind **56 -> 58**; **the gtest kind measured whole at HEAD** (`/tmp/r53/gtest`): 56 / 216 / 76 / 2 of 350, nothing lost | 2: `W0-131` closed (the ranking is current and has no name cluster; `/tmp/r53/one-case.md` names the 47 programs one failing case from a PASS), `W0-133` (`Calc` echoes where ROOT is silent) |
+| 54 | `2a668e00` | **two commits**: a qualified static call `T::f(...)` asks the dialect's `method_returns`, so an `auto` local a factory gives has a type, and `RNTupleWriter` is a guard with the `_destruct` one needs (`98df6a2e`); `TInterpreter::Calc` reads a value out without cling's echo (`2ce1f188`) | **gtest +1: `gtest/tree/ntuple/ntuple_randomaccess` PASSES** (`/tmp/r54/ntuple`), the kind **58 -> 59**; nothing lost in the 49 `gtest/tree/ntuple/*` or the 26 `gtest/core/*` (`/tmp/r54/core`) | 3: `W0-133` closed, `W0-134` (`GetClusterDescriptor`), `W0-135` (three `TFile`s in one scope), `W0-136` (another session's stopped processes starve a whole-kind run) |
 
 ## Notes
 
