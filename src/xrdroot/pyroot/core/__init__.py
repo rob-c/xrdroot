@@ -59,6 +59,7 @@ FAMILIES = (
     "graphs",
     "graphs2d",
     "graphsmooth",
+    "splines",
     "normsum",
     "scatters",
     "efficiencies",
