@@ -28,6 +28,7 @@ FAMILIES = (
     "classedit",
     "collectionproxy",
     "datatypes",
+    "tiofeatures",
     "buffers",
     "jsonbuffer",
     "collections",

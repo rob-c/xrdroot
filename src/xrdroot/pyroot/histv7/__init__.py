@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...errors import UnsupportedFeatureError
+from ..core.tiofeatures import EIOUnsupportedFeatures, ExperimentalEIOFeatures
 from .axes import RCategoricalAxis, RRegularAxis, RVariableBinAxis
 from .contents import RBinWithError
 from .convert import ConvertAxis, converted
@@ -88,7 +89,8 @@ Internal = _Namespace("ROOT::Experimental::Internal", RAxes=RAxes,
 
 
 class _Experimental:
-    """``ROOT::Experimental``, as far as ROOT 7's histograms go."""
+    """``ROOT::Experimental``, as far as this kit has it: ROOT 7's histograms, and the
+    IO-feature bits a basket records (:mod:`xrdroot.pyroot.core.tiofeatures`)."""
 
     RHist = HIST
     RHistEngine = ENGINE
@@ -109,6 +111,8 @@ class _Experimental:
     RSliceSpec = RSliceSpec
     Hist = Hist
     Internal = Internal
+    EIOFeatures = ExperimentalEIOFeatures
+    EIOUnsupportedFeatures = EIOUnsupportedFeatures
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("__"):
