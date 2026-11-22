@@ -138,3 +138,16 @@ def test_a_th2poly_adds_another_of_the_same_bins_and_has_no_directory():
     lonely = ROOT.TH2Poly()
     lonely.AddBin(0.0, 0.0, 1.0, 1.0)
     assert not total.Add(lonely)
+
+
+def test_a_polygon_histogram_draws_on_a_fixed_grid_of_its_own() -> None:
+    """ROOT's ``TH2Poly`` keeps 100-cell x and y axes and a one-cell z, and counts its bins
+    plus the nine regions round them - the grid is the frame's, not the bins'."""
+    found = ROOT.TH2Poly("poly", "poly", 0.0, 10.0, 0.0, 5.0)
+    found.AddBin(0, 0, 5, 5)
+    found.AddBin(5, 5, 10, 10)
+    assert (found.GetDimension(), found.GetNcells()) == (2, 11)
+    assert (found.GetXaxis().GetNbins(), found.GetXaxis().GetFirst(),
+            found.GetXaxis().GetLast()) == (100, 1, 100)  # fmt: skip
+    assert (found.GetYaxis().GetNbins(), found.GetZaxis().GetNbins()) == (100, 1)
+    assert found.GetXaxis().TestBit(ROOT.TAxis.kAxisRange) is False

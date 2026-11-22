@@ -27,7 +27,6 @@ from .compression import CODES
 from .errors import FormatError, UnsupportedFeatureError
 from .file import Key, Source
 from .transport import parse
-from .winfo import INFOS
 from .writer import (
     DIRECTORY_BYTES,
     MAGIC,
@@ -42,6 +41,7 @@ from .writer import (
     _seekable,
     _streamers,
     carried_entries,
+    layout_of,
 )
 
 __all__ = ["update"]
@@ -359,7 +359,8 @@ class UpdatedFile(WritableFile):
     def _write_streamers(self) -> tuple[int, int]:
         """The streamer information, rewritten only if new classes need describing."""
         known = self._infos.known
-        names = [name for name in _closure(self._used) if (name, INFOS[name][1]) not in known]
+        versions = {name: layout_of(name) for name in _closure(self._used)}
+        names = [name for name, laid in versions.items() if (name, laid[1]) not in known]  # type: ignore[index]
         unknown = {key: entry for key, entry in self._carried.items() if key not in known}
         extra = carried_entries(names, unknown)
         if not names and not extra:

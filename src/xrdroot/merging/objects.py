@@ -109,15 +109,21 @@ MERGERS: dict[type, Any] = {
     MultiGraph: merge_multigraphs,
 }
 
+#: The graphs this kit does not merge even though it can write them again: a
+#: ``TGraphMultiErrors`` carries a layer of y errors per kind of uncertainty and the mode
+#: they add up by, and ``merge_graphs`` joins points and one pair of bars - so merging two
+#: of them would keep half of what they are. They are carried over as they were written.
+LAYERED = "TGraphMultiErrors"
+
 
 def mergeable(value: Any) -> Any:
     """How ``value`` is merged with another like it, or ``None`` if it is not merged here.
 
-    It has to be one of the kinds above, and of a class this library can
-    write again: a ``TGraphMultiErrors`` is a graph, but one the writer has
-    no layout for, and so is carried over rather than merged.
+    It has to be one of the kinds above, and of a class this library can write again;
+    a layered graph is written but not merged, for the reason :data:`LAYERED` gives.
     """
-    if getattr(value, "classname", None) not in INFOS:
+    classname = getattr(value, "classname", None)
+    if classname not in INFOS or classname == LAYERED:
         return None
     for kind, merger in MERGERS.items():
         if isinstance(value, kind):

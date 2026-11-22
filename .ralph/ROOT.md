@@ -16,8 +16,11 @@ file is the procedure and the record of what has already been learned the hard w
 
 This is the project's **ultracode** mode: sixteen workers in parallel, one per git worktree, each
 on a disjoint slice of the queue, integrated one commit at a time under the rule that no PASS may
-be lost. Start it with `/ralph start ROOT`, or `ralph_start({ name: "ROOT", taskContent: <this
-file>, maxIterations: 50 })`.
+be lost. It runs with **no iteration limit**: `0` is the value that means unlimited, since the
+plugin stops only when `maxIterations > 0`. Start it with `/ralph start ROOT --max-iterations 0`,
+or `ralph_start({ name: "ROOT", taskContent: <this file>, maxIterations: 0 })`, and continue it with
+`/ralph resume ROOT` — a resume keeps the state file's `maxIterations`, so
+`.ralph/ROOT.state.json` must say `0` for the loop to stay unlimited.
 
 ## Mission
 
@@ -112,7 +115,8 @@ its own, one integration worktree based on `main`, and sixteen worker worktrees 
 that same commit:
 
 ```bash
-R=/tmp/ralph-round-$(date +%Y%m%d%H%M)      # one directory per round, outside the repository
+R=$HOME/.cache/xrdroot-runs/ralph-round-$(date +%Y%m%d%H%M)   # outside the repository, and
+                                             # outside /tmp, which is wiped mid-session
 ROUND=$(basename $R)                         # the round's name, in its branches
 PY=/Users/rcurrie/src/xrdroot/.venv/bin/python   # the venv is the primary checkout's; the
                                                  # worktrees have none of their own
@@ -135,6 +139,18 @@ halfway cannot leave `main` looking as though its work had been measured.
 `-B` and not `-b`: a branch name left over from an earlier round is reset onto this round's base
 instead of inherited with that round's commits — and if it is still checked out somewhere, the
 command fails loudly, which is the check that the previous round's teardown really ran.
+
+`main` is the trunk. Measured at round 65 — `git rev-list --count origin/main..HEAD` and
+`HEAD..origin/main` on the primary checkout both `0` — every commit of `feat/root-testsuite` is in
+`main`, so a round based on `main` loses nothing. That is what `W0-138` objected to while `main`
+was 238 commits behind and a round rightly refused to base on it; the objection is now spent.
+**Check it again when the round opens.** If `origin/main` has fallen behind the line the project is
+working on, stop and ask the operator rather than quietly basing a round somewhere else.
+
+A worktree gets a branch of the round's own, never one another worktree has: `git worktree add
+/path feat/root-testsuite` hands the same branch to two worktrees, and it cost twenty minutes when
+a worker's commits landed as a staged revert (`W0-153`). `r-NN` and `$ROUND-main` are the round's
+names; every other branch is read-only here.
 
 ### 1. Read the queue and rank the work
 
@@ -395,10 +411,19 @@ git -c commit.gpgsign=false commit -am "docs: the ledger after round <N>"
 and put the round's own summary — the sixteen scopes, what landed, what was rejected, what is
 new — in the loop's task file (`.ralph/<name>.md`), which is where the next iteration reads it.
 
-**(d) Tear the round down — no worktree, no round branch, and the round's `main` branch with it.**
-This is the last thing a round does, and the order matters: the push comes *first*, because a
-worktree removed before it — with `main` moved under the round — would take the round's only
-remaining reference to its commits into a directory that no longer exists.
+**(d) Merge onto `main`, then tear the round down — no worktree, no round branch, no
+`$ROUND-main`.** This is the last thing a round does, as four acts in this order; the round is not
+closed until the third is verified, and cleanup is the fourth:
+
+1. **Merge** — the workers' commits are cherry-picked onto `$R/main`, whose branch was cut from
+   `main` at step 0, so `$ROUND-main` *is* `main` plus the round's commits;
+2. **Push** — `git push origin $ROUND-main:main` (rebasing onto `origin/main` first if another
+   session pushed);
+3. **Verify** — `git ls-remote origin main` is the round's HEAD, which is the only proof that the
+   fixes and the ledger row are on the trunk;
+4. **Tear down** — only now, because a worktree removed before the push, with `main` moved under
+   the round, would take the round's only remaining reference to its commits into a directory that
+   no longer exists.
 
 ```bash
 cd $R/main && git status --short         # must be empty: nothing is left uncommitted
@@ -409,7 +434,7 @@ git ls-remote origin main | cut -f1      # the tip, which must be this worktree'
 cd /Users/rcurrie/src/xrdroot
 git worktree list --porcelain | awk '/^worktree /{print $2}' | grep "^$R/"   # what will go
 for w in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
-  git worktree remove --force $R/w$w && git branch -D r-$w
+  git worktree remove --force $R/w$w && { git branch -D r-$w 2>/dev/null || true; }
 done
 git worktree remove --force $R/main && git branch -D $ROUND-main
 git worktree prune
@@ -444,10 +469,12 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
    them.
 10. **Component boundaries hold**; a new module is owned by a component in `pyproject.toml`, and a
     new `pyroot` module also goes in `SUBMODULES`.
-11. **A new worktree every round, merged to `main` and torn down in that same round** (steps 0
-    and 6d), on disjoint files, `PYTHONPATH=$PWD/src`. The round's integration worktree is the one
-    that pushes `main`; nothing else is pushed without being asked. Never edit another worker's
-    worktree, and never reuse one round's worktree in the next.
+11. **A new worktree every round, off `main`, merged to `main` and torn down in that same round**
+    (steps 0 and 6d), on disjoint files, `PYTHONPATH=$PWD/src`. The order is merge, push, verify
+    (`git ls-remote origin main` is the round's HEAD), then clean up — a round whose push is not
+    verified is not closed. The round's integration worktree is the one that pushes `main`; nothing
+    else is pushed without being asked. Never edit another worker's worktree, never reuse one
+    round's worktree in the next, and never give two worktrees the same branch.
 
 ## Traps already paid for
 
@@ -1686,7 +1713,9 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   1-54, and 54 rounds of work have never been pushed. The round therefore opened its worktree off
   `feat/root-testsuite`'s tip in `/tmp/ralph-round-202611220111/main`, integrated and gated there, and did **not**
   push. Whether `main` is meant to become the trunk is a decision for the operator; until it is made, a round keeps
-  to `feat/root-testsuite` and records that it did.
+  to `feat/root-testsuite` and records that it did. **Resolved at round 65: `main` is the trunk** — `main` and
+  `feat/root-testsuite` are the same commit (`origin/main..HEAD` and `HEAD..origin/main` both `0`), so step 0 bases
+  every round on `main` and step 6d merges back to it; this paragraph is history, not procedure.
 - The round **did** work in a worktree of its own and tore it down at the close (`rm -rf` of the worktree and the
   `round55-main` branch), which is the half of step 0/6d that holds here.
 - Gates: **`TOTAL 119689 0 30000 0 100%`** by the two-command decomposition (13 020 passed, then 44) at a load
@@ -2330,6 +2359,8 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 62 | `62c38856` | **four targets, two workers and the round's own hands, all provable in a probe first**: `_owned` answers the *pointee* of a single-object smart pointer, so `std::unique_ptr<TFile> f{TFile::Open(...)}` writes its file where its scope ends (`a911f526`); `xrdroot run FILE` names `gROOT` `root` as a compiled program's is while the prompt's `TRint` session keeps `Rint` (`0b11a27c`, worker r-62-w01 - `entrylist_enter` asks for `GetEntryList("root/t1","")`); `RooBDecay::DecayType::SingleSided` and its kin on ROOT's five decay classes (`35a387d1`, `8652fbcb`); `TServerSocket` binds a local socket path with the oracle's own answers (`085bc619`); `TBuffer::ResetMap` (`72614fe5`); and `rootsuite baseline --merge`, which records only the PASSes a real run saw (`2d350cdd`, `4e58cf7f`, `c3e7a67b`, `14b61d71` - worker r-62-w02, and `W0-150` is closed) | **gtest +2, the kind 65 -> 67**: `gtest/roofit/roofitcore/testRooTruthModel` PASSES (`/tmp/r62/truth2`) and `gtest/tree/tree/entrylist_enter` PASSES all four cases (`/tmp/r62/ele`), and **the whole kind at `9fe62239`: 67 PASS / 204 FAIL / 77 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r62/gtest`) - two gained, **none lost, no other row moved**. Gate `TOTAL 119943 0 30054 0 100%` (13 085 + 44, `/tmp/r62/gate1b.log`), ruff, mypy 1026 files, maintainability 31 370 functions, components 1025 modules, mkdocs | 5: `W0-155` (`testHistFactoryPlotting`'s next wall: `RooCurve.GetPoint` and the component-sum invariant), `W0-156` (`Accept`/`TSocket`/`TMonitor` for the local-socket family), `W0-157` (a `TF1` read back out of a buffer), `W0-158` (**a `--only` run is not a whole-kind run**: the working copy lacks a sibling test directory's header), `W0-159` (`cintfake` must answer `_destruct` for every guard) |
 | 63 | `86001091` | **three targets, two workers and the round's own hands, each priced against ROOT's own source first**: `TFile::Write` now writes the file - a new `WritableFile.checkpoint` running ROOT's `WriteStreamerInfo`/`WriteFree`/`WriteHeader` sequence, repeatable because each tree's record is written once (`64cf43ae`, `212331b0`, `30897365`, `b92d587e`, `564bbb88`); a GDML name's trailing `0x…` is dropped and an element is named by its formula, with `TGeoMixture.GetWmixt`/`GetElement` (`85fb85eb`, worker r-63-w01); and `TMultiGraph::GetHistogram` pads a log frame by ROOT's own rule, with `TGraph::ComputeRange`'s smallest-positive minimum on a log axis (`d28fcf12`, `7a777e90`, worker r-63-w02) | **gtest +2, the kind 67 -> 69**: `gtest/geom/gdml_material_name_collision` PASSES (`/tmp/r63/t-gdml`) and `gtest/hist/hist/testTMultiGraphGetHistogram` PASSES (`/tmp/r63/t-mg`), and **the whole kind at `564bbb88`: 69 PASS / 202 FAIL / 77 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r63/gtest`) - two gained, **none lost, no other row moved**. Gate `TOTAL 120003 0 30060 0 100%` (13 094 + 44, `/tmp/r63/gate3.log`), ruff, mypy 1026 files, maintainability 31 394 functions, components 1025 modules | 2: `W0-160` (`testTChainSaveAsCxx` now reaches the macro `SaveAs` wrote - our own `WriteObject` sentence is the wall), `W0-161` (**a `Write`'s bytes**: ROOT 3642/3916/4315 against our 3617/4059/4548 for no/one/two writes - the shape is ROOT's, the sizes are not) |
 | 64 | `fd36b30f` | **three targets, two workers and a measured patch a worker could not commit**: a `std::ofstream` is a guard with a destructor, so a file written in one scope is readable in the same run (`d192a920`); a `#pragma extra_include` header is translated beside the macro, as rootcling reads it (`c9476ae6`) - together `gtest/core/dictgen/dictgen_base`; `std::thread` with `hardware_concurrency`, reachable as `std.thread` (`500efb6a`, worker r-64-w01); and `TObject.Streamer(TBuffer&)` + a record read finished in the object handed over (`2dcebb86`, worker r-64-w02) + the patch w02 measured but could not commit - `char_pointer`/`ObjectAddress` so `(char *)obj` + offset is the object (`2c8150ef`, refined in `724be159` after five unit tests caught the first shape breaking writable titles) | **gtest +3, the kind 69 -> 72**: `dictgen_base`, `test_norootextension` (Seq and MT) and `testTF1Simple` all PASS, and **the whole kind at `3d1aee19`: 72 PASS / 200 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r64/gtest`), with one program `UNSUPPORTED -> FAIL` (`testMapCppName` now runs). Gate `TOTAL 120057 0 30074 0 100%` (13 106 + 44, `/tmp/r64/gate4.log`), ruff, mypy 1026 files, maintainability 31 418 functions, components 1025 modules | 2: `W0-162` (**a reboot wiped `/tmp`** - ROOT's sources and every round's `results.json`; re-cloned and re-measured), `W0-163` (`test_THBinIterator`: 85-170 s of the limit and `THistRange` missing) |
+| 65 | `3770efa5` | **two targets, one worker each way**: `RooFit::Detail`'s JSON tree (`661761f8` - `roofit/detail.py`'s `JSONTree`/`JSONNode`, and `TVectorD(3)` as ROOT's three zeros) and `TSpline5` with its `SaveAs` macro (`a69bbae4`, `7fc185ce`, worker r-65-w02 - `pyroot/core/splines.py`, ROOT's quintic spline); the third scope, `TGraphMultiErrors` (worker r-65-w01), came back as **a measured diagnosis and no commit**, because the class cannot be written to a file without `winfo.py`, `writer.py`'s `STL_WRITERS`, `graph.py` and `merging/objects.py` (`W0-164`) | **gtest +2, the kind 72 -> 74**: `gtest/roofit/hs3/testJSONInterface` (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221919/jsonif2`) and `gtest/hist/hist/testSpline` (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221919/t2`), and **the whole kind at `7fc185ce`: 74 PASS / 199 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350 (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221919/gtest`) - two gained, **none lost**, one program `UNSUPPORTED -> FAIL` (`W0-165`). Gate `TOTAL 122345 0 30656 0 100%` (13 446 + 44, `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221919/gate1.log`); `baseline --merge` recorded **22** stale gtest rows, `ratchet` 0 regressions | 3: `W0-164` (**`TGraphMultiErrors`'s five files**, measured), `W0-165` (`GradientFittingUnit` runs now), `W0-166` (`testHypoTestInvResult`'s `RooStats::` layouts) |
+| 66 | `d53bf743` | **three targets, two workers and the round's own hands, every ROOT number measured on the oracle first**: `THistRange`/`TBinIterator` (`219ddd4d`, `pyroot/core/histrange.py` - the four kinds, the x-fastest global bin, and a poly's flow bins numbered from -9 and walked only to -2 because -1 is ROOT's sentinel); `TKDTreeBinning` + the grid a `TH2Poly` is drawn on (`36d64e1e`, `pyroot/core/tkdtree.py`, `pyroot/th2poly.py` - 100-cell x and y axes, one-cell z, `GetNcells` = bins + 9, all measured); `TGraphMultiErrors` (`06a712aa` + `46659435`, worker r-66-w01 - a layer of y errors per kind, each an attributed `TAttLine`/`TAttFill`, `GetErrorY` summing by ROOT's three modes, and a `Write` that lays out the class's own layout and its three object vectors; its session outran the round, so its **files** were taken, `W0-111`); and a RooStats result read from a file (`45e98b6a` + `b4404ebd`, worker r-66-w02 - `pyroot/roostats/readback.py` registers three `register_members` factories) | **gtest +3, the kind 74 -> 77**: `test_THBinIterator` (all twenty cases), `TGraphMultiErrorsTests` and `testHypoTestInvResult` PASS, and **the whole kind at `06a712aa`: 77 PASS / 196 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350 (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221954/gtest`, `--xrdroot-src` a checkout of the tip) - three gained, **none lost, no other row moved**; `gtest/hist/hist/*` measured at the base and the tip is 12 -> 14 PASS with the two named and none lost (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221954/areas-base`, `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221954/areas`). Gate **`TOTAL 122525 … 100%`** (13 462 + 44), ruff, mypy 1039 files, maintainability, components | 5: `W0-167` (`testTH2PolyBinError`: a poly's `GetBinError`/`SetBinError`), `W0-168` (`testTProfile2Poly`: `SetErrorOption`), `W0-169` (`testTH1FindFirstBinAbove`: `TRandomMixMax` + `FindLastBinAbove`), `W0-170` (round 65's `RooFit.Detail` moved `testParamHistFunc`'s wall onto `Detail.compileForNormSet`), `W0-171` (`testTKDE`); and `W0-172` from w01's own record (**`TFile.Get` cannot read back an object written to a file that is still open** - `files.py:380` falls through to a `_reader()` that is `None` until the file closes; a 12-line `_WrittenObject` beside the histograms' `_Written` is the verified shape, and `TGraphMultiErrors.Write` carries a per-class workaround meanwhile) |
 
 ## Notes
 
@@ -2341,3 +2372,68 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
   finish in forty minutes: split them further next round rather than widening a worker's scope.
 - When a worker reports "the fix is one line, in a file outside my scope", the next round's
   scopes are wrong, not the worker.
+
+## Round 65's close (recorded here for the next iteration)
+
+- Base `3770efa5`, closed at **`7fc185ce`**, and - the first round under the rewritten procedure - **merged to `main` and pushed**, with `git ls-remote origin main` checked.
+  The round opened in a worktree of its own under `$HOME/.cache/xrdroot-runs/ralph-round-202611221919` (not `/tmp`, which the last reboot wiped, `W0-162`), integrated
+  there, and tore the worktrees down after the push. **Two gtest PASSes, the kind 72 -> 74**, and the whole kind measured at the tip:
+  **74 PASS / 199 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350 (`$R/gtest`, `--jobs 3`, `--xrdroot-src $R/head/src` frozen at `7fc185ce`) - two gained,
+  **none lost to code**, and one program moved `UNSUPPORTED -> FAIL` (`gtest/math/mathcore/GradientFittingUnit`, which is another session's tree, not this round's work,
+  `W0-165`).
+- **`661761f8`: `RooFit::Detail`'s JSON tree.** ROOT 6.40's HS3 writers build a document node by node through `RooFit/Detail/JSONInterface.h` - a `JSONTree` that owns it and a
+  `JSONNode` for each value - and the test that asks for them is a map of maps of a `TVectorD`. `roofit/detail.py` is those two classes over Python's `dict` and `list`, with
+  each child kept as a node so `rootnode["a"]["b"] << 1` and `rootnode["a"]` name the same thing, and `writeJSON` writing ROOT's text. `TVectorD(3)` is ROOT's
+  `TVectorD(Int_t n)` (three zeros) now, not the one-element vector `[3]`. **`testJSONInterface` PASSES.**
+- **`a69bbae4` + `7fc185ce` (worker r-65-w02): `TSpline5`.** ROOT's quintic spline, transcribed from `hist/hist/src/TSpline.cxx` - the b1/e1/b2/e2 end-point options, the triple
+  knot's finite-difference slope - and `SaveAs` writing the C function `splinePrecisionTest` that the test reads back and runs through `ProcessLine`, whose result it casts to
+  `double (*)(double)`. **`testSpline` PASSES**, and `ProcessLine` of a function definition followed by its name already worked.
+- **The third scope is the round's other product: `TGraphMultiErrors` measured, not built.** Worker r-65-w01 found that the class is not enough - the writer refuses it for a
+  missing streamer layout in `winfo.py` and then for three `STL_WRITERS` (`vector<TArrayD>`, `vector<TAttFill>`, `vector<TAttLine>`), `Graph.new` has no path for layers, and
+  `mergeable` would silently merge the class as a plain `Graph`. It left the recipe (checksum `0x1a63990a`, the elements, the arithmetic of the three sum modes) and stopped
+  rather than edit outside its list, which is the behaviour the brief asks for. **`W0-164`** carries it.
+- **`W0-166` is the next cheap-looking read**: `testHypoTestInvResult`'s committed file names `RooStats::HypoTestInverterResult` and friends in its streamer list, our
+  `inverterresult.py` already has every member the test calls, and the reader needs the layouts plus a `Source` from a `TFile` before it can harvest them.
+- **The gate is on a bigger tree than round 64's**: **`TOTAL 122345 0 30656 0 100%`** (13 446 + 44) against round 64's 120 057 - another session's work has landed in `main`
+  since - and ruff, mypy (1035 files), maintainability (32 237 functions) and components (1035 modules) are clean.
+- Worktree discipline: three worktrees, each on a branch of the round's own (`r-01`…`r-03`), the round's integration branch `$ROUND-main` cut from `main`, and the four acts in
+  the procedure's order - merge, push, verify, tear down. The worker branches that did not land are gone with their worktrees; `W0-164` is their evidence.
+
+## Round 66's close (recorded here for the next iteration)
+
+- Base `d53bf743`, closed at **`d643fe47`** (the code; the ledger, the queue rows and the three
+  baseline rows follow in the commit after it). Round dir
+  `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221954`. **gtest 74 -> 77**, three gained and **no PASS lost**: the whole kind measured at the tip
+  (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221954/gtest`, `--xrdroot-src` a checkout of it) is **77 PASS / 196 FAIL / 75 UNSUPPORTED / 2 TIMEOUT**
+  of 350, with `gtest/hist/hist/*` measured at the base *and* the tip (12 -> 14 PASS, the two named,
+  none lost - `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221954/areas-base` vs `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221954/areas`) because that is the area the round touched.
+- **`W0-163` closed**, and the program is the kind of target worth taking whole: `THistRange`/`TBinIterator`
+  (`219ddd4d`) plus `TKDTreeBinning` and a `TH2Poly`'s grid (`36d64e1e`) - all twenty cases pass, ~85 s of CPU
+  of the 300 s limit, and it passed a harness run at a **load average of 103**, which is a margin `W0-109`
+  would not have predicted. Every number was measured on the 6.40 oracle first: the four range kinds, a
+  narrowed axis range, the x-fastest order of `TH2D`/`TH3D`, and - the one that could not be reasoned out -
+  a poly's `kUnOfBins`/`kAllBins` walk **-9 .. -2**, stopping before the bin numbered -1, because -1 is
+  ROOT's own end sentinel. Read the oracle, not the header.
+- **`W0-164` closed** from worker r-66-w01's tree (`06a712aa`, refined by its own last commit `46659435`):
+  a pyroot `TGraphMultiErrors`, its layers, its three summation modes, and a `Write` whose closure rule is
+  "an array enters a file beside the class that keeps one" - which is also why a `TH1F`'s `TArrayF` base
+  stays out. The worker was **still running at 90 minutes and had already made the program pass**; its files
+  were copied out (`W0-111`) and its later commit re-taken for `writer.py`. Its own record names the general
+  fix it could not make in scope: **`TFile.Get` of an object written to a file still open** (`W0-172`).
+- **`W0-166` closed, and its queue row's diagnosis was wrong in a useful way** (`45e98b6a`, `b4404ebd`,
+  worker r-66-w02): a `TOther` for a RooStats result is **not** a missing streamer layout - the file describes
+  the class and `interp` reads every member - it is a missing `register_members` factory in `pyroot/`.
+  Three factories later, `testHypoTestInvResult` answers ROOT's seven numbers from ROOT's own file, which is
+  now `tests/data/hypotestinv-6.21.root`. **Check the shape of a `TOther` before writing layouts for it.**
+- Two workers, and both outran the timebox: w02 handed back "blocked: timebox" with its work committed and its
+  target passing, w01 never committed until after its files were taken (`W0-111`, second round running). Both
+  scopes were *whole classes*, which is more than one worker finishes in forty minutes: the round's own two
+  targets - a class whose numbers could be read off the oracle - were the ones that landed on time.
+- New queue rows, each measured: `W0-167`..`W0-171` are five one-program features in `gtest/hist/hist/*`
+  and roofit, each named by its exact missing method; `W0-172` is the general `TFile.Get` gap.
+- Gates at `d643fe47`: **`TOTAL 122803 0 30742 0 100%`** by the two-command decomposition - 13 494 passed
+  then 44 passed (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611221954/gate5.log` for part 1; the round's earlier runs named its own two gaps first) -
+  ruff clean, mypy 1039 files, maintainability 32 374 functions in 1776 files, components 1039 modules /
+  0 undeclared, `mkdocs --strict` built. One torch test failed in one part-1 run at a load average of 40
+  and passes alone (37 passed in 3.2 s) and in the run quoted; `ratchet` on the round's own whole-kind run
+  reports **0 regressions** and the baseline recorded exactly the three PASSes.

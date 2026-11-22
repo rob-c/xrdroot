@@ -455,9 +455,6 @@ def test_an_object_the_writer_has_no_layout_for_is_refused():
         refusal = "takes a Histogram, a Profile, an Efficiency, a Graph"
         with pytest.raises(UnsupportedFeatureError, match=refusal):
             out["x"] = 3.14
-        multi = Graph("TGraphMultiErrors", dict(Graph.new("g", [1], [2]).members))
-        with pytest.raises(UnsupportedFeatureError, match="TGraphMultiErrors is not a class"):
-            out["m"] = multi
 
 
 def test_a_histogram_carrying_an_object_the_writer_has_a_layout_for_is_written_with_it():
@@ -750,9 +747,10 @@ def test_the_infos_table_covers_exactly_what_the_writer_promises():
         "TGraph",
         "TGraphErrors",
         "TGraphAsymmErrors",
+        "TGraphMultiErrors",
     ):
         assert classname in INFOS
-    assert "TGraphMultiErrors" not in INFOS  # refused by name, never guessed at
+    assert "TArrayD" not in INFOS  # described only where a class it holds keeps one
 
 
 def test_a_string_wrapped_as_an_objstring_is_written_as_the_tobjstring_the_donor_describes():

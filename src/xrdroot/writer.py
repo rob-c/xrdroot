@@ -53,7 +53,7 @@ from .profile import PROFILES
 from .rootarrays import ARRAYS
 from .stacks import MultiGraph
 from .transport import parse
-from .winfo import INFOS, SUBVERSIONS, WRITER_VERSION, Element
+from .winfo import ARRAY_LAYOUTS, INFOS, SUBVERSIONS, WRITER_VERSION, Element
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .rntuple.writer import WritableRNTuple
@@ -566,6 +566,17 @@ NUMBER_STYPES = frozenset(
 )
 STL_STYPE = 500
 
+def layout_of(name: str) -> tuple[int, int, tuple[Element, ...]] | None:
+    """How one class is laid out: ROOT's own description (:data:`~.winfo.INFOS`), or one of
+    the ``TArray`` family (:data:`~.winfo.ARRAY_LAYOUTS`), which a file describes only when a
+    class it holds keeps one - a ``TGraphMultiErrors``'s layers are ``vector<TArrayD>``.
+
+    Asked afresh every time rather than gathered once, because a part of the kit adds its own
+    class to ``INFOS`` when it is imported, and a table built at this module's import would
+    not have it.
+    """
+    return INFOS.get(name) or ARRAY_LAYOUTS.get(name)
+
 #: Which write each of a class's elements takes, by class name: worked out once, because a
 #: class's elements are the same every time it is written and a file of ten thousand
 #: histograms writes each class's elements ten thousand times over. ``""`` is a member this
@@ -640,7 +651,7 @@ def _stl_element(buf: WBuffer, name: str, typename: str, value: Any) -> None:
     if typename == PAIRS:
         _pairs(buf, value)
         return
-    index = buf.start(STL_VERSION)
+    index = buf.start(STL_VERSION | (MEMBER_WISE if typename in MEMBER_WISE_TYPES else 0))
     STL_WRITERS[typename](buf, name, value)  # which kind it is was decided when it was planned
     buf.end(index)
 
@@ -735,10 +746,61 @@ def _no_objects(buf: WBuffer, name: str, value: Any) -> None:
     buf.u32(0)
 
 
+def _arrays(buf: WBuffer, name: str, value: Any) -> None:
+    """A ``vector<TArrayD>``: how many, then each as the ``TArray`` it is.
+
+    One of ROOT's array classes has no streamer of its own - ``TArray::Streamer`` writes the
+    counter and that many values - so an element here is those two and no record round them.
+    """
+    items = list(value or ())
+    buf.u32(len(items))
+    for item in items:
+        values = np.asarray(item if item is not None else (), dtype=np.float64).ravel()
+        buf.i32(len(values))
+        _numbers(buf, "d", values)
+
+
+def _member_wise(buf: WBuffer, classname: str, value: Any) -> None:
+    """A ``vector`` of one of ROOT's attribute classes, written the way ROOT writes a
+    container of objects: the class's version once for the lot, how many, then each member
+    over them all - every colour before every style."""
+    held = list(value or ())
+    buf.u16(INFOS[classname][1])
+    buf.u32(len(held))
+    for member in ATTRIBUTE_MEMBERS[classname]:
+        for item in held:
+            buf.raw(struct.pack(">h", int(dict(item or {}).get(member, 0))))
+
+
+def _att_fill(buf: WBuffer, name: str, value: Any) -> None:
+    """A ``vector<TAttFill>``: a ``TGraphMultiErrors``'s fill per layer of errors."""
+    _member_wise(buf, "TAttFill", value)
+
+
+def _att_line(buf: WBuffer, name: str, value: Any) -> None:
+    """A ``vector<TAttLine>``: a ``TGraphMultiErrors``'s line per layer of errors."""
+    _member_wise(buf, "TAttLine", value)
+
+
+#: The members of each attribute class a member-wise container writes, in the order ROOT
+#: declares them: ``TAttFill``'s and ``TAttLine``'s, the only two such containers there are.
+ATTRIBUTE_MEMBERS: dict[str, tuple[str, ...]] = {
+    "TAttFill": ("fFillColor", "fFillStyle"),
+    "TAttLine": ("fLineColor", "fLineStyle", "fLineWidth"),
+}
+
+#: The STL members written a member at a time rather than an object at a time, as ROOT
+#: writes a container of objects: the version the record carries has its member-wise bit set.
+MEMBER_WISE_TYPES = frozenset({"vector<TAttFill>", "vector<TAttLine>"})
+
+
 #: The STL members of the function classes, by the type the layout names.
 STL_WRITERS: dict[str, Callable[[WBuffer, str, Any], None]] = {
     "vector<double>": _doubles,
     "vector<string>": _strings,
+    "vector<TArrayD>": _arrays,
+    "vector<TAttFill>": _att_fill,
+    "vector<TAttLine>": _att_line,
     "map<TString,int,TFormulaParamOrder>": _parameter_names,
     "vector<TObject*>": _no_objects,
 }
@@ -835,14 +897,44 @@ def _counted(
 
 
 def _held(kind: str, name: str, stype: int, typename: str) -> str | None:
-    """The class one element brings in with it: a base, an object, a string, or none."""
+    """The class one element brings in with it: a base, an object, a string, a container's
+    element class, or none."""
     if kind == "TStreamerBase":
         return name
     if stype in (61, 62, 63, 64, 68, 69):
         return typename.rstrip("*")
     if stype == 65:
         return "TString"
+    if stype == STL_STYPE:
+        return _container_element_class(typename)
     return None
+
+
+def _container_element_class(typename: str) -> str | None:
+    """The class a ``vector<T>`` member holds one of, where a file must describe it.
+
+    A container of numbers names no class, but ROOT writes a ``TArrayD``'s layout into
+    every file that holds one - a ``TGraphMultiErrors`` keeps a layer of its y errors as a
+    ``vector<TArrayD>`` - so the classes a container holds are what the record describes.
+    """
+    inner = typename[len("vector<") : -1] if typename.startswith("vector<") else ""
+    return inner or None
+
+
+def _described(owner: str, name: str, stype: int) -> bool:
+    """Whether :func:`_closure` takes ``name`` in along with ``owner``, the class it was
+    found in.
+
+    Any class ROOT describes is; an array is described only beside the class that keeps one -
+    a ``TGraphMultiErrors``'s layers are ``vector<TArrayD>`` - or as the base of an array that
+    already is. A ``TH1F``'s ``TArrayF`` base is neither, which is where the arrays stay out
+    of a histogram's file, as they do of ROOT's.
+    """
+    if stype == STL_STYPE:
+        return name in ARRAY_LAYOUTS
+    if name in INFOS:
+        return True
+    return owner in ARRAY_LAYOUTS and name in ARRAY_LAYOUTS
 
 
 def _closure(seeds: dict[str, None]) -> list[str]:
@@ -850,12 +942,13 @@ def _closure(seeds: dict[str, None]) -> list[str]:
     ordered = dict.fromkeys(seeds)
     queue = list(ordered)
     while queue:
-        info = INFOS.get(queue.pop(0))
+        owner = queue.pop(0)
+        info = layout_of(owner)
         if info is None:
             continue
         for kind, name, _t, stype, _s, _a, _d, _m, typename, _x in info[2]:
             held = _held(kind, name, stype, typename)
-            if held is not None and held in INFOS and held not in ordered:
+            if held is not None and held not in ordered and _described(owner, held, stype):
                 ordered[held] = None
                 queue.append(held)
     return list(ordered)
@@ -885,7 +978,7 @@ def _streamers(
     buf.string("")
     buf.i32(len(names) + len(extra))
     for name in names:
-        _entry_into(buf, name, *INFOS[name])
+        _entry_into(buf, name, *layout_of(name))  # type: ignore[misc]
     buf.raw(b"".join(extra))
     buf.end(index)
     return bytes(buf.data)
@@ -895,7 +988,7 @@ def carried_entries(
     names: list[str], carried: Mapping[tuple[str, int], bytes] | None
 ) -> list[bytes]:
     """The carried descriptions of every class and version ``names`` leave out."""
-    known = {(name, INFOS[name][1]) for name in names}
+    known = {(name, layout_of(name)[1]) for name in names}  # type: ignore[index]
     return [entry for key, entry in (carried or {}).items() if key not in known]
 
 
@@ -906,7 +999,7 @@ def _info_entries(names: list[str]) -> bytes:
     is already there."""
     buf = WBuffer()
     for name in names:
-        _entry_into(buf, name, *INFOS[name])
+        _entry_into(buf, name, *layout_of(name))  # type: ignore[misc]
     return bytes(buf.data)
 
 

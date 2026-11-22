@@ -18,18 +18,62 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from .errors import UnsupportedFeatureError
 from .filling import running
 
 if TYPE_CHECKING:  # pragma: no cover - for the type checker, not for running
     from .graph import Graph
 
-__all__ = ["evaluate", "integral", "mean", "rms", "sort"]
+__all__ = ["evaluate", "integral", "mean", "rms", "sort", "error_y"]
 
 #: The per-point arrays a graph's class may keep beside ``fX`` and ``fY``.
 PER_POINT = ("fEX", "fEY", "fEXlow", "fEXhigh", "fEYlow", "fEYhigh", "fExL", "fExH")
 
 #: The ones a ``TGraphMultiErrors`` keeps a layer of apiece.
 LAYERED = ("fEyL", "fEyH")
+
+#: ``TGraphMultiErrors::ESummationModes``: how the layers of y errors add up - the first
+#: layer alone, the square sum of all of them, or their absolute sum.
+ONLY_FIRST, SQUARE_SUM, ABS_SUM = 0, 1, 2
+
+
+def error_y(graph: Graph, index: int) -> float:
+    """``TGraphMultiErrors::GetErrorY``: the bars the graph's layers sum to, as a "one sigma".
+
+    ROOT sums a point's low bars and its high bars by the graph's sum mode and answers
+    ``sqrt((low^2 + high^2) / 2)`` - the mean of the two squares - or ``-1`` for a point
+    the graph does not have. A mode that is none of ROOT's three is refused rather than
+    answered with a number the file cannot have meant.
+    """
+    mode = graph.sum_errors_mode
+    if mode not in (ONLY_FIRST, SQUARE_SUM, ABS_SUM):
+        raise UnsupportedFeatureError(
+            f"{graph.name!r} was written with sum errors mode {mode}, and ROOT's three are "
+            f"kOnlyFirst, kSquareSum and kAbsSum, so what its layers sum to is not known: "
+            f"read its layers with .layers instead"
+        )
+    if not 0 <= index < len(graph):
+        return -1.0
+    low, high = (layer_sum(graph.layers, index, mode, side) for side in (0, 1))
+    return float(np.sqrt((low * low + high * high) / 2.0))
+
+
+def layer_sum(layers: Any, index: int, mode: int, side: int) -> float:
+    """One side of a point's bars, summed over the layers by ROOT's rule.
+
+    Added one layer at a time in the order they were kept, as ROOT's loop does, rather than
+    by ``sum`` or a NumPy reduction, which may add them in another order and so round
+    differently in the last bit.
+    """
+    bars = [pair[side][index] for pair in layers]
+    if not bars:
+        return -1.0
+    if mode == ONLY_FIRST:
+        return float(bars[0])
+    total = 0.0
+    for bar in bars:
+        total += bar * bar if mode == SQUARE_SUM else bar
+    return math.sqrt(total) if mode == SQUARE_SUM else float(total)
 
 
 def _nearest(

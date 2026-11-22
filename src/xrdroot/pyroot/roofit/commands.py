@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...roofit import messages
+from ...roofit import detail, messages
 from ...roofit.cmdargs import RooCmdArg
 from ...roofit.variables import RooConstVar
 
@@ -264,6 +264,8 @@ class _Namespace:
             setattr(self, name, number)
         for name, bit in messages.TOPICS.items():
             setattr(self, name, bit)
+        #: ``RooFit::Detail``: the JSON document RooFit's own writers build.
+        self.Detail = detail.Detail
         self.NumIntegration = messages.TOPICS["NumericIntegration"]
         self.Raw, self.Relative, self.NumEvent, self.RelativeExpected = 0, 1, 2, 3
 
