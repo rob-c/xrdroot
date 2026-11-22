@@ -84,3 +84,16 @@ def test_a_directory_removed_while_it_is_current_leaves_its_mother_current():
         below.cd()
         top.rmdir("below")
         assert ROOT.gDirectory == top
+
+
+def test_a_histogram_booked_with_no_directory_current_is_kept_nowhere():
+    """``TDirectory::TContext ctx{nullptr}`` leaves no directory current, and ROOT then books a
+    histogram without registering it - hist017's and the parallel fill tutorials' first line."""
+    before = ROOT.gDirectory
+    with ROOT.TDirectory.TContext(None):
+        nowhere = ROOT.TH1D("booked_nowhere", "nowhere", 4, 0.0, 1.0)
+        nowhere.Fill(0.5)
+        assert repr(ROOT.gDirectory) == "None"  # gDirectory answers as whatever is current
+        assert nowhere.GetDirectory() is None
+    assert ROOT.gDirectory is before
+    assert before.Get("booked_nowhere") is None and nowhere.GetEntries() == 1

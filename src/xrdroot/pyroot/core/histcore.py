@@ -151,7 +151,9 @@ class Booked:
         if self._default_sumw2[0]:
             self._xrd.sumw2()
         if args and self._add_directory[0]:
-            current_directory().Append(self, True)
+            here = current_directory()
+            if here is not None:  # a histogram booked with no directory current is nowhere,
+                here.Append(self, True)  # as ROOT's TDirectory::TContext(nullptr) makes it
 
     def _booked(self, args: tuple[Any, ...]) -> Any:
         """The xrdroot histogram ROOT's constructor arguments describe."""
