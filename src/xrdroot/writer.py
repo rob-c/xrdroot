@@ -324,7 +324,17 @@ class _Output:
     is the very last thing to change.
     """
 
-    __slots__ = ("head", "size", "_handle", "_base", "_keep", "_streaming", "_pending", "_patches")
+    __slots__ = (
+        "head",
+        "size",
+        "_handle",
+        "_base",
+        "_keep",
+        "_streaming",
+        "_pending",
+        "_patches",
+        "_applied",
+    )
 
     def __init__(self, handle: IO[bytes], reserved: int) -> None:
         self._handle = handle
@@ -338,6 +348,11 @@ class _Output:
         self.size = reserved
         self._pending = bytearray(reserved) if self._streaming else bytearray()
         self._patches: list[tuple[int, bytes]] = []
+        #: How many patches have already gone into the file. A checkpoint writes each one
+        #: once: ``TFile::Write`` checkpoints every time it is called, and a program that
+        #: writes 40 000 directories would otherwise re-apply 40 000 patches at each of 400
+        #: writes - 37 million seeks, 428 s of a 509 s macro (``execmanydirs``).
+        self._applied = 0
 
     @classmethod
     def resume(cls, handle: IO[bytes], head: bytes, end: int) -> _Output:
@@ -356,6 +371,7 @@ class _Output:
         out.size = end
         out._pending = bytearray()
         out._patches = []
+        out._applied = 0
         handle.seek(end)
         return out
 
@@ -389,9 +405,10 @@ class _Output:
             self._handle.write(whole)
         else:
             self._send()
-            for at, chunk in self._patches:
+            for at, chunk in self._patches[self._applied :]:
                 self._handle.seek(self._base + at)
                 self._handle.write(chunk)
+            self._applied = len(self._patches)
             self._handle.seek(self._base)
             self._handle.write(self.head)
             self._handle.seek(self._base + self.size)
@@ -402,6 +419,7 @@ class _Output:
     def abandon(self) -> None:
         """Take back everything written, leaving the target as writing found it."""
         self._pending = bytearray()
+        self._applied = 0
         if self._streaming:
             self._handle.seek(self._keep)
             self._handle.truncate()

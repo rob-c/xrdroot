@@ -163,6 +163,10 @@ def _listing_marks(keys: list[TKey]) -> list[Any]:
     return marks
 
 
+#: How deep a directory's ``Write`` is nested, so that only the outermost one checkpoints.
+_WRITE_DEPTH: list[int] = [0]
+
+
 class TDirectoryFile(TDirectory):
     """``TDirectoryFile``: a directory in a file - its keys on file, and what is in memory."""
 
@@ -434,11 +438,20 @@ class TDirectoryFile(TDirectory):
                 "Error", "TDirectoryFile::Write", "file %s not opened in write mode", self.GetName()
             )
             return 0
-        total = super().Write(name, option, bufsize)
-        self._write_trees()
         held = self.GetFile()
         assert held is not None, "a directory that writes is one with a file under it"
-        held._writing.checkpoint()
+        #: A directory's Write writes its directories too, so a file with 40 000 of them nests
+        #: 40 000 deep. Only the outermost checkpoints: ROOT lays the bookkeeping out once per
+        #: ``Write``, and a checkpoint at every level rewrote the whole key list once per
+        #: directory - 421 times in ``execmanydirs``, which then took 509 s against ROOT's 6.
+        _WRITE_DEPTH[0] += 1
+        try:
+            total = super().Write(name, option, bufsize)
+            self._write_trees()
+        finally:
+            _WRITE_DEPTH[0] -= 1
+        if _WRITE_DEPTH[0] == 0:
+            held._writing.checkpoint()
         return total
 
     def mkdir(self, name: Any, title: Any = "", returnExistingDirectory: bool = False) -> Any:

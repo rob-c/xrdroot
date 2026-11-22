@@ -605,7 +605,27 @@ def _undictionaried(name: str) -> bool:
 #: here because ROOT names no warning for them either: a geometry file describes ``TGeoAtt``,
 #: ``TGeoVoxelFinder`` and ``TGeoParallelWorld``, and ROOT opens it in silence, which
 #: ``tests/test_pyroot_geom_rootfile.py`` pins line by line.
-ROOT_CLASSES = frozenset({"TGeoAtt", "TGeoVoxelFinder", "TGeoParallelWorld"})
+ROOT_CLASSES = frozenset(
+    {
+        "TGeoAtt",
+        "TGeoVoxelFinder",
+        "TGeoParallelWorld",
+        # A tree's index: ``winfo`` models the ``TVirtualIndex*`` member a ``TTree`` holds and
+        # reads nothing of the class behind it. ``secondindex`` reads a file that describes
+        # one, and ROOT - which has the dictionary - opens it saying nothing, so the only line
+        # that differs from the .ref is the warning this kit must not print.
+        "TVirtualIndex",
+    }
+)
+
+#: The namespaces ROOT's own libraries fill. Knowing the class is not enough for one of
+#: these: ``ROOT::TIOFeatures`` is a class ROOT ships a dictionary for and this kit
+#: implements nothing of, so no table above names it, yet a file describing it opens in
+#: silence - ``roottest/root/treeformula/stl``'s ``SparseSelection`` reads a tree whose
+#: ``TIOFeatures`` member ROOT never warns about. The prefix is what is known here, and it is
+#: safe to trust where a bare name is not: a class a program declared is in the program's own
+#: namespace, never in ROOT's.
+ROOT_NAMESPACES = ("ROOT::", "TMVA::", "RooFit::", "RooStats::", "HistFactory::")
 
 
 def _modelled(name: str) -> bool:
@@ -626,6 +646,8 @@ def _modelled(name: str) -> bool:
     from ...objects import CLASSES
     from ...sparse import SPARSE
 
+    if name.startswith(ROOT_NAMESPACES):
+        return True
     if name in INFOS or name in GENERATED or name in ROOT_CLASSES:
         return True
     if name in CLASSES or name in KNOWN or name in SPARSE:
@@ -637,11 +659,7 @@ def _implemented(name: str) -> bool:
     """Does the namespace hold a class called ``name``, whether or not it derives from
     ``TObject`` - which is how ``TEventList``, ``TUUID``, ``TStyle`` and ``TColor`` are known
     to be ROOT's own, whose files ROOT describes without a warning."""
-    for module in list(sys.modules.values()):
-        if getattr(module, "__name__", "").startswith("xrdroot.pyroot"):
-            if isinstance(getattr(module, name, None), type):
-                return True
-    return False
+    return isinstance(_namespace_classes().get(name), type)
 
 
 def _pair_base(name: str) -> bool:
@@ -676,13 +694,43 @@ def _synthetic_pair(name: str) -> bool:
     return name.removeprefix("std::").startswith("pair<")
 
 
+#: The namespace's classes by name, and the number of modules loaded when the index was
+#: built: a module imported since then can add a class, so a changed count rebuilds it.
+#: Scanning for the name on every call cost 152 million ``getattr``s in ``execmanydirs`` -
+#: 42 s of a 105 s macro - because each scan walked every module in ``sys.modules``.
+_NAMESPACE_CLASSES: tuple[int, dict[str, type]] | None = None
+
+
+def _scan_namespace_classes() -> dict[str, type]:
+    """Walk the ``xrdroot.pyroot`` modules once, naming every class they define."""
+    found: dict[str, type] = {}
+    for module in list(sys.modules.values()):
+        if not getattr(module, "__name__", "").startswith("xrdroot.pyroot"):
+            continue
+        for spelled, value in vars(module).items():
+            if isinstance(value, type):
+                found.setdefault(spelled, value)
+    return found
+
+
+def _namespace_classes() -> dict[str, type]:
+    """Every class the ``xrdroot.pyroot`` modules define, by the name they define it under.
+
+    The walk is kept until a module is imported, since that is the only thing that can add a
+    class to it: a name asked for repeatedly is answered from the index.
+    """
+    global _NAMESPACE_CLASSES
+    loaded = len(sys.modules)
+    if _NAMESPACE_CLASSES is None or _NAMESPACE_CLASSES[0] != loaded:
+        _NAMESPACE_CLASSES = (loaded, _scan_namespace_classes())
+    return _NAMESPACE_CLASSES[1]
+
+
 def _class_named(name: str) -> type | None:
     """The namespace's class called ``name``, wherever it was defined in the kit."""
-    for module in list(sys.modules.values()):
-        if getattr(module, "__name__", "").startswith("xrdroot.pyroot"):
-            found = getattr(module, name, None)
-            if isinstance(found, type) and issubclass(found, TObject):
-                return found
+    found = _namespace_classes().get(name)
+    if found is not None and issubclass(found, TObject):
+        return found
     return None
 
 
