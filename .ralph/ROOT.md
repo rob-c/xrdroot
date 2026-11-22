@@ -112,7 +112,8 @@ its own, one integration worktree based on `main`, and sixteen worker worktrees 
 that same commit:
 
 ```bash
-R=/tmp/ralph-round-$(date +%Y%m%d%H%M)      # one directory per round, outside the repository
+R=$HOME/.cache/xrdroot-runs/ralph-round-$(date +%Y%m%d%H%M)   # outside the repository, and
+                                             # outside /tmp, which is wiped mid-session
 ROUND=$(basename $R)                         # the round's name, in its branches
 PY=/Users/rcurrie/src/xrdroot/.venv/bin/python   # the venv is the primary checkout's; the
                                                  # worktrees have none of their own
@@ -135,6 +136,18 @@ halfway cannot leave `main` looking as though its work had been measured.
 `-B` and not `-b`: a branch name left over from an earlier round is reset onto this round's base
 instead of inherited with that round's commits — and if it is still checked out somewhere, the
 command fails loudly, which is the check that the previous round's teardown really ran.
+
+`main` is the trunk. Measured at round 65 — `git rev-list --count origin/main..HEAD` and
+`HEAD..origin/main` on the primary checkout both `0` — every commit of `feat/root-testsuite` is in
+`main`, so a round based on `main` loses nothing. That is what `W0-138` objected to while `main`
+was 238 commits behind and a round rightly refused to base on it; the objection is now spent.
+**Check it again when the round opens.** If `origin/main` has fallen behind the line the project is
+working on, stop and ask the operator rather than quietly basing a round somewhere else.
+
+A worktree gets a branch of the round's own, never one another worktree has: `git worktree add
+/path feat/root-testsuite` hands the same branch to two worktrees, and it cost twenty minutes when
+a worker's commits landed as a staged revert (`W0-153`). `r-NN` and `$ROUND-main` are the round's
+names; every other branch is read-only here.
 
 ### 1. Read the queue and rank the work
 
@@ -395,10 +408,19 @@ git -c commit.gpgsign=false commit -am "docs: the ledger after round <N>"
 and put the round's own summary — the sixteen scopes, what landed, what was rejected, what is
 new — in the loop's task file (`.ralph/<name>.md`), which is where the next iteration reads it.
 
-**(d) Tear the round down — no worktree, no round branch, and the round's `main` branch with it.**
-This is the last thing a round does, and the order matters: the push comes *first*, because a
-worktree removed before it — with `main` moved under the round — would take the round's only
-remaining reference to its commits into a directory that no longer exists.
+**(d) Merge onto `main`, then tear the round down — no worktree, no round branch, no
+`$ROUND-main`.** This is the last thing a round does, as four acts in this order; the round is not
+closed until the third is verified, and cleanup is the fourth:
+
+1. **Merge** — the workers' commits are cherry-picked onto `$R/main`, whose branch was cut from
+   `main` at step 0, so `$ROUND-main` *is* `main` plus the round's commits;
+2. **Push** — `git push origin $ROUND-main:main` (rebasing onto `origin/main` first if another
+   session pushed);
+3. **Verify** — `git ls-remote origin main` is the round's HEAD, which is the only proof that the
+   fixes and the ledger row are on the trunk;
+4. **Tear down** — only now, because a worktree removed before the push, with `main` moved under
+   the round, would take the round's only remaining reference to its commits into a directory that
+   no longer exists.
 
 ```bash
 cd $R/main && git status --short         # must be empty: nothing is left uncommitted
@@ -409,7 +431,7 @@ git ls-remote origin main | cut -f1      # the tip, which must be this worktree'
 cd /Users/rcurrie/src/xrdroot
 git worktree list --porcelain | awk '/^worktree /{print $2}' | grep "^$R/"   # what will go
 for w in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
-  git worktree remove --force $R/w$w && git branch -D r-$w
+  git worktree remove --force $R/w$w && { git branch -D r-$w 2>/dev/null || true; }
 done
 git worktree remove --force $R/main && git branch -D $ROUND-main
 git worktree prune
@@ -444,10 +466,12 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
    them.
 10. **Component boundaries hold**; a new module is owned by a component in `pyproject.toml`, and a
     new `pyroot` module also goes in `SUBMODULES`.
-11. **A new worktree every round, merged to `main` and torn down in that same round** (steps 0
-    and 6d), on disjoint files, `PYTHONPATH=$PWD/src`. The round's integration worktree is the one
-    that pushes `main`; nothing else is pushed without being asked. Never edit another worker's
-    worktree, and never reuse one round's worktree in the next.
+11. **A new worktree every round, off `main`, merged to `main` and torn down in that same round**
+    (steps 0 and 6d), on disjoint files, `PYTHONPATH=$PWD/src`. The order is merge, push, verify
+    (`git ls-remote origin main` is the round's HEAD), then clean up — a round whose push is not
+    verified is not closed. The round's integration worktree is the one that pushes `main`; nothing
+    else is pushed without being asked. Never edit another worker's worktree, never reuse one
+    round's worktree in the next, and never give two worktrees the same branch.
 
 ## Traps already paid for
 
@@ -1686,7 +1710,9 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   1-54, and 54 rounds of work have never been pushed. The round therefore opened its worktree off
   `feat/root-testsuite`'s tip in `/tmp/ralph-round-202611220111/main`, integrated and gated there, and did **not**
   push. Whether `main` is meant to become the trunk is a decision for the operator; until it is made, a round keeps
-  to `feat/root-testsuite` and records that it did.
+  to `feat/root-testsuite` and records that it did. **Resolved at round 65: `main` is the trunk** — `main` and
+  `feat/root-testsuite` are the same commit (`origin/main..HEAD` and `HEAD..origin/main` both `0`), so step 0 bases
+  every round on `main` and step 6d merges back to it; this paragraph is history, not procedure.
 - The round **did** work in a worktree of its own and tore it down at the close (`rm -rf` of the worktree and the
   `round55-main` branch), which is the half of step 0/6d that holds here.
 - Gates: **`TOTAL 119689 0 30000 0 100%`** by the two-command decomposition (13 020 passed, then 44) at a load

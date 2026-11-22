@@ -55,6 +55,7 @@ nav:
       - docs_record and mkdocs --strict: gotchas/docs-record-s-docs-readme-md-and-unlisted-notes-break-mkdocs.md
       - Tutorial work is 2-for-1 on twin pairs: discoveries/tutorial-work-is-2-for-1-on-twin-pairs-roofit-s-text-diffs-have.md
       - TPrincipal and ROOT's LAPACK basis: discoveries/tprincipal-is-implemented-but-principal-s-pca-c-needs-root-s.md
+      - Rounds open off main: decisions/rounds-open-off-main-and-merge-back-to-main-the-w0-138.md
   - Maintainability metrics: maintainability.md
   - A removal returns on the next merge: gotchas/a-deliberate-removal-returns-on-the-next-merge-assert-the.md
   - Instructions:
