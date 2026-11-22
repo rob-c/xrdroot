@@ -1,4 +1,4 @@
-"""Promises survive missing results, and measurements remain traceable to the oracle."""
+"""Promises survive missing results, and reports rank xrdroot's own wall times."""
 
 from __future__ import annotations
 
@@ -6,16 +6,16 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from tools.tutorials import api_coverage, api_oracle, cli, ratchet, report, timing
+from tools.tutorials import api_coverage, api_oracle, cli, ratchet, report
 from tools.tutorials.catalog import Tutorial
 from tools.tutorials.harness import Harness, Settings
 
 from xrdroot.errors import UnsupportedFeatureError
 
 
-def record(path="a.C", status="PASS", root=2.0, mine=6.0):
+def record(path="a.C", status="PASS", mine=6.0):
     return {"path": path, "area": "a", "status": status, "reason": "",
-            "oracle": {"runtime": root, "cached": True}, "xrdroot": {"runtime": mine}}
+            "xrdroot": {"runtime": mine}}
 
 
 def document(*records):
@@ -50,14 +50,12 @@ def test_only_a_passing_isolated_recheck_excuses_a_timeout(tmp_path, monkeypatch
     assert "passed when rerun alone" in capsys.readouterr().out
 
 
-def test_baselines_store_statuses_and_the_corresponding_timings(tmp_path):
+def test_baselines_store_statuses_and_nothing_measured(tmp_path):
     results, baseline = tmp_path / "results.json", tmp_path / "baseline.json"
     results.write_text(json.dumps(document()))
     assert cli.main(["baseline", str(results), "--output", str(baseline)]) == 0
     assert json.loads(baseline.read_text()) == {"a.C": "PASS"}
-    measured = json.loads((tmp_path / "baseline-timings.json").read_text())
-    assert measured["tutorials"]["a.C"] == {
-        "root_seconds": 2.0, "xrdroot_seconds": 6.0, "ratio": 3.0}
+    assert not (tmp_path / "baseline-timings.json").exists()
 
 
 @pytest.mark.parametrize("meta", [{"only": ["a.C"], "root_version": "6"}, {},
@@ -74,22 +72,24 @@ def test_empty_or_unknown_results_cannot_replace_the_baseline(tmp_path, records)
         ratchet.write_baseline({**document(), "tutorials": records}, tmp_path / "baseline.json")
 
 
-def test_reports_include_cached_oracle_wall_times_ratios_and_changes():
-    previous = timing.snapshot(document(record(root=2, mine=4)))
-    doc = report.document([record()], {}, previous)
-    assert doc["timings"][0]["ratio_change"] == 1.5
-    assert "| a.C | 2.000 | 6.000 | 3.000 | 1.500 |" in report.markdown(doc)
-    assert "xrdroot/ROOT" in report.page(doc)
+def test_reports_rank_tutorials_by_xrdroot_wall_time_and_name_no_root_side():
+    doc = report.document([{**record(), "oracle": {"runtime": 2.0}}], {})
+    assert doc["slowest"] == [{"path": "a.C", "xrdroot_seconds": 6.0}]
+    assert "| a.C | 6.000 |" in report.markdown(doc)
+    page = report.page(doc)
+    assert "xrdroot s" in page and "ROOT s" not in page and "xrdroot/ROOT" not in page
 
 
-@pytest.mark.parametrize("root,mine", [(0, 2), (None, 2), (2, None), (float("inf"), 1)])
-def test_unmeasured_or_zero_oracle_times_do_not_produce_invented_ratios(root, mine):
-    assert timing.measured(record(root=root, mine=mine))["ratio"] is None
+@pytest.mark.parametrize("side", [None, {}, {"runtime": None}, {"runtime": float("inf")}])
+def test_a_tutorial_with_no_measured_wall_time_ranks_last_without_a_number(side):
+    doc = report.document([{**record(), "xrdroot": side}], {})
+    assert doc["slowest"][0]["xrdroot_seconds"] is None
+    assert "| a.C |  |" in report.markdown(doc)
 
 
 def test_slowest_thirty_are_ordered_by_xrdroot_wall_time():
     doc = document(*(record(f"{i}.C", mine=i) for i in range(40)))
-    assert [row["path"] for row in doc["timings"][:2]] == ["39.C", "38.C"]
+    assert [row["path"] for row in doc["slowest"][:2]] == ["39.C", "38.C"]
     assert "| 0.C |" not in report.markdown(doc)
 
 

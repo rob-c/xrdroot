@@ -178,7 +178,7 @@ python -m tools.tutorials ratchet RUN_DIR/results.json
 ```
 
 It compares stdout, written ROOT files and images with ROOT's run. The
-baseline is `tools/tutorials/baseline.json`, timings in `baseline-timings.json`.
+baseline is `tools/tutorials/baseline.json`.
 
 **The translator** has its own ratchet:
 

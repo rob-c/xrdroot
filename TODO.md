@@ -55,7 +55,8 @@ load.
 2. Three deep engines: **reflection/dictionaries** (`TClass` etc., ~117
    roottest tests), **tree/formula semantics** (~180), **written-file byte
    layout** (18 roottest + 13 tutorial file DIFFs).
-3. A performance tail: 10 tutorials time out at 300 s; 14 are >10× ROOT.
+3. A performance tail: 10 tutorials time out at 300 s, and a dozen more run
+   for minutes each.
 4. RooFit/RooStats output parity: 84 tutorial stdout DIFFs.
 5. The C++ translator is **not** the bottleneck (20 of 1125 failing roottest
    tests).
@@ -333,7 +334,6 @@ Nothing else is worth doing until "PASS" means the same thing twice.
 | W0-3 | Make `ratchet` judge only the kinds a run contains | S |
 | W0-4 | Put the first differing line into every DIFF reason | S |
 | W0-5 | Explain the 3 % discovery gap by name | S |
-| W0-6 | A timing ratchet (median + slowest 20) | M |
 | W0-7 | Scope the API-coverage report to non-GUI libraries | S |
 | W0-8 | Fix the two harness blind spots found while triaging | S |
 
@@ -381,14 +381,6 @@ roottest 2173/2210, test 59/64, pyunittest 129/109, tutorials 894/918 against
 (they are the ones ROOT's CMake generates at configure time, plus a few feature
 gates) and either discover them or document each by name in
 `docs/components/`+ the report. A silent 3 % is a hole in "the whole suite".
-
-**W0-6 — timing ratchet.** `tools/tutorials/timing.py` and
-`baseline-timings.json` exist; nothing enforces them. Add
-`python -m tools.tutorials timing RUN/results.json` (or extend `ratchet`) that
-fails when the median ratio or any of the 20 slowest grows by more than, say,
-15 % against `baseline-timings.json`, with an explicit "machine is loaded"
-escape that requires re-running the same tests alone (the same discipline the
-300 s timeout already gets).
 
 **W0-7 — API coverage scope.** `tools/tutorials/api_coverage.py::LIBRARIES`
 currently lists every library it found, so the report is dominated by GUI
@@ -706,8 +698,8 @@ these unblock did not set up.
 | P-0 | Write the throughput benchmark down (use §2.6.1) and make it a gate | keeps the tail from growing | S |
 | P-1 | Batched/vectorised RDataFrame for **declared C++ functions** | 10 timeouts → passes | L |
 | P-2 | Vectorised `ROOT::VecOps` over jagged arrays | the same 10, plus df026/df033/df016 | L |
-| P-3 | RooStats toy studies and RooFit integral/caching reuse | 32→ ~15 tutorials >5× | L |
-| P-4 | Canvas text and palette speed (`perceptualcolormap`, `schroedinger_hydrogen`, `tmathtext`) | 12–15× → <3×, and the same defect is the worst image DIFFs | M |
+| P-3 | RooStats toy studies and RooFit integral/caching reuse | the RooStats and RooFit tutorials nearest the 300 s limit | L |
+| P-4 | Canvas text and palette speed (`perceptualcolormap`, `schroedinger_hydrogen`, `tmathtext`) | the three slowest canvas tutorials under this wave's 150 s, and the same defect is the worst image DIFFs | M |
 | P-5 | zlib level 1 (Q-6) + a reused `compressobj`; consider `python-isal` | 2–3× on every write | S |
 | P-9 | The five genuinely O(n) timeouts, measured by worker 14 | 8 tests | L |
 | P-10 | `multicore/testSetAddressLoop`: 33 runs of a 53 s run | 1 test | M |
@@ -717,8 +709,9 @@ evaluator (`src/xrdroot/rdf/expression.py`, `src/xrdroot/pyroot/rdf/batched.py`)
 already vectorises expressions; a string that calls a function declared through
 `gInterpreter.Declare` (which is exactly `df101`, `df103`, `df104`, `df105`,
 `df107`, `hist102`, `hist103`, `tmva100`) falls back to
-`src/xrdroot/pyroot/rdf/entrywise.py` — one Python call per entry, 12–45× slower
-than ROOT. The path: translate the declared function body (the translator
+`src/xrdroot/pyroot/rdf/entrywise.py` — one Python call per entry, which is
+what puts them at the top of the report's slowest list. The path: translate
+the declared function body (the translator
 already can) into per-batch NumPy when its operations have batch semantics
 (the `batched.py` docstring enumerates the rule), and keep the entrywise path
 as the fallback. Measure with
