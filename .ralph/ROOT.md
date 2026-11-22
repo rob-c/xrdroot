@@ -1724,6 +1724,37 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   average of 12-31; ruff clean, mypy 1023 files, maintainability 31 274 functions, components 1023 modules /
   0 undeclared.
 
+## Round 57's close (recorded here for the next iteration)
+
+- Base `44eb8a61`, closed at **`b42926d0`**. **One commit, 0 harness PASS**, and two programs' walls removed: the
+  round is the *measured-refusal* kind `W0-55` accepts, not the PASS kind.
+- **`b42926d0`: a ROOT number type written as a function is the C++ cast.** `TFormula` compiles its expression as
+  C++, so `UInt_t(3.7)` is a cast - ROOT answers 3, `UInt_t(-1)` is 4294967295 and `Short_t(70000)` is 4464 -
+  and this kit's `TFormula` knew `TMath`, `<cmath>` and the `ROOT::Math` densities and **no type at all**.
+  `function/library.py` now builds a `Call` for every name in `formula.functions.CASTS` (the table the tree-draw
+  engine already converts by), and `tmva/fdaformula.py` takes the same table because TMVA hands its split
+  expression to its own parser rather than to `TFormula`. A conversion has no slope to give, so no `partials` is
+  declared and `TF1` differentiates such a formula numerically - which the gate's coverage report is what made me
+  notice: the `_level` I had written first was **never reached**, so it came out.
+- **Why it matters, and the measurement that shaped it**: TMVA's own default split expression is
+  `UInt_t([EventNumber])%UInt_t([NumFolds])`, so *every* cross-validation was refused at booking.
+  `gtest/tmva/tmva/crossvalidation/testCrossValidationIntVar` and `...MultiProc` now run **4.6 s and 2.8 s of real
+  cross-validation** where they stopped in 19 ms, and both arrive at `ROOT has cv_milli_t` (`W0-141`).
+- **`W0-142` records a trap I nearly walked into.** ROOT's standalone `TFormula` answers 3 for `Int_t(7)/2` and
+  this kit 3.5, which looks like a wide integer-division gap. It is not: **`TTree::Draw` really does evaluate in
+  double** - measured against the oracle (`/tmp/r57/draw3.C`): `Draw("a/b")` on `int` branches gives 3.5, and
+  `Draw("Int_t(a)/Int_t(b)")` crashes ROOT's own formula. The formula engine's declaration that "ROOT evaluates
+  in double" is right for its domain, and the typing gap belongs to the standalone `TFormula` alone.
+- Nothing lost: `gtest/hist/*` + `gtest/tmva/*` - 66 tests, **27 PASS / 33 FAIL / 6 UNSUPPORTED** (`/tmp/r57/areas`),
+  the same set as `/tmp/r56/gtest`.
+- Worktree discipline (`W0-138`): opened `/tmp/ralph-round-202611220240/main` off `feat/root-testsuite`'s tip,
+  gated there, fast-forwarded `feat/root-testsuite`, tore the worktree and branch down. **`W0-138` is still open**
+  - whether `main` is meant to be the trunk - so nothing was pushed. Two stray directories (`cv-multiproc/`,
+  `dataset/`) that running the TMVA tests wrote into the worktree were removed before the gate (`W0-61`).
+- Gates: **`TOTAL 119732 0 30014 0 100%`** by the two-command decomposition (13 036 passed, then 44) at a load
+  average of 14-25; ruff clean, mypy 1023 files, maintainability 31 283 functions, components 1023 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1798,6 +1829,11 @@ For the round's work, the evidence is, in this order:
   0 undeclared. `/tmp/r56/gate3.log` is the first command's output (an earlier run, `/tmp/r56/gate1.log`, was the one
   that failed on `cppstd.objects.__all__` and named the uncovered line), run in the round's own worktree
   (`/tmp/ralph-round-202611220140/main`, since removed - the commit is on `feat/root-testsuite`).
+- Round 57's result of them, at `b42926d0`: **`TOTAL 119732 0 30014 0 100%`** - 13 036 passed then 44 passed - at a
+  load average of 14-25; ruff clean, mypy 1023 files, maintainability 31 283 functions, components 1023 modules /
+  0 undeclared. `/tmp/r57/gate2.log` is the first command's output (an earlier run, `/tmp/r57/gate1.log`, named the
+  one uncovered line - a `_level` partial I had written and never reached), run in the round's own worktree
+  (`/tmp/ralph-round-202611220240/main`, since removed - the commit is on `feat/root-testsuite`).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -2015,6 +2051,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 54 | `2a668e00` | **two commits**: a qualified static call `T::f(...)` asks the dialect's `method_returns`, so an `auto` local a factory gives has a type, and `RNTupleWriter` is a guard with the `_destruct` one needs (`98df6a2e`); `TInterpreter::Calc` reads a value out without cling's echo (`2ce1f188`) | **gtest +1: `gtest/tree/ntuple/ntuple_randomaccess` PASSES** (`/tmp/r54/ntuple`), the kind **58 -> 59**; nothing lost in the 49 `gtest/tree/ntuple/*` or the 26 `gtest/core/*` (`/tmp/r54/core`) | 3: `W0-133` closed, `W0-134` (`GetClusterDescriptor`), `W0-135` (three `TFile`s in one scope), `W0-136` (another session's stopped processes starve a whole-kind run) |
 | 55 | `127c20e2` | **one commit**: the IO-feature bits a ROOT 6.40 basket records - `ROOT.EIOFeatures`, `ROOT::Experimental`'s two enums and `TBasket::kIOBitCount`/`EIOBits::kSupported`, every number measured against the oracle (`d1752d03`) | **gtest +1: `gtest/tree/tree/testTIOFeatures` PASSES** (`/tmp/r55/areas`: 73 tests of `gtest/hist/*` + `gtest/tree/tree/*`), the kind **59 -> 60**; nothing lost. Gate `TOTAL 119689 0 30000 0 100%` | 2: `W0-137` (the first whole figure for `roottest/root/{hist,tree}/*`: 313 tests, 138 PASS), `W0-138` (**the round's own step 0 assumes a `main` that is 238 commits behind this branch**) |
 | 56 | `9f4395db` | **one commit**: an array of objects is destroyed as its scope ends - `cppstd.objects.ObjectArray`, `_destructible` asks the element, and `std::make_unique<A[]>(n)` builds the array `A a[n]` is (`4f884ec7`) | **gtest +1: `gtest/core/foundation/testMake_unique` PASSES**, and **the kind measured whole: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r56/gtest`) - five gained over round 53's 56, **none lost**. Gate `TOTAL 119714 0 30014 0 100%` | 2: `W0-139` (the bulk-fill tests near the 300 s wall: `ntuple_extended` 133 s, `testBulkApiMultiple` TIMEOUT), `W0-140` (an array of *arrays* of objects is still not destroyed) |
+| 57 | `44eb8a61` | **one commit**: a ROOT number type written as a function is the C++ cast - `TFormula` and TMVA's FDA parser both take `formula.functions.CASTS` (`b42926d0`) | **0 harness PASS**, but TMVA's own default split expression `UInt_t([EventNumber])%UInt_t([NumFolds])` now parses: `gtest/tmva/tmva/crossvalidation/*` runs real cross-validation (4.6 s, 2.8 s) and both stop at `ROOT has cv_milli_t`. Nothing lost in 66 `gtest/hist/*` + `gtest/tmva/*` (`/tmp/r57/areas`). Gate `TOTAL 119732 0 30014 0 100%` | 2: `W0-141` (a function-local `using` alias of a template instance is not substituted in a value position - and then TMVA's Reader), `W0-142` (a cast to an integer does not make a following `/` integer, and must not for `TTree::Draw`) |
 
 ## Notes
 
