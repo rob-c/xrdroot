@@ -84,6 +84,15 @@ class TBuffer(TObject):
     def SetBufferOffset(self, offset: int = 0) -> None:
         self._pos = int(offset)
 
+    def ResetMap(self, classCount: int = -1, objectCount: int = -1) -> None:
+        """``ResetMap``: forget the objects and classes this buffer has already read.
+
+        ROOT keeps a map so that an object written twice is read once; this kit reads each
+        object out of the bytes as they come, so there is nothing to forget - and the call
+        is what a program makes before reading a buffer it has just written from the start.
+        """
+        _ = (classCount, objectCount)
+
     def GetBufferOffset(self) -> int:
         """Not ROOT's name, but what ``Length`` is: how far in the next byte goes."""
         return self._pos

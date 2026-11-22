@@ -457,6 +457,7 @@ def test_a_tbufferfile_reads_and_writes_numbers_strings_and_objects_of_roots():
     assert buf.Length() == len(buf.Buffer()) and buf.GetBufferOffset() == buf.Length()
     buf.SetReadMode()
     buf.SetBufferOffset(0)
+    buf.ResetMap()  # ROOT's, before reading a buffer back from its start
     assert (buf.ReadInt(), buf.ReadDouble(), buf.ReadString(), len(buf.ReadTString())) == (
         7,
         2.5,
