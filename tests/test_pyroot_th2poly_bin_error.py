@@ -238,3 +238,36 @@ def test_a_profile_answers_the_moments_of_its_three_axes() -> None:
     expect((found.GetMean(1), 5.5), (found.GetMean(2), 4.5), (found.GetMean(3), 3.0))
     expect((found.GetMean(4), 0.0), (found.GetStdDev(3), 0.0))
     expect((found.GetMeanError(1), 0.0), (found.GetMean(11), 0.0))
+
+
+def test_a_spread_is_answered_for_an_axis_the_profile_has_and_no_other() -> None:
+    found = profile()
+    found.Fill(*MIDDLE, 3.0)
+    expect((found.GetStdDev(9), 0.0), (found.GetStdDev(1), 0.0))
+    assert found.GetStdDev(13) == 0.0  # one entry has no spread to put an error on
+
+
+def test_the_error_on_a_spread_is_the_spread_over_twice_the_entries() -> None:
+    found = profile()
+    found.Fill(*MIDDLE, 3.0)
+    found.Fill(*MIDDLE, 1.0)
+    spread = found.GetStdDev(3)
+    assert spread > 0.0
+    assert found.GetStdDev(13) == pytest.approx(math.sqrt(spread * spread / (2 * found.GetEffectiveEntries())))
+
+
+def test_a_merge_adds_the_fills_that_missed_the_bins_too() -> None:
+    other = profile()
+    other.Fill(-20.0, 20.0, 7.0)  # a region outside every bin
+    region = min(other._sums)  # the region number ROOT gives that point
+    assert region < 0
+    merged = profile()
+    assert merged.Merge([other]) == 1
+    expect((merged.GetBinContent(region), 7.0), (merged.GetBinContent(MIDDLE_BIN), 0.0))
+
+
+def test_a_merge_of_profiles_of_different_binning_says_so_and_adds_nothing() -> None:
+    one = profile()
+    other = ROOT.TProfile2Poly("fewer", "fewer", 0.0, 10.0, 0.0, 10.0)
+    other.AddBin(0.0, 0.0, 10.0, 10.0)
+    assert other.Merge([one]) == 0
