@@ -1755,6 +1755,29 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   average of 14-25; ruff clean, mypy 1023 files, maintainability 31 283 functions, components 1023 modules /
   0 undeclared.
 
+## Round 58's close (recorded here for the next iteration)
+
+- Base `1fc32254`, closed at **`ad8c97a8`**. **One commit, 0 harness PASS, 0 lost** - and **the whole gtest kind
+  re-measured: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r58/gtest`, `--jobs 3`), identical
+  to round 56's, which is the `W0-63` check across rounds 57 and 58.
+- **`ad8c97a8` closes `W0-140`**: round 56's `ObjectArray` was built for one dimension, so `A a[2][3]` kept plain
+  lists for its rows and destroyed nothing. `_filled` makes every level an `ObjectArray`, so the outer one destroys
+  its rows and each row its elements - four `A`s for `A a[2][2]`, last first. `_owned` therefore has no `None` case
+  left, and **the gate's uncovered-line report is what showed the dead branch**, so it came out. The test in
+  `tests/test_cint_scope_destructors.py` that pinned the *gap* now measures the four destructions.
+- **The round's finding is a queue row, not a PASS**: `gtest/tree/dataframe/dataframe_take`'s `VectorBool` is one
+  case from a PASS and its cost is one *type* - `Take<std::vector<bool>>` gives a `Jagged` whose rows are NumPy
+  slices, so neither level answers `size()` where ROOT's `std::vector<std::vector<bool>>` answers it twice. **The
+  requested C++ type is already in the emitted call** (`df2.Take['std::vector<bool>']('x')`) and `frame.Take`
+  drops it, which is where `W0-143` starts. `W0-144` records `testTMultiGraphGetHistogram`'s log-scale range with
+  its four numbers, and says the source must be read before anything is changed.
+- Worktree discipline (`W0-138`): opened `/tmp/ralph-round-202611220314/main` off `feat/root-testsuite`'s tip,
+  gated there, fast-forwarded `feat/root-testsuite`, tore the worktree and branch down. **`W0-138` is still open**,
+  so nothing was pushed. Two `.root` files my probes wrote into the worktree were removed before the gate (`W0-61`).
+- Gates: **`TOTAL 119730 0 30012 0 100%`** by the two-command decomposition (13 036 passed, then 44) at a load
+  average of 11-17; ruff clean, mypy 1023 files, maintainability 31 282 functions, components 1023 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1834,6 +1857,11 @@ For the round's work, the evidence is, in this order:
   0 undeclared. `/tmp/r57/gate2.log` is the first command's output (an earlier run, `/tmp/r57/gate1.log`, named the
   one uncovered line - a `_level` partial I had written and never reached), run in the round's own worktree
   (`/tmp/ralph-round-202611220240/main`, since removed - the commit is on `feat/root-testsuite`).
+- Round 58's result of them, at `ad8c97a8`: **`TOTAL 119730 0 30012 0 100%`** - 13 036 passed then 44 passed - at a
+  load average of 11-17; ruff clean, mypy 1023 files, maintainability 31 282 functions, components 1023 modules /
+  0 undeclared. `/tmp/r58/gate2.log` is the first command's output (an earlier run, `/tmp/r58/gate1.log`, named the
+  dead `None` branch that `_owned` could no longer answer), run in the round's own worktree
+  (`/tmp/ralph-round-202611220314/main`, since removed - the commit is on `feat/root-testsuite`).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -2052,6 +2080,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 55 | `127c20e2` | **one commit**: the IO-feature bits a ROOT 6.40 basket records - `ROOT.EIOFeatures`, `ROOT::Experimental`'s two enums and `TBasket::kIOBitCount`/`EIOBits::kSupported`, every number measured against the oracle (`d1752d03`) | **gtest +1: `gtest/tree/tree/testTIOFeatures` PASSES** (`/tmp/r55/areas`: 73 tests of `gtest/hist/*` + `gtest/tree/tree/*`), the kind **59 -> 60**; nothing lost. Gate `TOTAL 119689 0 30000 0 100%` | 2: `W0-137` (the first whole figure for `roottest/root/{hist,tree}/*`: 313 tests, 138 PASS), `W0-138` (**the round's own step 0 assumes a `main` that is 238 commits behind this branch**) |
 | 56 | `9f4395db` | **one commit**: an array of objects is destroyed as its scope ends - `cppstd.objects.ObjectArray`, `_destructible` asks the element, and `std::make_unique<A[]>(n)` builds the array `A a[n]` is (`4f884ec7`) | **gtest +1: `gtest/core/foundation/testMake_unique` PASSES**, and **the kind measured whole: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r56/gtest`) - five gained over round 53's 56, **none lost**. Gate `TOTAL 119714 0 30014 0 100%` | 2: `W0-139` (the bulk-fill tests near the 300 s wall: `ntuple_extended` 133 s, `testBulkApiMultiple` TIMEOUT), `W0-140` (an array of *arrays* of objects is still not destroyed) |
 | 57 | `44eb8a61` | **one commit**: a ROOT number type written as a function is the C++ cast - `TFormula` and TMVA's FDA parser both take `formula.functions.CASTS` (`b42926d0`) | **0 harness PASS**, but TMVA's own default split expression `UInt_t([EventNumber])%UInt_t([NumFolds])` now parses: `gtest/tmva/tmva/crossvalidation/*` runs real cross-validation (4.6 s, 2.8 s) and both stop at `ROOT has cv_milli_t`. Nothing lost in 66 `gtest/hist/*` + `gtest/tmva/*` (`/tmp/r57/areas`). Gate `TOTAL 119732 0 30014 0 100%` | 2: `W0-141` (a function-local `using` alias of a template instance is not substituted in a value position - and then TMVA's Reader), `W0-142` (a cast to an integer does not make a following `/` integer, and must not for `TTree::Draw`) |
+| 58 | `1fc32254` | **one commit**: an array of *arrays* of objects destroys its rows and their elements - every level of an object array is an `ObjectArray` (`ad8c97a8`) | **0 harness PASS, 0 lost**, and **the whole gtest kind re-measured: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r58/gtest`), identical to round 56's - the `W0-63` check across rounds 57-58. Gate `TOTAL 119730 0 30012 0 100%` | 2: `W0-143` (`Take<std::vector<bool>>`'s rows are NumPy slices, and the kind the emitted call carries is dropped by `frame.Take`), `W0-144` (`TMultiGraph::GetHistogram`'s log-scale range: 79.9602 and 0.65234 against our 65.5672 and 1.08468); `W0-140` closed |
 
 ## Notes
 
