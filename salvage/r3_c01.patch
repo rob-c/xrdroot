@@ -1,0 +1,314 @@
+diff --git a/src/xrdroot/pyroot/core/reflection.py b/src/xrdroot/pyroot/core/reflection.py
+index 985b3682..e6bf9e1d 100644
+--- a/src/xrdroot/pyroot/core/reflection.py
++++ b/src/xrdroot/pyroot/core/reflection.py
+@@ -98,10 +98,51 @@ FUNDAMENTAL = frozenset({
+ 
+ #: ``kIsTObject`` and the other bits ``TClass::Property`` and ``GetState`` answer with.
+ K_IS_TOBJECT = 0x00008000
+-#: ``TClass::EState``: ``kInterpreted``, a class the interpreter describes and no dictionary
+-#: does, and ``kHasTClassInit`` - ROOT's ``kLoaded`` too - one a dictionary describes.
++#: ``TClass::EState``, in ROOT's order: nothing known of the class yet, a forward declaration
++#: only, a class an emulated ``TStreamerInfo`` describes, one the interpreter describes and
++#: no dictionary does, and one a dictionary describes - ``kLoaded`` is the same state, and
++#: ``kNamespaceForMeta`` the transient one ROOT gives a namespace entry.
++K_NO_INFO = 0
++K_FORWARD_DECLARED = 1
++K_EMULATED = 2
+ K_INTERPRETED = 3
+ K_HAS_TCLASS_INIT = 4
++K_LOADED = K_HAS_TCLASS_INIT
++K_NAMESPACE_FOR_META = 5
++
++#: The ROOT classes whose dictionary this kit carries that declare a ``Streamer`` of their own,
++#: which is what ``TClass::HasCustomStreamerMember`` answers with: a class of ROOT's streams
++#: itself by hand where its dictionary lists a ``Streamer(TBuffer &)`` member, and every other
++#: class of its - and every class declared here - streams member by member. This is ROOT
++#: 6.40.04's own answer for each class the ``pyroot`` namespace has a class of; a class not
++#: here is one nothing describes a custom streamer for.
++CUSTOM_STREAMERS = frozenset({
++    "RooAbsArg", "RooAbsBinning", "RooAbsData", "RooBinning", "RooCategory", "RooDataHist",
++    "RooDataSet", "RooFitResult", "RooHistFunc", "RooHistPdf", "RooLinkedList", "RooPlot",
++    "RooRealVar", "RooWorkspace", "TASImage", "TArrayC", "TArrayD", "TArrayF", "TArrayI",
++    "TArrayL", "TArrayS", "TAttAxis", "TAxis", "TBaseClass", "TBox", "TBranch", "TBranchElement",
++    "TBranchObject", "TBuffer", "TBufferFile", "TBufferJSON", "TCTUB", "TCandle", "TCanvas",
++    "TChain", "TClass", "TClassTable", "TClonesArray", "TCollection", "TCutG", "TDataMember",
++    "TDatime", "TDirectory", "TDirectoryFile", "TEllipse", "TEntryList", "TF1", "TF2", "TF3",
++    "TFile", "TFormula", "TGaxis", "TGeoArb8", "TGeoIterator", "TGeoIteratorPlugin",
++    "TGeoManager", "TGeoPcon", "TGeoTessellated", "TGeoVolume", "TGeometry", "TGraph",
++    "TGraph2D", "TGraph2DErrors", "TGraphAsymmErrors", "TGraphErrors", "TH1", "TH2", "TH2C",
++    "TH2D", "TH2F", "TH2S", "TH3", "TH3C", "TH3D", "TH3F", "TH3S", "THashList", "THashTable",
++    "TImage", "TImagePalette", "TInterpreter", "TIter", "TKey", "TLeaf", "TLine", "TList",
++    "TLorentzVector", "TMarker", "TMaterial", "TMatrixD", "TMatrixDColumn",
++    "TMatrixDColumn_const", "TMatrixDDiag", "TMatrixDDiag_const", "TMatrixDRow",
++    "TMatrixDRow_const", "TMatrixDSym", "TMatrixF", "TMatrixFColumn", "TMatrixFDiag",
++    "TMatrixFRow", "TMatrixFSym", "TMemFile", "TMixture", "TNode", "TNtuple", "TNtupleD",
++    "TObjArray", "TObject", "TOrdCollection", "TPCON", "TPad", "TPave", "TPaveStats",
++    "TPaveText", "TPolyLine", "TPolyLine3D", "TPolyMarker", "TPolyMarker3D", "TProfile",
++    "TProfile2D", "TROOT", "TRandom3", "TRef", "TRefArray", "TRotMatrix", "TSPHE",
++    "TSeqCollection", "TShape", "TStreamerBase", "TStreamerBasicPointer", "TStreamerBasicType",
++    "TStreamerElement", "TStreamerInfo", "TStreamerLoop", "TStreamerObject",
++    "TStreamerObjectAny", "TStreamerObjectAnyPointer", "TStreamerObjectPointer", "TStreamerSTL",
++    "TStreamerSTLstring", "TStreamerString", "TString", "TTUBE", "TText", "TThread", "TTimer",
++    "TTree", "TUrl", "TVector2", "TVector3", "TVectorD", "TView3D", "TVirtualPS",
++    "TVirtualStreamerInfo", "TXMLEngine",
++})  # fmt: skip
+ 
+ 
+ def note_generated_dictionary(classes: Any) -> None:
+@@ -211,6 +252,34 @@ def _spelled(typename: str) -> str:
+     return TYPEDEFS.get(base, base) + typename[len(base):]
+ 
+ 
++def _held_classes(typename: str) -> list[str]:
++    """The classes a member's type holds or points at, as ROOT reports them missing: the type
++    itself with the ``const``, the pointers, references and array lengths off it, and then
++    each class its template arguments name - ``vector<Elem>``, then ``Elem``."""
++    text = typename.strip()
++    for mark in ("const", "volatile"):
++        text = text.removeprefix(mark).strip().removesuffix(mark).strip()
++    text = text.rstrip("*& ").split("[")[0].strip()
++    if not text or text in FUNDAMENTAL or text.endswith("*"):
++        return []
++    found = [_known_as(text)]
++    if "<" in text:
++        inner = text[text.index("<") + 1 : text.rindex(">")]
++        found += [each for part in inner.split(",") for each in _held_classes(part)]
++    return found
++
++
++def _dictionaried(name: str) -> bool:
++    """Does the process have a dictionary that describes the class ``name``?
++
++    A class a dictionary describes is one of ROOT's own the kit carries, or one a library or
++    ``GenerateDictionary`` provided. A standard container is not: the kit can make one of
++    any element type, but ROOT has a dictionary of ``vector<Elem>`` only once something
++    generated one, which is why a class holding such a vector reports it missing.
++    """
++    return _known_as(name) in _with_dictionary()
++
++
+ def _disagreement_with(name: str, on_file: Layout, met: bool) -> Layout | None:
+     """The layout the class has in memory, when the one a file describes disagrees with it in
+     the way ROOT reports as the file is opened - a version the class versions, a checksum of
+@@ -457,11 +526,27 @@ class TClass(TNamed):
+     #: What ``ClassDef`` says of the class.
+     CLASS_TITLE = "Dictionary of a class"
+     kIsTObject = K_IS_TOBJECT
+-    kHasTClassInit = K_HAS_TCLASS_INIT
++    #: ``TClass::EState``, which ``GetState`` answers with and a program compares against.
++    kNoInfo = K_NO_INFO
++    kForwardDeclared = K_FORWARD_DECLARED
++    kEmulated = K_EMULATED
+     kInterpreted = K_INTERPRETED
+-    kEmulated = 2
+-    kNoInfo = 0
+-    kLoaded = K_HAS_TCLASS_INIT
++    kHasTClassInit = K_HAS_TCLASS_INIT
++    kLoaded = K_LOADED
++    kNamespaceForMeta = K_NAMESPACE_FOR_META
++    #: ``TClass::ECheckSum``: which of ROOT's checksum algorithms a checksum was made with.
++    #: The layouts here come from files ROOT wrote with the newest of them, so the ones that
++    #: differ by what a streamer records and not by its arithmetic answer alike; the numbers
++    #: are ROOT's, since a program compares what it asked for with them.
++    kCurrentCheckSum = 0
++    kNoEnum = 1
++    kReflexNoComment = 2
++    kNoRange = 3
++    kWithTypeDef = 4
++    kReflex = 5
++    kNoRangeCheck = 6
++    kNoBaseCheckSum = 7
++    kLatestCheckSum = 8
+ 
+     #: What ``TClass::GetClass`` is handed back for a class nobody knows: nothing.
+     _MISSING: ClassVar[None] = None
+@@ -501,6 +586,27 @@ class TClass(TNamed):
+         text = _known_as(str(spelled if spelled is not None else name))
+         return None if text in FUNDAMENTAL else TClass(text)
+ 
++    @staticmethod
++    def GetDict(name: Any) -> TClass | None:
++        """``TClass::GetDict(name)``: the class where a *dictionary* describes it, else
++        ``nullptr`` - which ``GetClass`` does not answer, since ROOT makes a ``TClass`` for a
++        class only a forward declaration or a file describes too.
++
++        ROOT hands back the dictionary's factory function here, which nothing compiles: what
++        answers is the class that dictionary describes, which is what a program asks this for
++        - ``if (!TClass::GetDict("Event")) gSystem->Load("libEvent")`` - and what it compares
++        with ``nullptr``.
++        """
++        if not isinstance(name, str):  # a ``std::type_info``: the class it names
++            name = getattr(name, "_spelled", None) or getattr(name, "__name__", name)
++        return TClassTable.GetDict(name)
++
++    def HasCustomStreamerMember(self) -> bool:
++        """``HasCustomStreamerMember``: does the class's dictionary list a ``Streamer`` of
++        its own - ``TObject::Streamer``, which ``TTree`` and ``TString`` have too - or is it
++        streamed member by member, as ``TNamed`` and every class declared here is?"""
++        return self._name in CUSTOM_STREAMERS
++
+     def HasDictionary(self) -> bool:
+         """``HasDictionary``: does anything here describe the class's members?"""
+         return self._class() is not None or self._name in INFOS or _template(self._name)
+@@ -793,6 +899,39 @@ class TClass(TNamed):
+         return next((m for m in self.GetListOfAllPublicDataMembers() if m.GetName() == wanted),
+                     None)
+ 
++    def GetMissingDictionaries(self, result: Any, recurse: bool = False) -> None:
++        """``GetMissingDictionaries``: note in ``result`` - a ``THashTable`` ROOT fills in -
++        every class this class derives from or declares a member of that no dictionary of the
++        process describes.
++
++        ``ECont`` holds a ``vector<Elem>``: the vector is not emulated from a dictionary, so
++        ROOT reports it missing however well it can lay one out (roottest's
++        ``CheckMissingDictionaries``), and with ``recurse`` the classes those classes name are
++        looked into as well. A class of plain numbers and strings reports nothing, which is
++        what ``execNamingMatches`` asserts of one.
++        """
++        self._missing_dictionaries(result, set(), recurse)
++
++    def _missing_dictionaries(self, result: Any, visited: set[str], recurse: bool) -> None:
++        """The walk ``GetMissingDictionaries`` makes: each class this one holds, added once,
++        and - with ``recurse`` - what that class holds in turn. A member of the class's own
++        type is met again by the walk and is not walked into twice."""
++        if self._name in visited:
++            return
++        visited.add(self._name)
++        for name in self._held_names(recurse):
++            if not _dictionaried(name):
++                result.Add(TClass(name))
++            if recurse:
++                TClass(name)._missing_dictionaries(result, visited, recurse)
++
++    def _held_names(self, recurse: bool) -> list[str]:
++        """The classes this class's bases and members are of, in the dictionary's spelling -
++        with the classes inside their template arguments too when the walk recurses."""
++        spelled = [*self._base_names(), *(field[1] for field in self._fields())]
++        held = [_held_classes(name) for name in spelled]
++        return [each for classes in held for each in (classes if recurse else classes[:1])]
++
+     def GetListOfMethods(self, load: bool = True) -> Any:
+         """``GetListOfMethods``: the class's own functions, by name.
+ 
+@@ -816,6 +955,15 @@ class TClass(TNamed):
+ 
+     GetMethodAllAny = GetMethodAny
+ 
++    def GetListOfAllPublicMethods(self, load: bool = True) -> Any:
++        """``GetListOfAllPublicMethods``: the class's own functions and each base's, which
++        is how ROOT answers a name that only a base declares - ``std::shared_ptr``'s ``get``."""
++        made = self.GetListOfMethods(load)
++        for base in self._base_classes():
++            for method in base.GetListOfAllPublicMethods(load):
++                made.Add(method)
++        return made
++
+     def GetMethodWithPrototype(self, name: Any, proto: Any = "", isconst: bool = False,
+                                mode: int = 0) -> Any:  # fmt: skip
+         """``GetMethodWithPrototype``: the function called ``name`` with the prototype
+diff --git a/tests/test_pyroot_reflection.py b/tests/test_pyroot_reflection.py
+index 08f863a2..494e7d10 100644
+--- a/tests/test_pyroot_reflection.py
++++ b/tests/test_pyroot_reflection.py
+@@ -815,3 +815,100 @@ def test_an_emulated_classs_second_layout_takes_the_next_number():
+     _evo("int", "one.root")
+     ROOT.TFile("one.root")
+     assert _free_version("Evo", 1, {1}) == 2
++
++
++def test_the_state_and_checksum_codes_are_the_numbers_root_gives_them():
++    """``TClass::EState`` and ``TClass::ECheckSum``, as ROOT 6.40 numbers them: a program
++    compares what ``GetState`` answers with ``kForwardDeclared``, ``kEmulated`` and
++    ``kHasTClassInit`` (roottest's ``execState``, ``datamemberload``), and asks
++    ``GetCheckSum`` for the newest algorithm's checksum by ``kLatestCheckSum``."""
++    states = ("kNoInfo", "kForwardDeclared", "kEmulated", "kInterpreted", "kHasTClassInit",
++              "kLoaded", "kNamespaceForMeta")  # fmt: skip
++    checksums = ("kCurrentCheckSum", "kNoEnum", "kReflexNoComment", "kNoRange", "kWithTypeDef",
++                 "kReflex", "kNoRangeCheck", "kNoBaseCheckSum", "kLatestCheckSum")  # fmt: skip
++    th1f = ROOT.TClass.GetClass("TH1F")
++    expect(
++        ([getattr(ROOT.TClass, name) for name in states], [0, 1, 2, 3, 4, 4, 5]),
++        ([getattr(ROOT.TClass, name) for name in checksums], [0, 1, 2, 3, 4, 5, 6, 7, 8]),
++        (th1f.GetCheckSum(ROOT.TClass.kLatestCheckSum), th1f.GetCheckSum()),
++    )
++
++
++def test_the_dictionary_lookup_answers_only_for_a_class_a_dictionary_describes():
++    """``TClass::GetDict`` hands back nothing where no dictionary describes the class, which is
++    what a program tests before it loads the library that would - and what ``GetClass`` cannot
++    answer, since it makes a ``TClass`` for a class a macro declared too (roottest's
++    ``execfwdDeclarations`` and ``ROOT-5709``)."""
++    _declared()
++    expect(
++        (ROOT.TClass.GetDict("TH1F").GetName(), "TH1F"),
++        (ROOT.TClass.GetClass("Named").GetName(), "Named"),
++        (ROOT.TClass.GetDict("Named"), None),
++        (ROOT.TClass.GetDict("TNoSuch"), None),
++        (ROOT.TClass.GetDict(ROOT.TNamed).GetName(), "TNamed"),
++    )  # fmt: skip
++
++
++def test_a_class_says_whether_its_dictionary_streams_it_by_hand():
++    """``HasCustomStreamerMember``, as roottest's ``execProperties`` asks it: ROOT's ``TObject``,
++    ``TTree``, ``TEntryList`` and ``TString`` declare a ``Streamer`` of their own and ``TNamed``
++    does not - ``TH1`` does and ``TH1F``, which declares none of its own, does not - and
++    neither does any class a macro declares here."""
++    _declared()
++    asked = (ROOT.TObject.Class(), ROOT.TNamed.Class(), ROOT.TTree.Class(),
++             ROOT.TClass.GetClass("TString"), ROOT.TEntryList.Class())  # fmt: skip
++    expect(
++        ([each.HasCustomStreamerMember() for each in asked], [True, False, True, True, True]),
++        (ROOT.TClass.GetClass("Named").HasCustomStreamerMember(), False),
++        ([ROOT.TClass.GetClass(name).HasCustomStreamerMember()
++          for name in ("TH1", "TH1F", "TProfile", "TLegend", "TEfficiency")],
++         [True, False, True, False, False]),
++    )
++
++
++def test_the_methods_of_a_class_and_of_its_bases_are_listed_together():
++    """``GetListOfMethods`` is the class's own functions - ROOT 6.40's ``TNamed`` lists
++    ``GetName`` and no ``InheritsFrom`` - and ``GetListOfAllPublicMethods`` adds each base's,
++    which is how a name only ``TObject`` declares is found on a ``TNamed``."""
++    named = ROOT.TClass.GetClass("TNamed")
++    own = {method.GetName() for method in named.GetListOfMethods()}
++    every = {method.GetName() for method in named.GetListOfAllPublicMethods()}
++    assert "GetName" in own and "InheritsFrom" not in own
++    assert {"GetName", "InheritsFrom", "Print", "IsA", "ClassName"} <= every
++
++
++MISSING = r"""
++#include <vector>
++struct Elem { int i = 5; };
++struct ECont { std::vector<Elem> elems; };
++struct Plain { int a; double b; };
++struct Chain { Chain *next; TObject arg; std::vector<Elem> *elems; };
++"""
++
++
++def test_a_class_reports_the_classes_it_holds_that_no_dictionary_describes():
++    """``GetMissingDictionaries``, as roottest's ``CheckMissingDictionaries`` asks it of
++    ``ECont``: ``Elem``'s dictionary does not make one for the ``vector<Elem>`` the class holds,
++    so the vector is what ROOT reports - a class of plain numbers reports nothing - and once a
++    dictionary is generated for the vector there is nothing left to report."""
++    run_source(MISSING, "missing_dictionaries.C", call=False)
++    container = ROOT.THashTable()
++    ROOT.TClass.GetClass("ECont").GetMissingDictionaries(container)
++    plain = ROOT.THashTable()
++    ROOT.TClass.GetClass("Plain").GetMissingDictionaries(plain)
++    walked = ROOT.THashTable()
++    ROOT.TClass.GetClass("Chain").GetMissingDictionaries(walked, True)
++    # The chain's own class is missing and walked into once - ROOT's ``Chain* next`` - its
++    # ``TObject`` member has a dictionary of its own, and a container's element class is
++    # reported too, as ROOT reports ``vector<A>`` and ``A`` of a missing ``A``.
++    recursive = sorted(held.GetName() for held in walked)
++    assert ROOT.gInterpreter.GenerateDictionary("vector<Elem>") == 0
++    after = ROOT.THashTable()
++    ROOT.TClass.GetClass("ECont").GetMissingDictionaries(after)
++    expect(
++        ([held.GetName() for held in container], ["vector<Elem>"]),
++        (list(plain), []),
++        (recursive, ["Chain", "Elem", "vector<Elem>"]),
++        (list(after), []),
++        (container.FindObject("vector<Elem>").GetName(), "vector<Elem>"),
++    )

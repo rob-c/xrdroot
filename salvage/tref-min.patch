@@ -1,0 +1,81 @@
+diff --git a/docs/root.md b/docs/root.md
+index fb4473e6..cde4044a 100644
+--- a/docs/root.md
++++ b/docs/root.md
+@@ -3032,8 +3032,12 @@ A class a macro, a library or ACLiC declares is a ROOT class here. One derived
+ from `TObject`, `TNamed` or `TAttLine` has its base's members and calls them
+ unqualified (`GetName()`, `TNamed::Print(opt)`), an override called through a
+ base pointer takes the base's default arguments, and `ClassDef` gives it a
+-version, `Class()` and `Class_Name()`. `TClass::GetClass("MyClass")` describes
+-it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
++version, `Class()` and `Class_Name()`. A `TNamed`'s name and title are the
++`TString` members `fName` and `fTitle`, which a derived class writes in place -
++`fName.Form("%s_%d", name, GetID())` renames the object, as roottest's
++`tref_test_pid` does - and `TObjString::String()` is the `TString` it holds.
++`TClass::GetClass("MyClass")` describes it as ROOT's dictionary would: `GetClassVersion`
++(-1 without a `ClassDef`),
+ `GetCheckSum`, `GetListOfDataMembers` (`//!` transient, `//[n]` counted),
+ `GetListOfBases`, `GetBaseClass`, `New`, and `GetStreamerInfo()`, whose `ls()`
+ lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
+diff --git a/src/xrdroot/pycxx/emit_vars.py b/src/xrdroot/pycxx/emit_vars.py
+index 2d726a4f..9832e5d9 100644
+--- a/src/xrdroot/pycxx/emit_vars.py
++++ b/src/xrdroot/pycxx/emit_vars.py
+@@ -251,6 +251,8 @@ class VariableEmitter(StmtEmitter):
+             raise self.refuse(f"a variable of the template parameter type {ctype.name}", decl)
+         if ctype.callable:
+             return "None"
++        if _is_iterator(ctype):
++            return "None"  # unset, as C++ leaves it: it means an element once a container is
+         return f"{self.class_expr(ctype)}()"
+ 
+     def constructed(self, ctype: CType, args: list[Expr], decl: VarDecl) -> str:
+@@ -417,6 +419,18 @@ class VariableEmitter(StmtEmitter):
+     module_statics: list[tuple[str, Any]]
+ 
+ 
++def _is_iterator(ctype: CType) -> bool:
++    """Is this a library container's iterator type - ``std::list<T>::iterator``?
++
++    Such an iterator is no object a library makes here: a container's ``begin`` hands out one
++    that stands for a place in it, so a variable of the type declared with nothing to start
++    from holds no place at all until one is assigned - as C++'s default-constructed iterator
++    names no element either.
++    """
++    owner, _, last = ctype.name.rpartition("::")
++    return bool(owner) and last in ("iterator", "const_iterator")
++
++
+ def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
+     """Is a static local's first value a constant, which C++ sets before anything runs?"""
+     if ctype is None or not (ctype.pointer or ctype.arithmetic or ctype.is_string):
+diff --git a/tests/pycxx/test_pycxx_conversions.py b/tests/pycxx/test_pycxx_conversions.py
+index d80a4bc3..63561269 100644
+--- a/tests/pycxx/test_pycxx_conversions.py
++++ b/tests/pycxx/test_pycxx_conversions.py
+@@ -346,3 +346,25 @@ def test_a_reference_bound_to_the_object_it_names_builds_nothing(capsys) -> None
+         }
+         """, "t.C")  # fmt: skip
+     assert capsys.readouterr().out == "4 4\n3 1.5\n"
++
++
++def test_a_container_iterator_declared_with_nothing_to_point_at_holds_no_place(capsys) -> None:
++    """``std::vector<int>::iterator it;`` names no element until a container gives it one, and
++    a translation has no container to give it: the variable starts as nothing, and the loop
++    that assigns it its ``begin()`` works - what roottest's ``io/tree/run.C`` does.
++    """
++    source = r"""
++    #include <cstdio>
++    #include <vector>
++    void it() {
++       std::vector<int> v;
++       v.push_back(7);
++       v.push_back(8);
++       std::vector<int>::iterator at;
++       for (at = v.begin(); at != v.end(); at += 1)
++          printf("%d\n", v[at - v.begin()]);
++    }
++    """
++    assert "at = None" in translate(source, "it.C")
++    run_source(source, "it.C")
++    assert capsys.readouterr().out == "7\n8\n"

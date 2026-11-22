@@ -1,0 +1,288 @@
+diff --git a/docs/root.md b/docs/root.md
+index 2ff5ec7b..b2ce9897 100644
+--- a/docs/root.md
++++ b/docs/root.md
+@@ -2931,8 +2931,12 @@ A class a macro, a library or ACLiC declares is a ROOT class here. One derived
+ from `TObject`, `TNamed` or `TAttLine` has its base's members and calls them
+ unqualified (`GetName()`, `TNamed::Print(opt)`), an override called through a
+ base pointer takes the base's default arguments, and `ClassDef` gives it a
+-version, `Class()` and `Class_Name()`. `TClass::GetClass("MyClass")` describes
+-it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
++version, `Class()` and `Class_Name()`. A `TNamed`'s name and title are the
++`TString` members `fName` and `fTitle`, which a derived class writes in place -
++`fName.Form("%s_%d", name, GetID())` renames the object, as roottest's
++`tref_test_pid` does - and `TObjString::String()` is the `TString` it holds.
++`TClass::GetClass("MyClass")` describes it as ROOT's dictionary would: `GetClassVersion`
++(-1 without a `ClassDef`),
+ `GetCheckSum`, `GetListOfDataMembers` (`//!` transient, `//[n]` counted),
+ `GetListOfBases`, `GetBaseClass`, `New`, and `GetStreamerInfo()`, whose `ls()`
+ lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
+diff --git a/src/xrdroot/pycxx/emit_vars.py b/src/xrdroot/pycxx/emit_vars.py
+index 2d726a4f..9832e5d9 100644
+--- a/src/xrdroot/pycxx/emit_vars.py
++++ b/src/xrdroot/pycxx/emit_vars.py
+@@ -251,6 +251,8 @@ class VariableEmitter(StmtEmitter):
+             raise self.refuse(f"a variable of the template parameter type {ctype.name}", decl)
+         if ctype.callable:
+             return "None"
++        if _is_iterator(ctype):
++            return "None"  # unset, as C++ leaves it: it means an element once a container is
+         return f"{self.class_expr(ctype)}()"
+ 
+     def constructed(self, ctype: CType, args: list[Expr], decl: VarDecl) -> str:
+@@ -417,6 +419,18 @@ class VariableEmitter(StmtEmitter):
+     module_statics: list[tuple[str, Any]]
+ 
+ 
++def _is_iterator(ctype: CType) -> bool:
++    """Is this a library container's iterator type - ``std::list<T>::iterator``?
++
++    Such an iterator is no object a library makes here: a container's ``begin`` hands out one
++    that stands for a place in it, so a variable of the type declared with nothing to start
++    from holds no place at all until one is assigned - as C++'s default-constructed iterator
++    names no element either.
++    """
++    owner, _, last = ctype.name.rpartition("::")
++    return bool(owner) and last in ("iterator", "const_iterator")
++
++
+ def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
+     """Is a static local's first value a constant, which C++ sets before anything runs?"""
+     if ctype is None or not (ctype.pointer or ctype.arithmetic or ctype.is_string):
+diff --git a/src/xrdroot/pyroot/core/collections.py b/src/xrdroot/pyroot/core/collections.py
+index 6bdf6e0e..f980001b 100644
+--- a/src/xrdroot/pyroot/core/collections.py
++++ b/src/xrdroot/pyroot/core/collections.py
+@@ -19,7 +19,7 @@ from typing import Any
+ 
+ from ...cppstd.containers import TEMPLATES as _TEMPLATES
+ from ...cppstd.containers import string as StdString
+-from .objects import Indent, TNamed, TObject
++from .objects import Indent, TNamed, TObject, member_string
+ from .strings import TString
+ 
+ #: The ``std::`` templates cppyy gives by a bare C++ name too - a macro's ``list<Track>`` is
+@@ -671,8 +671,10 @@ class TObjString(TNamed):
+     def GetString(self) -> str:
+         return self.GetName()
+ 
+-    def String(self) -> str:
+-        return self.GetName()
++    def String(self) -> TString:
++        """``String``: the ``TString`` the object holds, which a macro writes through -
++        ``obj.String() + "*"`` is a ``TString``, as ROOT's ``const TString&`` makes it."""
++        return member_string(self, "fString")
+ 
+     def SetString(self, text: Any) -> None:
+         self.SetName(text)
+diff --git a/src/xrdroot/pyroot/core/objects.py b/src/xrdroot/pyroot/core/objects.py
+index 75c06c00..5992a2df 100644
+--- a/src/xrdroot/pyroot/core/objects.py
++++ b/src/xrdroot/pyroot/core/objects.py
+@@ -21,6 +21,7 @@ from typing import Any
+ 
+ from . import hooks
+ from .colors import BITS
++from .strings import TString
+ 
+ __all__ = [
+     "TObject",
+@@ -415,6 +416,28 @@ class TNamed(TObject):
+     def GetTitle(self) -> str:
+         return self._title
+ 
++    @property
++    def fName(self) -> Any:
++        """``fName``: the ``TString`` member a derived class may write in place.
++
++        ``fName.Form("%s_%d", ...)`` renames the object, and C++ reads the member where
++        Python reads what ``GetName`` gives back, so the two are the same text here.
++        """
++        return member_string(self, "fName")
++
++    @fName.setter
++    def fName(self, value: Any) -> None:
++        self.SetName(str(value))
++
++    @property
++    def fTitle(self) -> Any:
++        """``fTitle``: the ``TString`` member for the title, as ``fName`` is for the name."""
++        return member_string(self, "fTitle")
++
++    @fTitle.setter
++    def fTitle(self, value: Any) -> None:
++        self.SetTitle(str(value))
++
+     def SetName(self, name: Any) -> None:
+         self._name = str(name)
+ 
+@@ -434,6 +457,18 @@ class TNamed(TObject):
+         return len(self.GetName()) + len(self.GetTitle())
+ 
+ 
++def member_string(obj: Any, member: str) -> TString:
++    """``obj``'s ``member`` as a ``TString`` that changes the object where it stands.
++
++    ROOT keeps a ``TNamed``'s name and title in the ``TString`` members ``fName`` and
++    ``fTitle``; the getter and setter are looked up on the object each time so that a class
++    of the macro's that writes its name its own way - a histogram's, which carries its axes'
++    titles too - is asked, rather than this class's.
++    """
++    return TString(view=(lambda: getattr(obj, "Get" + member[1:])(),
++                       lambda text: getattr(obj, "Set" + member[1:])(text)))  # fmt: skip
++
++
+ # -- the attribute mixins ---------------------------------------------------------------------
+ 
+ #: Each attribute group's members and the value each starts at, as ROOT's
+diff --git a/src/xrdroot/pyroot/core/strings.py b/src/xrdroot/pyroot/core/strings.py
+index 94c9f70f..2d851258 100644
+--- a/src/xrdroot/pyroot/core/strings.py
++++ b/src/xrdroot/pyroot/core/strings.py
+@@ -44,10 +44,30 @@ class TString:
+     kBoth = 3
+     kNPOS = kNPOS
+ 
+-    def __init__(self, text: Any = "", length: Any = None) -> None:
++    def __init__(self, text: Any = "", length: Any = None, view: Any = None) -> None:
++        if view is not None:
++            #: A ``TString`` member of an object - ``TNamed::fName`` - is not this string's
++            #: own: ``Form`` and the rest write back through ``view``, which is how a macro
++            #: naming an object by its ``fName`` renames the object.
++            self._view = view
++            return
+         held = "" if text is None else _text(text)
+         self._s = held[: int(length)] if length is not None else held
+ 
++    @property
++    def _s(self) -> str:
++        """The characters: this string's, or the object's it is a view of."""
++        view = self.__dict__.get("_view")
++        return self.__dict__.get("_own", "") if view is None else str(view[0]())
++
++    @_s.setter
++    def _s(self, text: str) -> None:
++        view = self.__dict__.get("_view")
++        if view is None:
++            self.__dict__["_own"] = text
++        else:
++            view[1](text)
++
+     # -- as Python's string ------------------------------------------------------
+ 
+     def __str__(self) -> str:
+diff --git a/tests/pycxx/test_pycxx_conversions.py b/tests/pycxx/test_pycxx_conversions.py
+index d80a4bc3..63561269 100644
+--- a/tests/pycxx/test_pycxx_conversions.py
++++ b/tests/pycxx/test_pycxx_conversions.py
+@@ -346,3 +346,25 @@ def test_a_reference_bound_to_the_object_it_names_builds_nothing(capsys) -> None
+         }
+         """, "t.C")  # fmt: skip
+     assert capsys.readouterr().out == "4 4\n3 1.5\n"
++
++
++def test_a_container_iterator_declared_with_nothing_to_point_at_holds_no_place(capsys) -> None:
++    """``std::vector<int>::iterator it;`` names no element until a container gives it one, and
++    a translation has no container to give it: the variable starts as nothing, and the loop
++    that assigns it its ``begin()`` works - what roottest's ``io/tree/run.C`` does.
++    """
++    source = r"""
++    #include <cstdio>
++    #include <vector>
++    void it() {
++       std::vector<int> v;
++       v.push_back(7);
++       v.push_back(8);
++       std::vector<int>::iterator at;
++       for (at = v.begin(); at != v.end(); at += 1)
++          printf("%d\n", v[at - v.begin()]);
++    }
++    """
++    assert "at = None" in translate(source, "it.C")
++    run_source(source, "it.C")
++    assert capsys.readouterr().out == "7\n8\n"
+diff --git a/tests/test_cint_declared_classes.py b/tests/test_cint_declared_classes.py
+index affebe22..3ed1d9e1 100644
+--- a/tests/test_cint_declared_classes.py
++++ b/tests/test_cint_declared_classes.py
+@@ -71,6 +71,39 @@ def test_a_class_derived_from_roots_has_its_bases_members_and_classdefs_reflecti
+     assert "Warning in <Lined::Warn>: colour 4" in err
+ 
+ 
++def test_a_class_derived_from_roots_names_itself_through_the_tstring_member(capfd):
++    """``TNamed``'s name and title are the ``TString`` members ``fName`` and ``fTitle``, which
++    a derived class of a macro's writes in place - roottest's ``tref_test_pid`` names its
++    objects with ``fName.Form`` - so the two are the object's name and title."""
++    run_source(RENAMED, "renamed.C")
++    out = capfd.readouterr().out
++    assert out.splitlines() == ["PID_0 a title", "PID_1 a title", "PID_2 a title"]
++
++
++RENAMED = r"""
++#include "TNamed.h"
++class Pid : public TNamed {
++public:
++   static Int_t GetID() {
++      static Int_t max = 0;
++      return max++;
++   }
++   void Name() {
++      fName.Form("PID_%d", GetID());
++      fTitle = "a title";
++      printf("%s %s\n", fName.Data(), GetTitle());
++   }
++   ClassDefOverride(Pid, 1);
++};
++void renamed() {
++   Pid a, b, c;
++   a.Name();
++   b.Name();
++   c.Name();
++}
++"""
++
++
+ def test_a_base_member_is_found_on_the_object_and_else_in_the_library():
+     class Base:
+         def f(self):
+diff --git a/tests/test_pyroot_objects.py b/tests/test_pyroot_objects.py
+index 50d90882..efd68ca9 100644
+--- a/tests/test_pyroot_objects.py
++++ b/tests/test_pyroot_objects.py
+@@ -205,6 +205,36 @@ def test_attributes_are_kept_on_an_object_without_members_of_its_own():
+     assert thing.GetLineColor() == 1
+ 
+ 
++def test_a_named_object_is_renamed_by_writing_the_tstring_member_its_name_is():
++    """``fName`` and ``fTitle`` are the ``TString`` members a derived C++ class writes - ROOT's
++    ``TNamed`` keeps its name there - so ``fName.Form(...)`` renames the object it belongs to,
++    and a ``TString`` read off one is the object's text rather than a copy of it."""
++    thing = ROOT.TNamed("a", "first")
++    thing.fName.Form("%s_%d", "b", 3)
++    expect(
++        (thing.GetName(), "b_3"),
++        (thing.fName.Data(), "b_3"),
++        (thing.fName.Length(), 3),
++    )
++    thing.fTitle.Form("second %d", 2)
++    assert thing.GetTitle() == "second 2"
++    thing.fName = ROOT.TString("c")  # ``operator=`` of the member, as PyROOT takes it
++    assert thing.GetName() == "c"
++    thing.fName += "d"  # in place, through the same member
++    assert thing.GetName() == "cd"
++
++
++def test_a_histogram_renamed_through_fname_is_renamed_by_its_own_set_name():
++    """A histogram's name is its ``TNamed`` member as a plain object's is, but writing it goes
++    through ``TH1::SetName``, which a class that keeps more than the name needs."""
++    h = ROOT.TH1F("h", "", 1, 0, 1)
++    h.fName.Form("%s%d", "hh", 2)
++    expect(
++        (h.GetName(), "hh2"),
++        (h._xrd._core["TNamed"]["fName"], "hh2"),
++    )
++
++
+ def test_attributes_of_a_histogram_are_its_members():
+     h = ROOT.TH1F("h", "", 1, 0, 1)
+     h.SetFillColor(ROOT.kYellow)

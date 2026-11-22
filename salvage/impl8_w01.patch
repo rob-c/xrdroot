@@ -1,0 +1,48 @@
+diff --git a/src/xrdroot/tmva/weightfile.py b/src/xrdroot/tmva/weightfile.py
+index b8e21069..8a171241 100644
+--- a/src/xrdroot/tmva/weightfile.py
++++ b/src/xrdroot/tmva/weightfile.py
+@@ -76,7 +76,9 @@ def read_method_node(
+     root: Any, type_name: str, name: str, info: DataSetInfo, job: str, path: str = ""
+ ) -> Method:
+     """A method from the element holding its state: a weight file's root, or a ``SubMethod``."""
+-    method = method_class(type_name)(job, name, info, options_text(root), "", _analysis(root))
++    method = method_class(type_name, booking=False)(
++        job, name, info, options_text(root), "", _analysis(root)
++    )
+     transformations = root.find("Transformations")
+     if transformations is not None:
+         read_transformations(transformations, method.handler)
+@@ -88,16 +90,25 @@ def read_method_node(
+     return method
+ 
+ 
+-def method_class(type_name: str) -> type[Method]:
+-    """The class of the method a weight file is of, or the refusal of one there is not."""
++def method_class(type_name: str, booking: bool = True) -> type[Method]:
++    """The class of the method one is booked or read from a weight file as, or its refusal.
++
++    A method xrdroot does not have is refused by name, and the sentence says which way in it
++    came: a booking can be pointed at another method, a weight file only read by ROOT.
++    """
+     from .methods import REGISTRY
+ 
+     found = REGISTRY.get(type_name)
+-    if found is None:
+-        raise Logger("Reader").refuse(
+-            f"The weight file is of a {type_name} method, which xrdroot's TMVA does not have"
+-        )
+-    return found
++    if found is not None:
++        return found
++    said = (
++        f"xrdroot's TMVA has no {type_name} method to book: book another method, or train and "
++        "apply that one with ROOT"
++        if booking
++        else f"The weight file is of a {type_name} method, which xrdroot's TMVA does not have: "
++        "apply it with ROOT, which reads its weights"
++    )
++    raise Logger("Factory" if booking else "Reader").refuse(said)
+ 
+ 
+ def _analysis(root: Any) -> int:

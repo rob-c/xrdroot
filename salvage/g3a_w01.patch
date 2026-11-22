@@ -1,0 +1,963 @@
+diff --git a/src/xrdroot/pycint/dialect.py b/src/xrdroot/pycint/dialect.py
+index 2ab093c7..8e4bb3b4 100644
+--- a/src/xrdroot/pycint/dialect.py
++++ b/src/xrdroot/pycint/dialect.py
+@@ -262,6 +262,35 @@ def _loaded(module: dict[str, Any], made: Any) -> None:
+     rebind(module, made)
+ 
+ 
++def _parsed(unit: Any) -> list[dict[str, Any]]:
++    """The enumerations a program declares, as the interpreter knows them once it has parsed
++    it.
++
++    ROOT's interpreter declares an enumeration as it reads the declaration, so a line
++    looking one up - ``TEnum::GetEnum("a::b::en")`` - finds it whether or not the line that
++    declares it has run yet. The notes are kept with the translation, so that a run from the
++    cache - which parses nothing - tells the interpreter the same as the run that did.
++    """
++    from .library.translate import enums_of
++
++    return [note.as_stored() for note in enums_of(unit)]
++
++
++def _noted(notes: Any) -> None:
++    """Give ROOT's table of enumerations the ones a translation declared.
++
++    A dictionary's entries are noted by the loading of it, and carry the name of the class
++    or namespace that declares them as their title; one a line or a macro declares has none,
++    as ROOT answers for the enums ``execQualifiedNames`` declares with a ``ProcessLine``.
++    """
++    from ..pyroot.core.troot import note_enum
++    from .library.translate import EnumNote
++
++    for stored in notes or ():
++        note = EnumNote.of_stored(stored)
++        note_enum(note.qualified, note.items, "", note.underlying, note.scoped)
++
++
+ def _data(obj: str, args: list[str]) -> str:
+     """``s.Data()`` of a string: the string, which is what a ``TString``'s holds."""
+     return obj
+@@ -321,6 +350,8 @@ ROOT = Dialect(
+     status=returned.status,
+     session=_session,
+     loaded=_loaded,
++    parsed=_parsed,
++    noted=_noted,
+     sources=(Path(__file__).parent,),
+ )
+ 
+diff --git a/src/xrdroot/pycint/execute.py b/src/xrdroot/pycint/execute.py
+index 877445ec..63ef0ba3 100644
+--- a/src/xrdroot/pycint/execute.py
++++ b/src/xrdroot/pycint/execute.py
+@@ -144,9 +144,9 @@ VARIABLE = re.compile(
+     r"(?:=[^;]*|\{[^;]*\}|\([^;]*\))?;$"
+ )
+ 
+-#: A line that declares - a namespace, a class, a template - which cling keeps at the top,
+-#: rather than statements run in a block of their own.
+-DECLARATION = re.compile(r"^(?:namespace|class|struct|union|template\s*<)\b")
++#: A line that declares - a namespace, a class, an enumeration, a template - which cling
++#: keeps at the top, rather than statements run in a block of their own.
++DECLARATION = re.compile(r"^(?:namespace|class|struct|union|enum|template\s*<)\b")
+ 
+ DEFINITION = re.compile(r"^[ \t]*#[ \t]*(?:define|undef)\b.*$", re.M)
+ 
+diff --git a/src/xrdroot/pycint/library/build.py b/src/xrdroot/pycint/library/build.py
+index 9802ff3c..e429374c 100644
+--- a/src/xrdroot/pycint/library/build.py
++++ b/src/xrdroot/pycint/library/build.py
+@@ -83,7 +83,7 @@ def _unit(
+         name, "library", made.python, unity, dict(made.source_map), sources=inputs,
+         headers=headers, digest=digest(inputs + headers),
+         translator=translator_version(), names=found.top, namespaces=found.namespaces,
+-        classes=found.classes,
++        classes=found.classes, enums=made.notes or [],
+     ), found  # fmt: skip
+ 
+ 
+@@ -246,6 +246,7 @@ def build_aclic(
+         made.returns, sources=inputs, headers=headers, digest=digest(inputs + headers),
+         translator=translator_version(),
+         names=found.top, namespaces=found.namespaces, classes=found.classes, rootmap=False,
++        enums=made.notes or [],
+     )  # fmt: skip
+     write(library, out)
+     return library
+diff --git a/src/xrdroot/pycint/library/loading.py b/src/xrdroot/pycint/library/loading.py
+index acb26e73..10c9206f 100644
+--- a/src/xrdroot/pycint/library/loading.py
++++ b/src/xrdroot/pycint/library/loading.py
+@@ -254,6 +254,40 @@ def _declare(loaded: Loaded) -> None:
+     for name, members in loaded.library.namespaces.items():
+         DECLARED[name] = _namespace(DECLARED.get(name), name, members, module)
+     _dictionaried(loaded)
++    _enumerated(loaded)
++
++
++def _enumerated(loaded: Loaded) -> None:
++    """Tell ROOT's table of enumerations which ones this library declares.
++
++    A dictionary knows the enumerations of the headers it was built from, and ROOT's
++    interpreter knows them as soon as the library is loaded - ``TEnum::GetEnum("myNamespace::A")``
++    finds one before anything has read the header, and ``TClass::GetListOfEnums`` counts it.
++    The title of one is the name of what declares it - a namespace's, which is what the
++    6.40.04 oracle answers for roottest's ``qualifiedNames`` (``enpclass/myns``) - and none
++    where the global namespace declares it, or a class does.
++    """
++    if not loaded.library.enums:
++        return
++    from ...pyroot.core.troot import note_enum
++    from .translate import EnumNote
++
++    for stored in loaded.library.enums:
++        note = EnumNote.of_stored(stored)
++        owner = note.qualified.rpartition("::")[0]
++        title = owner if _is_namespace(loaded.library, owner) else ""
++        note_enum(note.qualified, note.items, title, note.underlying, note.scoped)
++
++
++def _is_namespace(library: Library, qualified: str) -> bool:
++    """Whether ``qualified`` names one of ``library``'s namespaces rather than one of its
++    classes - which is what its enumeration's title is the name of."""
++    found: Any = library.namespaces
++    for part in qualified.split("::") if qualified else ():
++        if not isinstance(found, dict) or not isinstance(found.get(part), dict):
++            return False
++        found = found[part]
++    return bool(qualified)
+ 
+ 
+ def _dictionaried(loaded: Loaded) -> None:
+@@ -439,8 +473,11 @@ def _indexed(path: Path) -> Library | None:
+ 
+ 
+ def provides(library: Library, name: str) -> bool:
+-    """Whether ``library`` declares ``name`` at its top: a class, function or namespace."""
+-    return name in library.names or any(each.split("::")[0] == name for each in library.classes)
++    """Whether ``library`` declares ``name`` at its top: a class, function, namespace or
++    enumeration - what its rootmap makes it loadable for."""
++    if name in library.names or any(each.get("qualified") == name for each in library.enums):
++        return True
++    return any(each.split("::")[0] == name for each in library.classes)
+ 
+ 
+ def _candidates() -> list[Path]:
+diff --git a/src/xrdroot/pycint/library/manifest.py b/src/xrdroot/pycint/library/manifest.py
+index 1932b31a..10b82b8d 100644
+--- a/src/xrdroot/pycint/library/manifest.py
++++ b/src/xrdroot/pycint/library/manifest.py
+@@ -29,7 +29,7 @@ __all__ = ["FORMAT", "SUFFIX", "LIBRARY_SUFFIXES", "Library", "read", "write", "
+ #: What a library file says it is in its ``format`` field.
+ FORMAT = "xrdroot-library"
+ #: The version of the layout below; a different one is rebuilt, never misread.
+-VERSION = 1
++VERSION = 2
+ #: The extension of a translated library, where a compiler would write ``.so``.
+ SUFFIX = ".xrdlib"
+ #: The extensions ROOT accepts after a library's name, every one meaning the same library.
+@@ -61,6 +61,9 @@ class Library:
+     namespaces: dict[str, Any] = field(default_factory=dict)
+     #: The classes it provides, qualified: what a rootmap lists, and autoloading looks up.
+     classes: list[str] = field(default_factory=list)
++    #: The enumerations it declares, each as ROOT's interpreter knows it once the library is
++    #: loaded - a :class:`.translate.EnumNote` as stored, by qualified name with its values.
++    enums: list[dict[str, Any]] = field(default_factory=list)
+     #: Whether autoloading finds it by the names it provides, as ROOT's rootmap file does.
+     rootmap: bool = True
+     #: The libraries to load before it.
+diff --git a/src/xrdroot/pycint/library/translate.py b/src/xrdroot/pycint/library/translate.py
+index c052817b..6630c2a6 100644
+--- a/src/xrdroot/pycint/library/translate.py
++++ b/src/xrdroot/pycint/library/translate.py
+@@ -18,13 +18,18 @@ from typing import Any
+ from ...pycxx.dialect import using
+ from ...pycxx.emit_module import Translator
+ from ...pycxx.nodes import (
++    Binary,
+     ClassDecl,
+     DeclStmt,
+     EnumDecl,
++    Expr,
+     Function,
++    Literal,
++    Name,
+     Namespace,
+     Stmt,
+     Typedef,
++    Unary,
+     Unit,
+ )
+ from ...pycxx.parse_decl import parse
+@@ -33,7 +38,15 @@ from ...pycxx.program import Program
+ from ...pycxx.translation import Translation
+ from ..dialect import LIBRARY as DIALECT
+ 
+-__all__ = ["Declared", "translated_unit", "declared", "declared_in", "digest"]
++__all__ = [
++    "Declared",
++    "EnumNote",
++    "enums_of",
++    "translated_unit",
++    "declared",
++    "declared_in",
++    "digest",
++]
+ 
+ 
+ @dataclass
+@@ -76,11 +89,12 @@ def translated_unit(
+         tokens, included = preprocess(source, file, directories)
+         unit = parse(tokens)
+         found = declared(unit)
++        notes = DIALECT.parsed(unit)
+         translator = Translator(Program(unit), file, Path(file).stem)
+         out = translator.translate()
+     made = Translation(out.text(), file, out.source_map(), translator.entry,
+                        [str(path) for path in included], unit.unnamed is not None,
+-                       translator.entry_returns)  # fmt: skip
++                       translator.entry_returns, notes)  # fmt: skip
+     return made, found
+ 
+ 
+@@ -133,6 +147,180 @@ def _nested(owner: ClassDecl, scope: list[str], found: Declared) -> None:
+             _nested(decl, [*scope, decl.name], found)
+ 
+ 
++@dataclass(frozen=True)
++class EnumNote:
++    """One enumeration a translation declares, as ROOT's interpreter knows it once it has
++    read the declaration: the name C++ writes it by, its enumerators with their values, and
++    the type it is stored as.
++
++    It is what a :class:`~xrdroot.pycxx.translation.Translation` keeps as its notes, so the
++    form it is kept in is plain JSON - a library's manifest holds it, and a cached
++    translation too, which is why a run from the cache notes the same enumerations as the
++    run that translated the program.
++    """
++
++    qualified: str
++    items: tuple[tuple[str, int], ...] = ()
++    #: Whether it is an ``enum class``, whose constants need its name to be written.
++    scoped: bool = False
++    #: The integer type written after ``:``, as C++ spells it - ``short``, ``unsigned char``.
++    underlying: str = ""
++
++    def as_stored(self) -> dict[str, Any]:
++        """The note as plain JSON, which a manifest and a cached translation keep."""
++        return {"qualified": self.qualified, "items": [list(each) for each in self.items],
++                "scoped": self.scoped, "underlying": self.underlying}  # fmt: skip
++
++    @staticmethod
++    def of_stored(stored: dict[str, Any]) -> EnumNote:
++        """The note ``as_stored`` wrote."""
++        return EnumNote(
++            str(stored["qualified"]),
++            tuple((str(name), int(value)) for name, value in stored.get("items", ())),
++            bool(stored.get("scoped", False)),
++            str(stored.get("underlying", "")),
++        )
++
++
++def enums_of(unit: Unit) -> list[EnumNote]:
++    """The enumerations ``unit`` declares, each once by its qualified name, in the order met.
++
++    ROOT's interpreter knows an enumeration as soon as it has read the declaration - the line
++    declaring it need not have run yet - so this is what a translation notes as it is
++    parsed, and what a dictionary build keeps for the session that loads it.
++    """
++    found: list[EnumNote] = []
++    _enums(unit.decls, [], found, {})
++    return found
++
++
++def _enums(decls: list[Stmt], scope: list[str], found: list[EnumNote],
++           known: dict[str, int]) -> None:  # fmt: skip
++    """Every enumeration ``decls`` declare, in ``scope``, noting each with ``known`` - the
++    constants of the enumerations declared before it - and adding its own as it goes."""
++    for decl in decls:
++        if isinstance(decl, Namespace):
++            _enums(decl.body, scope if decl.name is None else [*scope, decl.name], found, known)
++        elif isinstance(decl, EnumDecl):
++            _note_enum(found, scope, decl, known)
++        elif isinstance(decl, ClassDecl) and decl.name:
++            _enums(decl.members, [*scope, decl.name], found, known)
++
++
++def _note_enum(found: list[EnumNote], scope: list[str], decl: EnumDecl,
++               known: dict[str, int]) -> None:  # fmt: skip
++    """Keep the enumeration ``decl``, declared in ``scope``, as the interpreter knows it.
++
++    An enumeration with no name of its own - ``enum {kA};`` - is one nothing looks up and so
++    is not noted, and one already met - a header included again behind no guard - is kept
++    once, as ROOT's table keeps one ``TEnum`` per enumeration. One whose first enumerator is
++    a value only a compiler works out is not noted either: ROOT's table would hold the
++    constants, and an enumeration noted without them is a name a lookup finds but nothing
++    about which is true.
++    """
++    if not decl.name:
++        return
++    qualified = "::".join([*scope, decl.name])
++    if any(note.qualified == qualified for note in found):
++        return
++    items = _valued(decl.items, known)
++    if decl.items and not items:
++        return
++    underlying = decl.underlying.name if decl.underlying is not None else ""
++    found.append(EnumNote(qualified, tuple(items), decl.scoped, underlying))
++    known.update(dict(items))
++    known.update({f"{qualified}::{name}": value for name, value in items})
++
++
++def _valued(declared: list[tuple[str, Expr | None]],
++            known: dict[str, int]) -> list[tuple[str, int]]:  # fmt: skip
++    """Each enumerator and its value, counted on from the last as C++ counts, as far as the
++    declarations say: an enumerator given something this cannot work out ends the list,
++    since a wrong value in the table is worse than a value missing."""
++    values: list[tuple[str, int]] = []
++    last = -1
++    for name, written in declared:
++        counted = last + 1 if written is None else _number(written, known)
++        if counted is None:
++            break
++        known[name] = last = counted
++        values.append((name, counted))
++    return values
++
++
++def _quotient(a: int, b: int) -> int:
++    """C++'s integer division: truncated towards zero, which Python's ``//`` does not."""
++    return abs(a) // abs(b) * (1 if (a < 0) == (b < 0) else -1)
++
++
++#: The arithmetic and bit operations an enumerator's value may be written with, as C++'s
++#: integers do them.
++INTEGER_OPERATIONS: dict[str, Any] = {
++    "+": lambda a, b: a + b,
++    "-": lambda a, b: a - b,
++    "*": lambda a, b: a * b,
++    "/": _quotient,
++    "%": lambda a, b: a - b * _quotient(a, b),
++    "<<": lambda a, b: a << b,
++    ">>": lambda a, b: a >> b,
++    "&": lambda a, b: a & b,
++    "|": lambda a, b: a | b,
++    "^": lambda a, b: a ^ b,
++}
++
++#: The unary operations one may be written with: ``-1``, ``~mask``, and ``!value``, which C++
++#: types as an ``int`` rather than as its operand's type.
++UNARY_OPERATIONS: dict[str, Any] = {
++    "-": lambda value: -value,
++    "+": lambda value: value,
++    "~": lambda value: -value - 1,
++    "!": lambda value: int(not value),
++}
++
++
++def _number(value: Expr, known: dict[str, int]) -> int | None:
++    """An enumerator's value when it is an integer this can work out: a number written out,
++    ``true``, a constant an enumeration declared before this one, or arithmetic and bit
++    operations on those. Anything else - a call, a float, a cast, ``sizeof`` - is ``None``.
++    """
++    if isinstance(value, Literal):
++        return _literal_number(value)
++    if isinstance(value, Unary):
++        return _unary_number(value, known)
++    if isinstance(value, Binary):
++        return _binary_number(value, known)
++    return known.get("::".join(value.parts)) if isinstance(value, Name) else None
++
++
++def _literal_number(value: Literal) -> int | None:
++    """``3``, ``'a'`` or ``true``; ``3.7`` and a string are no integer C++ counts on."""
++    if value.kind == "bool":
++        return int(bool(value.value))
++    return int(value.value) if value.kind in ("int", "char") else None
++
++
++def _unary_number(value: Unary, known: dict[str, int]) -> int | None:
++    """``-kA``, ``+81``, ``~mask``: the operation, when its operand is a number here."""
++    operation = UNARY_OPERATIONS.get(value.op)
++    inner = _number(value.operand, known)
++    return None if operation is None or inner is None else int(operation(inner))
++
++
++def _binary_number(value: Binary, known: dict[str, int]) -> int | None:
++    """``1 << 14``, ``kA | kB``: C++'s integer operation, when both sides are numbers here.
++
++    One C++ itself would refuse - ``1 / 0`` - is no value either, and must not raise.
++    """
++    operation = INTEGER_OPERATIONS.get(value.op)
++    left, right = _number(value.left, known), _number(value.right, known)
++    if operation is None or left is None or right is None:
++        return None
++    try:
++        return int(operation(left, right))
++    except (ArithmeticError, ValueError):
++        return None
++
++
+ def _names(decl: Stmt) -> list[tuple[str, bool]]:
+     """The names one declaration declares, each with whether it names a type."""
+     if isinstance(decl, (ClassDecl, Typedef)):
+diff --git a/src/xrdroot/pycxx/cache.py b/src/xrdroot/pycxx/cache.py
+index 1bf7a986..9754de4e 100644
+--- a/src/xrdroot/pycxx/cache.py
++++ b/src/xrdroot/pycxx/cache.py
+@@ -87,6 +87,7 @@ def load(source: str, file: str, dialect: Dialect | None = None) -> Translation
+         kept["included"],
+         kept["unnamed"],
+         kept["returns"],
++        kept.get("notes"),
+     )
+ 
+ 
+@@ -101,6 +102,7 @@ def save(
+         "included": translation.included,
+         "unnamed": translation.unnamed,
+         "returns": translation.returns,
++        "notes": translation.notes,
+         "included_hash": _included_hash(translation.included),
+     }
+     where = directory()
+diff --git a/src/xrdroot/pycxx/dialect.py b/src/xrdroot/pycxx/dialect.py
+index 8268443c..5fe9a582 100644
+--- a/src/xrdroot/pycxx/dialect.py
++++ b/src/xrdroot/pycxx/dialect.py
+@@ -91,6 +91,14 @@ def _nothing_loaded(module: dict[str, Any], made: Any) -> None:
+     """A host with no libraries of its own leaves a program's names as it defined them."""
+ 
+ 
++def _nothing_parsed(unit: Any) -> None:
++    """Plain C++ has no host behind it, so a declaration parsed asks nothing of one."""
++
++
++def _nothing_noted(notes: Any) -> None:
++    """Plain C++ has no host keeping a table, so nothing a parse noted is given to one."""
++
++
+ @dataclass(frozen=True, eq=False)
+ class Dialect:
+     """A library's additions to C++, by name - empty for plain C++ (:data:`CXX`)."""
+@@ -225,6 +233,14 @@ class Dialect:
+     #: ``(module, translation)``: called once a program's Python has run and before anything
+     #: in it is called - where a host binds the names a library it loaded already defines.
+     loaded: Callable[[dict[str, Any], Any], None] = _nothing_loaded
++    #: ``(unit)``: called with what a program declares, as it is parsed and before it runs -
++    #: where a host that keeps a table of declarations, as an interpreter does, notes them.
++    #: What it returns is kept with the translation, plain JSON, and given to :attr:`noted`.
++    parsed: Callable[[Any], Any] = _nothing_parsed
++    #: ``(notes)``: what :attr:`parsed` returned, given to the host whether the translation
++    #: was just made or read back from the cache - a cached one is not parsed again, so
++    #: without this a program run twice would declare its enumerations only the first time.
++    noted: Callable[[Any], None] = _nothing_noted
+     #: Directories whose code shapes translations, hashed into a cached translation's key.
+     sources: tuple[Path, ...] = ()
+ 
+diff --git a/src/xrdroot/pycxx/execute.py b/src/xrdroot/pycxx/execute.py
+index 2456bbf4..c05feec1 100644
+--- a/src/xrdroot/pycxx/execute.py
++++ b/src/xrdroot/pycxx/execute.py
+@@ -60,12 +60,12 @@ def _reset_streams() -> None:
+ def translated(source: str, file: str, dialect: Dialect, use_cache: bool) -> Translation:
+     """The translation of ``source`` in ``dialect``: from the cache if allowed and kept there."""
+     found = cache.load(source, file, dialect) if use_cache else None
+-    if found is not None:
+-        return found
+-    made = translation(source, file, [Path(file).parent], dialect)
+-    if use_cache:
+-        cache.save(source, file, made, dialect)
+-    return made
++    if found is None:
++        found = translation(source, file, [Path(file).parent], dialect)
++        if use_cache:
++            cache.save(source, file, found, dialect)
++    dialect.noted(found.notes)
++    return found
+ 
+ 
+ @contextmanager
+diff --git a/src/xrdroot/pycxx/translation.py b/src/xrdroot/pycxx/translation.py
+index 91f0f437..80492c6e 100644
+--- a/src/xrdroot/pycxx/translation.py
++++ b/src/xrdroot/pycxx/translation.py
+@@ -11,6 +11,7 @@ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
+ from pathlib import Path
++from typing import Any
+ 
+ from .dialect import Dialect, active, using
+ from .emit_module import Translator
+@@ -34,6 +35,9 @@ class Translation:
+     unnamed: bool = False
+     #: The entry's return type as the dialect spells it, or None when it prints none.
+     returns: str | None = None
++    #: What the dialect's ``parsed`` hook made of the unit - plain JSON, kept with the
++    #: translation so that a run from the cache tells the host what parsing it would have.
++    notes: Any = None
+ 
+ 
+ def translation(
+@@ -47,6 +51,7 @@ def translation(
+     with using(dialect or active()):
+         tokens, included = preprocess(source, file, directories)
+         unit = parse(tokens)
++        notes = active().parsed(unit)
+         program = Program(unit)
+         stem = Path(file).stem if file != "<macro>" else "macro"
+         translator = Translator(program, file, stem)
+@@ -59,4 +64,5 @@ def translation(
+         [str(path) for path in included],
+         unit.unnamed is not None,
+         translator.entry_returns,
++        notes,
+     )
+diff --git a/src/xrdroot/pycxx/typeids.py b/src/xrdroot/pycxx/typeids.py
+index edc31a44..f56c0130 100644
+--- a/src/xrdroot/pycxx/typeids.py
++++ b/src/xrdroot/pycxx/typeids.py
+@@ -14,14 +14,15 @@ from __future__ import annotations
+ from typing import Any
+ 
+ from .ctype import CType
+-from .nodes import ClassDecl, Namespace, Stmt
++from .nodes import ClassDecl, EnumDecl, Namespace, Stmt
+ from .program import ClassInfo
+ 
+ __all__ = ["qualified_names", "spelled", "polymorphic"]
+ 
+ 
+ def qualified_names(decls: list[Stmt], prefix: str = "") -> dict[str, str]:
+-    """Each of the macro's classes, by its name, as its namespaces and outer classes qualify it."""
++    """Each of the macro's classes and enumerations, by its name, as its namespaces and outer
++    classes qualify it - which is the name ``typeid`` of one spells it with."""
+     found: dict[str, str] = {}
+     for decl in decls:
+         if isinstance(decl, Namespace):
+@@ -30,6 +31,8 @@ def qualified_names(decls: list[Stmt], prefix: str = "") -> dict[str, str]:
+         elif isinstance(decl, ClassDecl):
+             found[decl.name] = prefix + decl.name
+             found.update(qualified_names(decl.members, f"{prefix}{decl.name}::"))
++        elif isinstance(decl, EnumDecl) and decl.name:
++            found[decl.name] = prefix + decl.name
+     return found
+ 
+ 
+diff --git a/src/xrdroot/pyroot/core/collections.py b/src/xrdroot/pyroot/core/collections.py
+index bc54fae7..61f51968 100644
+--- a/src/xrdroot/pyroot/core/collections.py
++++ b/src/xrdroot/pyroot/core/collections.py
+@@ -18,6 +18,7 @@ from collections.abc import Iterator
+ from typing import Any
+ 
+ from ...cppstd.containers import TEMPLATES as _TEMPLATES
++from ...cppstd.containers import string as _StdString
+ from .objects import Indent, TNamed, TObject
+ from .strings import TString
+ 
+@@ -50,8 +51,15 @@ _PRIVATE = ["FunctionList"]
+ SINGLE_KEY = 1 << 0
+ 
+ 
+-def _named(item: Any, name: str) -> bool:
+-    """Is ``item`` called ``name``, as ``FindObject`` compares them?"""
++def _named(item: Any, name: Any) -> bool:
++    """Is ``item`` called ``name``, as ``FindObject`` compares them?
++
++    ``name`` is a string, a ``TString``, or a ``std::string`` - which C++ passes to
++    ``FindObject`` by converting it to a ``const char*`` and which is a value of its own
++    here, so it is compared as the text it holds.
++    """
++    if isinstance(name, (TString, _StdString)):
++        name = str(name)
+     return hasattr(item, "GetName") and item.GetName() == name
+ 
+ 
+@@ -189,8 +197,9 @@ class TCollection(TObject):
+ 
+     def FindObject(self, name: Any) -> Any:
+         """The first object called ``name``, or the object itself if held; ``None`` if neither."""
+-        if isinstance(name, str):
+-            return next((item for item in self._items if _named(item, name)), None)
++        called = _text(name)
++        if called is not None:
++            return next((item for item in self._items if _named(item, called)), None)
+         return next((item for item in self._items if item is name), None)
+ 
+     def IndexOf(self, obj: Any) -> int:
+@@ -640,9 +649,9 @@ class THashTable(TCollection):
+ 
+ 
+ def _text(other: Any) -> str | None:
+-    """What a ``TObjString`` is compared with as a string - a string, a ``TString`` or
+-    another ``TObjString`` - or ``None`` for anything else, which it is never equal to."""
+-    return str(other) if isinstance(other, (str, TObjString, TString)) else None
++    """What an object is found by as a name - a string, a ``TString``, a ``std::string`` or a
++    ``TObjString`` - or ``None`` for anything else, which is found by being itself."""
++    return str(other) if isinstance(other, (str, TObjString, TString, _StdString)) else None
+ 
+ 
+ class TObjString(TNamed):
+diff --git a/src/xrdroot/pyroot/core/troot.py b/src/xrdroot/pyroot/core/troot.py
+index 296b8a20..22e4126b 100644
+--- a/src/xrdroot/pyroot/core/troot.py
++++ b/src/xrdroot/pyroot/core/troot.py
+@@ -36,7 +36,7 @@ from .strings import TString
+ __all__ = ["TROOT", "gROOT", "gDebug", "gInterpreter", "gObjectTable", "TInterpreter",
+            "set_line_processor", "SetHeuristicMemoryPolicy", "TEnum", "TEnumConstant",
+            "TListOfEnums", "class_enums", "TListOfEnumsWithLock", "find_enum", "note_enum",
+-           "TGlobal"]
++           "scope_declared", "TGlobal"]
+ 
+ #: ``gObjectTable``: ROOT's count of objects by class - which is not kept here, so it is null,
+ #: and a macro testing it skips it.
+@@ -287,14 +287,22 @@ class TEnum(TNamed):
+         ``kAutoload`` or ``kALoadAndInterpLookup``, the default, which is what ``GetEnum``
+         with no second argument does - loads the library a rootmap lists the enumeration in;
+         ``kNone`` and ``kInterpLookup`` ask the interpreter alone, which here is the table.
++
++        A lookup that may autoload reads a library only where the class or namespace the name
++        puts the enumeration in is one the session has not: ROOT asks that scope for its
++        enumerations and loads only what the scope needs, so an empty
++        ``namespace myNamespace {}`` declared at the prompt is a scope holding no enum rather
++        than a reason to read the library declaring ``myNamespace::A``.
+         """
+         spelled = name if isinstance(name, str) else str(name)
+         found = find_enum(spelled)
+         if found is not None:
+             return found
+-        if action in (TEnum.kAutoload, TEnum.kALoadAndInterpLookup) and autoload_enum(spelled):
+-            return find_enum(spelled)
+-        return None
++        if action not in (TEnum.kAutoload, TEnum.kALoadAndInterpLookup):
++            return None
++        if scope_declared(spelled):
++            return None
++        return find_enum(spelled) if autoload_enum(spelled) else None
+ 
+ 
+ class TGlobal(TNamed):
+@@ -372,6 +380,22 @@ def find_enum(name: Any) -> TEnum | None:
+     return _ENUMS.get(str(name).strip())
+ 
+ 
++def scope_declared(name: Any) -> bool:
++    """Whether the class or namespace ``name`` puts an enumeration in - ``N::E``'s ``N`` - is
++    one this session has, whose own list of enumerations already answers for it.
++
++    A namespace or class is had once a line, a macro or a loaded library declared it, which
++    is what the interpreter keeps its names in; asking ``TClass::GetClass`` is no test, as
++    it takes a class no dictionary describes to be there - and loads one to say so.
++    """
++    owner = str(name).rpartition("::")[0]
++    if not owner:
++        return False
++    from ...pycxx.runtime.namespace import DECLARED
++
++    return owner in DECLARED
++
++
+ def autoload_enum(name: str) -> bool:
+     """Load the library whose rootmap lists the enumeration ``name``, as ``TEnum::GetEnum``
+     does before it gives up; whether a translator able to load one was there at all.
+diff --git a/tests/test_cint_typeid.py b/tests/test_cint_typeid.py
+index 6399efaf..57bc007b 100644
+--- a/tests/test_cint_typeid.py
++++ b/tests/test_cint_typeid.py
+@@ -10,6 +10,7 @@ from xrdroot.pycint import Refusal, translate
+ from xrdroot.pycint.execute import run_source
+ from xrdroot.pycint.runtime import bad_typeid, type_info, typeid_dynamic, typeid_of
+ from xrdroot.pycxx.runtime.typeinfo import _base36, mangle
++from xrdroot.pyroot.core import troot
+ 
+ CLASSES = """
+ #include <typeinfo>
+@@ -169,6 +170,25 @@ def test_typeid_spells_a_class_with_its_namespaces_and_the_class_it_is_in(
+     assert output(capsys, source) == names
+ 
+ 
++def test_typeid_spells_an_enumeration_with_the_namespaces_it_is_declared_in(
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    """``TEnum::GetEnum`` of a ``type_info`` is keyed by the name ``typeid`` spells, which for a
++    namespaced enumeration is its namespaces' - the 6.40.04 oracle answers
++    ``N5outer5inner4ModeE`` and ``outer::inner::Mode`` for this one."""
++    source = """
++    namespace outer { namespace inner { enum Mode { kOff }; } }
++    void t() {
++      cout << typeid(outer::inner::Mode).name() << " "
++           << TEnum::GetEnum(typeid(outer::inner::Mode))->GetQualifiedName() << endl;
++    }
++    """
++    try:
++        assert output(capsys, source, root=ROOT) == "N5outer5inner4ModeE outer::inner::Mode\n"
++    finally:  # the enumeration is the session's once the line has run
++        troot._ENUMS.pop("outer::inner::Mode", None)
++
++
+ def test_typeid_finds_roots_class_of_an_object_for_tclass(
+     capsys: pytest.CaptureFixture[str],
+ ) -> None:
+diff --git a/tests/test_pycint_library.py b/tests/test_pycint_library.py
+index 6b081b03..1e92dc74 100644
+--- a/tests/test_pycint_library.py
++++ b/tests/test_pycint_library.py
+@@ -33,9 +33,10 @@ from xrdroot.pycint.library import (
+     translate,
+ )
+ from xrdroot.pycint.library.build import translator_version
+-from xrdroot.pycxx import cache
++from xrdroot.pycxx import cache, execute
+ from xrdroot.pycxx.errors import CxxError, Refusal
+ from xrdroot.pycxx.runtime.namespace import DECLARED
++from xrdroot.pyroot.core import troot
+ 
+ #: A header with a class in a namespace, a static member and a function only declared.
+ SHAPES_H = """\
+@@ -90,11 +91,15 @@ def _isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
+     monkeypatch.setattr(ROOT.gSystem, "_dynamic_path", "")
+     monkeypatch.setattr(ROOT.gSystem, "_build_dir", "")
+     saved, names = dict(DECLARED), set(vars(ROOT))
++    enums = dict(troot._ENUMS)
++    troot._ENUMS.clear()
+     loading.forget_all()
+     try:
+         yield from fresh(tmp_path)
+     finally:
+         loading.forget_all()
++        troot._ENUMS.clear()
++        troot._ENUMS.update(enums)
+         DECLARED.clear()
+         DECLARED.update(saved)
+         for name in set(vars(ROOT)) - names:  # what gInterpreter.Declare made ROOT's
+@@ -419,6 +424,158 @@ def test_autoloading_reads_a_library_once_while_it_is_unchanged() -> None:
+     assert not loading.autoload("CountShapes")
+ 
+ 
++#: A header whose enumerations a program asks ROOT's interpreter for by name - the shape
++#: roottest's ``qualifiedNames`` and ``enumsTestClasses`` dictionaries have.
++ENUMS_H = """\
++#ifndef ENUMS_H
++#define ENUMS_H
++namespace myns { enum enpclass {kNoneNonConflicting}; }
++enum enpclass {kNoneNonConflicting};
++class Holder { public: enum class Mode : short {kOff, kOn}; };
++#endif
++"""
++
++
++def enums_library() -> Path:
++    """``libEnums.xrdlib``: a dictionary of :data:`ENUMS_H`, and nothing else in it."""
++    write("Enums.h", ENUMS_H)
++    return build_dictionary("Enums", [Path("Enums.h")], out=None)
++
++
++def noted(source: str) -> list[translate.EnumNote]:
++    """What the interpreter notes of the enumerations ``source`` declares, as it parses it."""
++    from xrdroot.pycint.dialect import ROOT as CINT
++    from xrdroot.pycxx.dialect import using
++    from xrdroot.pycxx.parse_decl import parse
++    from xrdroot.pycxx.preprocessor import preprocess
++
++    with using(CINT):
++        tokens, _ = preprocess(source, "<enums>", [])
++        return translate.enums_of(parse(tokens))
++
++
++def test_the_enumerations_a_unit_declares_are_read_off_its_declarations() -> None:
++    """Each is kept by the name C++ writes it by, with its constants' values counted on as C++
++    counts them and the type it is stored as; one with no name of its own - ``enum {kA};`` -
++    is one nothing looks up, so it is not kept, and one met again - a header read twice - is
++    the enumeration already kept, as ROOT's table holds one ``TEnum`` per enumeration."""
++    found = noted(
++        "enum EFirst {kA, kB = 5, kC};\n"
++        "namespace n { namespace inner { enum EIn {kOne}; } }\n"
++        "class C { public: enum class Mode : short {kOff}; };\n"
++        "enum EFirst {kA};\n"
++        "enum {kAnonymous};\n"
++        "namespace n { enum EIn2 {}; }\n"
++    )
++    assert [(note.qualified, note.items) for note in found] == [
++        ("EFirst", (("kA", 0), ("kB", 5), ("kC", 6))),
++        ("n::inner::EIn", (("kOne", 0),)),
++        ("C::Mode", (("kOff", 0),)),
++        ("n::EIn2", ()),
++    ]
++    assert found[2].scoped is True and found[2].underlying == "short"
++    assert translate.EnumNote.of_stored(found[1].as_stored()) == found[1]
++
++
++def test_an_enumerators_value_is_what_cpp_works_out_and_anything_else_ends_the_list() -> None:
++    """ROOT's table holds every constant of an enumeration, so one whose values this cannot
++    work out - a call, a float, a cast, a name no enumeration declares - is left out of the
++    table rather than noted with a value that is not its own."""
++    found = noted(
++        "enum G {kG = 3};\n"
++        "enum EArithmetic {kA = 1 << 4, kB, kC = -2, kD = 7 / 2, kE = -7 / 2, kF = kA | kB};\n"
++        "enum ERef {kA = G::kG, kB = kA + 1, kC = true, kD = 'a'};\n"
++        "enum EUnary {kA = ~0, kB = +81, kC = !5};\n"
++        "enum EFloat {kA = 3.7, kB};\n"
++        "enum ECast {kA = (int) 1, kB};\n"
++        "enum EName {kA = someConst, kB};\n"
++        "enum EPartial {kA = 2, kB = one(), kC};\n"
++        "enum EDivZero {kA = 1 / 0, kB};\n"
++        "enum EOperation {kA = 1 && 2, kB};\n"
++    )
++    assert [(note.qualified, note.items) for note in found] == [
++        ("G", (("kG", 3),)),
++        ("EArithmetic", (("kA", 16), ("kB", 17), ("kC", -2), ("kD", 3), ("kE", -3), ("kF", 17))),
++        ("ERef", (("kA", 3), ("kB", 4), ("kC", 1), ("kD", 97))),
++        ("EUnary", (("kA", -1), ("kB", 81), ("kC", 0))),
++        ("EPartial", (("kA", 2),)),
++    ]
++
++
++def test_a_dictionary_carries_the_enumerations_of_the_headers_it_was_built_from() -> None:
++    library = read(enums_library())
++    assert library is not None
++    assert library.enums == [
++        {"qualified": "myns::enpclass", "items": [["kNoneNonConflicting", 0]],
++         "scoped": False, "underlying": ""},
++        {"qualified": "enpclass", "items": [["kNoneNonConflicting", 0]],
++         "scoped": False, "underlying": ""},
++        {"qualified": "Holder::Mode", "items": [["kOff", 0], ["kOn", 1]],
++         "scoped": True, "underlying": "short"},
++    ]  # fmt: skip
++
++
++def test_loading_a_dictionary_declares_its_enumerations_to_the_interpreter() -> None:
++    """A dictionary's enumerations are the interpreter's as soon as the library is loaded, and
++    the title of one is the name of the namespace declaring it - which the 6.40.04 oracle
++    answers for roottest's ``qualifiedNames`` (``enpclass/myns``) - and none where a class or
++    the global namespace declares it, whose own name is not a scope."""
++    enums_library()
++    assert troot.find_enum("myns::enpclass") is None
++    assert load("libEnums") == 0
++    namespaced = troot.find_enum("myns::enpclass")
++    assert namespaced is not None and namespaced.GetTitle() == "myns"
++    global_enum = troot.find_enum("enpclass")
++    assert global_enum is not None and global_enum.GetTitle() == ""
++    mode = troot.find_enum("Holder::Mode")
++    assert mode is not None and (mode.GetTitle(), mode.IsScoped()) == ("", True)
++    assert mode.GetUnderlyingType() == 2  # kShort_t, as the oracle answers for ``: short``
++    assert [one.GetName() for one in troot.class_enums("Holder")] == ["Mode"]
++
++
++def test_an_enumeration_a_dictionary_declares_is_autoloaded_by_its_name() -> None:
++    """``TEnum::GetEnum`` reads the library its rootmap says declares the enumeration, so a
++    program asking for one no header has read yet finds it - roottest's ``qualifiedNames``
++    never loads its dictionary itself, and ``kNone`` says not to."""
++    enums_library()
++    assert troot.TEnum.GetEnum("myns::enpclass", troot.TEnum.kNone) is None
++    assert ours() == []
++    found = troot.TEnum.GetEnum("myns::enpclass")
++    assert found is not None and found.GetQualifiedName() == "myns::enpclass"
++    assert ours() == ["libEnums"]
++    assert troot.TEnum.GetEnum("enpclass") is not None  # the one of the global namespace
++    assert troot.TEnum.GetEnum("Nowhere::ENone") is None
++
++
++def test_a_rootmap_that_lists_an_enumeration_provides_it_by_its_name() -> None:
++    """``provides`` is what a rootmap entry means: the library declaring the name - a class by
++    any of its qualified spellings, a namespace, a function, an enumeration."""
++    library = read(enums_library())
++    assert library is not None
++    assert loading.provides(library, "myns::enpclass")  # an enumeration
++    assert loading.provides(library, "Holder")
++    assert not loading.provides(library, "Nowhere")
++
++
++def test_a_translation_notes_its_enumerations_even_when_it_is_read_from_the_cache() -> None:
++    """A cached translation is not parsed again, so what its parse noted is kept with it: a
++    line declaring an enumeration twice tells the interpreter of it both times."""
++    from xrdroot.pycint.dialect import ROOT as CINT
++    from xrdroot.pycxx.translation import translation
++
++    source = "namespace cached { enum E {kA, kB}; }\n"
++    made = translation(source, "<line>", dialect=CINT)
++    assert made.notes == [{"qualified": "cached::E", "items": [["kA", 0], ["kB", 1]],
++                           "scoped": False, "underlying": ""}]  # fmt: skip
++    for _ in range(2):
++        execute.translated(source, "<line>", CINT, True)
++        found = troot.find_enum("cached::E")
++        assert found is not None
++        assert [(one.GetName(), one.GetValue()) for one in found.GetConstants()] == [
++            ("kA", 0), ("kB", 1),
++        ]  # fmt: skip
++
++
+ def test_a_name_no_library_provides_is_still_not_found() -> None:
+     with pytest.raises(AttributeError, match="ROOT has Nowhere"):
+         _ = ROOT.Nowhere
+diff --git a/tests/test_pyroot_collections.py b/tests/test_pyroot_collections.py
+index fecff67a..a1c625a7 100644
+--- a/tests/test_pyroot_collections.py
++++ b/tests/test_pyroot_collections.py
+@@ -47,6 +47,19 @@ def test_a_list_adds_finds_and_removes_as_roots_does():
+     assert held.IsEmpty()
+ 
+ 
++def test_finding_by_a_text_cpp_passes_as_a_c_string_compares_its_text():
++    """``list->FindObject(n.c_str())`` where ``n`` is a ``std::string`` is ``ROOT.std.string``'s
++    object here, not a ``str``: C++ hands ``FindObject`` a ``const char*`` and reads the text
++    of it, which roottest's ``execEnumsTest`` looks its globals up with."""
++    held = ROOT.TList()
++    for name in ("kLow", "kHigh"):
++        held.Add(ROOT.TNamed(name, name))
++    std = ROOT.std.string("kLow")
++    assert held.FindObject(std) is held[0]
++    assert held.FindObject(ROOT.TString("kHigh")) is held[1]
++    assert held.FindObject(ROOT.TObjString("none")) is None
++
++
+ def test_a_sequence_is_indexed_and_walked_both_ways():
+     a, b, c = named("b", "a", "c")
+     held = ROOT.TList()
+diff --git a/tests/test_troot_enums.py b/tests/test_troot_enums.py
+index c368209f..1702403f 100644
+--- a/tests/test_troot_enums.py
++++ b/tests/test_troot_enums.py
+@@ -15,6 +15,7 @@ from collections.abc import Iterator
+ import pytest
+ 
+ import xrdroot.pyroot as ROOT
++from xrdroot.pycxx.runtime.namespace import DECLARED
+ from xrdroot.pyroot.core import troot
+ 
+ 
+@@ -141,6 +142,32 @@ def test_without_a_translator_a_lookup_that_may_autoload_only_asks_the_table(
+     assert troot.TEnum.GetEnum("myns::EIn") is troot.find_enum("myns::EIn")
+ 
+ 
++def test_a_lookup_that_may_autoload_reads_no_library_for_a_scope_the_session_has(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    """ROOT asks the class or namespace the name puts the enumeration in and reads a library
++    only where that scope is one it has not - the oracle finds ``myNamespace::A`` null while
++    an empty ``namespace myNamespace {}`` is declared, which is what roottest's
++    ``execenumsInNamespaces`` prints before it loads the library."""
++    asked: list[str] = []
++
++    def loader(name: str) -> bool:
++        asked.append(name)
++        troot.note_enum(name, [("kOne", 1)])
++        return True
++
++    monkeypatch.setitem(troot._PROVIDED, "autoload", lambda: loader)
++    monkeypatch.setitem(DECLARED, "myNamespace", object())
++    assert troot.TEnum.GetEnum("myNamespace::A") is None
++    assert asked == []
++    # A name no scope qualifies is asked for as it stands, and one whose scope this session
++    # does not have is looked for in the library a rootmap lists it in.
++    assert troot.TEnum.GetEnum("Nowhere::A") is troot.find_enum("Nowhere::A")
++    assert asked == ["Nowhere::A"]
++    assert troot.scope_declared("ENoScope") is False
++    assert troot.scope_declared("myNamespace::A") is True
++
++
+ def _no_translator() -> None:
+     """The provider of a ``gInterpreter->AutoLoad`` that this session cannot reach."""
+     raise AttributeError("interpreter.autoload")

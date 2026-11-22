@@ -1,0 +1,21 @@
+diff --git a/src/xrdroot/buffer.py b/src/xrdroot/buffer.py
+index 188c95a2..f61aacba 100644
+--- a/src/xrdroot/buffer.py
++++ b/src/xrdroot/buffer.py
+@@ -255,6 +255,16 @@ class Buffer:
+     def bool(self) -> bool:
+         return self.u8() != 0
+ 
++    def number(self, form: struct.Struct) -> Any:
++        """One number whose layout is known, read where the record stands.
++
++        A whole object's members are read one at a time, millions of them in a
++        tree that holds a collection of objects per entry, and NumPy's price
++        for one number - a buffer, a cast and an item - is ten times what
++        :mod:`struct` charges for the same bytes.
++        """
++        return self._take(form)
++
+     def take(self, count: int) -> bytes:
+         """``count`` raw bytes."""
+         index = self.pos - self.offset
