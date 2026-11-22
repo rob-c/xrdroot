@@ -41,6 +41,7 @@ import numpy as np
 
 from . import bitset as _bitset
 from . import random as _random
+from . import span as _span
 from . import stdlib as _stdlib
 from .vectorassign import register as _register_vector_assignment
 from .vectorvalue import assigned as _assign_vector_value
@@ -1792,6 +1793,8 @@ class _Namespace:
     array = _ArrayTemplate()
     get = _GetTemplate()
     bitset = _bitset.bitset
+    #: ``std::span<T>``: a view of what it was handed, indexed in place.
+    span = _span.span
     mt19937 = _random.mt19937
     default_random_engine = _random.default_random_engine
     normal_distribution = _random.normal_distribution

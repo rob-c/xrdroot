@@ -316,6 +316,7 @@ xrdroot.stats.prob(chi2, ndf), xrdroot.stats.kolmogorov_prob(z)
 | `TMath::KolmogorovProb(z)` | `xrdroot.stats.kolmogorov_prob(z)` |
 | `ROOT::Math::inc_gamma(a, x)`, `inc_gamma_c` | `xrdroot.stats.incomplete_gamma(a, x)`, `incomplete_gamma_c` |
 | `TH1::SmoothArray(n, xx, ntimes)` | `xrdroot.stats.smooth_array(xx, ntimes)` |
+| `TMath::KNNDensity(obs, queries, out, k, dmin)` | `ROOT.TMath.KNNDensity(obs, queries, out, k, dmin)` — `out` written through the span it is given |
 
 The chi-square is Gagunashvili's, as ROOT's is: `"UU"` for two counts —
 the default — `"UW"` for a count against a weighted histogram, the count

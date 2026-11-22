@@ -265,3 +265,52 @@ def test_gaus_of_an_array_is_the_arrays_gaussian() -> None:
     xs = np.array([-1.0, 0.0, 2.0, 50.0])
     assert ROOT.TMath.Gaus(xs, 1.0, 2.0).tolist() == [ROOT.TMath.Gaus(x, 1.0, 2.0) for x in xs]
     assert ROOT.TMath.Gaus(xs, 0.0, 0.0).tolist() == [ROOT.TMath.Gaus(x, 0.0, 0.0) for x in xs]
+
+
+#: A sample, two queries, and the two densities ROOT 6.40 answers for them - measured on the
+#: oracle with ``/tmp/r61/work-knn/knn.C``: ``k = 2`` and ``dmin = 0``, then ``k = 0`` and
+#: ``dmin = 1``, which is the density at the sample's own scale.
+KNN_SAMPLE = [-3.1, -2.4, -1.5, 0.0, 0.9, 1.9, 2.9, 4.4]
+KNN_QUERIES = [-3.0, 1.0, 9.0]
+KNN_TWO_NEIGHBOURS = [1.4814814814814812, 0.9876543209876544, 0.14571948998178508]
+KNN_SCALED = [0.8888888888888888, 0.935672514619883, 0.0966183574879227]
+
+
+@pytest.mark.parametrize(("k", "dmin", "expected"), [
+    (2, 0.0, KNN_TWO_NEIGHBOURS),
+    (0, 1.0, KNN_SCALED),
+])
+def test_knndensity_is_roots_density_written_into_the_span_it_was_given(
+    k: int, dmin: float, expected: list[float]
+) -> None:
+    written = [0.0, 0.0, 0.0]
+    ROOT.TMath.KNNDensity(KNN_SAMPLE, KNN_QUERIES, written, k, dmin)
+    assert written == expected
+
+
+def test_knndensity_of_an_empty_sample_has_no_density_to_report() -> None:
+    written = [-1.0]
+    ROOT.TMath.KNNDensity([], [0.0], written, 0, 1.0)
+    assert written == [0.0]
+
+
+def test_knndensity_refuses_a_negative_k_and_leaves_the_result_alone() -> None:
+    written = [-1.0]
+    ROOT.TMath.KNNDensity(KNN_SAMPLE, [0.0], written, -1, 0.0)
+    assert written == [-1.0]
+
+
+def test_knndensity_refuses_a_result_of_another_length_than_the_queries() -> None:
+    written = [-1.0]
+    ROOT.TMath.KNNDensity(KNN_SAMPLE, [0.0, 1.0], written, 1, 0.0)
+    assert written == [-1.0]
+
+
+def test_knndensity_takes_a_span_as_the_translator_builds_one() -> None:
+    from xrdroot.cppstd.cells import Cell
+    from xrdroot.cppstd.span import span
+
+    output = Cell(0.0, "double")
+    query = Cell(1.0, "double")
+    ROOT.TMath.KNNDensity(span(KNN_SAMPLE), span(query, 1), span(output, 1), 2, 0.0)
+    assert output.value == KNN_TWO_NEIGHBOURS[1]
