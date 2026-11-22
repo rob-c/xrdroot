@@ -690,3 +690,22 @@ def test_a_tree_written_before_the_file_is_assembled_reads_back_with_its_entries
             (again is not None, True),
             (int(again.GetEntries()), 3),
         )
+
+
+def test_an_ntuple_written_into_a_file_is_readable_when_the_file_is_written(tmp_path):
+    """The RNTuple goes out with the rest of the file's bookkeeping, so a ``Write`` makes it
+    readable too - its pages, header and footer are written once between a checkpoint and the
+    close that follows."""
+
+    made = ROOT.TFile(str(tmp_path / "ntuple.root"), "RECREATE")
+    model = ROOT.RNTupleModel.Create()
+    field = model.MakeField["int"]("n")
+    writer = ROOT.RNTupleWriter.Append(ROOT.std.move(model), "events", made)
+    for value in (1, 2, 3):
+        field.value = value
+        writer.Fill()
+    made.Write()
+    del writer
+    made.Close()
+    with ROOT.TFile(str(tmp_path / "ntuple.root")) as read:
+        expect((read.Get("events") is not None, True))

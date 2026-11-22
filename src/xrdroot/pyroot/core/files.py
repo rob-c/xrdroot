@@ -437,9 +437,8 @@ class TDirectoryFile(TDirectory):
         total = super().Write(name, option, bufsize)
         self._write_trees()
         held = self.GetFile()
-        writing = getattr(held, "_writing", None) if held is not None else None
-        if writing is not None:
-            writing.checkpoint()
+        assert held is not None, "a directory that writes is one with a file under it"
+        held._writing.checkpoint()
         return total
 
     def mkdir(self, name: Any, title: Any = "", returnExistingDirectory: bool = False) -> Any:
