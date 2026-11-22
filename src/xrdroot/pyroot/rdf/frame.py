@@ -54,12 +54,22 @@ def _wrapped(value: Any) -> Any:
     return value
 
 
-def _vector_of(values: Any) -> Any:
+def _vector_of(values: Any, kinds: tuple[str, ...] = ()) -> Any:
     """What ``Take`` gives back: the ``std::vector`` of a column - numbers, or strings - as
-    ROOT's does, so that ``Take['string']('name').at(0)`` reads one."""
-    if isinstance(values, np.ndarray) and values.ndim == 1:
-        from ..stl import std
+    ROOT's does, so that ``Take['string']('name').at(0)`` reads one.
 
+    ``Take<V>`` gives ``std::vector<V>``, so a column of *vectors* asked for as
+    ``Take<std::vector<bool>>`` is a vector of vectors: each row a ``std::vector`` of its own.
+    That is what ROOT's value is, and it is where ``vec.size()`` and ``vec[0].size()`` both
+    answer - the ``Jagged`` a row arrives in is a NumPy array, whose ``size`` is a number and
+    not a call.
+    """
+    from ..stl import std
+
+    if kinds and isinstance(values, Jagged):
+        inner = std.vector[values.content.dtype]
+        return std.vector[inner]([inner(row) for row in values])
+    if isinstance(values, np.ndarray) and values.ndim == 1:
         if values.dtype.kind in "biuf":
             return std.vector[values.dtype](values)
         if values.dtype.kind in "OUS" and all(isinstance(v, str) for v in values):
@@ -70,10 +80,13 @@ def _vector_of(values: Any) -> Any:
 class RResultPtr:
     """``RResultPtr``: a booked result; its value, when asked for, as a PyROOT object."""
 
-    def __init__(self, inner: Any, taken: bool = False) -> None:
+    def __init__(self, inner: Any, taken: bool = False, kinds: tuple[str, ...] = ()) -> None:
         self._inner = inner
         self._styled = False
         self._taken = taken
+        #: The C++ template arguments the booking named - ``Take['std::vector<bool>']`` - which
+        #: say what shape the value is where the data alone would not.
+        self._kinds = kinds
 
     #: C++'s ``*booked`` reads its value through the macro runtime's cell protocol.
     _cint_cell = True
@@ -89,7 +102,8 @@ class RResultPtr:
         """The value; a histogram the first time in ``gStyle``'s attributes, as ``TH1``'s
         constructor gives the one ROOT fills."""
         found = self._inner.GetValue()
-        found = presented(_vector_of(found) if self._taken else found, style=not self._styled)
+        taken = _vector_of(found, self._kinds) if self._taken else found
+        found = presented(taken, style=not self._styled)
         self._styled = True
         return found
 
@@ -180,8 +194,10 @@ class _Method:
     """A frame's method, called with PyROOT's objects; ``m['double']`` - a macro's C++ template
     arguments - is the same method, since a column's type is read from the data."""
 
-    def __init__(self, name: str, found: Callable[..., Any]) -> None:
-        self.name, self.found = name, found
+    def __init__(
+        self, name: str, found: Callable[..., Any], types: tuple[str, ...] = ()
+    ) -> None:
+        self.name, self.found, self.types = name, found, types
 
     def __call__(self, *arguments: Any, **options: Any) -> Any:
         arguments = _bound_extra(arguments, options.pop("extra_args", None))
@@ -199,11 +215,13 @@ class _Method:
     def _result(self, found: Any) -> Any:
         """What the method gave, as PyROOT gives it: ``Take``'s value a ``std::vector``."""
         if self.name == "Take" and isinstance(found, _rdf.Result):
-            return RResultPtr(found, taken=True)
+            return RResultPtr(found, taken=True, kinds=self.types)
         return _wrapped(found)
 
     def __getitem__(self, types: Any) -> _Method:
-        return self
+        """``m['double']``: the same method, remembering the type a macro asked for."""
+        given = types if isinstance(types, tuple) else (types,)
+        return _Method(self.name, self.found, tuple(str(each) for each in given))
 
 
 def _bound_extra(arguments: tuple[Any, ...], extra: Any) -> tuple[Any, ...]:
