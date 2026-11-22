@@ -1778,6 +1778,33 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   average of 11-17; ruff clean, mypy 1023 files, maintainability 31 282 functions, components 1023 modules /
   0 undeclared.
 
+## Round 59's close (recorded here for the next iteration)
+
+- Base `74caab18`, closed at **`0c58dd9e`**. **One commit, +1 gtest PASS (61 -> 62)**, and it is round 58's queued
+  row `W0-143` taken exactly as that row described it.
+- **`0c58dd9e`: `Take` of a column of vectors is a vector of vectors.** `Take<V>` gives `std::vector<V>`, so
+  `Take<std::vector<bool>>("x")` over a column of `std::vector<bool>` is a **vector of vectors** - which is where
+  `vec.size()` and `vec[0].size()` both answer. Two things were missing and the second is the interesting one:
+  `_Method.__getitem__` returned `self` with "a column's type is read from the data" (true for a scalar column, not
+  for one of vectors), **and a row of a `Jagged` is a NumPy array whose `size` is a number and not a call**, so a
+  vector of vectors cannot be a `Jagged` at all. `_Method` now carries the arguments, `RResultPtr` keeps them and
+  `_vector_of` builds `std::vector<std::vector<T>>` - one `std::vector` per row, the element type from the row's own
+  dtype. **`gtest/tree/dataframe/dataframe_take` PASSES, all three of its cases.**
+- **The measurement is the safety net, not the idea**: 109 `gtest/tree/{dataframe,ntuple,treeplayer}/*` programs
+  measured before and after - **4 PASS / 75 FAIL / 29 UNSUPPORTED / 1 TIMEOUT** (`/tmp/r59/df`), `dataframe_take`
+  the only gain and **nothing lost**. The RDF unit tests (664 with `-k "rdf or deframe or dataframe"`) pass except
+  the known `ResourceWarning` flake `W0-117`.
+- **`W0-145` records the nuance the fix leaves**: `_vector_of` builds its rows from the *row's* dtype, so
+  `Take<std::vector<double>>` over a `float` column gives `std::vector<float>` rows where ROOT gives
+  `std::vector<double>`. Nothing in the suite asks for that, and the 109 programs say so; it is a fidelity gap to
+  close when a test wants it.
+- Worktree discipline (`W0-138`): opened `/tmp/ralph-round-202611220350/main` off `feat/root-testsuite`'s tip, gated
+  there, fast-forwarded `feat/root-testsuite`, tore the worktree and branch down. **`W0-138` is still open**, so
+  nothing was pushed.
+- Gates: **`TOTAL 119736 0 30014 0 100%`** by the two-command decomposition (13 037 passed, then 44) at a load
+  average of 15-20; ruff clean, mypy 1023 files, maintainability 31 283 functions, components 1023 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1862,6 +1889,10 @@ For the round's work, the evidence is, in this order:
   0 undeclared. `/tmp/r58/gate2.log` is the first command's output (an earlier run, `/tmp/r58/gate1.log`, named the
   dead `None` branch that `_owned` could no longer answer), run in the round's own worktree
   (`/tmp/ralph-round-202611220314/main`, since removed - the commit is on `feat/root-testsuite`).
+- Round 59's result of them, at `0c58dd9e`: **`TOTAL 119736 0 30014 0 100%`** - 13 037 passed then 44 passed - at a
+  load average of 15-20; ruff clean, mypy 1023 files, maintainability 31 283 functions, components 1023 modules /
+  0 undeclared. `/tmp/r59/gate1.log` is the first command's output, run in the round's own worktree
+  (`/tmp/ralph-round-202611220350/main`, since removed - the commit is on `feat/root-testsuite`).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -2081,6 +2112,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 56 | `9f4395db` | **one commit**: an array of objects is destroyed as its scope ends - `cppstd.objects.ObjectArray`, `_destructible` asks the element, and `std::make_unique<A[]>(n)` builds the array `A a[n]` is (`4f884ec7`) | **gtest +1: `gtest/core/foundation/testMake_unique` PASSES**, and **the kind measured whole: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r56/gtest`) - five gained over round 53's 56, **none lost**. Gate `TOTAL 119714 0 30014 0 100%` | 2: `W0-139` (the bulk-fill tests near the 300 s wall: `ntuple_extended` 133 s, `testBulkApiMultiple` TIMEOUT), `W0-140` (an array of *arrays* of objects is still not destroyed) |
 | 57 | `44eb8a61` | **one commit**: a ROOT number type written as a function is the C++ cast - `TFormula` and TMVA's FDA parser both take `formula.functions.CASTS` (`b42926d0`) | **0 harness PASS**, but TMVA's own default split expression `UInt_t([EventNumber])%UInt_t([NumFolds])` now parses: `gtest/tmva/tmva/crossvalidation/*` runs real cross-validation (4.6 s, 2.8 s) and both stop at `ROOT has cv_milli_t`. Nothing lost in 66 `gtest/hist/*` + `gtest/tmva/*` (`/tmp/r57/areas`). Gate `TOTAL 119732 0 30014 0 100%` | 2: `W0-141` (a function-local `using` alias of a template instance is not substituted in a value position - and then TMVA's Reader), `W0-142` (a cast to an integer does not make a following `/` integer, and must not for `TTree::Draw`) |
 | 58 | `1fc32254` | **one commit**: an array of *arrays* of objects destroys its rows and their elements - every level of an object array is an `ObjectArray` (`ad8c97a8`) | **0 harness PASS, 0 lost**, and **the whole gtest kind re-measured: 61 PASS / 211 FAIL / 76 UNSUPPORTED / 2 TIMEOUT** of 350 (`/tmp/r58/gtest`), identical to round 56's - the `W0-63` check across rounds 57-58. Gate `TOTAL 119730 0 30012 0 100%` | 2: `W0-143` (`Take<std::vector<bool>>`'s rows are NumPy slices, and the kind the emitted call carries is dropped by `frame.Take`), `W0-144` (`TMultiGraph::GetHistogram`'s log-scale range: 79.9602 and 0.65234 against our 65.5672 and 1.08468); `W0-140` closed |
+| 59 | `74caab18` | **one commit**: `Take` of a column of vectors is a vector of vectors - `_Method` carries the template arguments a booking named, `RResultPtr` keeps them, `_vector_of` builds `std::vector<std::vector<T>>` from a `Jagged` (`0c58dd9e`) | **gtest +1: `gtest/tree/dataframe/dataframe_take` PASSES** (all three cases), the kind **61 -> 62**; nothing lost in 109 `gtest/tree/{dataframe,ntuple,treeplayer}/*` programs (`/tmp/r59/df`). Gate `TOTAL 119736 0 30014 0 100%` | 1: `W0-145` (`Take<V>` builds its rows from the row's dtype, not from the element `V` names); `W0-143` closed |
 
 ## Notes
 
