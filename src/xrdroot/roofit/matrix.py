@@ -64,7 +64,11 @@ class TVectorD:
     """A vector of doubles, as ``TVectorT<double>``."""
 
     def __init__(self, values: Any = ()) -> None:
-        self.values = np.array(values, dtype=np.float64)
+        # ``TVectorD(3)`` is ROOT's size: three zeros, not the vector [3].
+        if isinstance(values, int):
+            self.values = np.zeros(values, dtype=np.float64)
+        else:
+            self.values = np.array(values, dtype=np.float64)
 
     def __getitem__(self, i: int) -> float:
         return float(self.values[i])
