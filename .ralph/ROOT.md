@@ -16,8 +16,11 @@ file is the procedure and the record of what has already been learned the hard w
 
 This is the project's **ultracode** mode: sixteen workers in parallel, one per git worktree, each
 on a disjoint slice of the queue, integrated one commit at a time under the rule that no PASS may
-be lost. Start it with `/ralph start ROOT`, or `ralph_start({ name: "ROOT", taskContent: <this
-file>, maxIterations: 50 })`.
+be lost. It runs with **no iteration limit**: `0` is the value that means unlimited, since the
+plugin stops only when `maxIterations > 0`. Start it with `/ralph start ROOT --max-iterations 0`,
+or `ralph_start({ name: "ROOT", taskContent: <this file>, maxIterations: 0 })`, and continue it with
+`/ralph resume ROOT` — a resume keeps the state file's `maxIterations`, so
+`.ralph/ROOT.state.json` must say `0` for the loop to stay unlimited.
 
 ## Mission
 
