@@ -47,6 +47,11 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--no-oracle", action="store_true", help="run xrdroot only, uncompared")
     run.add_argument("--out", type=Path, help="where results go (CACHE/results)")
     run.add_argument("--previous", type=Path, help="baseline-timings.json to compare ratios with")
+    run.add_argument(
+        "--also-vetoed", action="append", default=[], metavar="REASON",
+        help="run the tutorials ROOT's CMakeLists vetoes for REASON (a substring, e.g. "
+        "'needs a display (GUI)'): counted apart, never in the ratchet's baseline",
+    )
     run.add_argument("--python", default=sys.executable, help="the Python that runs xrdroot")
     run.add_argument(
         "--xrdroot-src", type=Path, default=REPOSITORY / "src", help="put on PYTHONPATH"
@@ -126,6 +131,7 @@ def _run(args: argparse.Namespace) -> int:
         only=tuple(args.only),
         run_oracle=not args.no_oracle,
         run_xrdroot=not args.oracle_only,
+        also_vetoed=tuple(args.also_vetoed),
     )
     harness = Harness(settings, found, oracle)
     records = harness.run()
@@ -148,6 +154,7 @@ def _run(args: argparse.Namespace) -> int:
         "tolerance": asdict(settings.tolerance),
         "oracle_only": args.oracle_only,
         "no_oracle": args.no_oracle,
+        "also_vetoed": list(args.also_vetoed),
     }
     previous = json.loads(args.previous.read_text()) if args.previous else None
     doc = report.document(records, meta, previous)

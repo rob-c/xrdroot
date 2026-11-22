@@ -83,6 +83,11 @@ class Settings:
     only: tuple[str, ...] = ()
     run_oracle: bool = True
     run_xrdroot: bool = True
+    #: Veto reasons to run anyway - ``("needs a display (GUI)",)`` runs ROOT's headless-drawing
+    #: tutorials too. Such a record carries the veto as ``beyond_ctest``: it is a tutorial this
+    #: tree has and ROOT can run, but not one of the tests ROOT's CMakeLists declares here, so
+    #: it is counted apart and never enters the ratchet's baseline.
+    also_vetoed: tuple[str, ...] = ()
 
     @property
     def results(self) -> Path:
@@ -294,11 +299,16 @@ class Harness:
 
     def skip_reason(self, tutorial: Tutorial) -> str | None:
         """Why ROOT itself does not run this tutorial here, or None."""
-        if tutorial.vetoed is not None:
+        if tutorial.vetoed is not None and not self._beyond_ctest(tutorial):
             return tutorial.vetoed
         if "needs_network" in tutorial.labels and not self.settings.network:
             return "needs the network"
         return self._oracle_lacks(tutorial) if self.oracle is not None else None
+
+    def _beyond_ctest(self, tutorial: Tutorial) -> bool:
+        """Was this tutorial kept out of ROOT's tests for a reason the run was told to pass?"""
+        reason = tutorial.vetoed or ""
+        return any(told in reason for told in self.settings.also_vetoed)
 
     def _oracle_lacks(self, tutorial: Tutorial) -> str | None:
         """What this ROOT's Python lacks for the tutorial: PyROOT, or a package."""
@@ -434,6 +444,8 @@ class Harness:
         }
         status, reason = self._judged(tutorial, oracle, mine, record)
         record["status"], record["reason"] = status, reason
+        if self._beyond_ctest(tutorial):
+            record["beyond_ctest"] = tutorial.vetoed
         return record
 
     def _judged(

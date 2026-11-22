@@ -37,6 +37,12 @@ def write_baseline(doc: Mapping[str, Any], destination: Path) -> None:
     records = doc["tutorials"]
     if not records or any(record["status"] not in STATUSES for record in records):
         raise ValueError("A baseline requires nonempty results with known statuses.")
+    beyond = [record["path"] for record in records if record.get("beyond_ctest")]
+    if beyond:
+        raise ValueError(
+            f"A baseline is ROOT's own test set, and {len(beyond)} of these ran beyond it "
+            f"(the first is {beyond[0]!r}): record a run without --also-vetoed."
+        )
     statuses = {record["path"]: record["status"] for record in records}
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(statuses, indent=1, sort_keys=True) + "\n")
