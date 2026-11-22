@@ -4,7 +4,7 @@
 file through whatever :mod:`xrdclient` opens for it, and it uses a handful of
 names to do so - :func:`~xrdclient.url.parse` and its
 :class:`~xrdclient.url.XRootDURL`, :class:`~xrdclient.errors.XRootDError` as the
-base of :class:`~xrdroot.errors.ROOTError`, :func:`~xrdclient.io.open_url` and
+class an unreachable URL is raised as, :func:`~xrdclient.io.open_url` and
 :class:`~xrdclient.config.Config`, plus the fake server the suite reads files
 over. Those are asserted here so that a version bump of the transport fails in
 one place, in a sentence about the transport, rather than inside a test about a
@@ -65,10 +65,13 @@ def test_parsing_a_url_that_is_already_parsed_keeps_it():
     assert isinstance(again, XRootDURL) and again == url
 
 
-def test_the_transport_s_error_is_the_base_of_every_error_xrdroot_raises():
-    """One ``except`` in a caller must cover a wrong file and an unreachable one."""
+def test_every_error_xrdroot_raises_is_its_own_and_not_the_transport_s():
+    """One ``except`` covers every file this package misreads, and the transport's errors are
+    the transport's: ``ROOTError`` derives from no ``xrdclient`` class, so that eight hundred
+    commands that read a local file never import the protocol behind a URL."""
     for err in (ROOTError("why"), FormatError("why"), UnsupportedFeatureError("why")):
-        assert isinstance(err, XRootDError) and isinstance(err, Exception)
+        assert isinstance(err, ROOTError) and isinstance(err, Exception)
+        assert not isinstance(err, XRootDError)
         assert str(err) == "why" and err.args == ("why",)
 
 

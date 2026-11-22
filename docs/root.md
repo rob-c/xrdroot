@@ -4091,8 +4091,10 @@ reads as the empty `dict` it honestly is, rather than being refused.
 
 ## Errors
 
-`xrdroot.ROOTError` is an `XRootDError`, so it is an `OSError` like
-everything else this library raises.
+`xrdroot.ROOTError` is xrdroot's own `Exception`, the base of everything this
+library raises and of no `xrdclient` class, so that a command that reads a local
+file never imports the protocol behind a URL. An unreachable URL is the
+transport's `xrdclient.errors.XRootDError`, raised where the URL is opened.
 
 | Exception | Means |
 | --- | --- |

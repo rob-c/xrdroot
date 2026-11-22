@@ -12,16 +12,20 @@ The identity is ``type_info``'s mangled name, the Itanium C++ ABI's
 the spelling :mod:`xrdroot.pycxx.runtime.typeinfo` mangles a type to here.
 A type ROOT's ``GetType`` does not answer for is ``kOther_t`` - it answers
 ``-1`` for ``const char *`` and for every class, measured against ROOT 6.40.
+
+ROOT has one ``TDataType``, and this merge found it written twice: the class a
+dictionary reports - ``GetDataType``, the name, the size - is the one in
+:mod:`.reflection`, and the codes a C++ type's ``type_info`` is looked up in are
+the table here, which that class's ``GetType`` reads. The class of its own that
+this module used to carry was hidden behind that one as soon as the namespace
+gathered both, and could answer only half of what ROOT's does, so it is gone.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 from .collectionproxy import EDataType
 
 __all__ = [
-    "TDataType",
     "EDataType",
     "kChar_t", "kShort_t", "kInt_t", "kLong_t", "kFloat_t", "kCounter",
     "kCharStar", "kDouble_t", "kDouble32_t", "kchar",
@@ -75,19 +79,3 @@ BY_MANGLED = {
     "b": kBool_t,
     "Pc": kCharStar,
 }  # fmt: skip
-
-
-class TDataType:
-    """``TDataType``: what ROOT knows of a fundamental type, from its ``typeid``."""
-
-    __slots__ = ()
-
-    @staticmethod
-    def GetType(info: Any) -> int:
-        """The ``EDataType`` a ``type_info`` is - ``kOther_t`` for one ROOT does not name.
-
-        ROOT compares the ``type_info`` with each of ``char``, ``int``, ``double`` and
-        their kin; the same question asked of the mangled name is the same answer, and
-        ``const char *`` is not ``char *`` to either.
-        """
-        return BY_MANGLED.get(str(info.name()), kOther_t)

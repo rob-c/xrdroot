@@ -170,9 +170,14 @@ class IBaseFunctionMultiDim:
         return 0.0
 
     def Gradient(self, x: Any, grad: Any) -> None:
-        """``Gradient(x, grad)``: every partial derivative, into the array given."""
+        """``Gradient(x, grad)``: every partial derivative, into the array given.
+
+        Through ``Derivative``, which is ROOT's own chain - ``Gradient`` asks ``Derivative``
+        for each coordinate and ``Derivative`` asks ``DoDerivative`` - so a class that writes
+        either one is asked, and one that writes neither is answered zeros.
+        """
         for icoord in range(self.NDim()):
-            grad[icoord] = self.DoDerivative(x, icoord)
+            grad[icoord] = self.Derivative(x, icoord)
 
     def FdF(self, x: Any, f: Any, grad: Any) -> None:
         """``FdF(x, f, grad)``: the value and the gradient at once, into what it is given."""

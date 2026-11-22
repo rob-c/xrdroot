@@ -2309,9 +2309,8 @@ class TFunctionTemplate(TMethod):
 
 # ROOT has one ``TDataType``, and this merge found it written twice: the class a dictionary
 # reports - ``GetDataType``, the name, the size - is the one above, and the codes a C++
-# type's ``type_info`` is looked up in landed in :mod:`.datatypes`, with a ``TDataType`` of
-# its own that the namespace gathers after this family's and so would have hidden the
-# dictionary's, without ``GetDataType`` on it at all. The two independent additions are one
-# class, and it is left under that name too: whether a program asks the namespace or the
-# family the codes came from, it gets the one class that answers both of ROOT's questions.
-_datatypes.TDataType = TDataType  # type: ignore[misc, assignment]  # one class, two names
+# type's ``type_info`` is looked up in landed in :mod:`.datatypes`. The two independent
+# additions are one class, and it is left under that name too, so that whether a program asks
+# the namespace or the family the codes came from it gets the one class that answers both of
+# ROOT's questions.
+_datatypes.TDataType = TDataType  # type: ignore[attr-defined]  # one class, one name

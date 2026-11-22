@@ -115,11 +115,11 @@ def test_a_multidim_function_interface_calls_its_subclass_s_do_eval():
 
 def test_the_multidim_interface_says_what_to_override():
     plain = ROOT.Math.IMultiGenFunction()
-    with pytest.raises(NotImplementedError, match="override DoEval and NDim"):
+    with pytest.raises(NotImplementedError, match="derive from IMultiGenFunction and override it"):
         plain([1.0])
-    with pytest.raises(NotImplementedError, match="override DoEval and NDim"):
+    with pytest.raises(NotImplementedError, match="derive from IMultiGenFunction and override it"):
         plain.DoEval([1.0])
-    with pytest.raises(NotImplementedError, match="return the dimension from NDim"):
+    with pytest.raises(NotImplementedError, match="override it to return how many there are"):
         plain.NDim()
 
 
@@ -136,9 +136,10 @@ def test_a_gradient_interface_fills_a_gradient_array_from_derivative():
 
     grad = [0.0, 0.0]
     Weighted().Gradient([1.0, 1.0], grad)
-    expect((grad, [2.0, 3.0]))
-    with pytest.raises(NotImplementedError, match="override Derivative"):
-        ROOT.Math.IMultiGradFunction().Derivative([1.0])
+    # ROOT's gradient asks ``Derivative`` per coordinate, which asks ``DoDerivative``: a class
+    # that writes either one is asked, and one that writes neither is answered zeros, as
+    # ROOT's own ``DoDerivative`` answers ``{}``.
+    expect((grad, [2.0, 3.0]), (ROOT.Math.IMultiGradFunction().Derivative([1.0]), 0.0))
 
 
 def test_a_param_function_interface_evaluates_at_the_parameters_it_holds():
@@ -194,25 +195,36 @@ def test_a_param_multifunction_evaluates_at_the_parameters_it_holds():
 
 def test_the_param_multifunction_interfaces_say_what_to_override():
     plain = ROOT.Math.IParamMultiFunction()
-    with pytest.raises(NotImplementedError, match="override DoEvalPar"):
+    with pytest.raises(NotImplementedError, match="derive from IParametricFunctionMultiDim"):
         plain.DoEvalPar([1.0], [0.0])
-    with pytest.raises(NotImplementedError, match="from Parameters"):
+    with pytest.raises(NotImplementedError, match="returns its parameters from"):
         plain.Parameters()
-    with pytest.raises(NotImplementedError, match="in SetParameters"):
+    with pytest.raises(NotImplementedError, match="takes its parameters through"):
         plain.SetParameters([0.0])
-    with pytest.raises(NotImplementedError, match="count from NPar"):
+    with pytest.raises(NotImplementedError, match="says how many parameters it has from"):
         plain.NPar()
-    with pytest.raises(NotImplementedError, match="override ParameterGradient"):
-        ROOT.Math.IParamMultiGradFunction().ParameterGradient([1.0], [0.0], [0.0])
+
+    class Counted(ROOT.Math.IParamMultiGradFunction):
+        """A subclass that counts its parameters but writes no parameter derivative."""
+
+        def NPar(self):
+            return 1
+
+        def NDim(self):
+            return 1
+
+    # ROOT's parameter gradient asks ``DoParameterDerivative`` for each of ``NPar``.
+    with pytest.raises(NotImplementedError, match="override it"):
+        Counted().ParameterGradient([1.0], [0.0], [0.0])
 
 
 def test_the_param_function_interface_says_what_to_override():
     plain = ROOT.Math.IParamFunction()
-    with pytest.raises(NotImplementedError, match="override DoEvalPar"):
+    with pytest.raises(NotImplementedError, match="derive from IParamFunction and override it"):
         plain.DoEvalPar(1.0, [0.0])
-    with pytest.raises(NotImplementedError, match="Parameters"):
+    with pytest.raises(NotImplementedError, match="returns its parameters from"):
         plain.Parameters()
-    with pytest.raises(NotImplementedError, match="SetParameters"):
+    with pytest.raises(NotImplementedError, match="takes its parameters through"):
         plain.SetParameters([0.0])
-    with pytest.raises(NotImplementedError, match="NPar"):
+    with pytest.raises(NotImplementedError, match="says how many parameters it has from"):
         plain.NPar()
