@@ -51,12 +51,12 @@ def test_a_braced_hashed_container_holds_its_items_rather_than_taking_them_as_ar
     assert "'int']([b])" in expression("std::forward_list<int>{b}")
 
 
-def test_a_braced_list_handed_to_a_container_parameter_is_that_container():
-    """``void take(std::vector<double> v)`` called with ``{1.0, 2.0}`` is C++'s
-    ``initializer_list`` constructor for the parameter, so what arrives is a vector."""
+def test_a_lambdas_container_parameter_is_made_from_the_braced_list_it_is_handed():
+    """``[](std::vector<double> v) { ... }({1.0, 2.0})`` is C++'s ``initializer_list``
+    constructor for the parameter. A lambda's call site carries no signature to convert at,
+    so the conversion is the first line of its body."""
     text = translate(
-        'void take(std::vector<double> v) { printf("%zu\\n", v.size()); }\n'
-        "void t() { take({1.0, 2.0}); }\n",
+        "void t() { auto count = [](std::vector<double> v) { return (int)v.size(); }; }\n",
         "t.C",
     )
     assert "if isinstance(v, list): v = ROOT.std.vector['double'](v)" in text

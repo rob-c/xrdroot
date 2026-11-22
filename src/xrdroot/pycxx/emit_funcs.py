@@ -157,7 +157,7 @@ class FunctionEmitter(VariableEmitter):
         with self.out.indented():
             head = self.out.mark()
             self.given_defaults()
-            self._wrap_parameters(func)
+            self._wrap_parameters(func.params)
             self._deduce_values(func)
             if prologue is not None:
                 prologue()
@@ -192,13 +192,12 @@ class FunctionEmitter(VariableEmitter):
             with self.out.indented():
                 self.out.line(f"{own.py} = len({array.py})", value.where)
 
-    def _wrap_parameters(self, func: Function | Lambda) -> None:
+    def _wrap_parameters(self, params: list[Param]) -> None:
         """A parameter passed by value whose address is taken goes into a cell on entry; one
         of a dialect's string classes handed a string is built from it, as C++ converts the
-        argument; and one of a standard container handed the list a braced list becomes is
-        that container, which is the ``initializer_list`` constructor C++ picks."""
+        argument."""
         strings = active().string_classes
-        for param in func.params:
+        for param in params:
             symbol = self.lookup(param.name or "")
             if symbol is not None and symbol.cell and not by_reference(param.ctype):
                 self.out.line(f"{symbol.py} = Cell({symbol.py})", param.where)
@@ -206,7 +205,17 @@ class FunctionEmitter(VariableEmitter):
                 made = self.host_name(param.ctype.name.split("::"))
                 line = f"if isinstance({symbol.py}, str): {symbol.py} = {made}({symbol.py})"
                 self.out.line(line, param.where)
-            elif symbol is not None and _receives_a_list(param.ctype):
+
+    def _container_parameters(self, params: list[Param]) -> None:
+        """A lambda's parameter of a standard container handed the list a braced list becomes
+        is that container, which is the ``initializer_list`` constructor C++ picks for it.
+
+        A function's call site converts instead, where the parameter's type is written down;
+        a lambda's call site has no signature to read, so the conversion is made in the body.
+        """
+        for param in params:
+            symbol = self.lookup(param.name or "")
+            if symbol is not None and _receives_a_list(param.ctype):
                 made = self.class_expr(param.ctype)
                 line = f"if isinstance({symbol.py}, list): {symbol.py} = {made}({symbol.py})"
                 self.out.line(line, param.where)
@@ -281,7 +290,8 @@ class FunctionEmitter(VariableEmitter):
         """A lambda's statements, with no loop around them for ``break`` to leave."""
         head = self.out.mark()
         self.given_defaults()
-        self._wrap_parameters(node)
+        self._wrap_parameters(node.params)
+        self._container_parameters(node.params)
         lower(node.body, self.refuse)
         self.loops, saved = [], self.loops
         try:
