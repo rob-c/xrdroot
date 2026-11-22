@@ -27,12 +27,25 @@ from ._pythonization._uhi.indexing import _compute_common_index
 from ._pythonization._uhi.plotting import _grid_by_copy
 from .core.objects import TAttFill, TAttLine, TAttMarker, TNamed
 
-__all__ = ["TH2Poly", "TProfile2Poly"]
+__all__ = ["TH2Poly", "TProfile2Poly", "kERRORMEAN", "kERRORSPREAD", "kERRORSPREADI",
+           "kERRORSPREADG"]  # fmt: skip
+
+#: ``EErrorType``, the option a profile's ``SetErrorOption`` takes, as ``TProfile.h``
+#: declares it. A ``TProfile2Poly`` keeps the spread of the means for ``kERRORSPREAD``
+#: and the error on each mean for anything else, as ROOT's ``GetBinError`` does.
+kERRORMEAN = 0
+kERRORSPREAD = 1
+kERRORSPREADI = 2
+kERRORSPREADG = 3
 
 #: The contents ``GetMinimum`` and ``GetMaximum`` answer when none were set.
 UNSET = -1111.0
 #: ``TH1::kNoStats``: the frame draws no statistics box.
 NO_STATS = 1 << 9
+#: The moments ``GetStats`` reports, per axis: where x's, y's and z's sum of weights is.
+AXIS_SUM = (2, 4, 7)
+#: The sums an empty profile bin holds: ``fSumw``, ``fSumvw``, ``fSumwv2`` and ``fSumw2``.
+_EMPTY = [0.0, 0.0, 0.0, 0.0]
 
 
 def _points(given: Any) -> list[tuple[Any, Any]]:
@@ -57,15 +70,40 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
     #: The cells of the fixed grid ROOT gives a ``TH2Poly``'s x and y axes.
     GRID = 100
 
+    #: The bins, what they hold, and the regions round the range.
+    _xrd_bins: PolyBins
+
     def __init__(self, name: Any = "NoName", title: Any = "NoTitle", *ranges: float) -> None:
-        super().__init__(str(name), str(title))
-        given = [float(v) for v in ranges]
-        if len(given) >= 6:  # (name, title, nx, xlow, xup, ny, ylow, yup)
-            given = [given[1], given[2], given[4], given[5]]
-        self._xrd_bins = PolyBins(given[:2] or (0.0, 0.0), given[2:4] or (0.0, 0.0), not given)
+        source = name if isinstance(name, TH2Poly) else None
+        super().__init__(*self._called(source, name, title))
+        #: ``TH2Poly(h2p)`` copies the bins, as ROOT's copy constructor copies them.
+        self._xrd_bins = source._xrd_bins.copy() if source else PolyBins(*self._booked(ranges))
         self._extremes, self._stats = [UNSET, UNSET], True
         self._made: list[tuple[Any, str]] = []
         self._pad: Any = None
+        self._copied(source)
+
+    @staticmethod
+    def _called(source: TH2Poly | None, name: Any, title: Any) -> tuple[str, str]:
+        """The name and title of a new histogram, or those of the one being copied."""
+        if source is None:
+            return str(name), str(title)
+        return str(source.GetName()), str(source.GetTitle())
+
+    @staticmethod
+    def _booked(ranges: tuple[float, ...]) -> tuple[tuple[float, ...], tuple[float, ...], bool]:
+        """The ranges and whether they float, from ``TH2Poly(name, title, xlow, ...)``."""
+        given = [float(v) for v in ranges]
+        if len(given) >= 6:  # (name, title, nx, xlow, xup, ny, ylow, yup)
+            given = [given[1], given[2], given[4], given[5]]
+        return tuple(given[:2] or (0.0, 0.0)), tuple(given[2:4] or (0.0, 0.0)), not given
+
+    def _copied(self, source: TH2Poly | None) -> None:
+        """What a subclass keeps beyond the bins, carried over by ``TH2Poly(h)``.
+
+        ROOT's copy constructor copies the whole object, so a subclass that keeps
+        sums of its own puts them back here, once the bins are in place.
+        """
 
     # -- bins ----------------------------------------------------------------------------
 
@@ -111,6 +149,9 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
         if found is None:
             return 0
         self._xrd_bins.contents[found - 1] += w
+        self._xrd_bins.sums[6] += 1  # ROOT's ``Fill(name, w)`` counts an entry, no moments
+        if self._xrd_bins.squares is not None:
+            self._xrd_bins.squares[self._xrd_bins.slot(int(found))] += w * w
         return int(found)
 
     def Add(self, other: Any, c: float = 1.0) -> bool:
@@ -126,10 +167,16 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
         mine, c = self._xrd_bins, float(c)
         mine.contents += c * theirs.contents
         mine.overflow += c * theirs.overflow
-        factors = np.array([abs(c), c * c, abs(c), abs(c), abs(c), abs(c), 0.0])
+        factors = [abs(c), c * c, abs(c), abs(c), abs(c), abs(c), 0.0, abs(c), abs(c), abs(c)]
         entries = abs(mine.sums[6] + c * theirs.sums[6])
-        mine.sums += factors * theirs.sums
+        for at, (factor, value) in enumerate(zip(factors, theirs.sums, strict=True)):
+            mine.sums[at] += factor * value
         mine.sums[6] = entries
+        if mine.squares is not None or theirs.squares is not None:
+            # ``TH2Poly::Add`` keeps the squared weights of both, times ``c`` squared.
+            mine.sumw2()
+            theirs.sumw2()
+            mine.squares = mine.squares + c * c * theirs.squares
         return True
 
     def SetDirectory(self, directory: Any) -> None:
@@ -172,11 +219,7 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
 
     def GetBinContent(self, number: int) -> float:
         """A bin's content by number from 1, or a region's, -1 to -9."""
-        number = int(number)
-        if number < 0:
-            return float(self._xrd_bins.overflow[-number - 1])
-        bins = self._xrd_bins.contents
-        return float(bins[number - 1]) if 0 < number <= len(bins) else 0.0
+        return self._xrd_bins.content(int(number))
 
     def SetBinContent(self, number: int, content: float) -> None:
         number = int(number)
@@ -184,6 +227,40 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
             self._xrd_bins.overflow[-number - 1] = float(content)
         elif 0 < number <= len(self._xrd_bins.contents):
             self._xrd_bins.contents[number - 1] = float(content)
+
+    def GetBinError(self, number: int) -> float:
+        """``GetBinError``: the root of the squared weights kept, or of the content.
+
+        Bins are numbered from 1 and regions -1 to -9, as ``GetBinContent`` numbers them;
+        0, a bin beyond the last and a region beyond the ninth have no error.
+        """
+        number = int(number)
+        if number == 0 or number > len(self._xrd_bins.contents) or number < -REGIONS:
+            return 0.0
+        return self._xrd_bins.error(number)
+
+    def SetBinError(self, number: int, error: float) -> None:
+        """``SetBinError``: the squared error kept for that bin, which starts the sums.
+
+        Setting a content afresh does not set its error, as ROOT's does not: a histogram
+        that keeps squared weights keeps the ones it was given.
+        """
+        number = int(number)
+        if number == 0 or number > len(self._xrd_bins.contents) or number < -REGIONS:
+            return
+        self._xrd_bins.sumw2()[self._xrd_bins.slot(number)] = float(error) ** 2
+
+    def Sumw2(self, flag: bool = True) -> None:
+        """``Sumw2``: keep the sum of squared weights per bin; ``Sumw2(false)`` drops them."""
+        if not flag:
+            self._xrd_bins.squares = None
+        else:
+            self._xrd_bins.sumw2()
+
+    def GetSumw2N(self) -> int:
+        """The length of the array of squared weights, zero while none is kept."""
+        kept = self._xrd_bins.squares
+        return 0 if kept is None else len(kept)
 
     def ClearBinContents(self) -> None:
         self._xrd_bins.contents[:] = 0.0
@@ -198,8 +275,47 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
         return float(self._xrd_bins.contents.sum())
 
     def GetMean(self, axis: int = 1) -> float:
+        """``GetMean(axis)``: 1, 2, 3 for x, y, z; 11, 12, 13 for the error on each."""
+        if not 1 <= axis <= 3 and not 11 <= axis <= 13:
+            return 0.0
+        if axis > 10:
+            return self.GetMeanError(axis - 10)
+        found = self._stats_array()
+        return float(found[AXIS_SUM[axis - 1]] / found[0]) if found[0] else 0.0
+
+    def GetStdDev(self, axis: int = 1) -> float:
+        """``GetStdDev(axis)``: the spread, never below zero, and the error on it past 10."""
+        if not 1 <= axis <= 3 and not 11 <= axis <= 13:
+            return 0.0
+        found = self._stats_array()
+        if not found[0]:
+            return 0.0
+        at = AXIS_SUM[axis % 10 - 1]
+        variance = max(found[at + 1] / found[0] - (found[at] / found[0]) ** 2, 0.0)
+        if axis < 10:
+            return math.sqrt(variance)
+        count = self.GetEffectiveEntries()
+        return math.sqrt(variance / (2 * count)) if count > 0 else 0.0
+
+    GetRMS = GetStdDev
+
+    def GetMeanError(self, axis: int = 1) -> float:
+        """``GetMeanError``: the spread over the root of the effective entries."""
+        count = self.GetEffectiveEntries()
+        return self.GetStdDev(axis) / math.sqrt(count) if count > 0 else 0.0
+
+    def GetStdDevError(self, axis: int = 1) -> float:
+        return self.GetStdDev(axis + 10)
+
+    def GetEffectiveEntries(self) -> float:
+        """``GetEffectiveEntries``: ``(sum w) ** 2 / sum w ** 2``: the count the weights hold."""
+        found = self._stats_array()
+        return float(found[0] * found[0] / found[1]) if found[1] else abs(float(found[0]))
+
+    def _stats_array(self) -> np.ndarray[Any, Any]:
+        """``GetStats``' numbers from the sums: the moments, the cross term, the value's."""
         sums = self._xrd_bins.sums
-        return float(sums[2 if axis == 1 else 4] / sums[0]) if sums[0] else 0.0
+        return np.array([*sums[:6], sums[7], sums[8], sums[9]])
 
     def GetMinimum(self, *args: Any) -> float:
         contents = self._xrd_bins.contents
@@ -315,9 +431,17 @@ class TProfile2Poly(UnifiedHistogram, TH2Poly):
     GRID = 100
 
     def __init__(self, name: Any = "NoName", title: Any = "NoTitle", *ranges: float) -> None:
+        #: Each bin's sum of weights, of weighted values, of weighted squared values and
+        #: of squared weights - ROOT's ``fSumw, fSumvw, fSumwv2, fSumw2``.
+        self._sums: dict[int, list[float]] = {}
+        self._error_mode = 0
         super().__init__(name, title, *ranges)
-        #: Each bin's sum of weights, of weighted values and of weighted squared values.
-        self._sums: dict[int, np.ndarray[Any, Any]] = {}
+
+    def _copied(self, source: TH2Poly | None) -> None:
+        """Each bin's sums too: a copy of a profile is a profile of the same fills."""
+        if isinstance(source, TProfile2Poly):
+            self._sums = {number: list(sums) for number, sums in source._sums.items()}
+            self._error_mode = source._error_mode
 
     def ClassName(self) -> str:
         return "TProfile2Poly"
@@ -325,16 +449,74 @@ class TProfile2Poly(UnifiedHistogram, TH2Poly):
     def Fill(  # type: ignore[override]  # a profile's fill takes the value averaged too
         self, x: Any, y: float = 1.0, value: float = 1.0, w: float = 1.0
     ) -> int:
-        """``Fill(x, y, value[, w])``: ``value`` averaged into the bin holding ``(x, y)``."""
+        """``Fill(x, y, value[, w])``: ``value`` averaged into the bin holding ``(x, y)``.
+
+        A fill in one of the regions round the range, or within it in no bin, is kept
+        too, as ROOT keeps it: the mean of the values that missed every bin is the
+        content of that region. Only a fill inside the axes adds to the moments, as
+        ``TProfile2D``'s does - which is what the two are compared over.
+        """
         x, y, value, w = float(x), float(y), float(value), float(w)
         bins = self._xrd_bins
         found = bins.find(x, y)
-        if found > 0:
-            sums = self._sums.setdefault(found, np.zeros(3))
-            sums += (w, w * value, w * value * value)
-            bins.contents[found - 1] = sums[1] / sums[0]
-            bins.sums += (w, w * w, w * x, w * x * x, w * y, w * y * y, 1)
+        self._filled(found, value, w)
+        if found > 0 or found == -5:
+            bins.moments(w, x, y)
+            sums = bins.sums
+            sums[7] += w * x * y
+            sums[8] += w * value
+            sums[9] += w * value * value
         return found
+
+    def _filled(self, number: int, value: float, weight: float) -> None:
+        """One fill of one bin's - or one region's - sums, and the mean it now holds."""
+        sums = self._sums.setdefault(number, [0.0, 0.0, 0.0, 0.0])
+        sums[0] += weight
+        sums[1] += weight * value
+        sums[2] += weight * value * value
+        sums[3] += weight * weight
+        mean = sums[1] / sums[0] if sums[0] else 0.0
+        bins = self._xrd_bins
+        if number > 0:
+            bins.contents[number - 1] = mean
+        else:
+            bins.overflow[-number - 1] = mean
+
+    def Reset(self, option: str = "") -> None:
+        """``Reset``: the bins' contents and sums, and the moments, back to nothing."""
+        self._sums.clear()
+        self._xrd_bins.sums = [0.0] * 10
+        self.ClearBinContents()
+
+    def Merge(self, collection: Any) -> int:
+        """``Merge``: every profile of ``collection`` added bin by bin into this one.
+
+        A profile is its bins' sums, so those add - the mean a bin then holds is
+        recomputed - and so do the moments and the regions' means.
+        """
+        others = [other for other in collection if isinstance(other, TProfile2Poly)]
+        for other in others:
+            if other.GetNumberOfBins() != self.GetNumberOfBins():
+                self.Error("Merge", "Bin numbers of TProfile2Polys to be merged differ")
+                return 0
+            for at, value in enumerate(other._xrd_bins.sums):
+                self._xrd_bins.sums[at] += value
+        self._merged(others)
+        return len(others)
+
+    def _merged(self, others: list[TProfile2Poly]) -> None:
+        """The sums themselves merged, then every content put back to the mean it now has."""
+        for other in others:
+            for number, sums in other._sums.items():
+                mine = self._sums.setdefault(number, [0.0, 0.0, 0.0, 0.0])
+                for at, value in enumerate(sums):
+                    mine[at] += value
+        for number, sums in self._sums.items():
+            mean = sums[1] / sums[0] if sums[0] else 0.0
+            if number > 0:
+                self._xrd_bins.contents[number - 1] = mean
+            else:
+                self._xrd_bins.overflow[-number - 1] = mean
 
     # -- the grid every TH2 has ---------------------------------------------------------
 
@@ -376,15 +558,41 @@ class TProfile2Poly(UnifiedHistogram, TH2Poly):
         return TH2Poly.GetBinContent(self, number)
 
     def GetBinEntries(self, bin: int) -> float:
-        return float(self._sums.get(int(bin), np.zeros(3))[0])
+        return self._sums.get(int(bin), _EMPTY)[0]
+
+    def GetBinEffectiveEntries(self, bin: int) -> float:
+        """``GetBinEffectiveEntries``: ``(sum w) ** 2 / sum w ** 2`` in that bin."""
+        weight, _, _, squares = self._sums.get(int(bin), _EMPTY)
+        return weight * weight / squares if squares else 0.0
 
     def GetBinError(self, *args: Any) -> float:
-        """The error of a bin's mean: the spread of its values over the root of its weights."""
+        """The error on a bin's mean, or on the spread of its values, as the option says.
+
+        ROOT's ``kERRORSPREAD`` (``SetErrorOption("s")``) is the root of the mean of the
+        squared deviations - the spread of what was filled - and the default is that over
+        the root of the bin's effective entries, the error on the mean. A bin nothing was
+        filled into has none, rather than ROOT's division by zero.
+        """
         number = self.GetBin(*args) if len(args) > 1 else int(args[0])
-        weight, total, squares = self._sums.get(number, np.zeros(3))
-        if weight <= 0:
+        weight, total, squares, _ = self._sums.get(number, _EMPTY)
+        if weight == 0:
             return 0.0
-        return math.sqrt(max(squares / weight - (total / weight) ** 2, 0.0) / weight)
+        spread = math.sqrt(max(squares / weight - (total / weight) ** 2, 0.0))
+        if self._error_mode == kERRORSPREAD:
+            return spread
+        count = self.GetBinEffectiveEntries(number)
+        return spread / math.sqrt(count) if count > 0 else 0.0
+
+    def SetErrorOption(self, option: Any) -> None:
+        """``SetErrorOption``: ``kERRORSPREAD``, or ``"s"``, for the spread of the means;
+        anything else - ``kERRORMEAN``, ``""`` - for the error on each mean."""
+        if isinstance(option, str):
+            self._error_mode = kERRORSPREAD if option.strip().lower() == "s" else kERRORMEAN
+        else:
+            self._error_mode = kERRORSPREAD if int(option) == kERRORSPREAD else kERRORMEAN
+
+    def GetErrorOption(self) -> str:
+        return "s" if self._error_mode == kERRORSPREAD else ""
 
     # -- UHI, through the grid -----------------------------------------------------------
 
