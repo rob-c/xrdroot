@@ -9,7 +9,9 @@ for, made when asked, so the graphics draw the objects as they are now.
 from __future__ import annotations
 
 import functools
+import math
 import operator
+import sys
 from functools import partial
 from typing import Any
 
@@ -24,6 +26,55 @@ from .wrapping import adopt, register, unwrap, wrap
 __all__ = ["THStack", "TMultiGraph"]
 
 UNSET = -1111.0
+
+#: The share of its span a frame leaves either side of the points when its axis is linear.
+WIDEN = 0.05
+#: ``TMultiGraph::GetHistogram`` pulls a logarithmic axis's low end down by this multiple of
+#: the base-10 logarithm of its top-to-bottom ratio, and pushes the top up by the other.
+LOG_DOWN = 0.5
+LOG_UP = 0.2
+#: What a logarithmic axis's bottom becomes when the points reach zero or below: this much of
+#: the top, so that the ratio below can be taken at all.
+LOG_FLOOR = 0.001
+#: The fewest bins a multigraph's frame is booked with, however few points it spans.
+LEAST_BINS = 100
+
+
+def _log_axes() -> tuple[bool, bool]:
+    """Whether the current pad draws its x and y axes logarithmically.
+
+    The pad belongs to the graphics component above this one, so it is reached through the
+    namespace rather than imported - as ``TAxis::UnZoom`` reaches it - and ROOT's ``gPad &&
+    gPad->GetLogx()`` is false for both when no canvas has been made.
+    """
+    pad = getattr(sys.modules.get("xrdroot.pyroot"), "gPad", None)
+    if not pad:
+        return False, False
+    return bool(pad.GetLogx()), bool(pad.GetLogy())
+
+
+def _merged(spans: list[tuple[float, float, float, float]]) -> tuple[float, float, float, float]:
+    """The least and greatest of every range given, as ``TMultiGraph`` merges its graphs'."""
+    if not spans:
+        return 0.0, 0.0, 0.0, 0.0
+    lows, downs, highs, ups = zip(*spans, strict=True)
+    return min(lows), min(downs), max(highs), max(ups)
+
+
+def _widened(low: float, high: float, log: bool) -> tuple[float, float]:
+    """One axis widened as ``TMultiGraph::GetHistogram`` widens it.
+
+    Linear, a twentieth of the span either way; logarithmic, the ends pushed apart by the
+    base-10 logarithm of their ratio, which is why a log frame around a thousandfold spread
+    is so much wider than the points. ROOT reads the ratio of a bottom at or below zero as
+    one from a thousandth of the top.
+    """
+    if not log:
+        span = WIDEN * (high - low)
+        return low - span, high + span
+    bottom = low if low > 0 else LOG_FLOOR * high
+    reach = math.log10(high / bottom)
+    return bottom / (1 + LOG_DOWN * reach), high * (1 + LOG_UP * reach)
 
 
 class _Holder(TNamed):
@@ -205,17 +256,30 @@ class TMultiGraph(_Holder):
         return wrap(found[0]) if found else None
 
     def GetHistogram(self) -> Any:
-        """``GetHistogram``: the frame, spanning every graph's points."""
-        if self._histogram is None:
-            from .graphs import TGraph
+        """``GetHistogram``: the frame, spanning every graph's points.
 
-            points = TGraph()
-            for graph in self._held:
-                for at in range(graph.GetN()):
-                    points.AddPoint(graph.GetPointX(at), graph.GetPointY(at))
-            points.SetNameTitle(self.GetName(), self.GetTitle())
-            self._histogram = points.GetHistogram()
+        ROOT merges each graph's own ``ComputeRange`` - not the points of all of them in
+        one graph - and pads that, which is why a logarithmic pad's frame reaches so much
+        further than the points do.
+        """
+        if self._histogram is None:
+            self._histogram = self._frame()
         return self._histogram
+
+    def _frame(self) -> Any:
+        """The frame as ROOT books it: a hundred bins at least, one per point of the graph
+        with most, over the widened range of every graph's points."""
+        from .graphs import _frame_histogram
+
+        logx, logy = _log_axes()
+        spans = [graph._point_range() for graph in self._held if graph.GetN() > 0]
+        count = max([LEAST_BINS, *(graph.GetN() for graph in self._held)])
+        low, down, high, up = _merged(spans)
+        high += 1.0 if low == high else 0.0
+        up += 1.0 if down == up else 0.0
+        low, high = _widened(low, high, logx)
+        down, up = _widened(down, up, logy)
+        return _frame_histogram(self.GetName(), self.GetTitle(), count, low, high, down, up)
 
 
 for _cls in (THStack, TMultiGraph):
