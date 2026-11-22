@@ -31,6 +31,7 @@ FAMILIES = (
     "jsonbuffer",
     "collections",
     "strings",
+    "principal",
     "regexp",
     "urls",
     "complexes",
