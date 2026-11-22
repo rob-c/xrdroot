@@ -1664,6 +1664,35 @@ ledger quotes, the briefs, and the workers' reports. The worktrees and their log
   average of 10-78; ruff clean, mypy 1022 files, maintainability 31 263 functions, components 1021 modules /
   0 undeclared.
 
+## Round 55's close (recorded here for the next iteration)
+
+- Base `127c20e2`, closed at **`d1752d03`**. **One commit, +1 gtest PASS (59 -> 60)**, and the round is a pure-data
+  one: five numbers ROOT's own oracle gave, and nothing else.
+- **`d1752d03`**: `ROOT/TIOFeatures.hxx` declares `EIOFeatures` twice - `ROOT::EIOFeatures` is the 6.34 spelling that
+  6.40 keeps and no longer sets a bit in (`kSupported` 0), `ROOT::Experimental::EIOFeatures` the one a current writer
+  sets (`kSupported` 1) - and `ROOT::Experimental::EIOUnsupportedFeatures::kUnsupported` is 0. A basket's header has
+  `TBasket::kIOBitCount` (1) bits for them, so `TBasket::EIOBits::kSupported` is 1. **`ROOT::EIOUnsupportedFeatures`
+  and `ROOT::ExperimentalEIOFeatures` are deliberately not namespace names**: measured against 6.40, ROOT has neither,
+  and the test writes both through `ROOT::Experimental`. `pyroot/histv7._Experimental` is the one object this kit
+  models `ROOT::Experimental` with, so it grows the two attributes and its docstring says why. **`testTIOFeatures`
+  PASSES.**
+- Nothing lost: `gtest/hist/*` + `gtest/tree/tree/*` - 73 tests, **30 PASS / 37 FAIL / 5 UNSUPPORTED / 1 TIMEOUT**
+  (`/tmp/r55/areas`), `testTIOFeatures` the only gain. `roottest/root/{hist,tree}/*` measured whole for the first
+  time since round 17: 313 tests, **138 PASS / 115 FAIL / 22 DIFF / 36 UNSUPPORTED / 1 SKIP / 1 TIMEOUT**
+  (`/tmp/r55/rhist`) - **a snapshot, not a delta**, and `W0-137` says so.
+- **`W0-138` is the round's process finding and it needs a human.** The task file's new step 0 opens a round off
+  `origin/main` and step 6d pushes `$ROUND-main:main`. Measured here: **`main` is 238 commits behind
+  `feat/root-testsuite`, and `origin/main` 45 behind** - a round based on either would lose every fix of rounds
+  1-54, and 54 rounds of work have never been pushed. The round therefore opened its worktree off
+  `feat/root-testsuite`'s tip in `/tmp/ralph-round-202611220111/main`, integrated and gated there, and did **not**
+  push. Whether `main` is meant to become the trunk is a decision for the operator; until it is made, a round keeps
+  to `feat/root-testsuite` and records that it did.
+- The round **did** work in a worktree of its own and tore it down at the close (`rm -rf` of the worktree and the
+  `round55-main` branch), which is the half of step 0/6d that holds here.
+- Gates: **`TOTAL 119689 0 30000 0 100%`** by the two-command decomposition (13 020 passed, then 44) at a load
+  average of 13-17; ruff clean, mypy 1023 files, maintainability 31 266 functions, components 1023 modules /
+  0 undeclared.
+
 ## Checklist (per round)
 
 - [x] `git status` clean; the gates green at the round's base commit
@@ -1729,6 +1758,10 @@ For the round's work, the evidence is, in this order:
 - Round 54's result of them, at `2ce1f188`: **`TOTAL 119669 0 30000 0 100%`** - 13 017 passed then 44 passed - at a
   load average of 10-78; ruff clean, mypy 1022 files, maintainability 31 263 functions, components 1021 modules /
   0 undeclared. `/tmp/r54/gate1.log` is the first command's output (the tree was committed exactly as measured).
+- Round 55's result of them, at `d1752d03`: **`TOTAL 119689 0 30000 0 100%`** - 13 020 passed then 44 passed - at a
+  load average of 13-17; ruff clean, mypy 1023 files, maintainability 31 266 functions, components 1023 modules /
+  0 undeclared. `/tmp/r55/gate1.log` is the first command's output, run in the round's own worktree
+  (`/tmp/ralph-round-202611220111/main`, since removed - the commit is on `feat/root-testsuite`).
 - Round 50's result of them, at `2e10bb4d`: **`TOTAL 119555 0 29992 0 100%`** - 12 982 passed then 44 passed - at a
   load average of 24-39; ruff clean, mypy 1020 files, maintainability 31 215 functions, components 1019 modules /
   0 undeclared, `mkdocs --strict` built. `/tmp/r50/gate1.log` is the first command's output.
@@ -1944,6 +1977,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 52 | `0537d989` | **one commit**: a collection's element carries the type C++'s range gives it (`TypedElement`), `iterate` hands a `TCollection`'s objects out as the `TObject *` C++ iterates, and `ROOT::Detail::TRangeStaticCast<T>`/`TRangeDynCast<T>` (`5f58c997`) | **gtest +2: `gtest/core/cont/coreconttestUnit` and `gtest/core/cont/testTypedIteration` PASS** (`/tmp/r52/cont`), the kind **54 -> 56**; nothing lost in `io/tree` (18/0/0/2), `io/json` (11/0/0/1) or 66 `io`/`hist`/`graf2d` gtest programs (`/tmp/r52/gtest-iohist`) | 3: `W0-130` (a wrapper a macro can keep - `TCollection` should unwrap), `W0-131` (the round-44 gtest bucket table is eight rounds stale), `W0-132` (`test_THBinIterator`: 64 s for 20 cases, 7 failing); `W0-113` closed |
 | 53 | `6f1b71a9` | **two commits**: `ROOT::RangeStaticCast`/`ROOT::RangeDynCast` over any range, a C array of pointers included, with a class the program declared found in the interpreter's table (`7f90083d`); `TDataType::GetType(typeid(T))` over `EDataType`'s codes, with them under the bare names a macro writes (`f93144fd`) | **gtest +2: `gtest/core/foundation/testRRangeCast` and `gtest/core/meta/testTDataType` PASS** (`/tmp/r53/corefm`), the kind **56 -> 58**; **the gtest kind measured whole at HEAD** (`/tmp/r53/gtest`): 56 / 216 / 76 / 2 of 350, nothing lost | 2: `W0-131` closed (the ranking is current and has no name cluster; `/tmp/r53/one-case.md` names the 47 programs one failing case from a PASS), `W0-133` (`Calc` echoes where ROOT is silent) |
 | 54 | `2a668e00` | **two commits**: a qualified static call `T::f(...)` asks the dialect's `method_returns`, so an `auto` local a factory gives has a type, and `RNTupleWriter` is a guard with the `_destruct` one needs (`98df6a2e`); `TInterpreter::Calc` reads a value out without cling's echo (`2ce1f188`) | **gtest +1: `gtest/tree/ntuple/ntuple_randomaccess` PASSES** (`/tmp/r54/ntuple`), the kind **58 -> 59**; nothing lost in the 49 `gtest/tree/ntuple/*` or the 26 `gtest/core/*` (`/tmp/r54/core`) | 3: `W0-133` closed, `W0-134` (`GetClusterDescriptor`), `W0-135` (three `TFile`s in one scope), `W0-136` (another session's stopped processes starve a whole-kind run) |
+| 55 | `127c20e2` | **one commit**: the IO-feature bits a ROOT 6.40 basket records - `ROOT.EIOFeatures`, `ROOT::Experimental`'s two enums and `TBasket::kIOBitCount`/`EIOBits::kSupported`, every number measured against the oracle (`d1752d03`) | **gtest +1: `gtest/tree/tree/testTIOFeatures` PASSES** (`/tmp/r55/areas`: 73 tests of `gtest/hist/*` + `gtest/tree/tree/*`), the kind **59 -> 60**; nothing lost. Gate `TOTAL 119689 0 30000 0 100%` | 2: `W0-137` (the first whole figure for `roottest/root/{hist,tree}/*`: 313 tests, 138 PASS), `W0-138` (**the round's own step 0 assumes a `main` that is 238 commits behind this branch**) |
 
 ## Notes
 
