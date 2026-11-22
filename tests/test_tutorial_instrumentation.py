@@ -299,3 +299,21 @@ def test_unavailable_or_mismatched_oracles_cannot_excuse_a_timeout(tmp_path, mon
 def test_cli_errors_are_reported_without_a_traceback(tmp_path, capsys):
     assert cli.main(["ratchet", str(tmp_path / "absent.json")]) == 2
     assert "absent.json" in capsys.readouterr().err
+
+
+
+def _run_command_options() -> set[str]:
+    """Every flag the tutorials' ``run`` subcommand accepts, read off its own parser."""
+    import argparse
+
+    parser = cli.parser()
+    subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    run = subparsers.choices["run"]
+    return {option for action in run._actions for option in action.option_strings}
+
+
+def test_the_run_command_offers_no_way_to_compare_against_roots_timings():
+    """A branch older than the decision re-adds --previous at every merge, so the absence is
+    asserted here: xrdroot aims to be faster in the end, and a committed ratio is a moving
+    target that says nothing about correctness."""
+    assert "--previous" not in _run_command_options()

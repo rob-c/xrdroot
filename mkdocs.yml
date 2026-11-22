@@ -56,6 +56,7 @@ nav:
       - Tutorial work is 2-for-1 on twin pairs: discoveries/tutorial-work-is-2-for-1-on-twin-pairs-roofit-s-text-diffs-have.md
       - TPrincipal and ROOT's LAPACK basis: discoveries/tprincipal-is-implemented-but-principal-s-pca-c-needs-root-s.md
   - Maintainability metrics: maintainability.md
+  - A removal returns on the next merge: gotchas/a-deliberate-removal-returns-on-the-next-merge-assert-the.md
   - Instructions:
       - Triage merge conflicts before delegating: instructions/triage-merge-conflicts-mechanically-before-delegating-and-never.md
 
