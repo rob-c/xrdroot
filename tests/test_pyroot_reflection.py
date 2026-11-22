@@ -474,6 +474,46 @@ def test_a_tbufferfile_reads_and_writes_numbers_strings_and_objects_of_roots():
     assert buf.Length() > 0
 
 
+def test_a_tf1_streamed_into_a_buffer_is_read_back_into_the_object_asked_for():
+    """ROOT's ``hist/hist/test/test_tf1_simple.cxx``: ``Streamer(buffer)`` each way, into a
+    fresh ``TF1``, whose parameters are its formula's rather than its own members."""
+    f = ROOT.TF1("f1", "gaus")
+    f.SetParameters(2.0, 0.5, 1.5)
+    buf = ROOT.TBufferFile(ROOT.TBuffer.kWrite, 10000)
+    f.Streamer(buf)
+    assert buf.Length() == 461  # a TF1's record, as 6.40 writes one
+    buf.SetReadMode()
+    buf.ResetMap()
+    buf.SetBufferOffset(0)
+    copy = ROOT.TF1()
+    assert copy.Streamer(buf) is None
+    assert (copy.GetName(), copy.GetTitle()) == ("f1", "gaus")
+    assert [copy.GetParameter(index) for index in range(3)] == [2.0, 0.5, 1.5]
+    assert (copy.GetXmin(), copy.GetXmax(), copy.GetNpar()) == (0.0, 1.0, 3)
+    assert copy.Eval(0.5) == f.Eval(0.5)
+
+
+def test_a_histogram_fits_the_tf1_read_back_out_of_a_buffer_as_the_original():
+    """ROOT's issue #16184, as ``test_tf1_simple.cxx`` proves it: the copy is the fit."""
+    h = ROOT.TH1F("myHist", "myTitle", 64, -4, 4)
+    h.FillRandom("gaus")
+    f = ROOT.TF1("f1", "gaus")
+    buf = ROOT.TBufferFile(ROOT.TBuffer.kWrite, 10000)
+    f.Streamer(buf)
+    buf.SetReadMode()
+    buf.ResetMap()
+    buf.SetBufferOffset(0)
+    copy = ROOT.TF1()
+    copy.Streamer(buf)
+    assert h.Fit(f, "SQN").Status() == 0
+    assert h.Fit(copy, "SQN").Status() == 0
+    # The two starts are the same three numbers and the fit is what ROOT's is, so the two
+    # minima are the same digit for digit.
+    assert [copy.GetParameter(index) for index in range(3)] == [
+        f.GetParameter(index) for index in range(3)
+    ]
+
+
 def test_a_collection_proxy_says_what_a_container_is_and_holds():
     proxy = ROOT.TClass.GetClass("vector<int>").GetCollectionProxy()
     v = ROOT.std.vector["int"]()

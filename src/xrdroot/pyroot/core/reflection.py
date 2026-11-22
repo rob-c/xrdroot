@@ -1157,8 +1157,13 @@ class TClass(TNamed):
         view.__dict__["_cast_of"] = obj
         return view
 
-    def Streamer(self, obj: Any, buf: Any, onfile_class: Any = None) -> None:
-        """``Streamer``: ``obj`` written into ``buf`` - or read from it, as it goes."""
+    def Streamer(self, obj: Any, buf: Any, onfile_class: Any = None) -> None:  # type: ignore[override]
+        """``Streamer``: ``obj`` written into ``buf`` - or read from it, as it goes.
+
+        C++ overloads this name in ``TClass``: ``Streamer(obj, buf)`` here hides
+        ``TObject::Streamer(buf)`` there, an object streamed by its class, and Python's one
+        name for both is why the signature differs from the base's.
+        """
         buf.StreamObject(obj, self)
 
     def Destructor(self, obj: Any, dtorOnly: bool = False) -> None:

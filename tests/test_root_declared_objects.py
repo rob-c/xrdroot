@@ -595,6 +595,19 @@ def test_a_pointer_read_to_a_class_no_one_declared_is_kept_as_read():
     assert converted(-1.5, parse_type("short"), 0) == -1
 
 
+def test_a_record_of_a_class_the_kit_makes_whole_is_given_to_the_object_read_into():
+    # ROOT finishes a read in the object it was handed, so a TBufferFile round trip hands back
+    # the object ``Streamer(buffer)`` was called on; where there is no such object, or it is
+    # not of the record's class, the one made from the members is what comes back.
+    from xrdroot.pyroot.core.declared import converted
+
+    row = {"fName": "n", "fTitle": "t"}
+    made = converted(row, parse_type("TNamed"), None)
+    assert (made.GetName(), made.GetTitle()) == ("n", "t")
+    assert converted(row, parse_type("TNamed"), ROOT.TNamed("old", "one")).GetTitle() == "t"
+    assert converted(row, parse_type("TNamed"), ROOT.TObject()).GetName() == "n"
+
+
 def _bitset(width: int, value: int) -> Bitset:
     """A ``std::bitset`` of ``width`` bits, as a translated macro holds one."""
     return Bitset(width, value)

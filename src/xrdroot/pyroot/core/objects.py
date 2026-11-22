@@ -371,6 +371,17 @@ class TObject:
 
         return int(current_directory().WriteTObject(self, name, option))
 
+    def Streamer(self, buffer: Any) -> None:
+        """``Streamer``: this object into a ``TBuffer``, or the buffer's bytes into this object.
+
+        Every class of ROOT's has one, made from its dictionary, and a program that hands an
+        object back and forth through a ``TBufferFile`` calls it on the object itself rather
+        than on its ``TClass`` - which asks the buffer the same question the file format does,
+        so what is written here is what a file would hold, and what is read back is made by
+        the same description of the class.
+        """
+        buffer.StreamObject(self, self.IsA())
+
     def SaveAs(self, filename: str = "", option: str = "") -> None:
         """``SaveAs``: a ``.root`` file holding this object alone."""
         from .files import TFile

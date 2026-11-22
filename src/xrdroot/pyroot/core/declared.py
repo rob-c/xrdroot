@@ -1093,6 +1093,49 @@ def _recorded_object(named: str, row: Mapping[str, Any]) -> Any:
     return made
 
 
+def _root_held(name: str, value: Mapping[str, Any], current: Any) -> Any:
+    """A record of one of ROOT's classes, held by value: the object the kit makes of it, or
+    that object given to the one the read was into when the two are the same class.
+
+    ROOT reads into the object it is handed, so a class the kit makes whole - a ``TF1``, whose
+    numbers are its formula's rather than its members' - is made as a pointer to one is, and
+    then adopted, which is what a ``TBufferFile`` round trip hands back.
+    """
+    from .wrapping import from_members
+
+    made = from_members(name, value)
+    if made is None and current is not None:
+        made = _dressed(name, value)
+    if made is not None:
+        return _become(current, made)
+    if current is None:
+        return value
+    fill_root(current, value)
+    return current
+
+
+def _become(current: Any, made: Any) -> Any:
+    """A record read as ``made`` given to ``current``, the object the read was into.
+
+    ROOT finishes a read in the object it was handed, which is what a ``TBufferFile`` round
+    trip hands back: a class the kit makes whole from a record - a ``TF1``, whose parameters
+    are its formula's and not its own members - would otherwise keep the formula the
+    constructor gave it while its other members were filled in around it. Where the two are
+    not the same class, or the object has nothing to be given a whole object by, the one just
+    made is what comes back.
+    """
+    from .wrapping import remember
+
+    if current is None:
+        return made
+    adopt = getattr(current, "_adopted", None)
+    if adopt is None or type(current) is not type(made):
+        return made
+    adopt(made._xrd)
+    remember(made._xrd, current)  # ``wrap`` gives back what stands for an object
+    return current
+
+
 def _object(value: Any, found: Spelled, current: Any) -> Any:
     if found.name == "pair":
         first, second = found.args
@@ -1105,16 +1148,8 @@ def _object(value: Any, found: Spelled, current: Any) -> Any:
     cls = find_class(found.name)
     if not isinstance(value, Mapping):
         return value
-    from .wrapping import from_members
-
     if cls is None:  # one of ROOT's classes, held by value
-        made = from_members(found.name, value)
-        if made is not None:  # one the kit makes again from a record's members
-            return made
-        if current is None:
-            return value
-        fill_root(current, value)
-        return current
+        return _root_held(found.name, value, current)
     target = current if isinstance(current, cls) else _new(cls)
     _fill(target, cls, value)
     return target
