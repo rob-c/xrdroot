@@ -308,7 +308,8 @@ ROOT = Dialect(
     buffer_functions=frozenset({"memset", "memcpy"}),
     string_methods={"Data": _data},
     guards=frozenset({"TFile", "TMemFile", "FileRaii", "ROOT::TestSupport::FileRaii",
-                     "TIter", "RNTupleWriter"}),  # TIter deletes the iterator it holds
+                     "TIter", "RNTupleWriter",
+                     "TServerSocket"}),  # TIter deletes the iterator it holds
     value_readers=frozenset({"TTreeReaderValue"}),
     array_readers=frozenset({"TTreeReaderArray"}),
     held_results=frozenset({"RResultPtr", "RDF::RResultPtr", "ROOT::RDF::RResultPtr"}),

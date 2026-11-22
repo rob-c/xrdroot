@@ -38,6 +38,7 @@ FAMILIES = (
     "complexes",
     "timing",
     "system",
+    "net",
     "environ",
     "uuids",
     "directories",
