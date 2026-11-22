@@ -16,7 +16,7 @@ import math
 from typing import Any
 
 from ..real import Context, value_of
-from .anaconv import RooAbsAnaConvPdf, decay_type
+from .anaconv import DecayType, RooAbsAnaConvPdf, decay_type
 from .basic import ref
 
 __all__ = ["RooBMixDecay", "RooDecay", "draw_time", "value"]
@@ -177,3 +177,12 @@ class RooBMixDecay(RooAbsAnaConvPdf):
             if inside(t, bounds) and accept:
                 found[self.t.GetName()] = t
                 return found
+
+
+for _decay in (RooDecay, RooBMixDecay):
+    # ROOT declares DecayType inside each decay class, and an unscoped enum answers its
+    # enumerators bare too: RooDecay::DecayType::Flipped and RooDecay::Flipped are both 2.
+    _decay.DecayType = DecayType
+    for _name in ("SingleSided", "DoubleSided", "Flipped"):
+        setattr(_decay, _name, getattr(DecayType, _name))
+del _decay, _name

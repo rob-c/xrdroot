@@ -1056,3 +1056,18 @@ def test_a_conditional_product_integrates_factor_by_factor_where_it_can() -> Non
     assert model.normalized_name([dt, dterr]) == "model"
     assert model.analytic_names(nset, None) == nset
     assert float(np.asarray(model.integrate(nset, {}))) == pytest.approx(1.0, rel=1e-6)
+
+
+def test_every_decay_class_declares_roots_decay_type_as_the_oracle_does() -> None:
+    """``RooBDecay::DecayType::SingleSided`` and its kin: ROOT declares the enum inside each of the
+    five decay classes - and not in ``RooAbsAnaConvPdf`` - with 0, 1, 2 in that order, and an
+    unscoped enum answers the enumerators bare too. Measured on 6.40.04 through PyROOT."""
+    import xrdroot.pyroot as ROOT
+
+    for name in ("RooBDecay", "RooDecay", "RooBMixDecay", "RooBCPGenDecay", "RooBCPEffDecay"):
+        klass = getattr(ROOT, name)
+        assert klass.DecayType.SingleSided == 0, name
+        assert klass.DecayType.DoubleSided == 1, name
+        assert klass.DecayType.Flipped == 2, name
+        assert klass.SingleSided == 0 and klass.Flipped == 2, name
+    assert not hasattr(ROOT.RooAbsAnaConvPdf, "DecayType")

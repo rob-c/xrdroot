@@ -24,10 +24,25 @@ from ..pdf import RooAbsPdf
 from ..real import Context, RooAbsReal
 from .resolution import make_basis
 
-__all__ = ["DECAY_TYPES", "RooAbsAnaConvPdf", "decay_type"]
+__all__ = ["DECAY_TYPES", "DecayType", "RooAbsAnaConvPdf", "decay_type"]
 
 #: ``DecayType``: ``SingleSided``, ``DoubleSided`` and ``Flipped``, by name.
 DECAY_TYPES = {"SingleSided": 0, "DoubleSided": 1, "Flipped": 2}
+
+
+class DecayType:
+    """``DecayType``: the three sides a decay model can keep, as each decay class declares them.
+
+    ROOT declares the enum inside every decay class that has one - ``RooDecay``,
+    ``RooBMixDecay``, ``RooBDecay``, ``RooBCPGenDecay``, ``RooBCPEffDecay`` - and not in
+    ``RooAbsAnaConvPdf``, so a program writes ``RooBDecay::DecayType::SingleSided``, and an
+    unscoped enum also answers the bare ``RooBDecay::SingleSided``. The numbers are ROOT's,
+    measured on 6.40: 0, 1, 2 in that order.
+    """
+
+    SingleSided = DECAY_TYPES["SingleSided"]
+    DoubleSided = DECAY_TYPES["DoubleSided"]
+    Flipped = DECAY_TYPES["Flipped"]
 
 
 def decay_type(value: Any) -> int:
