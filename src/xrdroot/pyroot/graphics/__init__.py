@@ -25,6 +25,7 @@ from .curly import TCurlyArc, TCurlyLine
 from .decorations import TFrame
 from .gradients import TColorGradient, TLinearGradient, TRadialGradient
 from .legend import TLegend, TLegendEntry
+from .multierrors import TGraphMultiErrors
 from .output import close_books
 from .pads import TPad, gPad
 from .paves import TDiamond, TPave, TPaveLabel, TPaveStats, TPavesText, TPaveText
@@ -60,6 +61,8 @@ __all__ = [
     # shapes
     "TLine", "TArrow", "TBox", "TWbox", "TEllipse", "TArc", "TCrown", "TMarker",
     "TPolyLine", "TPolyMarker", "TPie", "TPieSlice",
+    # a graph whose y errors come in a layer per kind of uncertainty
+    "TGraphMultiErrors",
     # the devices that write a pad to a file
     "TVirtualPS", "TPostScript", "TPDF", "TSVG",
     # the palettes by name

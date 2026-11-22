@@ -8,7 +8,7 @@ every member it was written with in reach under :attr:`Graph.members`.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -257,6 +257,67 @@ class Graph(Displayed):
             yerr=histogram.errors(),
         )
 
+    @property
+    def sum_errors_mode(self) -> int:
+        """How a graph keeping layers of y errors adds them up: ``fSumErrorsMode``.
+
+        ROOT's ``kOnlyFirst``, ``kSquareSum`` or ``kAbsSum``; a graph written without the
+        member - no ``TGraphMultiErrors`` ever is - reads as ``kOnlyFirst``, which is the
+        mode its own default constructor gives it.
+        """
+        return int(self.members.get("fSumErrorsMode", graphmath.ONLY_FIRST))
+
+    def error_y(self, index: int) -> float:
+        """``TGraphMultiErrors::GetErrorY(i)``: what the layers at point ``index`` sum to."""
+        return graphmath.error_y(self, int(index))
+
+    @classmethod
+    def from_layers(
+        cls,
+        name: str,
+        x: Any,
+        y: Any,
+        *,
+        title: str = "",
+        xerr: Any = None,
+        layers: Any = (),
+        mode: int = graphmath.ONLY_FIRST,
+        fills: Any = (),
+        lines: Any = (),
+    ) -> Graph:
+        """A ``TGraphMultiErrors``: one layer of y errors per kind of uncertainty.
+
+            >>> g = Graph.from_layers("g", [1, 2], [3, 4], layers=[([0.1, 0.1], [0.2, 0.2])])
+            >>> g.classname
+            'TGraphMultiErrors'
+
+        Each layer is one bar per point, or a ``(low, high)`` pair of runs, as ``yerr`` is
+        to :meth:`new`; ``mode`` is how they add up (ROOT's ``ESummationModes``), and
+        ``fills`` and ``lines`` are each layer's fill and line, by member name.
+        """
+        xs, ys = _doubles(x), _doubles(y)
+        if len(xs) != len(ys):
+            raise ValueError(f"{len(xs)} x values and {len(ys)} y values are not points")
+        count = len(xs)
+        across = _sides(xerr, count, "xerr")
+        zeros = np.zeros(count)
+        bars = [cast("tuple[Any, Any, bool]", _sides(one, count, "a layer")) for one in layers]
+        low, high = (across[0], across[1]) if across is not None else (zeros, zeros)
+        return cls(
+            "TGraphMultiErrors",
+            {
+                "TGraph": _graph_core(name, title, xs, ys),
+                "fNYErrors": len(bars),
+                "fSumErrorsMode": int(mode),
+                "fExL": low,
+                "fExH": high,
+                "fEyL": [one[0] for one in bars],
+                "fEyH": [one[1] for one in bars],
+                "fAttFill": _per_layer(FILL, fills, len(bars)),
+                "fAttLine": _per_layer(LINE, lines, len(bars)),
+            },
+        )
+
     def eval(self, x: Any) -> Any:
         """``Eval``: the graph at ``x`` along straight lines between points, past the ends too.
 
@@ -414,6 +475,15 @@ def _uneven_members(core: dict[str, Any], across: Any, upward: Any, zeros: Any) 
         "fEYlow": upward[0] if upward is not None else zeros,
         "fEYhigh": upward[1] if upward is not None else zeros,
     }
+
+
+def _per_layer(base: dict[str, Any], given: Any, count: int) -> list[dict[str, Any]]:
+    """One attribute group per layer of a graph's errors: ROOT's defaults, and what was given."""
+    overrides = list(given or ())
+    return [
+        dict(base, **(dict(overrides[at]) if at < len(overrides) else {}))
+        for at in range(count)
+    ]
 
 
 def _axis_label(index: int, height: int, low: float, high: float) -> str:
