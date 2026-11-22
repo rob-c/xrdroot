@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from tools.tutorials import catalog as cat
-from tools.tutorials import classify, cli, compare, report, runner
+from tools.tutorials import classify, cli, compare, ratchet, report, runner
 from tools.tutorials import harness as harnessing
 from tools.tutorials.cmake import Interpreter, Token, commands, glob_regex, tokens
 from tools.tutorials.environment import Oracle, cmake_variables, targets
@@ -935,3 +935,33 @@ def test_the_width_of_a_run_comes_from_the_machine_and_keeps_two_cores_back(
     monkeypatch.setattr(cli.os, "cpu_count", lambda: None)
     assert cli.default_jobs() == 1  # a machine that will not say
     assert Settings(tutorials=harnessing.Path(".")).jobs >= 1
+
+
+def test_a_veto_the_run_was_told_to_pass_runs_anyway_and_says_so(tmp_path):
+    """ROOT vetoes its drawing tutorials for a build with no display, yet the canvas ones run
+    headless and ROOT compares them; ``--also-vetoed`` runs them, marks them beyond ROOT's test
+    set, and a baseline - which is ROOT's own test set - refuses such a run."""
+    drawn = cat.Tutorial("vis/flower.C", vetoed="needs a display (GUI)")
+    helper = cat.Tutorial("vis/helper.C", vetoed="not a standalone tutorial")
+    plain = Harness(Settings(tutorials=tmp_path), {}, None, log=lambda line: None)
+    assert plain.skip_reason(drawn) == "needs a display (GUI)"
+    told = Harness(
+        Settings(tutorials=tmp_path, also_vetoed=("needs a display (GUI)",)),
+        {},
+        None,
+        log=lambda line: None,
+    )
+    assert told.skip_reason(drawn) is None and told.skip_reason(helper) == (
+        "not a standalone tutorial"
+    )
+    assert told._beyond_ctest(drawn) and not told._beyond_ctest(helper)
+    with pytest.raises(ValueError, match=r"ran beyond it"):
+        ratchet.write_baseline(
+            {
+                "meta": {"root_version": "6.40.04", "only": [], "counts": {}},
+                "tutorials": [
+                    {"path": "vis/flower.C", "status": "PASS", "beyond_ctest": "GUI", "runtime": 1}
+                ],
+            },
+            tmp_path / "baseline.json",
+        )
