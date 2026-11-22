@@ -802,7 +802,13 @@ class TInterpreter:
         return gROOT.ProcessLine(line, error)
 
     def Calc(self, line: Any, error: Any = None) -> Any:
-        return gROOT.ProcessLine(line, error)
+        """``Calc``: an expression evaluated and its value given back, with nothing printed.
+
+        ROOT's ``TCling::Calc`` reads the value out of the interpreter without cling's prompt
+        echo - ``gInterpreter->Calc("1+2")`` prints nothing where ``ProcessLine("1+2")``
+        prints ``(int) 3`` - so this is the silent path, the one ``ProcessLineFast`` takes.
+        """
+        return _fast_processor(f"gInterpreter.Calc({str(line)!r})")(str(line))
 
     def Load(self, filename: Any, system: bool = False) -> int:
         """``Load``: ``gSystem->Load`` of the library."""
