@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from ..real import Context, value_of
-from .anaconv import DecayType, RooAbsAnaConvPdf, decay_type
+from .anaconv import RooAbsAnaConvPdf, decay_type, declares_decay_type
 from .basic import ref
 from .decays import draw_time, inside, value
 
@@ -297,9 +297,4 @@ def _density_and_envelope(
     return f, 1.001 * math.exp(-ft * gammamin) * (abs(f0) + abs(f1) + math.sqrt(f2 * f2 + f3 * f3))
 
 
-for _decay in (RooBCPEffDecay, RooBCPGenDecay, RooBDecay):
-    # as ROOT declares it: the enum inside each decay class, and its enumerators bare.
-    _decay.DecayType = DecayType
-    for _name in ("SingleSided", "DoubleSided", "Flipped"):
-        setattr(_decay, _name, getattr(DecayType, _name))
-del _decay, _name
+declares_decay_type(RooBCPEffDecay, RooBCPGenDecay, RooBDecay)
