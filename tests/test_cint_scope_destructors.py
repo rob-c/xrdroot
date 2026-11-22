@@ -146,3 +146,18 @@ def test_a_pointer_owning_an_array_of_numbers_is_an_array_of_zeros():
     namespace: dict[str, object] = {}
     exec(compile(text, "d.C", "exec"), namespace)
     expect((namespace["total"](), 49), ("array('int', 2)" in text, True))
+
+
+def test_a_smart_pointer_holding_a_file_closes_it_as_the_scope_ends():
+    """``std::unique_ptr<TFile> f{TFile::Open(...)}`` is the ``TFile`` itself here, so the file
+    is written where the scope ends - not when the process does, which would leave a program
+    that reads the file back in the same run reading a file that is not there yet."""
+    for declaration in (
+        'std::unique_ptr<TFile> f{TFile::Open("x.root", "RECREATE")};',
+        'std::unique_ptr<TFile> f(TFile::Open("x.root", "RECREATE"));',
+        'auto f = std::unique_ptr<TFile>(TFile::Open("x.root", "RECREATE"));',
+        'std::shared_ptr<TFile> f{TFile::Open("x.root", "RECREATE")};',
+    ):
+        text = body("{\n" + declaration + "\n}\nprintf(\"after\\n\");")
+        assert "finally:" in text, declaration
+        assert "f._destruct()" in text, declaration

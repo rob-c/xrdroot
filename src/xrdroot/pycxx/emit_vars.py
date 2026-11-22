@@ -169,15 +169,16 @@ class VariableEmitter(StmtEmitter):
         return True
 
     def _owned(self, ctype: CType) -> CType:
-        """The type whose destructor C++ runs for a local of ``ctype``, which is the local's own
-        unless it is an array of them - ``A a[3]``, ``A a[2][3]``, or the ``A[]`` a
-        ``std::unique_ptr`` holds, which this kit keeps as the arrays
-        ``cppstd.objects.ObjectArray`` builds, one per dimension."""
+        """The type whose destructor C++ runs for a local of ``ctype``: the local's own, the
+        element of an array of them - ``A a[3]``, ``A a[2][3]`` - or the object a smart pointer
+        holds, which this kit keeps as the object itself (``std::unique_ptr<TFile>`` is the
+        ``TFile``) and as the arrays ``cppstd.objects.ObjectArray`` builds, one per dimension,
+        when it is an array of them."""
         if ctype.dims:
             return ctype.element()
         inner = ctype.args[0] if ctype.name in SMART and ctype.args else None
-        if isinstance(inner, CType) and inner.dims:
-            return inner.element()
+        if isinstance(inner, CType):
+            return inner.element() if inner.dims else inner
         return ctype
 
     def _destructs(self, name: str) -> bool:
