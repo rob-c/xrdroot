@@ -97,3 +97,29 @@ def test_the_autoflush_holds_for_a_column_of_rows_and_a_scalar_alike() -> None:
     holder.Write()
     expect((wide.GetWriteBasket() >= 3, True), (narrow.GetWriteBasket() >= 3, True))
     holder.Close()
+
+
+def test_a_tree_being_read_is_told_nothing_of_a_writers_clusters() -> None:
+    """A tree read from a file has no writer to tell, and the calls answer quietly."""
+    holder, _ = filled(10, auto_flush=5)
+    holder.Close()
+    back = ROOT.TFile("baskets.root")
+    read = back.Get("t")
+    read.SetAutoFlush(500)  # nothing to set: the file's layout is the answer
+    read.SetBit(ROOT.TTree.kOnlyFlushAtCluster)  # and this asks the same nothing
+    read.SetBit(ROOT.TTree.kCircular)  # a bit that is not the writer's
+    expect((read.TestBit(ROOT.TTree.kOnlyFlushAtCluster), True))
+    read.SetBit(ROOT.TTree.kOnlyFlushAtCluster, False)
+    back.Close()
+
+
+def test_the_autoflush_of_zero_leaves_the_basket_size_to_decide() -> None:
+    holder = ROOT.TFile("zero.root", "RECREATE")
+    tree = ROOT.TTree("t", "t")
+    tree.SetAutoFlush(0)  # ROOT's own choice: the baskets' size alone
+    branch = tree.Branch("branch", np.zeros(1))
+    for _ in range(20):
+        tree.Fill()
+    holder.Write()
+    expect((branch.GetWriteBasket(), 1))  # fmt: skip
+    holder.Close()
