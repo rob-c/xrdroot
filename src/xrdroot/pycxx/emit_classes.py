@@ -169,7 +169,7 @@ class ClassEmitter(FunctionEmitter):
         # Python body, which runs before the class's name is bound: a member read there is the
         # body's own name - ``N = Nbins + 2`` - and ``A.Nbins`` would be the ``NameError`` of a
         # class that is not there yet. The enumerators come first, since a static may name one.
-        with self.scoped() as body:
+        with self.scoped("class", klass=info.decl.name) as body:
             self._body_names(info, body)
             self._enumerators_and_statics(info)
         self._static_writes(info)
