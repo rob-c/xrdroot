@@ -124,6 +124,7 @@ class RooSimultaneous(RooAbsPdf):
     def selfNormalized(self) -> bool:
         return True
 
+
     def constraint_terms(
         self, observables: frozenset[str], params: list[Any], strip: bool
     ) -> list[Any]:
@@ -193,6 +194,12 @@ class _Projection(RooAbsPdf):
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         return names
+
+    def plot_sampling_hint(self, name: str, xlo: float, xhi: float) -> Any:
+        """``plotSamplingHint``: the channels' hints together - a step jumps where any does."""
+        from ..real import merge_hints
+
+        return merge_hints(one.plot_sampling_hint(name, xlo, xhi) for one in self.parts)
 
     def analytic(self, names: frozenset[str], ctx: Context, rng: Any) -> Any:
         return self.fraction(names, ctx, names, rng)

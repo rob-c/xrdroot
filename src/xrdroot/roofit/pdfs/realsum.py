@@ -42,6 +42,12 @@ class RooRealSumPdf(RooAbsPdf):
                 total = total + coef * func.compute(ctx)
         return total
 
+    def plot_sampling_hint(self, name: str, xlo: float, xhi: float) -> Any:
+        """``plotSamplingHint``: a sum jumps wherever any of its terms does."""
+        from ..real import merge_hints
+
+        return merge_hints(one.plot_sampling_hint(name, xlo, xhi) for one in self.funcs)
+
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:
         return names
 

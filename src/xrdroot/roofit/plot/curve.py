@@ -76,15 +76,23 @@ def sample(
     bins: int,
     precision: float = 1e-3,
     wings: int = EXTENDED,
+    hint: Any = None,
 ) -> tuple[np.ndarray[Any, Any], ...]:
     """``RooCurve::addPoints`` over ``bins + 1`` starting points; ``func`` takes an array.
 
     ``wings`` is the ``WingMode``: ``EXTENDED`` a step out at each end, ``STRAIGHT`` straight
     down to zero at the ends - ``VLines`` - or ``NO_WINGS``.
+
+    A ``hint`` - a binned function's points either side of its bin edges - is the
+    whole starting grid when there is one, as ``RooCurve::addPoints`` takes it:
+    the bins of a step are drawn as steps and not smeared by ``bins`` more points.
     """
-    count = bins + 1
+    if hint:
+        xs = np.asarray(list(hint), dtype=np.float64)
+    else:
+        xs = low + np.arange(bins + 1) * ((high - low) / float(bins))
+    count = int(xs.size)
     dx = (high - low) / (count - 1.0)
-    xs = low + np.arange(count) * dx
     probe = xs.copy()
     probe[-1] -= 1e-9 * dx
     ys = np.asarray(func(probe), dtype=np.float64).reshape(-1) * np.ones(count)

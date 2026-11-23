@@ -61,6 +61,14 @@ class RooProdPdf(RooAbsPdf):
     #: none to announce, as RooFit's own product is silent while it sets up to generate.
     factors_announce_themselves = True
 
+    def plot_sampling_hint(self, name: str, xlo: float, xhi: float) -> Any:
+        """``plotSamplingHint``: the product jumps wherever one of its factors does."""
+        from ..real import merge_hints
+
+        return merge_hints(
+            one.plot_sampling_hint(name, xlo, xhi) for one in self.pdfs
+        )
+
     def __init__(self, name: Any, title: Any = "", *args: Any, **kwargs: Any) -> None:
         from ..cmdargs import make
 

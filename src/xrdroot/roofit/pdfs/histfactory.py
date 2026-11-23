@@ -389,7 +389,7 @@ class RooBinWidthFunction(RooAbsReal):
     def __init__(self, name: Any, title: Any, histFunc: Any = None,
                  divideByBinWidth: bool = False) -> None:  # fmt: skip
         super().__init__(name, title)
-        self.hist = self._proxy("HistFuncForBinWidth", histFunc)
+        self.hist = self._proxy("HistFuncForBinWidth", histFunc, True)
         self._divide = bool(divideByBinWidth)
 
     @staticmethod

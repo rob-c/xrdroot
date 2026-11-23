@@ -182,6 +182,12 @@ def plot_function(func: Any, frame: Any, args: tuple[Any, ...], kwargs: dict[str
     return real_plot(func, frame, CmdList.of(args, kwargs))
 
 
+def _sampling_hint(func: Any, name: str, low: float, high: float) -> Any:
+    """``RooAbsReal::plotSamplingHint``: where the function asks to be sampled, if it does."""
+    hint = getattr(func, "plot_sampling_hint", None)
+    return None if hint is None else hint(name, low, high)
+
+
 def _curve_name(
     func: Any, nset: frozenset[str], projected: frozenset[str], rng: Any, var: str
 ) -> str:
@@ -229,7 +235,15 @@ def _add_curve(
 
     precision = float(options.get("Precision", 0, 1e-3))
     with selection.selecting(chosen):
-        xs, ys = sample(curve_at, low, high, frame.GetNbinsX(), precision, wings)
+        xs, ys = sample(
+            curve_at,
+            low,
+            high,
+            frame.GetNbinsX(),
+            precision,
+            wings,
+            _sampling_hint(func, name, low, high),
+        )
     label = _curve_name(func, nset, projected, seen.range if seen is not None else None, name)
     if seen is not None and seen.averaged:
         label += f"_DataAvg[{','.join(seen.averaged)}]"

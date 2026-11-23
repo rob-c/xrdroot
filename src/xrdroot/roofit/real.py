@@ -40,8 +40,22 @@ def value_of(result: Any) -> float:
     return float(np.asarray(result, dtype=np.float64).reshape(-1)[0])
 
 
+def merge_hints(hints: Any) -> Any:
+    """``RooRealSumPdf::plotSamplingHint``: the children's hints, sorted, each point once.
+
+    A sum or a product of them jumps wherever any one of its terms does, so it asks
+    to be sampled where they all ask - and answers nothing when no term does.
+    """
+    found = [float(one) for hint in hints if hint for one in hint]
+    return sorted(set(found)) or None
+
+
 class RooAbsReal(RooAbsArg):
     """Anything with a real value: a variable, a function, a density."""
+
+    def plot_sampling_hint(self, name: str, xlo: float, xhi: float) -> Any:
+        """``plotSamplingHint``: the points a curve of this must be sampled at, if any."""
+        return None
 
     #: ``ScaleType``: what a plot's ``Normalization(n, type)`` means by ``n``.
     Raw, Relative, NumEvent, RelativeExpected = 0, 1, 2, 3

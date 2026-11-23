@@ -118,6 +118,12 @@ class RooProduct(RooAbsReal):
 
         announce_parts(self, names, rng)
 
+    def plot_sampling_hint(self, name: str, xlo: float, xhi: float) -> Any:
+        """``plotSamplingHint``: a product jumps wherever one of its factors does."""
+        from .real import merge_hints
+
+        return merge_hints(one.plot_sampling_hint(name, xlo, xhi) for one in self.terms)
+
     def bin_boundaries(self, name: str) -> Any:
         """``binBoundaries``: the first factor's that has any."""
         from .pdfs.histfactory import _boundaries_of

@@ -28,6 +28,9 @@ from .histcache import located_key, weights_key
 
 __all__ = ["RooHistFunc", "RooHistPdf"]
 
+#: ``RooCurve::relativeXEpsilon()``: how far either side of a bin edge a step is sampled.
+SAMPLE_EPSILON = 1e-9
+
 
 def _split(args: tuple[Any, ...]) -> tuple[Any, Any, Any, int]:
     """``(vars, data[, order])`` or ``(pdfObs, histObs, data[, order])``: what the classes keep."""
@@ -151,6 +154,26 @@ class _Histogram:
             if obs.GetName() == name:
                 return [float(e) for e in var.getBinning().array()]
         return None
+
+    def plot_sampling_hint(self, name: str, xlo: float, xhi: float) -> Any:
+        """``plotSamplingHint``: where a step curve must be sampled so its jumps are drawn.
+
+        A binned function is constant inside a bin and jumps at its edges, which
+        the recursive straight-line test cannot find, so ROOT asks for points just
+        either side of every edge - ``RooCurve::plotSamplingHintForBinBoundaries``
+        - and interpolated bins, being smooth, ask for none.
+        """
+        if self.order > 0:
+            return None
+        edges = self.bin_boundaries(name)
+        if edges is None:
+            return None
+        delta = (xhi - xlo) * SAMPLE_EPSILON
+        hint = [xlo + delta, xhi - delta]
+        for edge in edges:
+            if edge - xlo > delta and xhi - edge > delta:
+                hint += [edge - delta, edge + delta]
+        return sorted(hint)
 
     def isBinnedDistribution(self, obs: Any = None) -> bool:
         """Binned where the value is the bin's, not interpolated between bins."""
