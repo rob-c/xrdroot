@@ -21,7 +21,7 @@ from .errors import Refusal
 from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Name, Unary, VarDecl
 from .operators import DUNDERS, conversion
 from .program import ClassInfo
-from .symbols import Symbol, member_name, python_name
+from .symbols import Scope, Symbol, member_name, python_name
 
 __all__ = ["ClassEmitter"]
 
@@ -165,9 +165,30 @@ class ClassEmitter(FunctionEmitter):
         self.out.line(f"_cxx_methods_ = {_methods_layout(info, spellings)!r}", info.decl.where)
         self.out.line("_cxx_destroyed = False", info.decl.where)
         self.out.line("_cxx_released = False", info.decl.where)
-        # The enumerators first: a static's initialiser is written in the class's own body,
-        # where ``A::k`` is read as the body's name ``k`` (:meth:`~.emit_names.NameEmitter.
-        # _class_member`), so ``k`` has to be there before the static that names it is.
+        # An enumerator's value and a static's initialiser are written in the class's own
+        # Python body, which runs before the class's name is bound: a member read there is the
+        # body's own name - ``N = Nbins + 2`` - and ``A.Nbins`` would be the ``NameError`` of a
+        # class that is not there yet. The enumerators come first, since a static may name one.
+        with self.scoped() as body:
+            self._body_names(info, body)
+            self._enumerators_and_statics(info)
+        self._static_writes(info)
+        self._constructors(info)
+        for name, funcs in info.methods.items():
+            self._method(info, name, [func for func in funcs if func.body is not None])
+        self._finalizer(info)
+
+    def _body_names(self, info: ClassInfo, scope: Scope) -> None:
+        """The names a class's Python body can read by themselves: its enumerators as the body
+        writes them, and its static members as an attribute is spelled."""
+        for name in info.constants:
+            scope.add(Symbol(name, "constant", name, CType("int")))
+        for name, var in info.statics.items():
+            scope.add(Symbol(name, "static", member_name(name), self.declared_type(var)))
+
+    def _enumerators_and_statics(self, info: ClassInfo) -> None:
+        """An enumerator's line and a static member's initialiser, in the order the class
+        declares them - which is the order C++ needs, a static naming only what came before."""
         for decl in info.decl.members:
             if isinstance(decl, EnumDecl):
                 for name, value in self.enum_values(decl):
@@ -175,11 +196,6 @@ class ClassEmitter(FunctionEmitter):
         for name, var in info.statics.items():
             ctype = self.declared_type(var)
             self.out.line(f"{member_name(name)} = {self.initial(var, ctype)}", var.where)
-        self._static_writes(info)
-        self._constructors(info)
-        for name, funcs in info.methods.items():
-            self._method(info, name, [func for func in funcs if func.body is not None])
-        self._finalizer(info)
 
     def _static_writes(self, info: ClassInfo) -> None:
         """``obj.counter = 1`` of a static data member writes the class, as C++ writes it.

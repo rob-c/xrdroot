@@ -247,3 +247,21 @@ def test_a_member_function_named_through_its_class_outside_one_is_left_to_the_cl
     as such, rather than with a ``self`` the code naming it never had."""
     source = "struct A { void f() {} };\nint g() { A::f(); return 0; }\n"
     assert "A.f()" in translate(source, "g.cxx", CXX)
+
+
+#: A class whose second static is worked out from its first. C++ reads ``Nbins`` in the class's
+#: own body, where the class's name is not bound yet - a translation that wrote
+#: ``Counted.Nbins`` there would be the ``NameError`` of a class that does not exist yet.
+STATIC_FROM_STATIC = r"""
+struct Counted {
+   static constexpr int Nbins = 5;
+   static constexpr int N = Nbins + 2;
+};
+int statics() { return Counted::N * 10 + Counted::Nbins; }
+"""
+
+
+def test_a_static_worked_out_from_another_static_reads_the_bodys_own_name() -> None:
+    """ROOT's own ``test_TH1_SaveAs`` declares ``N = Nbins + 2``; the body's name is what runs."""
+    assert "N = Nbins + 2" in translate(STATIC_FROM_STATIC, "statics.cxx", CXX)
+    assert run_source(STATIC_FROM_STATIC, "statics.cxx") == 75
