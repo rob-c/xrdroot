@@ -65,3 +65,26 @@ def test_a_great_triangle_that_keeps_cutting_into_the_hull_is_refused(monkeypatc
     x, y = _scattered(30)
     with pytest.raises(UnsupportedFeatureError, match="could not be triangulated"):
         len(Delaunay(x, y, x).triangles)
+
+
+def test_the_box_the_points_are_squeezed_into_is_the_callers_or_their_own_range():
+    x, y = [0.0, 4.0, 0.0], [0.0, 0.0, 2.0]
+    own = Delaunay(x, y, x)
+    assert (own._offsets, own._scales) == ([-2.0, -1.0], [0.25, 0.5])
+    assert own.window == [(-0.5, 0.5), (-0.5, 0.5)]
+    # a box wider than the points: the unit square holds more than they span
+    boxed = Delaunay(x, y, x, box=(-10.0, 10.0, 0.0, 4.0))
+    assert (boxed._offsets, boxed._scales) == ([0.0, -2.0], [0.05, 0.25])
+    assert boxed.window == [(-0.5, 0.5), (-0.5, 0.5)]
+
+
+def test_a_box_with_no_width_falls_back_to_the_points_on_both_axes_as_root_does():
+    """ROOT takes ``xmin``, ``xmax``, ``ymin`` and ``ymax`` only when ``xmin < xmax``, and
+    otherwise measures both axes from the points - a caller who gives no box gives no y
+    range to go with it."""
+    x, y = [0.0, 4.0, 0.0], [0.0, 0.0, 2.0]
+    empty = Delaunay(x, y, x, box=(5.0, 5.0, 0.0, 100.0))
+    assert (empty._offsets, empty._scales) == ([-2.0, -1.0], [0.25, 0.5])
+    nothing = Delaunay([], [], [], box=(3.0, 1.0, 0.0, 4.0))
+    assert (nothing._offsets, nothing._scales) == ([0.0, 0.0], [1.0, 1.0])
+    assert nothing.window == [(0.0, 0.0), (0.0, 0.0)]
