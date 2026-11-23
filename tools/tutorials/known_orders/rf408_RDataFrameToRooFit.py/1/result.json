@@ -1,0 +1,14 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf408_RDataFrameToRooFit.py"
+ ],
+ "exit_code": 0,
+ "files": {},
+ "note": "",
+ "runtime": 2.718,
+ "stderr": "",
+ "stdout": "\nRooDataSet::dataset[x,y] = 2000000 entries\n(   4.997,   -0.304, )  weight=     1.000\n(   4.472,    0.910, )  weight=     1.000\n(   4.575,    0.830, )  weight=     1.000\n(   0.400,    0.776, )  weight=     1.000\n(   2.599,   -0.232, )  weight=     1.000\n(  -1.844,    1.575, )  weight=     1.000\n(   0.197,    0.853, )  weight=     1.000\n(  -1.077,   -0.721, )  weight=     1.000\n(  -4.697,   -3.165, )  weight=     1.000\n(   4.437,   -1.208, )  weight=     1.000\n(   3.983,   -0.146, )  weight=     1.000\n(  -0.014,   -1.447, )  weight=     1.000\n(  -3.177,   -2.704, )  weight=     1.000\n(  -4.371,   -0.363, )  weight=     1.000\n(   2.254,   -0.499, )  weight=     1.000\n(   2.139,    6.533, )  weight=     1.000\n(   1.993,    6.991, )  weight=     1.000\n(  -3.708,    7.781, )  weight=     1.000\n(  -4.168,    1.284, )  weight=     1.000\n(  -4.177,    4.650, )  weight=     1.000\nmean(x) = 0.001\tsigma(x) = 2.886\nmean(y) = 1.000\tsigma(y) = 3.000\n\n\nRooDataHist::dataset[x,y] = 200 bins (2e+06 weights)\n(  -4.500,  -47.500, )  weight=     0.000\n(  -4.500,  -42.500, )  weight=     0.000\n(  -4.500,  -37.500, )  weight=     0.000\n(  -4.500,  -32.500, )  weight=     0.000\n(  -4.500,  -27.500, )  weight=     0.000\n(  -4.500,  -22.500, )  weight=     0.000\n(  -4.500,  -17.500, )  weight=     0.000\n(  -4.500,  -12.500, )  weight=    24.000\n(  -4.500,   -7.500, )  weight=  4537.000\n(  -4.500,   -2.500, )  weight= 69653.000\n(  -4.500,    2.500, )  weight=107838.000\n(  -4.500,    7.500, )  weight= 17790.000\n(  -4.500,   12.500, )  weight=   292.000\n(  -4.500,   17.500, )  weight=     0.000\n(  -4.500,   22.500, )  weight=     0.000\n(  -4.500,   27.500, )  weight=     0.000\n(  -4.500,   32.500, )  weight=     0.000\n(  -4.500,   37.500, )  weight=     0.000\n(  -4.500,   42.500, )  weight=     0.000\n(  -4.500,   47.500, )  weight=     0.000\nmean(x) = 0.001\tsigma(x) = 2.872\nmean(y) = 0.999\tsigma(y) = 3.329\n\n",
+ "timed_out": false,
+ "workdir": "/private/var/folders/9z/hrfxpzqn2mggs_8j89f7tx2r0000gr/T/tutorial-t827x8ke"
+}

@@ -1,0 +1,16 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf308_normintegration2d.py"
+ ],
+ "exit_code": 0,
+ "files": {
+  "rf308_normintegration2d.png": "b46b280279a52cfd42d2f9a57caa17079565e2c1ca0dafd5bb111b80472eebe4"
+ },
+ "note": "",
+ "runtime": 1.204,
+ "stderr": "Info in <TCanvas::Print>: png file rf308_normintegration2d.png has been created\n",
+ "stdout": "gxy =  0.4856717852477124\ngx_Norm[x,y] =  0.012933200957206766\ngx_Int[x,y] =  37.552326516436096\ngx_Norm[x] =  0.1068955044839622\ngx_Norm[y] =  0.12098919425696865\n[#1] INFO:Eval -- RooRealVar::setRange(x) new range named 'signal' created with bounds [-5,5]\n[#1] INFO:Eval -- RooRealVar::setRange(y) new range named 'signal' created with bounds [-3,3]\ngx_Int[x,y|signal]_Norm[x,y] =  0.5720351351990984\n",
+ "timed_out": false,
+ "workdir": "/private/var/folders/9z/hrfxpzqn2mggs_8j89f7tx2r0000gr/T/tutorial-2e8ybgqh"
+}

@@ -1,0 +1,16 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf212_plottingInRanges_blinding.py"
+ ],
+ "exit_code": 0,
+ "files": {
+  "rf212_plottingInRanges_blinding.png": "3fa765330a1e886eeec82eacb46973182c740f5fbc80ce4a86dfd4ca56f7677e"
+ },
+ "note": "",
+ "runtime": 1.203,
+ "stderr": "Info in <TCanvas::Print>: png file rf212_plottingInRanges_blinding.png has been created\n",
+ "stdout": "[#1] INFO:Eval -- RooRealVar::setRange(x) new range named 'full' created with bounds [1,30]\n[#1] INFO:Eval -- RooRealVar::setRange(x) new range named 'left' created with bounds [1,10]\n[#1] INFO:Eval -- RooRealVar::setRange(x) new range named 'right' created with bounds [20,30]\n[#1] INFO:Eval -- RooRealVar::setRange(x) new range named 'fit_nll_expo_expoData_left' created with bounds [1,10]\n[#1] INFO:Eval -- RooRealVar::setRange(x) new range named 'fit_nll_expo_expoData_right' created with bounds [20,30]\n[#1] INFO:Fitting -- RooAbsPdf::fitTo(expo_over_expo_Int[x|left,right]) fixing normalization set for coefficient determination to observables in data\n[#1] INFO:Fitting -- using generic CPU library compiled with no vectorizations\n[#1] INFO:Fitting -- Creation of NLL object took 2.40117 ms\n[#1] INFO:Fitting -- RooAddition::defaultErrorLevel(nll_expo_over_expo_Int[x|left,right]_expoData) Summation contains a RooNLLVar, using its error level\n[#1] INFO:Minimization -- [fitFCN] No discrete parameters, performing continuous minimization only\nNow plotting with unique normalisation for each slice.\n\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) only plotting range 'full', curve is normalized to data in given range\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) only plotting range 'left', curve is normalized to data in given range\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) only plotting range 'right', curve is normalized to data in given range\n\n\nNow plotting with correct norm ranges:\n\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) only plotting range 'left'\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) p.d.f. curve is normalized using explicit choice of ranges 'left,right'\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) only plotting range 'right'\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) p.d.f. curve is normalized using explicit choice of ranges 'left,right'\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) only plotting range 'full'\n[#1] INFO:Plotting -- RooAbsPdf::plotOn(expo) p.d.f. curve is normalized using explicit choice of ranges 'left,right'\n",
+ "timed_out": false,
+ "workdir": "/private/var/folders/9z/hrfxpzqn2mggs_8j89f7tx2r0000gr/T/tutorial-l227gn7a"
+}

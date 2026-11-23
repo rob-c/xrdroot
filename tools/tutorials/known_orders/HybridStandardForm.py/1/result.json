@@ -1,0 +1,14 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "HybridStandardForm.py"
+ ],
+ "exit_code": 0,
+ "files": {},
+ "note": "",
+ "runtime": 4.689,
+ "stderr": "",
+ "stdout": "-----------------------------------------\nPart 3\nZ_Bi p-value (analytic): 0.0009416504675382253\nZ_Bi significance (analytic) 3.108043895747114\nReal time 0:00:00, CP time 0.240\n[#0] WARNING:Eval -- RooStatsUtils::MakeNuisancePdf - no constraints found on nuisance parameters in the input model\n[#0] WARNING:Eval -- RooStatsUtils::MakeNuisancePdf - no constraints found on nuisance parameters in the input model\n-----------------------------------------\nPart 4\n\nResults HypoTestCalculator_result: \n - Null p-value = 0.001 +/- 0.000408044\n - Significance = 3.09023 +/- 0.121186 sigma\n - Number of Alt toys: 300\n - Number of Null toys: 6000\n - Test statistic evaluated on data: 150\n - CL_b: 0.001 +/- 0.000408044\n - CL_s+b: 0.573333 +/- 0.0285553\n - CL_s: 573.333 +/- 235.682\nReal time 0:00:03, CP time 3.620\n",
+ "timed_out": false,
+ "workdir": "/private/var/folders/9z/hrfxpzqn2mggs_8j89f7tx2r0000gr/T/tutorial-91cqdokz"
+}

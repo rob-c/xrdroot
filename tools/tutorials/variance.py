@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .catalog import Tutorial
@@ -26,7 +26,14 @@ from .environment import Oracle
 from .harness import FLAKY, Settings, oracle_command, oracle_environment
 from .runner import RunResult, Sandbox, run_in_sandbox
 
-__all__ = ["distinct", "distinctive_line", "same_output", "tutorial_named", "varying"]
+__all__ = [
+    "distinct",
+    "distinctive_line",
+    "record_order",
+    "same_output",
+    "tutorial_named",
+    "varying",
+]
 
 #: How much of a contrasting line the recorded sentence quotes.
 QUOTE = 60
@@ -139,3 +146,75 @@ def tutorial_named(catalogue: dict[str, Tutorial], wanted: str) -> Tutorial:
 def paths(catalogue: dict[str, Tutorial], wanted: Sequence[str]) -> list[Tutorial]:
     """The tutorials ``wanted`` names, each resolved against the catalogue."""
     return [tutorial_named(catalogue, one) for one in wanted]
+
+
+def _runs(
+    tutorial: Tutorial, settings: Settings, oracle: Oracle, runs: int, work: Path
+) -> list[tuple[RunResult, Path]]:
+    """ROOT's own runs of one tutorial, each with the directory its outputs were kept in."""
+    found: list[tuple[RunResult, Path]] = []
+    for number in range(1, max(1, runs) + 1):
+        keep = work / tutorial.path / str(number)
+        sandbox = Sandbox((settings.tutorials / tutorial.path).parent, (), keep / "files")
+        env = oracle_environment(tutorial, oracle, settings.tutorials)
+        run = run_in_sandbox(sandbox, oracle_command(tutorial, oracle), env, settings.timeout)
+        found.append((run, keep / "files"))
+    return found
+
+
+def _store(tutorial: Tutorial, result: RunResult, files: Path, index: Path, draw: str) -> None:
+    """One whole ROOT run kept as a ``known_orders`` entry: its ``result.json`` and its outputs."""
+    rows = json.loads(index.read_text()) if index.is_file() else {"orders": {}}
+    known = rows.setdefault("orders", {}).setdefault(tutorial.path, [])
+    target = index.parent / PurePosixPath(tutorial.path).name / str(len(known) + 1)
+    target.mkdir(parents=True, exist_ok=True)
+    result.save(target / "result.json")
+    if files.is_dir():
+        (target / "files").mkdir(exist_ok=True)
+        for one in files.iterdir():
+            (target / "files" / one.name).write_bytes(one.read_bytes())
+    known.append({"draw": draw, "entry": str(target.relative_to(index.parent))})
+    index.write_text(json.dumps(rows, indent=1) + "\n")
+
+
+def record_order(
+    tutorial: Tutorial,
+    settings: Settings,
+    oracle: Oracle,
+    runs: int,
+    work: Path,
+    index: Path | None = None,
+) -> int:
+    """Record ROOT's own other draws of a tutorial where only their *order* differs.
+
+    RooFit's message stream and a script's ``print`` are two buffers into one file, and ROOT
+    interleaves them differently run to run - so the harness, which compares positionally,
+    fails an output ROOT itself produced against the one draw it has cached. Such a run is
+    not a difference in *content*: its lines are the same, in another order. Each is kept as
+    one more of ``known_orders``' entries, which is what a match is tested against, and the
+    recording says so in its own sentence. A run whose lines differ is a different finding -
+    that is ``varying``', and the two are never mixed.
+    """
+    from .harness import KNOWN_ORDERS, known_orders
+
+    index = index if index is not None else KNOWN_ORDERS
+    recorded = [one for one, _ in known_orders(tutorial.path)]
+    reference: Counter[str] | None = None
+    for one in recorded:
+        reference = Counter(normalise(one.stdout))
+        break
+    added = 0
+    draws = _runs(tutorial, settings, oracle, runs, work)
+    for number, (result, files) in enumerate(draws, start=1):
+        lines = Counter(normalise(result.stdout))
+        if reference is None:
+            reference = lines
+            continue
+        if lines != reference or any(same_output(result, one) for one in recorded):
+            continue
+        _store(tutorial, result, files, index,
+               f"ROOT's own other draw of this tutorial, run {number}: the same lines, "
+               "interleaved in another order")  # fmt: skip
+        recorded.append(result)
+        added += 1
+    return added

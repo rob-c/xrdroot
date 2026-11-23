@@ -1,0 +1,14 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf508_listsetmanip.py"
+ ],
+ "exit_code": 0,
+ "files": {},
+ "note": "",
+ "runtime": 1.135,
+ "stderr": "",
+ "stdout": "[#0] WARNING:InputArguments -- The parameter 'b' with range [-10, 10] of the RooGaussian 'g' exceeds the safe range of (0, inf). Advise to limit its range.\nsclone =  { @0x60000348fcc0, @0x60000348fcc8, @0x60000348fcd0, @0x60000348fcd8, @0x60000348fce0, @0x60000348fce8 }\nRooArgSet::sclone = (a,b,c,d,e,g)\n  1) RooRealVar:: a = 1\n  2) RooRealVar:: b = 2\n  3) RooRealVar:: c = 3 +/- 0.5\n  4) RooRealVar:: d = 4\n  5) RooCategory:: e = sig(idx = 0)\n\n  6) RooGaussian:: g = 0.882497\n  1) 0x15442e350 RooRealVar:: a = 1 C  L(-10 - 10)  \"a\"\n  2) 0x1544288a0 RooRealVar:: b = 2 C  L(-10 - 10)  \"b\"\n  3) 0x154428c30 RooRealVar:: c = 3 +/- 0.5  L(-10 - 10)  \"c\"\n  4) 0x154427de0 RooRealVar:: d = 4  L(-10 - 10)  \"d\"\n  5) 0x154424d10 RooCategory:: e = sig(idx = 0)\n  \"e\"\n  6) 0x152388600 RooGaussian:: g[ x=x mean=a sigma=b ] = 0.882497  \"g\"\n",
+ "timed_out": false,
+ "workdir": "/private/var/folders/9z/hrfxpzqn2mggs_8j89f7tx2r0000gr/T/tutorial-dicidhju"
+}

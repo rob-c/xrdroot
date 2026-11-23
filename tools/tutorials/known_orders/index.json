@@ -45,6 +45,120 @@
     "draw": "the generate set and the super-category iterate b0flav first, the multi-category tagCat first",
     "entry": "rf406_cattocatfuncs.py/4"
    }
+  ],
+  "roofit/roofit/rf110_normintegration.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf110_normintegration.py/1"
+   }
+  ],
+  "roofit/roofit/rf203_ranges.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf203_ranges.py/1"
+   }
+  ],
+  "roofit/roofit/rf204b_extendedLikelihood_rangedFit.C": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf204b_extendedLikelihood_rangedFit.C/1"
+   }
+  ],
+  "roofit/roofit/rf212_plottingInRanges_blinding.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf212_plottingInRanges_blinding.py/1"
+   }
+  ],
+  "roofit/roofit/rf308_normintegration2d.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf308_normintegration2d.py/1"
+   }
+  ],
+  "roofit/roofit/rf408_RDataFrameToRooFit.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf408_RDataFrameToRooFit.py/1"
+   }
+  ],
+  "roofit/roofit/rf505_asciicfg.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf505_asciicfg.py/1"
+   }
+  ],
+  "roofit/roofit/rf508_listsetmanip.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf508_listsetmanip.py/1"
+   }
+  ],
+  "roofit/roofit/rf514_RooCustomizer.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf514_RooCustomizer.py/1"
+   }
+  ],
+  "roofit/roofit/rf604_constraints.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf604_constraints.py/1"
+   }
+  ],
+  "roofit/roofit/rf612_recoverFromInvalidParameters.C": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf612_recoverFromInvalidParameters.C/1"
+   }
+  ],
+  "roofit/roofit/rf612_recoverFromInvalidParameters.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf612_recoverFromInvalidParameters.py/1"
+   }
+  ],
+  "roofit/roofit/rf613_global_observables.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf613_global_observables.py/1"
+   }
+  ],
+  "roofit/roofit/rf901_numintconfig.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rf901_numintconfig.py/1"
+   }
+  ],
+  "roofit/roostats/HybridStandardForm.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "HybridStandardForm.py/1"
+   }
+  ],
+  "roofit/roostats/IntervalExamples.C": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "IntervalExamples.C/1"
+   }
+  ],
+  "roofit/roostats/IntervalExamples.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "IntervalExamples.py/1"
+   }
+  ],
+  "roofit/roostats/rs102_hypotestwithshapes.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rs102_hypotestwithshapes.py/1"
+   }
+  ],
+  "roofit/roostats/rs_numberCountingCombination.py": [
+   {
+    "draw": "ROOT's own other draw of this tutorial, run 2: the same lines, interleaved in another order",
+    "entry": "rs_numberCountingCombination.py/1"
+   }
   ]
  },
  "schema": "known-orders/1",
