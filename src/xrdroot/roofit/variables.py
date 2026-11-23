@@ -108,9 +108,14 @@ class RooAbsRealLValue(RooAbsReal):
 
         A value an epsilon or less outside the range is clipped with ROOT's warning; one
         further out raises ``std::invalid_argument``, as ``RooRealVar::setVal`` does, and the
-        value is left as it was.
+        value is left as it was. A NaN is neither: ROOT keeps it without a word - that is how
+        a minimiser that has walked into an undefined region carries on, as
+        ``rf606_nllerrorhandling`` shows.
         """
         low, high = self.getMin(), self.getMax()
+        if math.isnan(value):
+            self._val = float(value)
+            return
         clipped = min(max(float(value), low), high)
         if clipped != value and not self.isSilentClippingEnabled():
             _slightly_outside(self, float(value), clipped, low, high)

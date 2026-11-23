@@ -110,6 +110,20 @@ def test_a_value_further_out_than_an_epsilon_raises_as_root_s_set_v_a_l_does() -
     assert x.getVal() == 1.0
 
 
+def test_a_nan_is_kept_without_a_word_as_root_keeps_it(capsys: pytest.CaptureFixture[str]) -> None:
+    """A minimiser that walks into an undefined region sets a NaN: ROOT neither warns nor raises.
+
+    ``rf606_nllerrorhandling`` is the tutorial that shows it - ROOT prints its own
+    ``RooAbsMinimizerFcn: Minimized function has error status but is ignored.`` and no
+    ``InputArguments`` line at all - so the range checks must not turn that into a warning.
+    Round 90's warning did, and four tutorials regressed; round 91's fix is this test.
+    """
+    x = RooRealVar("mu", "mu", 0.0, -1, 1)
+    x.setVal(float("nan"))
+    assert math.isnan(x.getVal())
+    assert capsys.readouterr().out == ""
+
+
 def test_a_value_one_epsilon_outside_its_range_is_clipped_with_root_s_warning(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

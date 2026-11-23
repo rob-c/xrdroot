@@ -17,6 +17,7 @@ worst value seen so far plus ten times how bad it was, so MIGRAD backs away
 from __future__ import annotations
 
 import math
+import sys
 from typing import Any
 
 import numpy as np
@@ -63,6 +64,24 @@ def inside(par: Any) -> float:
     if par.hasMax() and value >= par.getMax():
         return float(par.getMax() - 0.1 * step)
     return float(value)
+
+
+def _at_limit(par: Any, value: float) -> float:
+    """A minimiser's value put back on its limit when it is a rounding epsilon outside it.
+
+    Minuit2 transforms a limited parameter and can give back a value one rounding step past
+    the limit - ``-2.05502e-17`` for a ``[0, 1]`` parameter, seen in ``rf601_intminuit``.
+    ROOT's own minimiser hands back exactly the limit there and ``RooRealVar::setVal`` says
+    nothing; ours hands back the epsilon and ``setVal`` warns (round 90). The clamp is the
+    minimiser's, not the variable's: a value genuinely outside still raises, which is what
+    catches a caller's mistake.
+    """
+    low, high = par.getMin(), par.getMax()
+    if low < value < high:
+        return value
+    if abs(min(max(value, low), high) - value) <= sys.float_info.epsilon:
+        return min(max(value, low), high)
+    return value
 
 
 class RooMinimizer:
@@ -176,7 +195,7 @@ class RooMinimizer:
             if par.getVal() != float(value):
                 if self.verbose:
                     cout.write(f"{par.GetName()}={g(float(value), PRECISION[0])}, ")
-                par.setVal(float(value))
+                par.setVal(_at_limit(par, float(value)))
         value = self._handled(self._evaluate())
         self.evaluations += 1
         if self.verbose:
@@ -421,7 +440,7 @@ class RooMinimizer:
             value = float(self.minuit.values[index])
             if self.verbose and par.getVal() != value:  # SetPdfParamVal says so, as in a call
                 cout.write(f"{par.GetName()}={g(value, PRECISION[0])}, ")
-            par.setVal(value)
+            par.setVal(_at_limit(par, value))
             par.setError(float(self.minuit.errors[index]) if not par.isConstant() else 0.0)
             error = self.minuit.merrors.get(par.GetName()) if minos else None
             if error is not None:
