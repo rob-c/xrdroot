@@ -253,7 +253,8 @@ def test_the_error_on_a_spread_is_the_spread_over_twice_the_entries() -> None:
     found.Fill(*MIDDLE, 1.0)
     spread = found.GetStdDev(3)
     assert spread > 0.0
-    assert found.GetStdDev(13) == pytest.approx(math.sqrt(spread * spread / (2 * found.GetEffectiveEntries())))
+    on_spread = math.sqrt(spread * spread / (2 * found.GetEffectiveEntries()))
+    assert found.GetStdDev(13) == pytest.approx(on_spread)
 
 
 def test_a_merge_adds_the_fills_that_missed_the_bins_too() -> None:
