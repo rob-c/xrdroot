@@ -60,6 +60,7 @@ nav:
       - TPrincipal and ROOT's LAPACK basis: discoveries/tprincipal-is-implemented-but-principal-s-pca-c-needs-root-s.md
       - Rounds open off main: decisions/rounds-open-off-main-and-merge-back-to-main-the-w0-138.md
   - Maintainability metrics: maintainability.md
+  - Dictionary classes live in DECLARED: architecture/a-loaded-dictionary-s-classes-are-in-declared-not-in-sys.md
   - A harness bisect lies without its fixture: gotchas/a-bisect-over-harness-tests-lies-unless-each-commit-builds-its.md
   - TProfile2Poly builds bins ROOT does not: discoveries/tprofile2poly-s-constructor-builds-bins-root-does-not-ask-the.md
   - An isolated roottest failure can be a fixture: gotchas/an-isolated-roottest-failure-can-be-a-missing-fixture-not-a.md
