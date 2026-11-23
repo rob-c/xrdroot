@@ -339,7 +339,28 @@ class TTree(_Player):
         """How often ROOT saves the header while filling; here it is saved by Write."""
 
     def SetAutoFlush(self, autof: int = -30_000_000) -> None:
-        """How often ROOT flushes baskets; here baskets are laid out when written."""
+        """``SetAutoFlush``: how many entries make a cluster, so the tree flushes where one ends.
+
+        A positive number is that many entries per cluster; zero or less is ROOT's own choice,
+        which here means the baskets' size alone decides when one goes out.
+        """
+        given = int(autof)
+        store = self._store_if_writable("SetAutoFlush")
+        if store is not None:
+            store.auto_flush = max(given, 0)
+
+    def SetBit(self, bit: int, value: bool = True) -> None:
+        """``SetBit``: ``kOnlyFlushAtCluster`` also tells the writer how to lay its baskets."""
+        super().SetBit(bit, value)
+        if int(bit) == TTree.kOnlyFlushAtCluster:
+            store = self._store_if_writable("SetBit")
+            if store is not None:
+                store.only_at_cluster = bool(value)
+
+    def _store_if_writable(self, what: str) -> Any:
+        """The writer this tree fills, or ``None`` for a tree read from a file."""
+        store = getattr(self, "_store", None)
+        return store if store is not None and not getattr(store, "closed", False) else None
 
     def SetMaxTreeSize(self, maxsize: int = 100_000_000_000) -> None:
         """How big ROOT lets a file grow before starting another; one file here."""

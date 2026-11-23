@@ -1546,6 +1546,7 @@ class WritableDirectory:
         counters: Mapping[str, Any] | None = None,
         classname: str = "TTree",
         empty: bool = False,
+        basket_sizes: Mapping[str, int] | None = None,
     ) -> WritableTree:
         """A tree in this directory, to be filled entry by entry.
 
@@ -1577,7 +1578,7 @@ class WritableDirectory:
         cycle = here._next_cycle(leaf)
         tree = WritableTree(
             here, leaf, title or "", columns, basket_size, cycle, counters, classname=classname,
-            empty=empty,
+            empty=empty, basket_sizes=basket_sizes,
         )  # fmt: skip
         self._file._trees.append(tree)
         self._file._used.update(dict.fromkeys(tree.classes))

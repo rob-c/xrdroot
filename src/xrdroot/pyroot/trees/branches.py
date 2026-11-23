@@ -178,6 +178,20 @@ class TBranch(_TObjectLike):
     def GetBasketSize(self) -> int:
         return self._info.basket_size
 
+    def SetBasketSize(self, bufsize: int = 16000) -> None:
+        """``SetBasketSize``: how many bytes of an entry this branch's basket holds.
+
+        ROOT keeps at least room for the basket's own key and the branch's name -
+        ``100 + strlen(name) + fEntryOffsetLen`` - so a size below that is raised to it, which
+        is why ``SetBasketSize(100)`` on ``branch`` answers ``GetBasketSize() == 106``.
+        """
+        wanted = max(int(bufsize), 100 + len(self.GetName()))
+        store = getattr(self._tree, "_store", None)
+        if store is None:  # a tree read from a file: the size it was written with is the answer
+            return
+        self._made = self._made._replace(basket_size=wanted)
+        store.basket_sizes[self.GetName()] = wanted
+
     def GetTotBytes(self) -> int:
         return self._info.tot_bytes
 

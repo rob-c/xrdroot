@@ -194,6 +194,13 @@ class Store:
         self.compressions: dict[str, int] = {}
         #: Where each cluster ``FlushBaskets`` closed ends: one past its last entry.
         self.clusters: list[int] = []
+        #: ``TTree::SetAutoFlush``: how many entries make a cluster, so the tree's baskets
+        #: close where one ends; 0 or less leaves it to their size.
+        self.auto_flush = 0
+        #: ``TTree::kOnlyFlushAtCluster``: baskets close only where a cluster ends.
+        self.only_at_cluster = False
+        #: ``TBranch::SetBasketSize``: a branch's own basket size, by branch.
+        self.basket_sizes: dict[str, int] = {}
 
     def add(self, slot: Slot) -> None:
         self.slots[slot.name] = slot
@@ -236,6 +243,19 @@ class Store:
         if self.entries > (self.clusters[-1] if self.clusters else 0):
             self.clusters.append(self.entries)
 
+    def cluster_ends(self) -> list[int]:
+        """Where the tree's clusters end: an explicit flush's, and the autoflush's every ``n``.
+
+        ``SetAutoFlush(500)`` makes every 500th entry end a cluster, as ROOT's ``TTree::Fill``
+        flushes at each boundary; an explicit ``FlushBaskets`` may have ended one sooner, and a
+        boundary it already ended is not a second one.
+        """
+        ends = set(self.clusters)
+        if self.auto_flush > 0:
+            ends.update(range(self.auto_flush, self.entries + 1, self.auto_flush))
+        ends.add(self.entries)
+        return sorted(ends)
+
     def extend(self, columns: Mapping[str, Any], count: int) -> None:
         """Take in many entries at once, a column for every slot, as a copy of a tree does."""
         for slot in self.slots.values():
@@ -264,8 +284,9 @@ class Store:
         branches, which is otherwise refused."""
         tree = directory.tree(
             name, self.specs(), title=title, counters=self.counters(), classname=classname,
-            empty=empty,
+            empty=empty, basket_sizes=self.basket_sizes,
         )  # fmt: skip
+        tree.only_at_cluster = self.only_at_cluster
         for slot in self.slots.values():
             codes = self.compressions.get(slot.branch)
             if codes is not None and slot.kind != OBJECT:
@@ -276,12 +297,18 @@ class Store:
         return tree
 
     def _clustered(self, tree: Any, columns: dict[str, Any]) -> None:
-        """The entries written cluster by cluster, each ended where ``FlushBaskets`` was."""
-        for start, stop in zip([0, *self.clusters], [*self.clusters, self.entries], strict=True):
+        """The entries written cluster by cluster, each ended where a cluster does.
+
+        A cluster ends where ``FlushBaskets`` ended one or where the tree's autoflush says -
+        every ``SetAutoFlush``-th entry - and the baskets part filled go out there.
+        """
+        ends = self.cluster_ends()
+        stops = [stop for stop in ends if stop > 0]
+        for start, stop in zip([0, *stops[:-1]], stops, strict=True):
             if stop > start:
                 rows = np.arange(start, stop)
                 tree.extend({key: take(values, rows) for key, values in columns.items()})
-            if stop in self.clusters:
+            if stop in ends:
                 tree.flush()
 
     def reset(self) -> None:

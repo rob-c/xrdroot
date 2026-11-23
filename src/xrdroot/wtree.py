@@ -1071,6 +1071,7 @@ class WritableTree:
         *,
         classname: str = "TTree",
         empty: bool = False,
+        basket_sizes: Mapping[str, int] | None = None,
     ) -> None:
         _check_declared(classname, columns, basket_size, empty)
         self._file = file
@@ -1083,6 +1084,12 @@ class WritableTree:
         self._entries = 0
         #: Where each cluster :meth:`flush` closed ends: one past its last entry.
         self._clusters: list[int] = []
+        #: ``TTree::SetAutoFlush``: how many entries make a cluster, so that the tree flushes
+        #: its baskets where one ends. Zero or less is ROOT's "decide it from the basket size".
+        self.auto_flush = 0
+        #: ``TTree::kOnlyFlushAtCluster``: baskets close only where a cluster ends, however
+        #: full they are - ROOT's one-basket-per-cluster mode.
+        self.only_at_cluster = False
         self._columns: dict[str, _Column] = {}
         self._counters: dict[str, _Counter] = {}
         #: Each branch at the top of the tree: a column, or a branch of objects (see
@@ -1090,8 +1097,9 @@ class WritableTree:
         self._tops: list[Any] = []
         self._specs: list[Any] = []
         types = counters or {}
+        own = dict(basket_sizes or {})
         for column, spec in columns.items():
-            self._declare(column, spec, basket_size, types)
+            self._declare(column, spec, own.get(column, basket_size), types)
         self._branches = self._in_order()
 
     def _declare(self, column: str, spec: Any, basket_size: int, types: Mapping[str, Any]) -> None:
@@ -1243,6 +1251,17 @@ class WritableTree:
         feeds = [self._feed(column, packed[self._keys[id(column)]]) for column in self._branches]
         _interleaved(feeds)
         self._entries += entries
+        self._cluster_end()
+
+    def _cluster_end(self) -> None:
+        """Close a cluster where ROOT's autoflush says one ends, baskets and all.
+
+        With ``SetAutoFlush(500)`` every 500th entry ends a cluster, and every basket the tree
+        has part filled goes out with it - which is what makes the next entries start a basket
+        afresh, and what a reader sees as a cluster boundary.
+        """
+        if self.auto_flush > 0 and self._entries % self.auto_flush == 0:
+            self.flush()
 
     def _lengths(self, counter: _Counter, packed: dict[str, Packed]) -> np.ndarray[Any, Any]:
         """What a counter says for each entry: the one length every column it counts has."""
@@ -1274,6 +1293,9 @@ class WritableTree:
         number a row at a time would have reached - so the file is the same
         whichever way the entries were given.
         """
+        if self.only_at_cluster:  # ROOT's one-basket-per-cluster: nothing closes on size
+            column.keep(raw, None)
+            return
         room = column.basket_size - self._basket_keylen(column) - column.size
         per = max(1, -(-room // column.size))
         at = 0
@@ -1295,6 +1317,9 @@ class WritableTree:
         batch at once: for each entry still to come, what the basket would
         weigh with it in, and the first that reaches the basket's size.
         """
+        if self.only_at_cluster:  # ROOT's one-basket-per-cluster: nothing closes on size
+            column.keep(raw, sizes)
+            return
         ends = np.cumsum(sizes)
         keylen = self._basket_keylen(column)
         done = 0
