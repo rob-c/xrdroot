@@ -33,7 +33,7 @@ from .messages import message
 from .objects import TNamed, TObject
 from .strings import TString
 
-__all__ = ["TROOT", "gROOT", "gDebug", "gInterpreter", "gObjectTable", "TInterpreter",
+__all__ = ["TROOT", "gROOT", "gDebug", "gCling", "gInterpreter", "gObjectTable", "TInterpreter",
            "set_line_processor", "SetHeuristicMemoryPolicy", "TEnum", "TEnumConstant",
            "TListOfEnums", "class_enums", "TListOfEnumsWithLock", "find_enum", "note_enum",
            "TGlobal"]
@@ -925,3 +925,8 @@ class TInterpreter:
 
 #: ``gInterpreter``.
 gInterpreter = TInterpreter()
+
+#: ``gCling``: ROOT's cling interpreter, which this kit does not have - its interpreter is
+#: :data:`gInterpreter`. ROOT's own unit tests ask whether it is null before one is started, so
+#: it is nothing at all rather than a stand-in that would answer wrongly.
+gCling = None

@@ -43,6 +43,8 @@ from .threads import *  # noqa: F403
 from .threads import __all__ as _threads
 from .typeinfo import *  # noqa: F403
 from .typeinfo import __all__ as _typeinfo
+from .unistd import *  # noqa: F403
+from .unistd import __all__ as _unistd
 from .units import *  # noqa: F403
 from .units import __all__ as _units
 
@@ -63,6 +65,7 @@ LIBRARY = [
     *_threads,
     *_typeinfo,
     *_callrefs,
+    *_unistd,
     "use_namespace",
 ]
 

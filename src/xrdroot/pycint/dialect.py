@@ -169,6 +169,9 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     # ``TBufferJSON::FromJSON(T*& obj, json)`` fills the pointer the macro hands it, so the
     # local is a cell - which is what makes ``arr2`` hold the array the JSON described.
     ("FromJSON", 2): (0,),
+    # ``ROOT::TMetaUtils::GetCppName(name, text)`` fills the string the macro hands it, which is
+    # how ROOT's own unit test reads the name back.
+    ("GetCppName", 2): (0,),
     ("DecodeNameCycle", 3): (2,),
     ("DecodeNameCycle", 4): (2,),
     ("HLS2RGB", 6): (3, 4, 5),

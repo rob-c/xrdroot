@@ -40,6 +40,7 @@ FAMILIES = (
     "complexes",
     "timing",
     "system",
+    "metautils",
     "net",
     "environ",
     "uuids",

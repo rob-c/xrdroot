@@ -97,13 +97,22 @@ class RootProxy(HostNamespace):
         # ROOT's typedefs called like functions, ``Long64_t(x)``, are casts.
         casts = {name: _cast(target) for name, target in TYPEDEFS.items()}
         state = {name: partial(_gtest_state, name) for name in GTEST_STATE}
+        #: ``gCling`` is ROOT's cling interpreter, which this kit does not have - its interpreter is
+        #: ``gInterpreter`` - so it answers with nothing, which is what ROOT's own unit test asserts
+        #: before an interpreter is started.
         provided = {**casts, **state, "TestSupport": _test_support, "gApplication": _application,
-                    "TApplication": _application_class, "TRint": _application_class}  # fmt: skip
+                    "TApplication": _application_class, "TRint": _application_class,
+                    "gCling": _no_cling}  # fmt: skip
         super().__init__(_pyroot, USED, provided, _std)
 
 
 #: The Python a value of each kind of C++ arithmetic type is, by the type's name.
 CASTS: dict[str, Any] = {"float": float, "double": float, "long double": float, "bool": bool}
+
+
+def _no_cling() -> None:
+    """``gCling``: nothing at all, since this kit has no cling - a program asks ``gInterpreter``
+    instead, which is the interpreter a translation runs on."""
 
 
 def _cast(target: str) -> Any:
