@@ -237,22 +237,26 @@ def test_random_mt_is_the_twister_under_the_random_front():
     assert ROOT.RandomMT().Rndm() == ROOT.TRandom3().Rndm()
 
 
-def test_a_draw_handed_out_in_the_same_step_is_the_one_the_stream_has():
-    """The one-at-a-time path hands a draw out and moves the cursor in one call.
+def test_a_draw_taken_one_at_a_time_is_the_stream_s_own_and_leaves_it_where_it_was():
+    """The fast path reads the draws the generator holds ahead of itself.
 
-    It is the fast path every acceptance algorithm uses - ``Gaus`` draws two or three
-    numbers per value - so it must be exactly ``pop`` and ``advance(1)``: the same
-    numbers, in the same order, across the run the generator holds ahead of the draws.
+    Every acceptance algorithm - ``Gaus``'s two or three draws per value - asks for one
+    number at a time, so this hands them out without a call into the sampler for each.
+    The numbers must be the stream's own, in order, and the generator must stand in the
+    same place afterwards as one that was asked for arrays instead: that is what
+    ``GetSeed``, a second ``Gaus`` and a state export all read.
     """
     from xrdroot.random import TRandom3 as Engine
 
-    fast, slow = Engine(7), Engine(7)
-    assert [fast._next() for _ in range(3)] == [slow._next() for _ in range(3)]
-    taken = []
-    for _ in range(5000):  # far enough to cross a held run, so the slow path is taken too
-        value = fast._held.take_one()
-        taken.append(fast._next() if value is None else value)
-    assert taken == [slow._next() for _ in range(5000)]
+    one_by_one, in_arrays = Engine(7), Engine(7)
+    taken = [one_by_one._next() for _ in range(5000)]
+    assert taken == [float(value) for value in in_arrays._take(5000)]
+    assert one_by_one.get_seed() == in_arrays.get_seed()
+    assert np.array_equal(one_by_one.state["fMt"], in_arrays.state["fMt"])
+    # and a look ahead after a draw continues the stream rather than repeating it
+    peeked, other = Engine(11), Engine(11)
+    assert float(peeked._next()) == float(other._next())
+    assert list(peeked._peek(3)) == [float(value) for value in other._take(3)]
 
 
 def test_asking_a_named_generator_for_the_same_numbers_twice_gives_the_same_numbers():

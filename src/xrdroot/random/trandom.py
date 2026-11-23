@@ -215,24 +215,6 @@ class Sampler:
         rest = [run for _, run in self._runs[1:]]
         return np.concatenate([first[self._offset :], *rest])[:count]
 
-    def take_one(self) -> float | None:
-        """The next draw held, handed out in the same step - the one-at-a-time path's call.
-
-        A macro that fills a histogram draws millions of numbers one at a time, and
-        two Python calls for each of them is most of what that costs: this hands the
-        draw out and advances the cursor itself, which is what ``pop`` and
-        ``advance(1)`` did between them.
-        """
-        if not self._runs:
-            return None
-        run = self._runs[0][1]
-        value = float(run[self._offset])
-        self._offset += 1
-        self._held -= 1
-        if self._offset >= len(run):
-            self._offset -= len(self._runs.pop(0)[1])
-        return value
-
     def advance(self, count: int) -> None:
         """Hand out the next ``count`` draws, letting go of the runs that are finished."""
         self._offset += count
@@ -250,6 +232,48 @@ class Sampler:
         start = (self._runs[0][0], self._offset)
         self._runs, self._offset, self._held = [], 0, 0
         return start
+
+    def cursor(self) -> Cursor:
+        """A cursor over the run being handed out, starting where this sampler is.
+
+        The sampler must hold at least one draw, which is what ``TRandom._slow_draw``
+        makes sure of before it asks.
+        """
+        return Cursor(self, self._runs[0][1], self._offset)
+
+
+class Cursor:
+    """The run of draws being handed out, and where in it the next one is.
+
+    A macro that fills a histogram draws millions of numbers one at a time, and the
+    bookkeeping for each one - a method call, a list index, two counters on the
+    sampler - is most of what a ``Gaus`` costs. While a cursor exists it is the whole
+    truth about what has been handed out: ``TRandom._sync`` folds it back into the
+    sampler's own books before anything else looks at them, and every other way in
+    calls that first. The draws it hands out are therefore exactly the ones
+    :meth:`Sampler.take_one` would, in the same order.
+    """
+
+    __slots__ = ("_at", "_run", "_sampler", "_start")
+
+    def __init__(self, sampler: Sampler, run: Any, at: int) -> None:
+        self._sampler = sampler
+        self._run = run
+        self._at = self._start = at
+
+    def __call__(self) -> float:
+        """The next draw, handed out."""
+        at = self._at
+        self._at = at + 1
+        return float(self._run[at])
+
+    def spent(self) -> bool:
+        """Whether every draw in the run it reads has been handed out."""
+        return self._at >= len(self._run)
+
+    def sync(self) -> None:
+        """Hand the draws it gave out to the sampler's own count, run by run."""
+        self._sampler.advance(self._at - self._start)
 
 
 class TRandom:
@@ -270,6 +294,7 @@ class TRandom:
     DEFAULT_SEED = 65539
 
     def __init__(self, seed: int = DEFAULT_SEED) -> None:
+        self._fast: Cursor | None = None
         self._held = Sampler()
         self._engine_init()
         self.set_seed(seed_value(seed) % UINT)
@@ -321,6 +346,7 @@ class TRandom:
     def set_seed(self, seed: int) -> None:
         """``SetSeed(seed)``: restart the stream. Zero asks for an unrepeatable seed, as in ROOT."""
         value = seed_value(seed)
+        self._fast = None
         self._held = Sampler()
         self._engine_seed(value)
 
@@ -337,6 +363,7 @@ class TRandom:
 
     def set_state(self, state: dict[str, Any]) -> None:
         """Put the generator in a state :attr:`state` gave, from this object or another."""
+        self._fast = None
         self._held = Sampler()
         self._engine_import(dict(state))
 
@@ -344,12 +371,14 @@ class TRandom:
         return self.state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
+        self._fast = None
         self._held = Sampler()
         self._engine_init()
         self._engine_import(state)
 
     def _settle(self) -> None:
         """Put the generator where the draws handed out have left it, and hold nothing."""
+        self._sync()
         start = self._held.rewind()
         if start is not None:
             self._engine_import(start[0])
@@ -357,8 +386,16 @@ class TRandom:
 
     # -- draws ---------------------------------------------------------------------------
 
+    def _sync(self) -> None:
+        """Fold a fast cursor back into the sampler before anything else reads the draws."""
+        cursor = self._fast
+        if cursor is not None:
+            self._fast = None
+            cursor.sync()
+
     def _peek(self, count: int) -> Any:
         """The next ``count`` values of ``Rndm()``, made if need be but not yet handed out."""
+        self._sync()
         missing = count - self._held.held()
         if missing > 0:
             state = self._engine_export()
@@ -375,11 +412,18 @@ class TRandom:
 
     def _next(self) -> float:
         """The next value of ``Rndm()``, for the algorithms that go one number at a time."""
-        value = self._held.take_one()
-        if value is None:
+        cursor = self._fast
+        if cursor is not None and not cursor.spent():
+            return cursor()
+        return self._slow_draw()
+
+    def _slow_draw(self) -> float:
+        """One draw the Cursor cannot cover: the end of its run, or the very first one."""
+        self._sync()
+        if not self._held.held():
             self._peek(1)
-            value = self._held.take_one()
-        return value  # type: ignore[return-value]
+        self._fast = self._held.cursor()
+        return self._fast()
 
     def _one_by_one(self, count: int, make: Callable[[Callable[[], float]], float]) -> Any:
         """``count`` numbers, each made by ROOT's loop written out, drawing one at a time."""
