@@ -2393,6 +2393,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 86 | `34c5bb8c` | **no workers** - the hands took `W0-196`/`W0-155`: `plotSamplingHint` (`RooCurve::plotSamplingHintForBinBoundaries`' `delta = (xhi-xlo)*1e-9` either side of every interior bin edge and of both limits) answered by `RooHistFunc`/`RooHistPdf` and merged by `RooProduct`, `RooRealSumPdf`, `RooProdPdf` and the simultaneous projection, the hint being the whole starting grid; and `RooBinWidthFunction`'s `HistFuncForBinWidth` a **shape** server as ROOT declares it | **gtest +1, 86 -> 87**: `testHistFactoryPlotting` FAIL -> PASS, `gtest/roofit/*` **10 PASS / 21 FAIL / 16 UNSUPPORTED**, no other row moved (`…/ralph-round-202611231820/roofit2`); our three curves are the oracle's 35 points, `diff` of the test's body as a macro empty (`…/probe/ours.txt` vs `oracle.txt`). Gate `TOTAL 125406 0 31452 0 100%` (13 877 + 44, `…/gate1.log`, `-n 2`) | 1: `W0-198` (the `-n 4` gate can read 99 % - `commands.py:463->453`, `LOADED` is per worker); `W0-155`/`W0-196` **closed** |
 | 87 | `8fb8e0ba` | **a measurement round, no code**: `W0-199` priced before it was believed - ten runs of ROOT's own `rf102_dataimport.py` and nine of ours | **0 gained, 0 lost** (nothing changed): the row was **wrong** - a tutorial that hands RooFit a Python `set` flips in ROOT too (7:3 over ten oracle runs, 4:2 and 2:1 over ours), so the 29 `PASS -> DIFF` rows the round-86 ratchet reported are phantoms. `W0-198` reproduced: the `-n 4` gate reads 99 % on one arc and `-n 2` 100 %, while the same file alone covers that arc - an xdist collection artefact, not a missing test | 1: `W0-200` (the tutorial harness must detect an oracle that varies - two samples find nothing at 1 in 3); `W0-199` closed **as a correction**, `W0-198` sharpened |
 | 88 | `aba72d8c` | **two targets, both measured first**: `W0-200` - a tutorial whose own ROOT run varies is `FLAKY`, recorded by `tools/tutorials record-flaky` from repeated oracle runs, and neither a gain nor a loss for the ratchet; and the line-buffering of `xrdroot run` (`cli/run.py::ordered_output`), found while bucketing the rows that stayed | **the roofit tutorial group measured whole**: PASS 124 / DIFF 69 / FAIL 21 / UNSUPPORTED 19 / SKIP 9 / ORACLE-FAIL 4 / FLAKY 9 (`…/ralph-round-202611232004/tut2`), the ratchet's spurious rows **29 -> 20**, and `rf613_global_observables.py` **byte-identical to ROOT's output** where it was the same 14 lines reordered. Nine tutorials recorded as ROOT-nondeterministic. Gate `TOTAL 125412 0 31454 0 100%` (13 885 + 44, `…/gate3.log`) | 2: `W0-201` (`TCanvas::Print`'s one word differs between ROOT's two front ends), `W0-202` (the remaining 20 stdout DIFFs, bucketed); `W0-200` closed |
+| 89 | `4b186d80` | **one target, measured before it was believed**: `W0-202`'s 20 rows, bucketed - `tools/tutorials record-order` records ROOT's *own* other draw of a tutorial where only the order of its lines differs, as one more `known_orders` entry, and `record-flaky` keeps the runs whose lines really differ | **14 of the 20 rows are gone**: the 19 listed tutorials measured again are **14 PASS / 5 DIFF** (`…/ralph-round-202611232108/after`) where they were 19 DIFF; `known_orders` grew from 3 tutorials to 22 (492 K), 21 draws recorded. The cause, measured: ROOT prints `rf110_normintegration.py`'s same lines in another order run to run (`affc425ea823` vs `e01d8b4750aa`, ours byte-identical to the second), so the harness's positional comparison failed an output ROOT itself produced | 3: `W0-203` (a degenerate-minimum fit), `W0-204` (Minuit2 `status = 3` where we say 0), `W0-205` (two message lines in the other order); `W0-202` closed, `W0-201` **corrected** (the `TCanvas::Print` word goes to stderr, which is not compared) |
 
 ## Notes
 
@@ -3237,3 +3238,39 @@ been created` under `root -l -b -q` and `file x.png has been created` under the 
 tutorial that prints a canvas differs by it. `W0-202` is the remaining 20 rows to bucket - the method
 is settled: run both sides, diff with the harness's own `normalise`, and the cause turns out to be one
 file, never twenty.
+
+## Round 89's close
+
+Round 89 took the 20 roofit rows round 88 left, and found that **14 of them were not differences at
+all**: ROOT prints the same lines in a different order run to run, so the harness's positional
+comparison was failing an output ROOT itself produced.
+
+**The measurement that showed it.** The 19 tutorials were re-run with `--refresh-oracle`: **14 PASS
+/ 5 DIFF** where the ratchet had 19 DIFF. That alone would only say "the cache was old", so the
+entries were read line by line - and for `rf110_normintegration.py` the cache holds **two** draws of
+the same run, `affc425ea823` with `[#1] INFO:Eval -- RooRealVar::setRange(x) …` as its first line
+and `e01d8b4750aa` with the same line third. **Ours is byte-identical to the second**, and the
+harness compared against the first. RooFit's message stream and a script's `print` are two buffers
+into one file, and ROOT interleaves them differently every run - the same fact round 88's `FLAKY`
+records cannot express, because `FLAKY` compares *multisets* and says "no promise" where this says
+"ROOT produced both, accept either".
+
+**The fix, and its shape.** `tools/tutorials/variance.py::record_order` (and
+`python -m tools.tutorials record-order PATH… --runs N`) repeats ROOT's own run and keeps each draw
+whose *lines* equal the cached draw's in another order as one more `known_orders` entry - the
+mechanism the three original roofit entries already used. A run whose lines *differ* is deliberately
+left to `record-flaky`: the two findings are never mixed, and the test says so (`same_order` is the
+guard, not `same_output`). 21 draws were recorded over the 19 tutorials and `known_orders` grew from
+3 tutorials to 22; measured again, **14 PASS / 5 DIFF** (`…/after`).
+
+**What is left is real, and it is three causes** - recorded as `W0-203` (`rf204b_extendedLikelihood_
+rangedFit.C` stops on a different degenerate minimum: `Nsig 1.3553e-08` against `4.5698e-08` with the
+same error), `W0-204` (`rf612_recoverFromInvalidParameters.C`/`.py`: ROOT's fit fails with
+`Minuit2Minimizer : Invalid minimum - status = 3` where ours succeeds with `status = 0`, which loses
+the tutorial's whole subject) and `W0-205` (`IntervalExamples.C`/`.py`: an `[#0]
+WARNING:InputArguments` line and an `[#1] INFO:Eval` line in the other order).
+
+**`W0-201` is corrected, not closed.** The `TCanvas::Print` message really does differ between ROOT's
+front ends - `root -l -b -q` says `png file x.png has been created`, the oracle's Python says
+`file x.png has been created` - but that line is on **stderr**, which the tutorial harness does not
+compare, so it never explained a DIFF. Four measurements are in the row.
