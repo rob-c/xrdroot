@@ -2375,6 +2375,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 69 | `58f7bfe6` | **one target, no PASS, and the round says so**: an axis' bin labels are written in ROOT's own layout and read back (`d2dd4007`, `W0-180`; the layout measured off a file the 6.40 oracle wrote, now `tests/data/labels-6.40.root`, and `TAxis._labels` answers from `fLabels` when a file brought it) | **0 gtest PASS, none lost**: the whole kind at `d2dd4007` is **80 PASS / 193 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350 (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230039/gtest`, `--jobs 3`, `--xrdroot-src` a checkout of the tip) and **not one row moved** from round 68's - which is exactly what a write-path-parity change should do; `gtest/hist/hist/*` measured on its own is 17 PASS / 14 FAIL / 2 UNSUPPORTED (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230039/hist`). Gate **`TOTAL 123099 0 30830 0 100%`** (13 541 + 44, `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230039/gate1.log`) | 2 attempts, no rows: `W0-178` (**a tree's baskets** - r-69-w01 died with `backend unavailable` and wrote nothing; ROOT's own numbers for the target were measured this round: **102 and 2** baskets, `GetBasketSize` 11373 and 106) and `W0-176` (**a second fast profile fill, 161 s -> 65 s, bin contents differ again** - not taken, and the row now names the unit test the next attempt must write first) |
 | 70 | `c0e28458` | **a measurement round, with no commit of its own**: the whole gtest kind re-measured at the tip, and ROOT's basket arithmetic read for `W0-178` | **gtest +1, the kind 80 -> 81**: `81 PASS / 192 FAIL / 75 UNSUPPORTED / 2 TIMEOUT` of 350 (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230117/gtest`, `--jobs 3`, `--xrdroot-src` the round's worktree) - the gain is `testTProfile2Poly`, whose fast fill came from another session's `wip:` commits already on `main` and **is verified here** (all five cases agree with the `TProfile2D`, 144 s); nothing lost, nothing else moved. Gate **`TOTAL 123212 0 30866 0 100%`** (13 563 + 44, `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230117/gate1.log`), which also makes those `wip:` commits gate-clean | 1: `W0-181` (**`testTProfile2Poly` is 144 s of its 300 s limit**); `W0-176` **closed** by that work; `W0-178` **priced** - ROOT flushes when `lnew + 2*nsize + nbytes >= fBasketSize` with `lnew` the *whole* basket buffer (header included, which is why a 106-byte basket holds 5-6 doubles), `SetBasketSize(n)` is `max(n, 100 + name length)`, and six oracle rows reproduce 102/2/6/2/1/101 |
 | 71 | `356e28e6` | **one worker's feature and the round's own hands on a tree's baskets**: worker r-71-w01 wrote ROOT's `TFractionFitter` (`2c7a287d` - the fractions of MC templates a data histogram is made of, over this kit's Minuit2, with `GetPlot`/`GetResult`/`GetMFC`); the round put `TBranch::SetBasketSize`, `TTree::SetAutoFlush` and `kOnlyFlushAtCluster` to work - three ROOT calls that were no-ops - so ROOT's one-basket-per-cluster mode now writes its exact 2 baskets of 106 bytes (`1a843f7a`, `dc095839`, `c455a479`) | **gtest +1, the kind 81 -> 82**: `gtest/hist/hist/test_TFractionFitter` PASSES (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/w01-check`), and **the whole kind at `c455a479`: 82 PASS / 191 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350 (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/gtest`) - one gained, **none lost, no other row moved**. The basket work costs no PASS where trees are written: `gtest/tree/tree/*` 6 PASS either side (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/tree-before`, `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/tree-after`) and `roottest/root/io/tree/*` 18 / 0 / 0 / 2 (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/rhist-after`). Gate **`TOTAL 123551 0 30928 0 100%`** (13 602 + 44, `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/gate3.log`) | 3: `W0-182` (**ROOT re-optimises basket sizes at every cluster flush** - that is why ROOT's own fixture has 1 x 102, 99 x 4, 1 x 2 and 1 x 500 baskets and this kit 250), `W0-183` (`evolution` needs the LinkDef `#pragma read` schema rule - measured by worker r-71-w02, whose column work was **reverted** for 154 uncovered statements), and `W0-178` **partly** with the count measured |
+| 81 | `3e5a19a5` | **none** - no workers: the round opened at a load average of 20-30 after a reboot, and the target priced itself in one probe; the round's own hands wrote it | **gtest +1, the kind 83 -> 84**: `gtest/hist/hist/testTGraphsa` **PASSES all 10 cases** (`$HOME/.cache/xrdroot-runs/ralph-round-202611231323/tgraph`: `{"gtest": {"PASS": 1, "FAIL": 1, ...}}`, the FAIL being `testTGraphSorting`, untouched), because `TGraph::SaveAs` now writes `.csv`/`.tsv`/`.txt` with ROOT's three column sets and its `title`/`asroot`/`native`/`errors`/`asymmerrors`/`noerrors` options, and `TGraph(filename, format, option)` reads one back - and **all ten files are byte for byte what the 6.40 oracle writes** for the same graph (`.../probe/fmt/oracle` against `.../ours`, `cmp` on every one). Gate `TOTAL 125099 0 31362 0 100%` (13 822 + 44, `.../gate3.log`) at `-n 2` under a load average of 24-30 | 2: `W0-190` (`testTH1sa` is a **translator** wall first - a file-scope `struct TestSaveAs` is not a name - and `TH1::SaveAs` second, its bytes measured on the oracle: `fNcells` lines with the flow bins, the file's own delimiter in the header), `W0-191` (ROOT's `%lg` format and delimiter-option reader, refused by name since nothing in the suite asks for it) |
 
 ## Notes
 
@@ -2829,3 +2830,76 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 - The gate's own report named the refusal branch of `record_payload` (`writer.py:1338`) as the one uncovered line after the first run, and a test for it
   was added before the second - `W0-112` again, on new code.
 - **No workers**: the round opened at a load average of 12 with a target whose three pieces were already measured and named.
+
+## Round 81's close
+
+**One target, and it was priced before it was written.** The gtest ranking was rebuilt from
+round 71's `results.json` (`…/ralph-round-202611230144/gtest`, 191 FAIL rows) sorted by how
+many cases each program has left: **27 programs are exactly one failing case from a PASS**, and
+the round took the one whose failure was a *bug* rather than a missing engine —
+`gtest/hist/hist/testTGraphsa` failed all ten of its cases with
+`invalid literal for int() with base 10: 'graph.csv'`, which is `TGraph("graph.csv", "")`
+being read as `TGraph(n, x, y)`, and behind it `SaveAs("x.csv")` writing a ROOT file.
+
+**What ROOT does, read off its own source and then off the oracle.** `TGraph::SaveAs`
+(`hist/hist/src/TGraph.cxx`) takes a delimiter from the name — `.csv` a comma, `.tsv` a tab,
+`.txt` a space — and writes one line per point in one of three column sets: the two of a
+graph keeping no bars, x/errors/y/errors for a graph with a bar either way, and the six of an
+asymmetric one; `noerrors`, `asymmerrors` and `errors` say which whatever the class is,
+`asroot`/`native` puts the point before its bars, and `title` writes a header naming a
+**column per value** with the axes' titles in the point's own columns. The header is written
+with tabs whatever the delimiter is. `TGraph(filename, format, option)` reads the three
+extensions back with 2, 4 or 6 columns, skips a line of fewer than two numbers, leaves a
+column a line does not have at zero, and answers a missing file with a zombie graph after
+ROOT's `Error` line rather than by refusing.
+
+**The evidence that matters.** Ten files were written by the 6.40 oracle and by this kit for
+the same graph — `title`, `asroot`, `native`, `noerrors`, `asymmerrors`, the axes' titles, a
+plain graph, an even-bar graph and an asymmetric one — and `cmp` says **all ten are byte for
+byte identical** (`…/probe/fmt/oracle` against `…/probe/fmt/ours`). That is the whole of the
+writer's fidelity: the format is not "close to" ROOT's, it is ROOT's.
+
+**The measurement.** `testTGraphsa` goes from `{'failed': 10}` to `{'passed': 10}`
+(`…/tgraph/results.json`, `--only 'gtest/hist/hist/testTGraph*' --xrdroot-src` the round's
+tip), `testTGraphSorting` is untouched at 5 failed cases, and the baseline records exactly the
+one row (`10f9bb4f`, the diff is `"gtest/hist/hist/testTGraphsa": "FAIL"` → `"PASS"`). The
+kind is **84 PASS** by the ledger — 82 whole at round 71, plus round 80's `testTKDE` and this.
+
+- **A refused corner is better than a wrong file.** A `TGraphMultiErrors` keeps a bar per
+  layer and ROOT's text file holds one summed bar, so a file read back loses the layers: the
+  class refuses the three text formats by name and points at the `noerrors` option or a
+  `.root` file. Nothing in the suite exercises it; the alternative was writing `-1` columns
+  that *look* like data.
+- **The translator, not `SaveAs`, is what blocks `testTH1sa`** (`W0-190`): the file declares
+  a file-scope `struct TestSaveAs` and the translation does not expose it. Measured with
+  `xrdroot run …/test_TH1_SaveAs.cxx`: `:13: NameError: name 'TestSaveAs' is not defined`.
+- **`TH1::SaveAs`'s bytes were measured anyway**, so the next round does not start from a
+  guess: a header only with `title` and **the file's own delimiter** in it (not `TGraph`'s
+  tab), then `fNcells` lines for `nbins` bins — the underflow and overflow cells are lines of
+  their own, with the extrapolated edges `-1` and `6`, not ±inf — and the error column only
+  when `fSumw2` is empty.
+- **The machine rebooted mid-round and took `/tmp` with it** — ROOT's sources (`W0-162`
+  again). They were re-cloned at `v6-40-04` (434 MB) with the same sparse set, grown by
+  `hist/hist/test`, `graf2d/graf`, `core/base/src`, `io/io/{inc,src}` and `geom/test`, which is
+  what let the round read `TGraph::SaveAs` and `TGraphErrors::TGraphErrors(const char*, …)`
+  from ROOT's own source instead of from memory. Round directories live in `~/.cache` and
+  survived.
+- **The gate takes two commands and the first one's figure is not the answer**: the first
+  command reported 99.56% and aborted a `set -e` script before the second ran. The script now
+  runs both whatever the first says, and the green run is
+  `TOTAL 125099 0 31362 0 100%` (13 822 + 44, `…/gate3.log`).
+
+**The monitor-rerunnable gate for this tip** (two commands�, `W0-106`; the first ones
+**The monitor-rerunnable gate for this tip** - two commands, `W0-106`; the first one's figure
+is never the answer, and the second is what makes it 100%:
+
+```bash
+cd <round>/main && rm -f .coverage
+PYTHONPATH=$PWD/src <repo>/.venv/bin/python -m pytest -q -p no:cacheprovider -n 2 --cov=xrdroot \
+  --ignore=tests/test_tmva_learn_networks.py --ignore=tests/test_pyroot_references.py --cov-report=
+PYTHONPATH=$PWD/src <repo>/.venv/bin/python -m pytest -q -p no:cacheprovider \
+  tests/test_tmva_learn_networks.py tests/test_pyroot_references.py --cov=xrdroot --cov-append
+```
+
+and `ruff check src tests tools`, `mypy`, `python tools/maintainability.py check`,
+`python tools/components.py check`, `mkdocs build --strict` - all green at `3e5a19a5`.

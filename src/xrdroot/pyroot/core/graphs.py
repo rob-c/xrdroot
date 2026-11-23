@@ -11,11 +11,15 @@ points' range with a tenth more either side, made when first asked for.
 from __future__ import annotations
 
 from functools import partial
+from os import PathLike, fspath
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from ...graph import Graph
+from ...errors import UnsupportedFeatureError
+from ...graph import TEXT_ORDERS, Graph, text_delimiter, text_lines
+from ...graph import read_text as read_graph_text
 from .cformat import c_format
 from .objects import TAttFill, TAttLine, TAttMarker, TNamed
 from .refs import store
@@ -30,6 +34,17 @@ ERRORS: dict[str, tuple[str, ...]] = {
     "TGraphAsymmErrors": ("exl", "exh", "eyl", "eyh"),
     "TGraphBentErrors": ("exl", "exh", "eyl", "eyh", "exld", "exhd", "eyld", "eyhd"),
 }
+
+#: How many columns of a text file each class's file constructor reads: the point, then the
+#: bars its own constructor takes - a bent graph's four distances are not among them, so it
+#: reads the six its base class does.
+READ_COLUMNS = {"TGraph": 2, "TGraphErrors": 4, "TGraphAsymmErrors": 6, "TGraphBentErrors": 6}
+
+#: The bars each ``GetErrorX``-style name reads, in the order it tries them: the one bar a
+#: point has both sides of it, or the two sides whose root mean square is the bar.
+ERROR_KEYS = {"ex": ("ex", "exl", "exh"), "ey": ("ey", "eyl", "eyh"),
+              "exl": ("exl", "ex"), "exh": ("exh", "ex"),
+              "eyl": ("eyl", "ey"), "eyh": ("eyh", "ey")}  # fmt: skip
 
 
 def _doubles(values: Any, count: int) -> np.ndarray[Any, Any]:
@@ -107,16 +122,54 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         return next(base.__name__ for base in type(self).__mro__ if base.__name__ in ERRORS)
 
     def _construct(self, args: tuple[Any, ...]) -> None:
-        """ROOT's constructors: ``(n)``, ``(n, x, y, errors...)``, ``(x, y)``, ``(h)``."""
+        """ROOT's constructors: ``(n)``, ``(n, x, y, errors...)``, ``(x, y)``, ``(h)``, and
+        ``(filename, format, option)`` for the points a text file holds."""
         if not args:
             return
         first = args[0]
-        if isinstance(first, TGraph):
+        if isinstance(first, (str, PathLike)):  # a TString is one, as ROOT's names are
+            self._from_text(fspath(first), args[1:])
+        elif isinstance(first, TGraph):
             self._take(first)
         elif hasattr(first, "_xrd"):
             self._from_histogram(first, args[1:])
         else:
             self._from_arrays((len(first), *args) if np.ndim(first) > 0 else args)
+
+    def _from_text(self, filename: str, rest: tuple[Any, ...]) -> None:
+        """``TGraph("points.csv")``: the points of a text file whose columns the extension
+        names - a comma for ``.csv``, a tab for ``.tsv``, a space for ``.txt``, and a comma
+        for any other name, which is the format ROOT falls back to.
+
+        ROOT names the graph ``Graph`` and titles it with the file it came from, and a file
+        it cannot open is a graph of no points after an error line rather than a refusal.
+        """
+        self._refuse_text_format(filename, rest)
+        self.SetNameTitle("Graph", filename)
+        count = READ_COLUMNS[self._root_class()]
+        columns = read_graph_text(filename, count, text_delimiter(filename) or ",")
+        if columns is None:
+            classname = self._root_class()
+            self.Error(classname, "Cannot open file: %s, %s is Zombie", filename, classname)
+            return
+        self._points = (columns[0], columns[1])
+        for key, values in zip(self._bars, columns[2:], strict=False):
+            self._bars[key] = values
+
+    @staticmethod
+    def _refuse_text_format(filename: str, rest: tuple[Any, ...]) -> None:
+        """ROOT reads a graph's text file with a ``%lg`` format or with an option naming the
+        delimiters, which is a tokeniser this kit has not written: refusing by name keeps a
+        file of another shape from being read as if it were one of ROOT's own."""
+        given = [str(value) for value in rest[:2] if value]
+        if not given:
+            return
+        raise UnsupportedFeatureError(
+            f"reading the points of {filename} with {given[0]!r} is not supported: this kit "
+            "reads the text files ROOT writes, whose columns the extension names - a comma "
+            "for .csv, a tab for .tsv and a space for .txt - with an empty format and no "
+            "option. Write the file with TGraph::SaveAs or name the columns in that format"
+        )
 
     def _from_arrays(self, args: tuple[Any, ...]) -> None:
         """``(n, x, y, bars...)``: the first ``n`` of each array, zeros for any not given."""
@@ -403,6 +456,82 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
             parts = [c_format("x[%d]=%g, y[%d]=%g", i, self._points[0][i], i, self._points[1][i])]
             parts += [c_format(f"{key}[%d]=%g", i, value[i]) for key, value in self._bars.items()]
             print(", ".join(parts))
+
+    # -- written out as text, which is what a spreadsheet reads --------------------------------
+
+    def SaveAs(self, filename: str = "", option: str = "") -> None:
+        """``TGraph::SaveAs``: the points as text for a ``.csv``, ``.tsv`` or ``.txt`` name, and
+        the ROOT file every other name means, which is ``TObject::SaveAs``.
+
+        The columns are ROOT's: a graph keeping no errors writes the two of each point, one
+        with a bar either way writes the point and its two, and an asymmetric one writes the
+        two sides it has. The option says which to write whatever the class is - ``errors``,
+        ``asymmerrors``, ``noerrors`` - and ``asroot`` (or ``native``) puts the point before
+        its errors as ROOT's own files have them, where a spreadsheet's order is x, its
+        errors, y and its errors. ``title`` adds the header line naming the columns.
+        """
+        delimiter = text_delimiter(filename)
+        if delimiter is None:
+            super().SaveAs(filename, option)
+            return
+        mode = self._text_mode(option)
+        lines = text_lines(
+            self._text_values(mode),
+            mode,
+            delimiter,
+            as_root=self._as_root(option),
+            titles=self._axis_titles(),
+            header="title" in str(option).lower(),
+        )
+        Path(filename).write_text("".join([line + "\n" for line in lines]), encoding="utf-8")
+        self.Info("SaveAs", "%s file: %s has been generated", str(filename)[-3:], filename)
+
+    def _text_mode(self, option: str) -> str:
+        """Which of ``TGraph::SaveAs``'s three column sets ``option`` asks for. ROOT reads the
+        option before the class is asked: ``noerrors`` first, then ``asymmerrors``, which is
+        asked before ``errors`` because it holds that word."""
+        text = str(option).lower()
+        if "noerrors" in text:
+            return "none"
+        if "asymmerrors" in text:
+            return "asymm"
+        if "errors" in text:
+            return "even"
+        if isinstance(self, TGraphAsymmErrors):
+            return "asymm"
+        return "even" if isinstance(self, TGraphErrors) else "none"
+
+    @staticmethod
+    def _as_root(option: str) -> bool:
+        """Does ``option`` ask for ROOT's own column order, the point before its errors."""
+        text = str(option).lower()
+        return "asroot" in text or "native" in text
+
+    def _axis_titles(self) -> tuple[str, str]:
+        """The titles of the frame the graph is drawn in, or the ``x`` and ``y`` ROOT writes
+        where the frame has none."""
+        if self._histogram is None:
+            return ("x", "y")
+        return (
+            self._histogram.GetXaxis().GetTitle() or "x",
+            self._histogram.GetYaxis().GetTitle() or "y",
+        )
+
+    def _error_column(self, name: str) -> np.ndarray[Any, Any]:
+        """A whole column of bars as ``GetErrorX`` and its kin answer for one point, and -1
+        for a graph keeping none - which is what ROOT writes for a graph without them."""
+        found = [self._bars[key] for key in ERROR_KEYS[name] if key in self._bars]
+        if not found:
+            return np.full(self.GetN(), -1.0)
+        return found[0] if len(found) == 1 else np.sqrt(np.mean(np.square(found), axis=0))
+
+    def _text_values(self, mode: str) -> dict[str, Any]:
+        """The columns ``mode`` names, each read off the bars the graph keeps."""
+        values: dict[str, Any] = {"x": self._points[0], "y": self._points[1]}
+        for name in TEXT_ORDERS[mode][0]:
+            if name not in values:
+                values[name] = self._error_column(name)
+        return values
 
     # -- what is worked out from it ---------------------------------------------------------------
 

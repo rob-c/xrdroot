@@ -258,3 +258,16 @@ def test_a_layer_the_file_wrote_no_look_for_keeps_the_ones_it_starts_with():
     held = graph._holds_attributes(SimpleNamespace(members={"fAttFill": None, "fAttLine": None}))
     assert len(held) == 2
     assert all(set(layer) == {"TAttFill", "TAttLine"} for layer in held)
+
+
+def test_saving_its_layers_as_text_is_refused_by_name_rather_than_written_short():
+    graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.3] * 5, *STAT)
+    graph.AddYError(5, *SYS)
+    with pytest.raises(UnsupportedFeatureError, match="keeps a bar per layer"):
+        graph.SaveAs("layers.csv")
+
+
+def test_the_points_alone_are_a_text_file_that_loses_no_layer():
+    graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.3] * 5, *STAT)
+    graph.SaveAs("points.csv", "noerrors")
+    assert pathlib.Path("points.csv").read_text().splitlines()[0] == "0,0"
