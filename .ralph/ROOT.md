@@ -2377,6 +2377,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 71 | `356e28e6` | **one worker's feature and the round's own hands on a tree's baskets**: worker r-71-w01 wrote ROOT's `TFractionFitter` (`2c7a287d` - the fractions of MC templates a data histogram is made of, over this kit's Minuit2, with `GetPlot`/`GetResult`/`GetMFC`); the round put `TBranch::SetBasketSize`, `TTree::SetAutoFlush` and `kOnlyFlushAtCluster` to work - three ROOT calls that were no-ops - so ROOT's one-basket-per-cluster mode now writes its exact 2 baskets of 106 bytes (`1a843f7a`, `dc095839`, `c455a479`) | **gtest +1, the kind 81 -> 82**: `gtest/hist/hist/test_TFractionFitter` PASSES (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/w01-check`), and **the whole kind at `c455a479`: 82 PASS / 191 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350 (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/gtest`) - one gained, **none lost, no other row moved**. The basket work costs no PASS where trees are written: `gtest/tree/tree/*` 6 PASS either side (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/tree-before`, `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/tree-after`) and `roottest/root/io/tree/*` 18 / 0 / 0 / 2 (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/rhist-after`). Gate **`TOTAL 123551 0 30928 0 100%`** (13 602 + 44, `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611230144/gate3.log`) | 3: `W0-182` (**ROOT re-optimises basket sizes at every cluster flush** - that is why ROOT's own fixture has 1 x 102, 99 x 4, 1 x 2 and 1 x 500 baskets and this kit 250), `W0-183` (`evolution` needs the LinkDef `#pragma read` schema rule - measured by worker r-71-w02, whose column work was **reverted** for 154 uncovered statements), and `W0-178` **partly** with the count measured |
 | 81 | `3e5a19a5` | **none** - no workers: the round opened at a load average of 20-30 after a reboot, and the target priced itself in one probe; the round's own hands wrote it | **gtest +1, the kind 83 -> 84**: `gtest/hist/hist/testTGraphsa` **PASSES all 10 cases** (`$HOME/.cache/xrdroot-runs/ralph-round-202611231323/tgraph`: `{"gtest": {"PASS": 1, "FAIL": 1, ...}}`, the FAIL being `testTGraphSorting`, untouched), because `TGraph::SaveAs` now writes `.csv`/`.tsv`/`.txt` with ROOT's three column sets and its `title`/`asroot`/`native`/`errors`/`asymmerrors`/`noerrors` options, and `TGraph(filename, format, option)` reads one back - and **all ten files are byte for byte what the 6.40 oracle writes** for the same graph (`.../probe/fmt/oracle` against `.../ours`, `cmp` on every one). Gate `TOTAL 125099 0 31362 0 100%` (13 822 + 44, `.../gate3.log`) at `-n 2` under a load average of 24-30 | 2: `W0-190` (`testTH1sa` is a **translator** wall first - a file-scope `struct TestSaveAs` is not a name - and `TH1::SaveAs` second, its bytes measured on the oracle: `fNcells` lines with the flow bins, the file's own delimiter in the header), `W0-191` (ROOT's `%lg` format and delimiter-option reader, refused by name since nothing in the suite asks for it) |
 | 82 | `cbf3803f` | **one target, three commits, and the whole gtest kind measured at the base**: ROOT's own `test_TH1_SaveAs` - a class body's statics and enumerators read the body's own name (`cbf3803f`), `std::ios` and the open modes a stream is given (`6dd2a7de`), and `TH1::SaveAs` as `.csv`/`.tsv`/`.txt` with `TH1::GetBinUpEdge` (`24918aa8`) | **`gtest/hist/hist/testTH1sa` goes from a translation refusal to `{'failed': 1, 'passed': 3}`** (`$HOME/.cache/xrdroot-runs/ralph-round-202611231402/th1sa`), and the three files it writes are **byte for byte what the 6.40 oracle writes** for the same histogram; **the whole gtest kind at the round's base** (`…/gtest-base`, `2fa1a7a9`) is **84 PASS / 189 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350, the first whole figure since round 71 and exactly what rounds 72-81's ledger said | 1: `W0-190` **partly** - its translator half is closed, and its one remaining case needs `TH1::SavePrimitive`, the `.C` macro, which is `testMapCppName`'s wall too |
+| 83 | `5c00fe9b` | **one target, priced from the round-82 ranking**: ROOT's own `test_TH1_SaveAs` - `TObject::SaveAs`'s `.C`/`.cc` macro path with `SavePrimitive`/`SavePrimitiveDraw` (`5c00fe9b`), `TH1::SavePrimitive` with `ProvideSaveName`/`MapCppName` and `colors.saved` for `TColor::SavePrimitiveColor`, and the three lines a histogram outside a directory writes (`9be8d884`) | **gtest +1, the kind 84 -> 85**: `gtest/hist/hist/testTH1sa` **PASSES all four of its cases** (`$HOME/.cache/xrdroot-runs/ralph-round-202611231440/mine`: `{"gtest": {"PASS": 1, "FAIL": 1, ...}}`, the FAIL being `testMapCppName`), and the macro is **byte for byte what the 6.40 oracle writes** for that histogram (`…/probe`, `diff H1dump.C ours.C` empty). Gate `TOTAL 125285 0 31418 0 100%` (13 850 + 44, `…/gate1.log`) | 2: `W0-193` (ROOT's own `SaveAs` writes a macro for **any** name but a ROOT file - measured: `x.dat` is a macro), `W0-194` (**a pad macro** is what `testMapCppName` needs, not `TH1::SavePrimitive`; `pyroot/graphics/macro.py` has no constructor for `TH2F`/`TH2Poly`/`TProfile`) |
 
 ## Notes
 
@@ -2950,3 +2951,43 @@ three cheap cases at `TH1::SaveAs` and one wall.
   twelve minutes at `--jobs 3` under a load average of 6-16, and it is the only thing that says
   whether ten rounds of individual wins cost anything. The ledger had claimed 84 since round 81
   without a whole measurement behind it; now the number has one.
+
+## Round 83's close
+
+**One target, finished: `gtest/hist/hist/testTH1sa` passes all four of its cases** — the program
+that round 81 found refusing at translation and round 82 took to three cases. The last one is
+`TH1::SavePrimitive`, and the round is the third in a row whose win is a *writer measured against
+the oracle before it was written*.
+
+**What ROOT does, read off its own source and then off the oracle.** `TObject::SaveAs` sends a
+`.C` (or `.cc`) name to the object's `SavePrimitive`, wrapped in braces and two `//` comment lines
+naming the object and ROOT's version; `TH1::SavePrimitive` writes, in ROOT's order, a blank line,
+the constructor, a `SetBinContent` per **non-empty** cell and a `SetBinError` per cell that has
+one, `SetEntries`, then only the members ROOT's own defaults leave out —
+`SetDirectory(nullptr)`/`SetStats(0)`/`SetOption`, the fill, the line colour as the *channels* it
+means (`TColor::GetColor("#000099")` for 602), and three axes' fonts and offsets — then `Draw()`.
+The variable is the histogram's name and a count (`h__1`), made a C++ identifier.
+
+**The evidence that matters.** The 31-line macro ROOT's own test compares against is **byte for
+byte what the 6.40 oracle writes** for that histogram (`diff H1dump.C ours.C` is empty), and the
+four cases pass through the harness (`…/mine/results.json`).
+
+- **A prediction was corrected by measurement.** Round 82's ledger row said `TH1::SavePrimitive`
+  would unblock `testMapCppName` too. It does not: that program saves a **`TCanvas`**, and
+  `pyroot/graphics/macro.py` — 400 lines that already write a pad again for `TArc`, `TH1C`…`TH1S`,
+  `TGraph`, `TPave` and twenty more — has no constructor for `TH2F`, `TH2Poly` or `TProfile`. The
+  error is measured, the row now says so, and `W0-194` carries the work with the reference the test
+  pins (`EXPECT_NEAR(FileSize, 6644, 200)`).
+- **`W0-193` is the fidelity gap the work exposed**: ROOT's `SaveAs` writes a macro for *any* name
+  that is not a ROOT file — measured, `h.SaveAs("x.dat")` prints `C++ Macro file: x.dat has been
+  generated` — where this kit names only `.C`/`.cc` and still writes a ROOT file for anything else.
+  Writing that fall-through means every class needs a `SavePrimitive`, so it waits for the pad and
+  the graph.
+- **The gate named three uncovered lines and the round covered them rather than shipping them**:
+  `SetDirectory(nullptr)`, `SetStats(0)` and `SetOption` are each ROOT's own rule over a member, and
+  a test now saves a histogram outside a directory, marked and with an option, to reach all three —
+  plus the branch where a name holding `_stack_` keeps the name it has. `TOTAL 125285 0 31418 0
+  100%` (13 850 + 44, `…/gate1.log`).
+- **A test harness detail worth keeping**: `TH1D.AddDirectory(False)` is what makes `GetDirectory()`
+  `None`, so the three lines can be reached at all; ROOT's `ProvideSaveName` and `SavePrimitive` are
+  both sensitive to that flag, so the test puts it back in a `finally`.
