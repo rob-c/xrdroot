@@ -1084,9 +1084,6 @@ class WritableTree:
         self._entries = 0
         #: Where each cluster :meth:`flush` closed ends: one past its last entry.
         self._clusters: list[int] = []
-        #: ``TTree::SetAutoFlush``: how many entries make a cluster, so that the tree flushes
-        #: its baskets where one ends. Zero or less is ROOT's "decide it from the basket size".
-        self.auto_flush = 0
         #: ``TTree::kOnlyFlushAtCluster``: baskets close only where a cluster ends, however
         #: full they are - ROOT's one-basket-per-cluster mode.
         self.only_at_cluster = False
@@ -1251,17 +1248,6 @@ class WritableTree:
         feeds = [self._feed(column, packed[self._keys[id(column)]]) for column in self._branches]
         _interleaved(feeds)
         self._entries += entries
-        self._cluster_end()
-
-    def _cluster_end(self) -> None:
-        """Close a cluster where ROOT's autoflush says one ends, baskets and all.
-
-        With ``SetAutoFlush(500)`` every 500th entry ends a cluster, and every basket the tree
-        has part filled goes out with it - which is what makes the next entries start a basket
-        afresh, and what a reader sees as a cluster boundary.
-        """
-        if self.auto_flush > 0 and self._entries % self.auto_flush == 0:
-            self.flush()
 
     def _lengths(self, counter: _Counter, packed: dict[str, Packed]) -> np.ndarray[Any, Any]:
         """What a counter says for each entry: the one length every column it counts has."""

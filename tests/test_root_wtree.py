@@ -698,3 +698,21 @@ def test_an_object_where_a_column_of_numbers_goes_names_the_branch_of_objects():
     with pytest.raises(UnsupportedFeatureError, match="Write the object's members as columns"):
         written({"x": "d"}, {"x": np.array([{"fNtrack": 3}], dtype=object)})
 
+
+
+def test_a_tree_flushing_only_at_clusters_holds_a_column_of_rows_too():
+    """``kOnlyFlushAtCluster`` is the tree's rule, so a varying column obeys it as a plain one."""
+    buf = io.BytesIO()
+    with create(buf) as out:
+        tree = out.tree("events", {"x": float, "row": ("d", None)})
+        tree.only_at_cluster = True
+        for step in range(6):
+            tree.fill(x=float(step), row=[float(step)] * 3)
+        tree.flush()
+        for step in range(6, 12):
+            tree.fill(x=float(step), row=[float(step)] * 3)
+        tree.flush()
+    with read_back(buf.getvalue()) as back:
+        assert back["events"]["x"].num_baskets == 2
+        assert back["events"]["row"].num_baskets == 2
+        assert back["events"]["row"].array().tolist() == [[float(step)] * 3 for step in range(12)]

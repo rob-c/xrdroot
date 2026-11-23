@@ -302,14 +302,11 @@ class Store:
         A cluster ends where ``FlushBaskets`` ended one or where the tree's autoflush says -
         every ``SetAutoFlush``-th entry - and the baskets part filled go out there.
         """
-        ends = self.cluster_ends()
-        stops = [stop for stop in ends if stop > 0]
+        stops = [stop for stop in self.cluster_ends() if stop > 0]
         for start, stop in zip([0, *stops[:-1]], stops, strict=True):
-            if stop > start:
-                rows = np.arange(start, stop)
-                tree.extend({key: take(values, rows) for key, values in columns.items()})
-            if stop in ends:
-                tree.flush()
+            rows = np.arange(start, stop)
+            tree.extend({key: take(values, rows) for key, values in columns.items()})
+            tree.flush()
 
     def reset(self) -> None:
         """Forget every entry, keeping the branches: ``TTree::Reset``."""
