@@ -493,3 +493,94 @@ def test_a_name_that_is_no_text_format_is_still_saved_as_a_root_file():
     histogram = ROOT.TH1D("h", "h", 2, 0, 2)
     histogram.SaveAs("h.dat")
     expect((ROOT.TFile("h.dat").Get("h") is not None, True))
+
+
+def _saved_macro(histogram, name):
+    """The lines of the macro ROOT writes for ``histogram``, its two comment lines taken off:
+    ``{`` first, then ROOT's blank line, then the statements and the closing brace."""
+    histogram.SaveAs(name)
+    with open(name, encoding="utf-8") as handle:
+        return [line for line in handle.read().splitlines() if not line.startswith("//")]
+
+
+def _variable(lines):
+    """The C++ variable the macro's constructor line makes."""
+    return lines[2].split()[1].lstrip("*")
+
+
+def test_a_histogram_is_saved_as_the_macro_root_writes(tmp_path):
+    """ROOT's own `test_TH1_SaveAs` pins these lines in a reference of its own: a blank line, the
+    constructor, a ``SetBinContent`` per **non-empty** cell and a ``SetBinError`` per cell that has
+    one, then the entries, the fill, the line colour as the channels it means, three axes' fonts
+    and a ``Draw``. The 6.40 oracle writes the same file for this histogram, byte for byte."""
+    lines = _saved_macro(_cells(ROOT.TH1D("h", "h_title", 5, 0, 5)), "ours.C")
+    name = _variable(lines)
+    expect(
+        (lines[0], "{"),
+        (lines[1], "   "),
+        (lines[2], f'   TH1D *{name} = new TH1D("h", "h_title", 5, 0, 5);'),
+        ([line for line in lines if "SetBinError" in line][:2],
+         [f"   {name}->SetBinError(0,2.1);", f"   {name}->SetBinError(2,2.5);"]),
+        (next(line for line in lines if "SetBinContent" in line),
+         f"   {name}->SetBinContent(0,5.2);"),
+        (f"   {name}->SetEntries(7);" in lines, True),
+        (f"   {name}->SetFillColor(0);" in lines, True),
+        (f"   {name}->SetFillStyle(1001);" in lines, True),
+        (f'   {name}->SetLineColor(TColor::GetColor("#000099"));' in lines, True),
+        (f"   {name}->GetXaxis()->SetLabelFont(42);" in lines, True),
+        (f"   {name}->GetXaxis()->SetTitleOffset(1);" in lines, True),
+        (lines[-2], f"   {name}->Draw();"),
+        (lines[-1], "}"),
+    )
+
+
+def test_the_macro_names_a_variable_after_the_histogram_and_a_count():
+    """``ProvideSaveName``: two histograms of one name in one macro do not collide, and the count
+    is what makes them different."""
+    histogram = ROOT.TH1D("counted", "t", 2, 0, 2)
+    first = _variable(_saved_macro(histogram, "one.C"))
+    second = _variable(_saved_macro(histogram, "two.C"))
+    expect((first.startswith("counted__"), True), (first == second, False))
+
+
+def test_a_histogram_whose_name_is_no_cpp_identifier_is_saved_under_one():
+    """``MapCppName``: ROOT's own `testMapCppName` saves histograms whose names are punctuation,
+    and a C++ compiler is given ``_`` for every character it would not take."""
+    odd = "<[ !@$%&^*().,[]/+=-&:|'~]>"
+    variable = _variable(_saved_macro(ROOT.TH1D(odd, "t", 2, 0, 2), "odd.C"))
+    expect((variable.startswith("_" * len(odd)), True), (len(variable) > len(odd), True))
+
+
+def test_the_palette_colour_a_histogram_keeps_is_written_with_its_channels():
+    """``TColor::SavePrimitiveColor``: a colour of ROOT's own 228 is its number, and one above them
+    is ``TColor::GetColor`` of the channels the palette gives it."""
+    from xrdroot.colors import saved
+
+    expect(
+        (saved(1), "1"),
+        (saved(602), 'TColor::GetColor("#000099")'),
+        (saved(999999), "999999"),
+    )
+
+
+def test_an_axis_a_program_looked_at_is_written_and_a_default_one_is_left_out():
+    histogram = ROOT.TH1D("h", "t", 2, 0, 2)
+    histogram.GetXaxis().SetTitle("energy")
+    histogram.GetXaxis().SetLabelColor(2)
+    histogram.GetYaxis().SetLabelFont(62)
+    lines = _saved_macro(histogram, "axes.C")
+    name = _variable(lines)
+    expect(
+        (f'   {name}->GetXaxis()->SetTitle("energy");' in lines, True),
+        (f"   {name}->GetXaxis()->SetLabelColor(2);" in lines, True),
+        (f"   {name}->GetYaxis()->SetLabelFont(62);" in lines, False),
+        # ROOT's own default for the y axis is no title offset at all, so it is not written
+        (any("GetYaxis()->SetTitleOffset" in line for line in lines), False),
+    )
+
+
+def test_a_draw_is_left_out_when_the_option_says_nodraw():
+    """``SavePrimitiveDraw``: a histogram saved as part of something larger is not drawn by it."""
+    written: list[str] = []
+    ROOT.TH1D("h", "t", 2, 0, 2).SavePrimitive(written, "nodraw")
+    expect((any("Draw(" in line for line in written), False), (len(written) > 2, True))
