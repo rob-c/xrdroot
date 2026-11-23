@@ -223,6 +223,23 @@ class Sampler:
         self.advance(1)
         return value
 
+    def take_one(self) -> float | None:
+        """The next draw held, handed out in the same step - the one-at-a-time path's call.
+
+        A macro that fills a histogram draws millions of numbers one at a time, and
+        two Python calls for each of them is most of what that costs. This is
+        :meth:`pop` and :meth:`advance` as one call, doing exactly what they do.
+        """
+        if not self._runs:
+            return None
+        run = self._runs[0][1]
+        value = float(run[self._offset])
+        self._offset += 1
+        self._held -= 1
+        if self._offset >= len(run):
+            self._offset -= len(self._runs.pop(0)[1])
+        return value
+
     def advance(self, count: int) -> None:
         """Hand out the next ``count`` draws, letting go of the runs that are finished."""
         self._offset += count
@@ -365,10 +382,10 @@ class TRandom:
 
     def _next(self) -> float:
         """The next value of ``Rndm()``, for the algorithms that go one number at a time."""
-        value = self._held.pop()
+        value = self._held.take_one()
         if value is None:
             self._peek(1)
-            value = self._held.pop()
+            value = self._held.take_one()
         return value  # type: ignore[return-value]
 
     def _one_by_one(self, count: int, make: Callable[[Callable[[], float]], float]) -> Any:

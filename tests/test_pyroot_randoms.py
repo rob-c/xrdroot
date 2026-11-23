@@ -235,3 +235,29 @@ def test_the_directions_of_later_coordinates_come_from_the_primitive_polynomials
 def test_random_mt_is_the_twister_under_the_random_front():
     assert ROOT.RandomMT(7).Rndm() == ROOT.TRandom3(7).Rndm()
     assert ROOT.RandomMT().Rndm() == ROOT.TRandom3().Rndm()
+
+
+def test_a_draw_handed_out_in_the_same_step_is_the_one_the_stream_has():
+    """The one-at-a-time path hands a draw out and moves the cursor in one call.
+
+    It is the fast path every acceptance algorithm uses - ``Gaus`` draws two or three
+    numbers per value - so it must be exactly ``pop`` and ``advance(1)``: the same
+    numbers, in the same order, across the run the generator holds ahead of the draws.
+    """
+    from xrdroot.random import TRandom3 as Engine
+
+    fast, slow = Engine(7), Engine(7)
+    assert [fast._next() for _ in range(3)] == [slow._next() for _ in range(3)]
+    taken = []
+    for _ in range(5000):  # far enough to cross a held run, so the slow path is taken too
+        value = fast._held.take_one()
+        taken.append(fast._next() if value is None else value)
+    assert taken == [slow._next() for _ in range(5000)]
+
+
+def test_asking_a_named_generator_for_the_same_numbers_twice_gives_the_same_numbers():
+    """A seed restarts the stream, so a fast path that skipped a draw would show here."""
+    first = ROOT.TRandom3(11)
+    second = ROOT.TRandom3(11)
+    assert [first.Gaus(1.0, 2.0) for _ in range(50)] == [second.Gaus(1.0, 2.0) for _ in range(50)]
+    assert [first.Rndm() for _ in range(50)] == [second.Rndm() for _ in range(50)]
