@@ -8,6 +8,7 @@ every member it was written with in reach under :attr:`Graph.members`.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -19,7 +20,7 @@ from .errors import FormatError, UnsupportedFeatureError
 from .function.attached import listed
 from .hist import FILL, LINE, MARKER, Histogram
 
-__all__ = ["GRAPHS", "Graph"]
+__all__ = ["GRAPHS", "TEXT_ORDERS", "Graph", "read_text", "text_delimiter", "text_lines"]
 
 #: The graph classes this reads: points, points with error bars, points whose
 #: bars are a different length each side, and points whose y errors are kept
@@ -492,3 +493,108 @@ def _axis_label(index: int, height: int, low: float, high: float) -> str:
     if index == height - 1:
         return f"{low:g}"
     return ""
+
+
+#: The delimiter a graph's points are written with, by the extension of the file's name:
+#: ``TGraph::SaveAs``'s own three text formats, and the ROOT file every other name means.
+TEXT_DELIMITERS = {".csv": ",", ".tsv": "\t", ".txt": " "}
+
+#: The values ``TGraph::SaveAs`` writes, one name per column, for each of its three column
+#: sets: a bar either way along each axis, the two bars either side of a point, or none.
+#: The first tuple is the order ``asroot``/``native`` asks for and the second the one a
+#: spreadsheet is read into, with each point's own errors beside it.
+TEXT_ORDERS = {
+    "even": (("x", "y", "ex", "ey"), ("x", "ex", "y", "ey")),
+    "asymm": (("x", "y", "exl", "exh", "eyl", "eyh"), ("x", "exl", "exh", "y", "eyl", "eyh")),
+    "none": (("x", "y"), ("x", "y")),
+}
+
+#: The columns ROOT names in the header line, which it writes only when the option asks for
+#: one: one name per column in the same order as the values, where the point's own columns
+#: hold the axes' titles.
+TEXT_HEADERS = {"even": ("x", "y", "ex", "ey"), "asymm": ("x", "y", "exl", "exh", "eyl", "eyh"),
+                "none": ("x", "y")}  # fmt: skip
+
+
+def text_delimiter(filename: str) -> str | None:
+    """The delimiter a graph's text file is named for, or ``None`` for a name ROOT saves as a
+    ROOT file instead.
+
+    ROOT reads the extension without regard to case, which is what a name written on a case-
+    preserving filesystem needs.
+    """
+    lowered = str(filename).lower()
+    for suffix, delimiter in TEXT_DELIMITERS.items():
+        if lowered.endswith(suffix):
+            return delimiter
+    return None
+
+
+def _number(value: Any) -> str:
+    """A value as C++'s ``ostream`` writes it, which is ``%g``: six significant digits, and
+    no ``.0`` after a whole one."""
+    return f"{float(value):g}"
+
+
+def text_lines(
+    values: dict[str, np.ndarray[Any, Any]],
+    mode: str,
+    delimiter: str,
+    *,
+    as_root: bool = False,
+    titles: tuple[str, str] = ("", ""),
+    header: bool = False,
+) -> list[str]:
+    """A graph's points as the lines ``TGraph::SaveAs`` writes them: one per point, the
+    columns ``mode`` names in the order ``as_root`` asks for, and the header line ROOT puts
+    in front of them when the option asks for a title.
+
+    The header names a column per value, the point's own columns holding the axes' titles, and
+    is written with tabs whatever the delimiter is, because every spreadsheet that reads these
+    files has been handed one.
+    """
+    order = TEXT_ORDERS[mode][0 if as_root else 1]
+    lines = [] if not header else ["# " + "\t".join([_titled(name, titles) for name in order])]
+    for at in range(len(values["x"])):
+        lines.append(delimiter.join([_number(values[name][at]) for name in order]))
+    return lines
+
+
+def _titled(name: str, titles: tuple[str, str]) -> str:
+    """A column's name in the header line: the axis title where the column is a point's, and
+    the bar's own name otherwise."""
+    return titles[0] if name == "x" else titles[1] if name == "y" else name
+
+
+def _fields(line: str, delimiter: str, columns: int) -> tuple[float, ...] | None:
+    """The first ``columns`` numbers of one line, or ``None`` for a line holding fewer than
+    two of them - which is what a comment or a header line is, and what ROOT skips."""
+    parts = line.split() if delimiter == " " else line.split(delimiter)
+    found: list[float] = []
+    for part in parts[:columns]:
+        try:
+            found.append(float(part))
+        except ValueError:
+            break
+    if len(found) < 2:
+        return None
+    return tuple(found + [0.0] * (columns - len(found)))
+
+
+def read_text(path: str | Path, columns: int, delimiter: str) -> list[np.ndarray[Any, Any]] | None:
+    """The columns of a text file of points, as ROOT's ``TGraph(const char *, const char *)``
+    reads one with no format and no option: as many of the first ``columns`` values of a line
+    as the line holds, a line of fewer than two skipped, and a column a line does not have
+    left at zero.
+
+    ``None`` when the file cannot be opened, which ROOT answers with a graph of no points and
+    an error line rather than by refusing.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    rows = [row for row in (_fields(line, delimiter, columns) for line in text.splitlines()) if row]
+    if not rows:
+        return [np.zeros(0, dtype=np.float64) for _ in range(columns)]
+    return [np.array(values, dtype=np.float64) for values in zip(*rows, strict=False)]

@@ -16,7 +16,8 @@ from typing import Any
 
 import numpy as np
 
-from ...graph import Graph
+from ...errors import UnsupportedFeatureError
+from ...graph import Graph, text_delimiter
 from ..core.graphs import TGraph
 from ..core.objects import ATTRIBUTES, TAttFill, TAttLine
 from ..core.wrapping import adopt, register
@@ -180,6 +181,20 @@ class TGraphMultiErrors(TGraph):
             return -1.0
         low, high = self._layers[e]
         return float(np.sqrt((low[i] * low[i] + high[i] * high[i]) / 2.0))
+
+    def SaveAs(self, filename: str = "", option: str = "") -> None:
+        """``TGraphMultiErrors::SaveAs``: ROOT writes one bar per point, the layers summed, and a
+        file read back loses the layers the file never held - so the text formats are refused
+        by name rather than written short. The ``noerrors`` option writes the points alone,
+        which loses nothing, and a ROOT file keeps every layer."""
+        if text_delimiter(filename) is not None and "noerrors" not in str(option).lower():
+            raise UnsupportedFeatureError(
+                f"saving {self.GetName() or 'a multi-errors graph'} as {filename} is not "
+                "supported: a multi-errors graph keeps a bar per layer and ROOT's text file "
+                'holds one, which it writes summed. Pass the option "noerrors" to write the '
+                "points alone, or write the graph to a .root file, which keeps every layer"
+            )
+        super().SaveAs(filename, option)
 
     def GetAttLine(self, e: int) -> Any:
         """``GetAttLine(e)``: the line the ``e``-th layer's bars are drawn with, or ``None``."""

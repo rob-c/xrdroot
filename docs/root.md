@@ -627,6 +627,25 @@ points that walk found last, which for points out of order are not always the
 two nearest. Sorting keeps points at the same `x` in the order they had, where
 ROOT's comparison leaves them to its C++ library.
 
+A graph writes its points out as text, and reads a text file back, which is
+what a spreadsheet wants:
+
+```python
+g.SaveAs("points.csv")  # or .tsv, a tab between the columns, or .txt, a space
+back = ROOT.TGraphErrors("points.csv", "")  # the points, and the bars a line has
+```
+
+The columns are ROOT's: a graph keeping no bars writes the two of each point,
+one with a bar either way writes the point and its two, and an asymmetric one
+writes the two sides it has. `"errors"`, `"asymmerrors"` and `"noerrors"` say
+which to write whatever the class is, `"asroot"` (or `"native"`) puts the point
+before its bars as ROOT's own files have them, and `"title"` writes the header
+line naming the columns, the point's own columns holding the axes' titles. A
+name that is no text format is a ROOT file, as every `TObject::SaveAs` writes.
+Reading one back takes the columns the extension names, skips a line of fewer
+than two numbers - a header - and leaves a column a line does not have at zero,
+which is how ROOT reads a file it wrote.
+
 ### Several at once
 
 A `TMultiGraph` comes back as a `MultiGraph`, which is the sequence of the
