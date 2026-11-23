@@ -46,12 +46,26 @@ def model(constraints=True):
     return nll, [scale, gamma, alpha] if constraints else [scale, gamma]
 
 
-def scalar(nll, parameters, points):
+def scalar(nll, parameters, points, silent=False):
+    """The same points through the scalar setter, clipping instead of raising when asked.
+
+    ``RooRealVar::setVal`` *raises* for a value further out of its range than one machine
+    epsilon (it only warns and clips within it), and a batched evaluation never looks at a
+    range at all - it writes the values into a buffer, as ``RooBatchCompute`` does. So a
+    comparison against a batched evaluation of out-of-range points asks for ROOT's own
+    ``enableSilentClipping`` switch, which is what ``silent`` turns on for the loop.
+    """
     found = []
-    for point in points:
-        for parameter, value in zip(parameters, point, strict=True):
-            parameter.setVal(float(value))
-        found.append(nll.getVal())
+    if silent:
+        RooRealVar.enableSilentClipping()
+    try:
+        for point in points:
+            for parameter, value in zip(parameters, point, strict=True):
+                parameter.setVal(float(value))
+            found.append(nll.getVal())
+    finally:
+        if silent:
+            RooRealVar.enableSilentClipping(False)
     return np.asarray(found)
 
 
@@ -72,12 +86,19 @@ def test_batched_values_match_the_scalar_evaluator_bit_for_bit(constraints, squa
     assert np.array_equal(actual.view(np.uint64), expected.view(np.uint64))
 
 
-def test_parameter_batches_clip_with_the_scalar_setter_rules():
+def test_a_parameter_batch_clips_where_set_val_would_raise():
+    """A batched evaluation never range-checks its parameters, so it clips where `setVal` raises.
+
+    ROOT's `RooBatchCompute` writes the values into a buffer; `RooRealVar::setVal` raises
+    `std::invalid_argument` for a value further out than one epsilon (and warns within it,
+    round 90's `84742600`). The points below are far outside, so the scalar side runs under
+    `enableSilentClipping` - and the two sides must still agree bit for bit.
+    """
     nll, parameters = model()
     points = np.asarray([[-1.0, 0.5, -10.0], [10.0, 5.0, 10.0], [1.0, 1.0, 0.0]])
     actual = evaluate(nll, parameters, points)
     assert actual is not None
-    expected = scalar(nll, parameters, points)
+    expected = scalar(nll, parameters, points, silent=True)
     assert np.array_equal(actual.view(np.uint64), expected.view(np.uint64))
 
 

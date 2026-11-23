@@ -12,6 +12,7 @@ import math
 import sys
 from typing import Any
 
+from ..cppstd.objects import CppInvalidArgument
 from .binning import RooAbsBinning, RooParamBinning, RooRangeBinning, RooUniformBinning
 from .messages import INFO, WARNING, log
 from .printing import g, kClassName, kExtras, kName, kValue
@@ -34,26 +35,31 @@ def _number(value: float) -> str:
 
 
 def _slightly_outside(one: Any, value: float, clipped: float, low: float, high: float) -> None:
-    """``printOutOfRangeWarning``: a value within an epsilon of its range, which is clipped.
+    """``printOutOfRangeWarning`` - or ``throwOutOfRangeError`` - for a value out of range.
 
     ROOT measures the distance from the clipped value against
-    ``std::numeric_limits<double>::epsilon()`` *absolutely* - so one ulp past the boundary
-    is this warning, and two ulps past it is the ``invalid_argument`` ROOT raises
-    (``throwOutOfRangeError``, the queue's `W0-206`: raising it here would make every
-    internal step past a limit an error). The numbers are printed as a default
-    ``stringstream`` prints them, which is how ROOT's own message reads.
+    ``std::numeric_limits<double>::epsilon()`` *absolutely*: within it, a value a numerical
+    step has pushed a single ulp past the boundary gets ``printOutOfRangeWarning`` and is
+    clipped; further out, ``throwOutOfRangeError`` raises ``std::invalid_argument`` whose
+    ``what()`` is the same sentence without the clipping advice. The numbers are printed as
+    a default ``stringstream`` prints them, which is how ROOT's own message reads.
     """
-    if abs(clipped - value) > sys.float_info.epsilon:
-        return
-    log(
-        one,
-        WARNING,
-        "InputArguments",
-        f"Value {_number(value)} is slightly outside the default range "
-        f'[{_number(low)}, {_number(high)}] of the variable "{one.GetName()}"!\n'
-        "The value will be clipped. To restore the dangerous old behavior of silently "
-        "clipping the value to the range, call `RooRealVar::enableSilentClipping()`.",
+    where = (
+        f"Value {_number(value)} is "
+        + ("slightly " if abs(clipped - value) <= sys.float_info.epsilon else "")
+        + f"outside the default range [{_number(low)}, {_number(high)}] of the variable "
+        f'"{one.GetName()}"!'
     )
+    advice = (
+        "The value will be clipped. To restore the dangerous old behavior of silently "
+        "clipping the value to the range, call `RooRealVar::enableSilentClipping()`."
+    )
+    if abs(clipped - value) > sys.float_info.epsilon:
+        raise CppInvalidArgument(
+            where + "\nTo restore the dangerous old behavior of silently clipping the value "
+            "to the range, call `RooRealVar::enableSilentClipping()`."
+        )
+    log(one, WARNING, "InputArguments", f"{where}\n{advice}")
 
 
 class RooAbsRealLValue(RooAbsReal):
@@ -83,8 +89,8 @@ class RooAbsRealLValue(RooAbsReal):
         self.setVal(float(value.getVal()) if hasattr(value, "getVal") else float(value))
 
     #: ``RooRealVar::enableSilentClipping``'s flag: whether a value outside the range is
-    #: clipped without a word. ROOT's default is false - it warns, as :func:`_slightly_outside`
-    #: says - and a value further out than one epsilon is an error there (`W0-206`).
+    #: clipped without a word. ROOT's default is false - it warns, and raises for a value
+    #: further out than one epsilon, as :func:`_slightly_outside` says.
     SILENT_CLIPPING = False
 
     @staticmethod
@@ -98,7 +104,12 @@ class RooAbsRealLValue(RooAbsReal):
         return RooAbsRealLValue.SILENT_CLIPPING
 
     def setVal(self, value: float) -> None:
-        """``RooRealVar::setVal``: the value, clipped into the range - and ROOT's word about it."""
+        """``RooRealVar::setVal``: the value, clipped into the range - with ROOT's word about it.
+
+        A value an epsilon or less outside the range is clipped with ROOT's warning; one
+        further out raises ``std::invalid_argument``, as ``RooRealVar::setVal`` does, and the
+        value is left as it was.
+        """
         low, high = self.getMin(), self.getMax()
         clipped = min(max(float(value), low), high)
         if clipped != value and not self.isSilentClippingEnabled():

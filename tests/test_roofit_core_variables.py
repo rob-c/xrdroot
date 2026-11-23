@@ -14,6 +14,7 @@ import re
 import numpy as np
 import pytest
 
+from xrdroot.cppstd.objects import CppInvalidArgument
 from xrdroot.roofit.binning import RooBinning, RooParamBinning
 from xrdroot.roofit.cmdargs import RooCmdArg
 from xrdroot.roofit.printing import kClassName, kExtras, kInline, kName, kValue
@@ -82,6 +83,31 @@ def test_a_variable_made_with_no_numbers_is_zero_on_the_whole_line() -> None:
     """``RooRealVar(name, title)`` is not a constructor ROOT has, but a copy starts this way."""
     v = RooRealVar("v", "v")
     assert (v.getVal(), v.hasMin(), v.hasMax(), v.isConstant()) == (0.0, False, False, False)
+
+
+def test_a_value_further_out_than_an_epsilon_raises_as_root_s_set_v_a_l_does() -> None:
+    """``throwOutOfRangeError``: ``std::invalid_argument``, and the value is left as it was.
+
+    Measured on the oracle: ``setVal(1.0000000000000002)`` warns and clips, while
+    ``setVal(1.000000000000001)`` raises - one machine epsilon from the boundary is the line
+    between the two, and the two sentences are ROOT's own (the clipping advice differs).
+    """
+    x = RooRealVar("mu", "mu", 0.0, -1, 1)
+    with pytest.raises(CppInvalidArgument) as raised:
+        x.setVal(1.000000000000001)
+    assert str(raised.value).splitlines() == [
+        'Value 1 is outside the default range [-1, 1] of the variable "mu"!',
+        "To restore the dangerous old behavior of silently clipping the value to the range, "
+        "call `RooRealVar::enableSilentClipping()`.",
+    ]
+    assert x.getVal() == 0.0
+
+    RooAbsRealLValue.enableSilentClipping()
+    try:
+        x.setVal(1.5)
+    finally:
+        RooAbsRealLValue.enableSilentClipping(False)
+    assert x.getVal() == 1.0
 
 
 def test_a_value_one_epsilon_outside_its_range_is_clipped_with_root_s_warning(
