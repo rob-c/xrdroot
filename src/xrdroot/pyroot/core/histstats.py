@@ -249,6 +249,11 @@ class Stats:
     def GetBinLowEdge(self, bin: int) -> float:
         return float(self.GetXaxis().GetBinLowEdge(bin))
 
+    def GetBinUpEdge(self, bin: int) -> float:
+        """``GetBinUpEdge``: the axis' own edge, so the underflow and overflow cells answer with
+        the edge a bin's width past each end rather than with infinity."""
+        return float(self.GetXaxis().GetBinUpEdge(bin))
+
     def GetBinWidth(self, bin: int) -> float:
         return float(self.GetXaxis().GetBinWidth(bin))
 

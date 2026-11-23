@@ -10,10 +10,12 @@ read from a file comes back as the class it was written as.
 from __future__ import annotations
 
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from ...graph import text_delimiter
 from ...stdio import unflushed
 from .._pythonization._uhi import UnifiedHistogram
 from .histbins import Bins
@@ -133,6 +135,41 @@ class TH1(
         """
         with unflushed():
             self._print(option)
+
+    def SaveAs(self, filename: str = "", option: str = "") -> None:
+        """``TH1::SaveAs``: the bins as text for a ``.csv``, ``.tsv`` or ``.txt`` name, and the
+        ROOT file every other name means, which is ``TObject::SaveAs``.
+
+        ROOT writes a line per **cell**, so the underflow and overflow cells are lines of
+        their own at the two ends: the cell's low and high edge, its content, and its error
+        only when the histogram keeps squared weights to answer one with. The ``title``
+        option puts a header line in front, written with the file's own delimiter and naming
+        the y axis rather than "BinContent" where that axis has a title.
+        """
+        delimiter = text_delimiter(filename)
+        if delimiter is None:
+            super().SaveAs(filename, option)
+            return
+        lines = self._text_table(str(option).lower(), delimiter)
+        Path(filename).write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+        self.Info("SaveAs", "%s file: %s has been generated", str(filename)[-3:], filename)
+
+    def _text_table(self, option: str, delimiter: str) -> list[str]:
+        """Every line of the text file ROOT writes: the header when the option asks for one,
+        then a line per cell."""
+        errors = self.GetSumw2N() > 0
+        head = []
+        if "title" in option:
+            named = self.GetYaxis().GetTitle() or "BinContent"
+            head = [delimiter.join(["# BinLowEdge", "BinUpEdge", named, "ey"])]
+        return head + [self._text_row(at, delimiter, errors) for at in range(self.GetNcells())]
+
+    def _text_row(self, at: int, delimiter: str, errors: bool) -> str:
+        """One cell's line, in the order ROOT writes it with C++'s own number spelling."""
+        cells = [self.GetBinLowEdge(at), self.GetBinUpEdge(at), self.GetBinContent(at)]
+        if errors:
+            cells.append(self.GetBinError(at))
+        return delimiter.join(f"{float(value):g}" for value in cells)
 
     def _print(self, option: str) -> None:
         entries = int(self.GetEntries())

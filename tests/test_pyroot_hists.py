@@ -424,3 +424,72 @@ def test_set_content_takes_every_cell_at_once_flows_included() -> None:
     assert square.SetContent([float(cell) for cell in range(16)]) is True
     # x fastest with a flow bin each side, as GetBin numbers them: (2, 2) is cell 10.
     assert (square.GetBinContent(1, 1), square.GetBinContent(2, 2)) == (5.0, 10.0)
+
+
+def _cells(histogram):
+    """ROOT's own ``test_TH1_SaveAs`` fixture: seven cells, the flow ones filled too."""
+    for at, (content, error) in enumerate(
+        [(5.2, 2.1), (0, 0), (10.8, 2.5), (12.3, 2.1), (9.5, 3.5), (7.3, 2.7), (15.2, 4.7)]
+    ):
+        histogram.SetBinContent(at, content)
+        histogram.SetBinError(at, error)
+    return histogram
+
+
+def test_a_histogram_is_saved_as_the_text_table_root_writes(tmp_path):
+    """One line per **cell**, the underflow and overflow cells included, and the file's own
+    delimiter: what the 6.40 oracle writes for this histogram, byte for byte."""
+    _cells(ROOT.TH1D("h", "h_title", 5, 0, 5)).SaveAs("h.csv")
+    expect(
+        (
+            (tmp_path / "h.csv").read_text(),
+            "-1,0,5.2,2.1\n0,1,0,0\n1,2,10.8,2.5\n2,3,12.3,2.1\n"
+            "3,4,9.5,3.5\n4,5,7.3,2.7\n5,6,15.2,4.7\n",
+        )
+    )
+
+
+def test_the_title_option_names_the_columns_with_the_y_axis_in_it(tmp_path):
+    histogram = _cells(ROOT.TH1D("h", "h_title", 5, 0, 5))
+    histogram.SaveAs("h.txt", "title")
+    histogram.GetYaxis().SetTitle("counts")
+    histogram.SaveAs("named.tsv", "title")
+    expect(
+        (
+            (tmp_path / "h.txt").read_text().splitlines()[0],
+            "# BinLowEdge BinUpEdge BinContent ey",
+        ),
+        (
+            (tmp_path / "named.tsv").read_text().splitlines()[0],
+            "# BinLowEdge\tBinUpEdge\tcounts\tey",
+        ),
+    )
+
+
+def test_a_histogram_without_squared_weights_writes_three_columns(tmp_path):
+    """``SetBinError`` is what gives a histogram weights to write an error from; the cells of a
+    histogram filled outright have none, and ROOT leaves the column off."""
+    histogram = ROOT.TH1D("h", "h", 2, 0, 2)
+    histogram.SetBinContent(1, 3.0)
+    histogram.SaveAs("plain.csv")
+    expect(((tmp_path / "plain.csv").read_text(), "-1,0,0\n0,1,3\n1,2,0\n2,3,0\n"))
+    histogram.Sumw2()
+    histogram.SaveAs("weighted.csv")
+    expect((len((tmp_path / "weighted.csv").read_text().splitlines()[0].split(",")), 4))
+
+
+def test_the_flow_cells_edges_are_a_width_past_each_end():
+    histogram = ROOT.TH1D("h", "h", 5, 0, 5)
+    expect(
+        (histogram.GetBinLowEdge(0), -1.0),
+        (histogram.GetBinUpEdge(0), 0.0),
+        (histogram.GetBinLowEdge(6), 5.0),
+        (histogram.GetBinUpEdge(6), 6.0),
+        (histogram.GetNcells(), 7),
+    )
+
+
+def test_a_name_that_is_no_text_format_is_still_saved_as_a_root_file():
+    histogram = ROOT.TH1D("h", "h", 2, 0, 2)
+    histogram.SaveAs("h.dat")
+    expect((ROOT.TFile("h.dat").Get("h") is not None, True))
