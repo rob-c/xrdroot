@@ -2530,5 +2530,10 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
   last bit, so the fast fill changes the means rather than only their rounding. **Two independent attempts failing
   the same way means the next attempt must start from a unit test** that fills a profile both ways and compares
   `GetBinContent`/`GetBinEntries` per bin; the row now says so.
+- **`origin/main` moved under the round**: another session took the round's branch while it was being pushed
+  (`6ffe734b merge: ralph-round-202611230039-main`) and added three `wip:` commits of its own - a fast
+  `TProfile2Poly` fill, quasi-random sequences and a collection member, in the very files `W0-176` and
+  `W0-178` live in. They are **not this round's** and are **not measured**; the round's own figures stand at
+  `d2dd4007`, and every number above quotes that commit, not the tip it was rebased onto.
 - Gates at `d2dd4007`: **`TOTAL 123099 0 30830 0 100%`** (13 541 + 44 passed), ruff clean, mypy 1039 files,
   maintainability 32 472 functions, components 1039 modules / 0 undeclared, `mkdocs --strict` built.
