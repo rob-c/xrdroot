@@ -2441,7 +2441,8 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 
 ## Round 67's close (recorded here for the next iteration)
 
-- Base `9380c498`, closed at **`2c7cd9b4`** (the ledger and baseline rows follow). Round dir
+- Base `9380c498`, closed at **`269ca01a`** (the code; this ledger commit and one tests commit follow).
+  Round dir
   `/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611222223`. **gtest 77 -> 79**, two gained and **no PASS lost**: the whole kind at the tip
   (`/Users/rcurrie/.cache/xrdroot-runs/ralph-round-202611222223/gtest3`, `--jobs 3`, `--xrdroot-src` a checkout of it) is **79 PASS / 194 FAIL / 75 UNSUPPORTED /
   2 TIMEOUT** of 350, and nothing else moved.
