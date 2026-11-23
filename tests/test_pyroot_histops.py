@@ -496,3 +496,9 @@ def test_a_2d_profile_projects_both_of_its_axes_into_a_histogram_of_means() -> N
     labels = flat.GetXaxis().GetLabels()
     assert [labels.At(at).GetName() for at in range(labels.GetEntries())] == ["A", "B"]
     assert flat.GetBinContent(1, 1) == pytest.approx(4.0)
+
+
+def test_a_3d_profile_of_one_axis_says_what_it_needs() -> None:
+    found = ROOT.TH3F("cube", "c", 2, 0.0, 2.0, 2, 0.0, 2.0, 2, 0.0, 2.0)
+    with pytest.raises(ValueError, match="names 1: give two letters"):
+        found.Project3DProfile("x")
