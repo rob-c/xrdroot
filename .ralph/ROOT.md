@@ -3125,3 +3125,12 @@ UNSUPPORTED**, and a row-by-row diff against round 85's results names exactly on
 requires a library to have been loaded in the same worker (`LOADED` is per process) - the same tree
 at `-n 2` is 100 %. Everything else in `gtest/roofit` is where round 85 left it, and `W0-197`
 (`testParamHistFunc`'s batch API) is still the biggest single wall in that family.
+
+**A measurement that is not the round's, but had to be explained.** The roofit tutorials were run
+whole at the tip (242 tests): 124 PASS / 78 DIFF / 21 FAIL / 19 UNSUPPORTED / 9 SKIP / 4
+ORACLE-FAIL, and the ratchet called 29 of them `PASS -> DIFF: stdout`. They are not this round's:
+`rf102_dataimport.py`, run eight times in a row, printed its observables in ROOT's order seven times
+and in the reverse order once - a hash set's order, where ROOT keeps insertion order - and the
+`ratchet` baseline was recorded on a lucky run. Base-vs-tip diffs of two of the 29 contain only that
+swap plus a timing line the harness already drops, and `rf205_compplot.py`'s PNG is byte for byte
+the same on the base, at the tip, and under the oracle. Queued as `W0-199`.
