@@ -1,0 +1,14 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf613_global_observables.py"
+ ],
+ "exit_code": 0,
+ "files": {},
+ "note": "",
+ "runtime": 1.114,
+ "stderr": "",
+ "stdout": "1. model.fitTo(*data, GlobalObservables(mu_obs))\n------------------------------------------------\n\n  RooFitResult: minimized FCN value: 68.2482, estimated distance to minimum: 9.80327e-07\n                covariance matrix quality: Full, accurate covariance matrix\n                Status : MINIMIZE=0 HESSE=0 \n\n    Floating Parameter    FinalValue +/-  Error   \n  --------------------  --------------------------\n                    mu    5.2717e-02 +/-  8.11e-02\n                 sigma    9.7190e-01 +/-  9.73e-02\n\n2. model.fitTo(*data)\n---------------------\n\n  RooFitResult: minimized FCN value: 68.2482, estimated distance to minimum: 9.80327e-07\n                covariance matrix quality: Full, accurate covariance matrix\n                Status : MINIMIZE=0 HESSE=0 \n\n    Floating Parameter    FinalValue +/-  Error   \n  --------------------  --------------------------\n                    mu    5.2717e-02 +/-  8.11e-02\n                 sigma    9.7190e-01 +/-  9.73e-02\n\n3. model.fitTo(*data, GlobalObservables(mu_obs), GlobalObservablesSource(\"model\"))\n------------------------------------------------\n\n  RooFitResult: minimized FCN value: 83.7181, estimated distance to minimum: 6.67911e-07\n                covariance matrix quality: Full, accurate covariance matrix\n                Status : MINIMIZE=0 HESSE=0 \n\n    Floating Parameter    FinalValue +/-  Error   \n  --------------------  --------------------------\n                    mu    7.4744e-01 +/-  9.68e-02\n                 sigma    1.2451e+00 +/-  1.38e-01\n\n",
+ "timed_out": false,
+ "workdir": "/private/var/folders/9z/hrfxpzqn2mggs_8j89f7tx2r0000gr/T/tutorial-aidam3pa"
+}

@@ -1,0 +1,16 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf110_normintegration.py"
+ ],
+ "exit_code": 0,
+ "files": {
+  "rf110_normintegration.png": "e000a6d46217b98e901c7b02bcf048c0c476c1b1fca6f0d207cb4b8086f9172a"
+ },
+ "note": "",
+ "runtime": 1.112,
+ "stderr": "Info in <TCanvas::Print>: png file rf110_normintegration.png has been created\n",
+ "stdout": "gx =  0.8007374029168081\ngx_Norm[x] =  0.1068955044839622\ngx_Int[x] =  7.490842639102233\n[#1] INFO:Eval -- RooRealVar::setRange(x) new range named 'signal' created with bounds [-5,5]\ngx_Int[x|signal]_Norm[x] =  0.8347532778470285\n",
+ "timed_out": false,
+ "workdir": "/private/var/folders/9z/hrfxpzqn2mggs_8j89f7tx2r0000gr/T/tutorial-y5pe54ln"
+}

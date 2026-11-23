@@ -1,0 +1,16 @@
+{
+ "command": [
+  "/Users/rcurrie/.local/root-oracle/bin/python",
+  "rf505_asciicfg.py"
+ ],
+ "exit_code": 0,
+ "files": {
+  "rf505_asciicfg_example.txt": "14a8b998ff87356b593d7dfbc0f51da9e069d792b32eca5be24ecf4b8042a436"
+ },
+ "note": "",
+ "runtime": 1.064,
+ "stderr": "",
+ "stdout": "[#0] WARNING:InputArguments -- The parameter 's' with range [-10, 10] of the RooGaussian 'g' exceeds the safe range of (0, inf). Advise to limit its range.\n[#1] INFO:Fitting -- RooAbsPdf::fitTo(model) fixing normalization set for coefficient determination to observables in data\n[#1] INFO:Fitting -- using generic CPU library compiled with no vectorizations\n[#1] INFO:Fitting -- Creation of NLL object took 2.47975 ms\n[#1] INFO:Fitting -- RooAddition::defaultErrorLevel(nll_model_modelData) Summation contains a RooNLLVar, using its error level\n[#1] INFO:Minimization -- [fitFCN] No discrete parameters, performing continuous minimization only\n  1) 0x162e14bb0 RooRealVar::  f = 0.50733 +/- 0.020971  L(0 - 1)  \"f\"\n  2) 0x12304bdd0 RooRealVar::  m = 0.0064018 +/- 0.053686  L(-10 - 10)  \"m\"\n  3) 0x121edd870 RooRealVar:: p0 = 0.0073509 +/- 0.0078312  L(0 - 1)  \"p0\"\n  4) 0x1230556d0 RooRealVar::  s = 0.96516 +/- 0.047052  L(-10 - 10)  \"s\"\n[#0] ERROR:InputArguments -- RooArgSet::readFromFile(parameters) error opening file /Users/rcurrie/.local/root-oracle/tutorials/roofit/rf505_asciicfg.txt\n  1) 0x162e14bb0 RooRealVar::  f = 0.50733 +/- 0.020971  L(0 - 1)  \"f\"\n  2) 0x12304bdd0 RooRealVar::  m = 0.0064018 +/- 0.053686  L(-10 - 10)  \"m\"\n  3) 0x121edd870 RooRealVar:: p0 = 0.0073509 +/- 0.0078312  L(0 - 1)  \"p0\"\n  4) 0x1230556d0 RooRealVar::  s = 0.96516 +/- 0.047052  L(-10 - 10)  \"s\"\n[#0] ERROR:InputArguments -- RooArgSet::readFromFile(parameters) error opening file /Users/rcurrie/.local/root-oracle/tutorials/roofit/rf505_asciicfg.txt\nThe following parameters of the were _not_ read from Section3:  { @0x600002ffd040, @0x600002ffd048, @0x600002ffd050, @0x600002ffd058 }\n[#0] ERROR:InputArguments -- RooArgSet::readFromFile(parameters) error opening file /Users/rcurrie/.local/root-oracle/tutorials/roofit/rf505_asciicfg.txt\n  1) 0x162e14bb0 RooRealVar::  f = 0.50733 +/- 0.020971  L(0 - 1)  \"f\"\n  2) 0x12304bdd0 RooRealVar::  m = 0.0064018 +/- 0.053686  L(-10 - 10)  \"m\"\n  3) 0x121edd870 RooRealVar:: p0 = 0.0073509 +/- 0.0078312  L(0 - 1)  \"p0\"\n  4) 0x1230556d0 RooRealVar::  s = 0.96516 +/- 0.047052  L(-10 - 10)  \"s\"\n",
+ "timed_out": false,
+ "workdir": "/private/var/folders/9z/hrfxpzqn2mggs_8j89f7tx2r0000gr/T/tutorial-ido75xza"
+}

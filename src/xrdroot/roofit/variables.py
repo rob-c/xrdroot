@@ -9,6 +9,7 @@ the ``"signal"`` range defined on ``x`` - as ROOT's shared properties do.
 from __future__ import annotations
 
 import math
+import sys
 from typing import Any
 
 from .binning import RooAbsBinning, RooParamBinning, RooRangeBinning, RooUniformBinning
@@ -25,6 +26,34 @@ INFINITY = math.inf
 
 def is_infinite(value: float) -> bool:
     return math.isinf(value) or abs(value) >= 1e30
+
+
+def _number(value: float) -> str:
+    """A number as ROOT's ``std::stringstream`` writes it by default: six significant digits."""
+    return f"{value:.6g}"
+
+
+def _slightly_outside(one: Any, value: float, clipped: float, low: float, high: float) -> None:
+    """``printOutOfRangeWarning``: a value within an epsilon of its range, which is clipped.
+
+    ROOT measures the distance from the clipped value against
+    ``std::numeric_limits<double>::epsilon()`` *absolutely* - so one ulp past the boundary
+    is this warning, and two ulps past it is the ``invalid_argument`` ROOT raises
+    (``throwOutOfRangeError``, the queue's `W0-206`: raising it here would make every
+    internal step past a limit an error). The numbers are printed as a default
+    ``stringstream`` prints them, which is how ROOT's own message reads.
+    """
+    if abs(clipped - value) > sys.float_info.epsilon:
+        return
+    log(
+        one,
+        WARNING,
+        "InputArguments",
+        f"Value {_number(value)} is slightly outside the default range "
+        f'[{_number(low)}, {_number(high)}] of the variable "{one.GetName()}"!\n'
+        "The value will be clipped. To restore the dangerous old behavior of silently "
+        "clipping the value to the range, call `RooRealVar::enableSilentClipping()`.",
+    )
 
 
 class RooAbsRealLValue(RooAbsReal):
@@ -53,9 +82,28 @@ class RooAbsRealLValue(RooAbsReal):
         """``x = 3.0``, ``x = y``: C++'s ``operator=`` of a variable, which sets its value."""
         self.setVal(float(value.getVal()) if hasattr(value, "getVal") else float(value))
 
+    #: ``RooRealVar::enableSilentClipping``'s flag: whether a value outside the range is
+    #: clipped without a word. ROOT's default is false - it warns, as :func:`_slightly_outside`
+    #: says - and a value further out than one epsilon is an error there (`W0-206`).
+    SILENT_CLIPPING = False
+
+    @staticmethod
+    def enableSilentClipping(flag: bool = True) -> None:
+        """``RooRealVar::enableSilentClipping``: clip a value outside the range without a word."""
+        RooAbsRealLValue.SILENT_CLIPPING = bool(flag)
+
+    @staticmethod
+    def isSilentClippingEnabled() -> bool:
+        """``RooRealVar::isSilentClippingEnabled``."""
+        return RooAbsRealLValue.SILENT_CLIPPING
+
     def setVal(self, value: float) -> None:
+        """``RooRealVar::setVal``: the value, clipped into the range - and ROOT's word about it."""
         low, high = self.getMin(), self.getMax()
-        self._val = min(max(float(value), low), high)
+        clipped = min(max(float(value), low), high)
+        if clipped != value and not self.isSilentClippingEnabled():
+            _slightly_outside(self, float(value), clipped, low, high)
+        self._val = clipped
 
     def copy_value_from(self, other: Any) -> None:
         self._val = float(other.getVal())

@@ -944,7 +944,8 @@ def test_a_recorded_varying_tutorial_is_flaky_and_the_ratchet_stops_promising_it
 ):
     tutorial = cat.Tutorial("roofit/roofit/rf404_categories.py", test="t", labels=("tutorial",))
     index = tmp_path / "flaky.json"
-    index.write_text(json.dumps({"varying": {tutorial.path: [{"path": tutorial.path, "draw": "1) x = 2"}]}}))
+    rows = {"varying": {tutorial.path: [{"path": tutorial.path, "draw": "1) x = 2"}]}}
+    index.write_text(json.dumps(rows))
     monkeypatch.setattr(harnessing, "FLAKY", index)
     oracle = harnessing.Outcome(result(stdout="-1\n"), tmp_path / "oracle")
     mine = harnessing.Outcome(result(stdout="1\n"), tmp_path / "mine")
@@ -955,6 +956,34 @@ def test_a_recorded_varying_tutorial_is_flaky_and_the_ratchet_stops_promising_it
     # and a FLAKY row is neither a promise nor a regression for the ratchet
     assert ratchet.regressions({"x.py": "PASS"}, {"tutorials": [
         {"path": "x.py", "status": "FLAKY", "reason": "ROOT's own run varies"}], "meta": {}}) == []
+
+
+def test_root_s_other_draw_of_a_tutorial_is_recorded_when_only_the_order_differs(
+    tmp_path, monkeypatch
+):
+    """ROOT interleaves its message stream and a script's prints differently run to run, and the
+    harness compares positionally - so a draw whose *lines* are the same in another order is
+    kept as one more of ``known_orders``' entries, which is what a match is tested against."""
+    path = "roofit/roofit/rf110_normintegration.py"
+    tutorial = cat.Tutorial(path, test="t", labels=("tutorial",))
+    cached = result(stdout="message\nvalue = 1\n")
+    monkeypatch.setattr(harnessing, "known_orders", lambda path: [(cached, tmp_path / "cached")])
+    index = tmp_path / "index.json"
+    index.write_text(json.dumps({"orders": {}}))
+    draws = [result(stdout="value = 1\nmessage\n"), result(stdout="something else\n")]
+    monkeypatch.setattr(
+        variances, "_runs", lambda *args: [(one, tmp_path / "files") for one in draws]
+    )
+    added = variances.record_order(
+        tutorial, Settings(tutorials=tmp_path), None, 2, tmp_path / "work", index
+    )
+    assert added == 1  # the permutation; the run whose lines differ is not this finding
+    rows = json.loads(index.read_text())["orders"][tutorial.path]
+    assert rows[0]["entry"] == "rf110_normintegration.py/1"
+    assert "interleaved in another order" in rows[0]["draw"]
+    kept = index.parent / rows[0]["entry"] / "result.json"
+    assert json.loads(kept.read_text())["stdout"] == "value = 1\nmessage\n"
+    assert "<lambda>" == harnessing.known_orders.__name__  # the real index is never written here
 
 
 def test_a_tutorial_whose_sets_iterate_the_other_way_passes_against_its_recorded_order(
