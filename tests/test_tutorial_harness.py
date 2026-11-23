@@ -960,7 +960,7 @@ def test_a_recorded_varying_tutorial_is_flaky_and_the_ratchet_stops_promising_it
 def test_a_tutorial_whose_sets_iterate_the_other_way_passes_against_its_recorded_order(
     harness, tmp_path
 ):
-    tutorial = cat.Tutorial("roofit/roofit/rf404_categories.py", test="t", labels=("tutorial",))
+    tutorial = cat.Tutorial("roofit/roofit/rf406_cattocatfuncs.py", test="t", labels=("tutorial",))
     assert tutorial.language == "py"
     orders = harnessing.known_orders(tutorial.path)
     cached = runner.RunResult([], 0, False, 1.0, orders[0][0].stdout, "", workdir="/oracle")
@@ -983,7 +983,7 @@ def test_a_tutorial_whose_sets_iterate_the_other_way_passes_against_its_recorded
 
 
 def test_output_matching_no_recorded_order_is_still_a_diff(harness, tmp_path):
-    tutorial = cat.Tutorial("roofit/roofit/rf404_categories.py", test="t", labels=("tutorial",))
+    tutorial = cat.Tutorial("roofit/roofit/rf406_cattocatfuncs.py", test="t", labels=("tutorial",))
     orders = harnessing.known_orders(tutorial.path)
     cached = runner.RunResult([], 0, False, 1.0, orders[0][0].stdout, "", workdir="/oracle")
     oracle = harnessing.Outcome(cached, tmp_path / "oracle")
