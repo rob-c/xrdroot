@@ -9,7 +9,14 @@ triangle - beyond the points' convex hull - is ``fZout``, zero.
 ROOT triangulates the points not where they are but squeezed into a unit
 square, each axis shifted by its middle and divided by its span, and as
 the triangulation of a set of points depends on the axes' scales it is
-made here in the same square. The triangulation itself is Bowyer and
+made here in the same square. Which square, and so which scales the axes
+are squeezed by, is ``ROOT::Math::Delaunay2D``'s to give - its ``xmin``,
+``xmax``, ``ymin`` and ``ymax`` - where ``TGraph2D`` leaves it to the
+points' own range; the scales decide the last bits of every in-circle
+test the triangulation turns on, and with them whether a point that falls
+exactly between two triangles is found in the one or the other.
+
+The triangulation itself is Bowyer and
 Watson's: each point in turn takes out the triangles whose circumcircles
 hold it and fills the hole with triangles to it, starting from one great
 triangle round them all whose corners are taken away at the end.
@@ -37,6 +44,9 @@ EDGE = 1e-12
 CHUNK = 256
 
 Array: TypeAlias = np.ndarray[Any, Any]
+#: The box, in the caller's units, that the unit square stands for:
+#: ``(xmin, xmax, ymin, ymax)``, or ``None`` for the points' own range.
+Box: TypeAlias = "tuple[float, float, float, float] | None"
 
 
 def _orient(points: Array, tri: Array) -> Array:
@@ -118,12 +128,18 @@ class Delaunay:
         (0.75, 0.0)
     """
 
-    def __init__(self, x: Any, y: Any, z: Any, zout: float = 0.0) -> None:
+    def __init__(self, x: Any, y: Any, z: Any, zout: float = 0.0, box: Box = None) -> None:
         self.x, self.y, self.z = (np.asarray(v, dtype=np.float64).reshape(-1) for v in (x, y, z))
         self.zout = float(zout)
-        self._offsets = [-(float(v.max()) + float(v.min())) / 2 if len(v) else 0.0
-                         for v in (self.x, self.y)]  # fmt: skip
-        self._scales = [_scale(v) for v in (self.x, self.y)]
+        axes = _boxes(self.x, self.y, box)
+        self._offsets = [-(high + low) / 2 for low, high in axes]
+        self._scales = [_scale(high - low) for low, high in axes]
+        #: Each axis's range once squeezed into the unit square: what ROOT's ``XMin`` and its
+        #: kin report - ``(-0.5, 0.5)`` for an axis the box or the points give a span to.
+        self.window: list[tuple[float, float]] = [
+            ((low + offset) * scale, (high + offset) * scale)
+            for (low, high), offset, scale in zip(axes, self._offsets, self._scales, strict=True)
+        ]
         self._triangles: Array | None = None
 
     def _unit(self, x: Any, y: Any) -> Array:
@@ -188,7 +204,18 @@ def _barycentric(unit: Array, tri: Array, query: Array) -> tuple[Array, Array, A
     return l1, l2, 1.0 - l1 - l2
 
 
-def _scale(values: Array) -> float:
-    """``1 / span`` of an axis, or one for an axis of a single value."""
-    span = float(values.max() - values.min()) if len(values) else 0.0
+def _scale(span: float) -> float:
+    """``1 / span``, or one for an axis of no span: it holds one value, so any unit will do."""
     return 1.0 / span if span > 0 else 1.0
+
+
+def _boxes(x: Array, y: Array, box: Box) -> list[tuple[float, float]]:
+    """The range each axis is squeezed into: the caller's box, or the points' own range.
+
+    This is ROOT's ``SetInputPoints``, which takes the caller's ``xmin``, ``xmax``,
+    ``ymin`` and ``ymax`` only when ``xmin < xmax``, and otherwise measures both axes
+    from the points - both, since a caller who gives no box gives no y range either.
+    """
+    if box is not None and float(box[0]) < float(box[1]):
+        return [(float(box[0]), float(box[1])), (float(box[2]), float(box[3]))]
+    return [(float(v.min()), float(v.max())) if len(v) else (0.0, 0.0) for v in (x, y)]

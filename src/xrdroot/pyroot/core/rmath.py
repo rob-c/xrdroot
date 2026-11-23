@@ -14,6 +14,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 
+from ...delaunay import Delaunay
 from ...fit.defaults import DEFAULTS, minimizer_algo, minimizer_type, set_minimizer
 from ...function.rootmath import *  # noqa: F403 - scalar ROOT::Math compatibility exports
 from ...function.rootmath import __all__ as _scalars
@@ -519,6 +520,85 @@ class MathMoreLibrary:
     @staticmethod
     def Load() -> None:
         """``Load()``: nothing to load."""
+
+
+class Delaunay2D:
+    """``ROOT::Math::Delaunay2D``: the triangles through points, and the heights over them.
+
+    ``Interpolate`` is the surface ``TGraph2D`` draws - the plane over the triangle a
+    point falls in, ``ZOuterValue()`` beyond the points' hull - and the points are
+    triangulated squeezed into a unit square, as a graph's are. The box that square
+    stands for is the caller's here, ``(xmin, xmax, ymin, ymax)``, where a graph takes
+    it from its axes: it is ROOT's own signature, and a macro that checks ROOT's numbers
+    on the edge shared by two triangles has to give ROOT's own box to get them.
+    """
+
+    def __init__(self, n: int = 0, x: Any = None, y: Any = None, z: Any = None,
+                 xmin: float = 0.0, xmax: float = 0.0, ymin: float = 0.0,
+                 ymax: float = 0.0) -> None:  # fmt: skip
+        self._surface = Delaunay([], [], [])
+        self._count = 0
+        self.SetInputPoints(n, x, y, z, xmin, xmax, ymin, ymax)
+
+    def SetInputPoints(self, n: int, x: Any = None, y: Any = None, z: Any = None,
+                       xmin: float = 0.0, xmax: float = 0.0, ymin: float = 0.0,
+                       ymax: float = 0.0) -> None:  # fmt: skip
+        """``SetInputPoints``: the ``n`` points to triangulate, and the box to squeeze them into.
+
+        ROOT measures the box from the points themselves when ``xmin >= xmax``, which is
+        what a caller who leaves the four numbers out asks for. No points leave the
+        points given last standing, as ROOT's own do.
+        """
+        if not int(n) or x is None or y is None or z is None:
+            return
+        xs, ys, zs = (np.asarray(v, dtype=np.float64).reshape(-1)[: int(n)] for v in (x, y, z))
+        box = (float(xmin), float(xmax), float(ymin), float(ymax))
+        self._surface = Delaunay(xs, ys, zs, zout=self._surface.zout, box=box)
+        self._count = 0
+
+    def Interpolate(self, x: float, y: float) -> float:
+        """``Interpolate``: the surface's height at ``(x, y)``, ``ZOuterValue()`` beyond it."""
+        self.FindAllTriangles()
+        if not self._count:
+            return self._surface.zout
+        return float(self._surface.interpolate(float(x), float(y)))
+
+    def FindAllTriangles(self) -> None:
+        """``FindAllTriangles``: triangulate the points, which ``Interpolate`` does first."""
+        self._count = len(self._surface.triangles)
+
+    def NumberOfTriangles(self) -> int:
+        """``NumberOfTriangles()``: how many triangles were found - zero until
+        ``FindAllTriangles`` or ``Interpolate`` has run, as ROOT's own count is."""
+        return self._count
+
+    def _window(self, axis: int, end: int) -> float:
+        """The low or high end of an axis's range once squeezed into the unit square."""
+        return float(self._surface.window[axis][end])
+
+    def XMin(self) -> float:
+        """``XMin()``: the low end of the normalized x range, ``-0.5`` for a box with a width."""
+        return self._window(0, 0)
+
+    def XMax(self) -> float:
+        """``XMax()``: the high end of the normalized x range, ``0.5`` for a box with a width."""
+        return self._window(0, 1)
+
+    def YMin(self) -> float:
+        """``YMin()``: the low end of the normalized y range, ``-0.5`` for a box with a height."""
+        return self._window(1, 0)
+
+    def YMax(self) -> float:
+        """``YMax()``: the high end of the normalized y range, ``0.5`` for a box with a height."""
+        return self._window(1, 1)
+
+    def SetZOuterValue(self, z: float = 0.0) -> None:
+        """``SetZOuterValue``: what ``Interpolate`` gives beyond the hull, zero by default."""
+        self._surface.zout = float(z)
+
+    def ZOuterValue(self) -> float:
+        """``ZOuterValue()``: that height."""
+        return self._surface.zout
 
 
 def _default_accessors(key: str) -> None:
