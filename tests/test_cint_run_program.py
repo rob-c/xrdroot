@@ -109,3 +109,34 @@ def test_quitting_after_a_macro_still_prints_and_exits_with_what_it_returned(
     path = write(tmp_path, "seven.C", "int seven() { return 7; }\n")
     assert run_and_quit(f"{path}+") == 7
     assert capsys.readouterr().out == "(int) 7\n"
+
+def test_a_program_s_output_is_written_a_line_at_a_time(monkeypatch):
+    """``print`` and the kit's own writes share one stream, as a C++ program's ``std::cout`` is.
+
+    Under a pipe - which is how a harness always runs a program - Python buffers ``print``'s
+    lines until the process ends, so a tutorial's own output arrives after lines the kit wrote
+    first, in an order the program never wrote. Measured on ``rf613_global_observables.py``:
+    with this, its output is byte-identical to ROOT's; without it, the same lines reordered.
+    """
+    from xrdroot.cli.run import ordered_output
+
+    seen: list[dict[str, bool]] = []
+
+    class Pipe:
+        def isatty(self) -> bool:
+            return False
+
+        def reconfigure(self, **options: bool) -> None:
+            seen.append(dict(options))
+
+    class Terminal(Pipe):
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr("sys.stdout", Pipe())
+    ordered_output()
+    assert seen == [{"line_buffering": True}]
+
+    monkeypatch.setattr("sys.stdout", Terminal())
+    ordered_output()
+    assert seen == [{"line_buffering": True}]  # a terminal already writes a line at a time

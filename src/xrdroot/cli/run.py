@@ -144,6 +144,19 @@ def _session_macro(name: str, use_cache: bool) -> None:
         run_macro(Path(name), use_cache=use_cache)
 
 
+def ordered_output() -> None:
+    """Write every line as it is made, as a C++ program's one ``std::cout`` does.
+
+    A tutorial prints through Python's ``print`` and through whatever the kit itself logs,
+    and a pipe - which is how a harness always runs one - makes ``print`` buffer its lines
+    until the process ends, so the two streams leave in an order the program never wrote.
+    ROOT has one stream and one order; line buffering gives the same here.
+    """
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None and not sys.stdout.isatty():
+        reconfigure(line_buffering=True)
+
+
 def _preloaded(libraries: list[str]) -> None:
     """The libraries a program built with ``--library`` loads before it starts."""
     from ..pycint.library import load
@@ -163,12 +176,14 @@ def run(args: argparse.Namespace) -> int:
     given = split_call(first)[1]
     path = Path(called(first))  # with ACLiC's ``+``, if it was given one
     if path.suffix == ".py":
+        ordered_output()
         return _script(path, argv)
     paths = [path, *map(Path, more)]
     if args.python:
         for each in paths:
             sys.stdout.write(translate_file(Path(split_aclic(str(each))[0])))
         return 0
+    ordered_output()
     with started(["root.exe", "-b", "-q", *args.macro]):
         return _program(args, paths, given, argv)
 
