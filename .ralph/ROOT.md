@@ -2392,8 +2392,9 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 85 | `489b800e` | **no workers** - the hands took `W0-155`, priced against the 6.40 oracle first: `RooRealSumPdf.compute` honours ROOT's `isSelectedComp` (a component curve was the whole model), `dependsOn(valueOnly=True)` walks value inputs only as `RooAbsReal::plotOnCompSelect` does, `RooCurve.GetPoint`, and `cppstd.cells.store`/`load` shared with `pyroot.core.refs` | **0 gained, 0 lost**: `gtest/roofit/*` measured at the tip is **9 PASS / 22 FAIL / 16 UNSUPPORTED**, the same 9 as the baseline (`$HOME/.cache/xrdroot-runs/ralph-round-202611231724/roofit`), and `testHistFactoryPlotting` reaches its invariant and stops there (`y2+y3 = 958` against `y1 = 480`). Gate `TOTAL 125363 0 31436 0 100%` (13 863 + 44, `…/gate2.log`) | 2: `W0-196` (**the projection is the wall** - `plotOn`'s component list never reaches `createPlotProjection`, and ROOT's `selectNormalization(&fullNormSet)` is what makes components add up), `W0-197` (`testParamHistFunc` needs the `RooFit::Detail` batch API); `W0-155` **re-priced** with the oracle's 35 points and 2/478/480 |
 | 86 | `34c5bb8c` | **no workers** - the hands took `W0-196`/`W0-155`: `plotSamplingHint` (`RooCurve::plotSamplingHintForBinBoundaries`' `delta = (xhi-xlo)*1e-9` either side of every interior bin edge and of both limits) answered by `RooHistFunc`/`RooHistPdf` and merged by `RooProduct`, `RooRealSumPdf`, `RooProdPdf` and the simultaneous projection, the hint being the whole starting grid; and `RooBinWidthFunction`'s `HistFuncForBinWidth` a **shape** server as ROOT declares it | **gtest +1, 86 -> 87**: `testHistFactoryPlotting` FAIL -> PASS, `gtest/roofit/*` **10 PASS / 21 FAIL / 16 UNSUPPORTED**, no other row moved (`…/ralph-round-202611231820/roofit2`); our three curves are the oracle's 35 points, `diff` of the test's body as a macro empty (`…/probe/ours.txt` vs `oracle.txt`). Gate `TOTAL 125406 0 31452 0 100%` (13 877 + 44, `…/gate1.log`, `-n 2`) | 1: `W0-198` (the `-n 4` gate can read 99 % - `commands.py:463->453`, `LOADED` is per worker); `W0-155`/`W0-196` **closed** |
 | 87 | `8fb8e0ba` | **a measurement round, no code**: `W0-199` priced before it was believed - ten runs of ROOT's own `rf102_dataimport.py` and nine of ours | **0 gained, 0 lost** (nothing changed): the row was **wrong** - a tutorial that hands RooFit a Python `set` flips in ROOT too (7:3 over ten oracle runs, 4:2 and 2:1 over ours), so the 29 `PASS -> DIFF` rows the round-86 ratchet reported are phantoms. `W0-198` reproduced: the `-n 4` gate reads 99 % on one arc and `-n 2` 100 %, while the same file alone covers that arc - an xdist collection artefact, not a missing test | 1: `W0-200` (the tutorial harness must detect an oracle that varies - two samples find nothing at 1 in 3); `W0-199` closed **as a correction**, `W0-198` sharpened |
-| 88 | `aba72d8c` | **two targets, both measured first**: `W0-200` - a tutorial whose own ROOT run varies is `FLAKY`, recorded by `tools/tutorials record-flaky` from repeated oracle runs, and neither a gain nor a loss for the ratchet; and the line-buffering of `xrdroot run` (`cli/run.py::ordered_output`), found while bucketing the rows that stayed | **the roofit tutorial group measured whole**: PASS 124 / DIFF 69 / FAIL 21 / UNSUPPORTED 19 / SKIP 9 / ORACLE-FAIL 4 / FLAKY 9 (`…/ralph-round-202611232004/tut2`), the ratchet's spurious rows **29 -> 20**, and `rf613_global_observables.py` **byte-identical to ROOT's output** where it was the same 14 lines reordered. Nine tutorials recorded as ROOT-nondeterministic. Gate `TOTAL 125412 0 31454 0 100%` (13 885 + 44, `…/gate3.log`) | 2: `W0-201` (`TCanvas::Print`'s one word differs between ROOT's two front ends), `W0-202` (the remaining 20 stdout DIFFs, bucketed); `W0-200` closed |
+| 88 | `aba72d8c` | **two targets, both measured first**: `W0-200` - a tutorial whose own ROOT run varies is `FLAKY`, recorded by `tools/tutorials record-flaky` from repeated oracle runs, and neither a gain nor a loss for the ratchet; and the line-buffering of `xrdroot run` (`cli/run.py::ordered_output`), found while bucketing the rows that stayed | **the roofit tutorial group measured whole**: PASS 124 / DIFF 69 / FAIL 21 / UNSUPPORTED 19 / SKIP 9 / ORACLE-FAIL 4 / FLAKY 9 (`…/ralph-round-202611232004/tut2`), the ratchet's spurious rows **29 -> 20**, and `rf613_global_observables.py` **byte-identical to ROOT's output** where it was the same 14 lines reordered. Nine tutorials recorded as ROOT-nondeterministic. Gate `TOTAL 125429 0 31458 0 100%` (13 885 + 44, `…/gate3.log`) | 2: `W0-201` (`TCanvas::Print`'s one word differs between ROOT's two front ends), `W0-202` (the remaining 20 stdout DIFFs, bucketed); `W0-200` closed |
 | 89 | `4b186d80` | **one target, measured before it was believed**: `W0-202`'s 20 rows, bucketed - `tools/tutorials record-order` records ROOT's *own* other draw of a tutorial where only the order of its lines differs, as one more `known_orders` entry, and `record-flaky` keeps the runs whose lines really differ | **14 of the 20 rows are gone**: the 19 listed tutorials measured again are **14 PASS / 5 DIFF** (`…/ralph-round-202611232108/after`) where they were 19 DIFF; `known_orders` grew from 3 tutorials to 22 (492 K), 21 draws recorded. The cause, measured: ROOT prints `rf110_normintegration.py`'s same lines in another order run to run (`affc425ea823` vs `e01d8b4750aa`, ours byte-identical to the second), so the harness's positional comparison failed an output ROOT itself produced | 3: `W0-203` (a degenerate-minimum fit), `W0-204` (Minuit2 `status = 3` where we say 0), `W0-205` (two message lines in the other order); `W0-202` closed, `W0-201` **corrected** (the `TCanvas::Print` word goes to stderr, which is not compared) |
+| 90 | `30b2045d` | **one target, priced before it was written**: `W0-204`/`W0-205` probed against the oracle with the tutorial's own data, model and options - and both turned out to be one class, so the round landed the piece that was genuinely missing (`RooRealVar::setVal`'s out-of-range warning) and recorded the rest as a machine class | **0 tutorials flip, and that is the result**: `rf612`'s recovery fit runs on **identical toy data** (mean `3.9831043004248508`, same first five events) to ROOT's `status 3`/`edm 15424.9`/`minNll 29774.18750976386` against our `status 0`/`edm 4.8e-09`/`29650.877364827433` - ours is the better minimum of the same landscape, and Minuit's path down a flat valley is chaotic; `IntervalExamples`' missing warning line is the same thing one ulp down. `84742600` makes `setVal` warn where ROOT warns, word for word, with `enableSilentClipping` as the switch. Gate `TOTAL 125429 0 31458 0 100%` (13 887 + 44) | 2: `W0-206` (ROOT *raises* `invalid_argument` where this kit clips, beyond one epsilon), `W0-207` (five roofit tutorials are pinned to ROOT's machine); `W0-204`/`W0-205` **re-classed** |
 
 ## Notes
 
@@ -3225,7 +3226,7 @@ the tutorial is then **byte-identical to ROOT's** where it differed by 14 reorde
 (`…/probe/on.txt` against `…/probe/r.txt`). The same reordering is behind other rows of the group; a
 new test in `tests/test_cint_run_program.py` pins it.
 
-**The gate**, at `e4f1ff53` plus this close's docs commit: **`TOTAL 125412 0 31454 0 100%`** by the
+**The gate**, at `e4f1ff53` plus this close's docs commit: **`TOTAL 125429 0 31458 0 100%`** by the
 two-command decomposition (13 885 passed, then 44, `…/gate3.log`, `-n 2`). The round's own first
 gate run caught its own breakage, as usual: two of the harness's `known_orders` tests had read
 `rf404_categories.py`, which this round recorded as `FLAKY`, so they read a tutorial no recording
@@ -3274,3 +3275,45 @@ WARNING:InputArguments` line and an `[#1] INFO:Eval` line in the other order).
 front ends - `root -l -b -q` says `png file x.png has been created`, the oracle's Python says
 `file x.png has been created` - but that line is on **stderr**, which the tutorial harness does not
 compare, so it never explained a DIFF. Four measurements are in the row.
+
+## Round 90's close
+
+Round 90 took the three roofit rows round 89 left, probed each against the oracle with the
+tutorial's own data, model and options - and found that **all three are one class**, which is the
+round's result.
+
+**`rf612`'s recovery fit, measured side by side** (a probe of the tutorial's own second fit, 10 000
+events, `RecoverFromUndefinedRegions=1.0`):
+
+| | ROOT | this kit |
+|---|---|---|
+| `status` | 3 (`Invalid minimum`) | 0 (`Valid minimum`) |
+| `covQual` | 2 | 3 |
+| `minNll` | 29774.18750976386 | **29650.877364827433** |
+| `edm` | 15424.923309639917 | 4.8e-09 |
+| `a1` | -0.024647611021991755 | -0.4981562848757515 |
+| `numInvalidNLL` | 79 | 78 |
+
+The toy data are **byte-identical** on both sides (mean `3.9831043004248508`, the same first five
+events), so nothing but the arithmetic differs - and ours reaches the **lower** NLL, i.e. the better
+minimum of the same landscape. Minuit's path down a valley floor with a NaN penalty in it is chaotic
+enough that arm64's fused multiply-adds land it elsewhere, which the kit's own
+`test_a_fit_with_no_valid_value_and_a_curve_that_cannot_be_normalised_say_so_as_root` already
+documents ("arm64 took 66 invalid values to x86-64's 64").
+
+**`IntervalExamples` is the same thing one ulp down.** Its two missing lines are ROOT's
+`[#0] WARNING:InputArguments -- Value 1 is slightly outside the default range [-1, 1] of the
+variable "mu"!` and the sentence after it: ROOT's `BayesianCalculator` produces `mu = 1 + 1ulp` and
+gets the warning, ours lands exactly on `1.0` and gets nothing. That is why the round landed the
+**warning** - `RooRealVar::setVal` now says exactly what ROOT's `printOutOfRangeWarning` says, with
+ROOT's own six-digit numbers and its `enableSilentClipping` switch (`84742600`, and a test that pins
+the two lines digit for digit) - and not the `invalid_argument` ROOT raises beyond one epsilon,
+which would turn every internal step past a limit into an error (`W0-206`).
+
+**So five roofit tutorials are pinned to ROOT's machine** (`W0-207`): `rf204b_extendedLikelihood_
+rangedFit.C`, `rf612_…C`/`.py` and `IntervalExamples.C`/`.py`. They are not failures to fix by
+inspection; they need an x86-64 run (or `ROOTS_MACHINE`) before anything is claimed about them, and
+the harness has no vocabulary for "machine-dependent" yet - that is the next round's question.
+
+**Nothing else moved.** 2 506 roofit and roostats unit tests pass with the new warning, and the gate
+reads `TOTAL 125429 0 31458 0 100%` (13 887 + 44, `…/gate1.log`).
