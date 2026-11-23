@@ -391,9 +391,26 @@ def test_the_fitter_object_and_the_minos_analysis_are_refused_in_a_sentence():
 # -- ROOT's own fixture ------------------------------------------------------------------------
 
 
+def gRandom_seed() -> int:
+    """The seed ``gRandom`` is made with: ROOT's ``TRandom3`` default, 4357."""
+    from xrdroot.pyroot import TRandom3
+
+    return TRandom3().GetSeed()
+
+
 def rooted_fixture():
-    """ROOT 6.40's ``gtest/hist/hist/testTFractionFitter``: three functions, data and templates."""
-    from xrdroot.pyroot import TF1, TH1F, TObjArray, gRandom
+    """ROOT 6.40's ``gtest/hist/hist/testTFractionFitter``: three functions, data and templates.
+
+    The draws come from a generator of this fixture's own, seeded with the one
+    ``gRandom`` starts with, not from ``gRandom`` itself: a test that leaves the
+    global stream somewhere else - ``chi2_test``'s ``"x"`` option draws its
+    pseudo-experiments from it - would otherwise move the data every number
+    below is measured on, and the fit would land in a different minimum
+    (``W0-185``). ROOT's own test seeds the same way.
+    """
+    from xrdroot.pyroot import TF1, TH1F, TObjArray, TRandom3
+
+    rng = TRandom3(gRandom_seed())
 
     functions = [
         TF1(f"f{at}", text, 0.0, TMath.Pi())
@@ -409,14 +426,14 @@ def rooted_fixture():
         function.SetParameter(0, 1.0)
     data = TH1F("data", "Data angle distribution", 40, 0.0, TMath.Pi())
     for _ in range(1000):
-        p = gRandom.Uniform()
+        p = rng.Uniform()
         which = 0 if p < 0.01 else (1 if p < 0.31 else 2)
-        data.Fill(functions[which].GetRandom())
+        data.Fill(functions[which].GetRandom(rng))
     mcs = TObjArray(3)
     for at, function in enumerate(functions):
         h = TH1F(f"mc{at}", f"MC sample {at}", 40, 0.0, TMath.Pi())
         for _ in range(1000):
-            h.Fill(function.GetRandom())
+            h.Fill(function.GetRandom(rng))
         mcs.Add(h)
     return data, mcs
 
