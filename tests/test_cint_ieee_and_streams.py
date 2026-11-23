@@ -131,3 +131,19 @@ def test_a_header_a_pragma_extra_include_names_is_translated_beside_the_macro() 
     source = '#ifdef __ROOTCLING__\n#pragma extra_include "myextra.h";\n#endif\nvoid a(){}\n'
     assert with_extra_includes(source).startswith('#include "myextra.h"\n#ifdef __ROOTCLING__')
     assert with_extra_includes("void a(){}\n") == "void a(){}\n"
+
+
+def test_std_ios_names_the_open_modes_a_stream_is_given(tmp_path: Path) -> None:
+    """``std::ios::in`` is the word a stream reads its mode from, and ``in`` is not a Python
+    attribute - so the modes are answered by name, and one C++ has no mode for is refused."""
+    assert (rt.ios.app, rt.ios.binary, getattr(rt.ios, "in")) == ("app", "binary", "in")
+    path = (tmp_path / "modes.txt").as_posix()
+    first = rt.ofstream(path, rt.ios.out)
+    first << "kept" << rt.endl
+    first.close()
+    added = rt.ofstream(path, rt.ios.app)
+    added << "more" << rt.endl
+    added.close()
+    assert Path(path).read_text() == "kept\nmore\n"
+    with pytest.raises(AttributeError, match="std::ios has no member 'nonesuch'"):
+        assert rt.ios.nonesuch

@@ -19,6 +19,7 @@ __all__ = [
     "ostream",
     "ostringstream",
     "ofstream",
+    "ios",
     "cout",
     "cerr",
     "clog",
@@ -252,6 +253,34 @@ class ostringstream(ostream):
             self._parts = [f"{text}"]
             return ""
         return "".join(self._parts)
+
+
+#: The words ``std::ios``'s open modes are, which is how a stream here is told what to do with
+#: its file: an ``ofstream`` appends when its mode says ``"app"`` and makes the file afresh
+#: otherwise. C++ spells them as bits of one word; a translated program only hands the mode
+#: over, so the name it wrote is what it gets.
+IOS_MODES = ("in", "out", "app", "ate", "binary", "trunc")
+
+
+class _OpenMode:
+    """``std::ios``: the open modes a ``std::ifstream`` or ``std::ofstream`` is given, and the
+    directions a seek moves in - ``std::ios::in`` is ``"in"``.
+
+    ``in`` cannot be a Python attribute, so the names are answered as they are asked for; a
+    name C++ does not have is refused by name rather than answered with nothing.
+    """
+
+    def __repr__(self) -> str:
+        return "<class std::ios>"
+
+    def __getattr__(self, name: str) -> str:
+        if name in IOS_MODES or name in ("beg", "cur", "end"):
+            return name
+        raise AttributeError(f"std::ios has no member {name!r}")
+
+
+#: ``std::ios`` itself: a value, because ``std::ios::in`` is read off it by name.
+ios = _OpenMode()
 
 
 class ofstream(ostream):

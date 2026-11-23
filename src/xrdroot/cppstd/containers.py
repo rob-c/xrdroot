@@ -1846,7 +1846,7 @@ class _Namespace:
 
 #: The names of :mod:`.streams` ``std`` has, besides the two its class holds itself.
 STREAM_NAMES = frozenset({"ostream", "ostringstream", "clog", "flush", "fixed", "scientific",
-                          "setw", "setprecision", "setfill", "left", "right", "boolalpha",
+                          "setw", "setprecision", "setfill", "left", "right", "boolalpha", "ios",
                           "hex", "dec", "oct"})  # fmt: skip
 
 #: ``ROOT.std``.
