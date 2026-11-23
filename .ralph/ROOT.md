@@ -2395,6 +2395,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 88 | `aba72d8c` | **two targets, both measured first**: `W0-200` - a tutorial whose own ROOT run varies is `FLAKY`, recorded by `tools/tutorials record-flaky` from repeated oracle runs, and neither a gain nor a loss for the ratchet; and the line-buffering of `xrdroot run` (`cli/run.py::ordered_output`), found while bucketing the rows that stayed | **the roofit tutorial group measured whole**: PASS 124 / DIFF 69 / FAIL 21 / UNSUPPORTED 19 / SKIP 9 / ORACLE-FAIL 4 / FLAKY 9 (`…/ralph-round-202611232004/tut2`), the ratchet's spurious rows **29 -> 20**, and `rf613_global_observables.py` **byte-identical to ROOT's output** where it was the same 14 lines reordered. Nine tutorials recorded as ROOT-nondeterministic. Gate `TOTAL 125429 0 31458 0 100%` (13 885 + 44, `…/gate3.log`) | 2: `W0-201` (`TCanvas::Print`'s one word differs between ROOT's two front ends), `W0-202` (the remaining 20 stdout DIFFs, bucketed); `W0-200` closed |
 | 89 | `4b186d80` | **one target, measured before it was believed**: `W0-202`'s 20 rows, bucketed - `tools/tutorials record-order` records ROOT's *own* other draw of a tutorial where only the order of its lines differs, as one more `known_orders` entry, and `record-flaky` keeps the runs whose lines really differ | **14 of the 20 rows are gone**: the 19 listed tutorials measured again are **14 PASS / 5 DIFF** (`…/ralph-round-202611232108/after`) where they were 19 DIFF; `known_orders` grew from 3 tutorials to 22 (492 K), 21 draws recorded. The cause, measured: ROOT prints `rf110_normintegration.py`'s same lines in another order run to run (`affc425ea823` vs `e01d8b4750aa`, ours byte-identical to the second), so the harness's positional comparison failed an output ROOT itself produced | 3: `W0-203` (a degenerate-minimum fit), `W0-204` (Minuit2 `status = 3` where we say 0), `W0-205` (two message lines in the other order); `W0-202` closed, `W0-201` **corrected** (the `TCanvas::Print` word goes to stderr, which is not compared) |
 | 90 | `30b2045d` | **one target, priced before it was written**: `W0-204`/`W0-205` probed against the oracle with the tutorial's own data, model and options - and both turned out to be one class, so the round landed the piece that was genuinely missing (`RooRealVar::setVal`'s out-of-range warning) and recorded the rest as a machine class | **0 tutorials flip, and that is the result**: `rf612`'s recovery fit runs on **identical toy data** (mean `3.9831043004248508`, same first five events) to ROOT's `status 3`/`edm 15424.9`/`minNll 29774.18750976386` against our `status 0`/`edm 4.8e-09`/`29650.877364827433` - ours is the better minimum of the same landscape, and Minuit's path down a flat valley is chaotic; `IntervalExamples`' missing warning line is the same thing one ulp down. `84742600` makes `setVal` warn where ROOT warns, word for word, with `enableSilentClipping` as the switch. Gate `TOTAL 125429 0 31458 0 100%` (13 887 + 44) | 2: `W0-206` (ROOT *raises* `invalid_argument` where this kit clips, beyond one epsilon), `W0-207` (five roofit tutorials are pinned to ROOT's machine); `W0-204`/`W0-205` **re-classed** |
+| 91 | `c0e181b5` | **one target, then the round's own whole-group run**: `W0-206` - `RooAbsRealLValue.setVal` raises where ROOT raises (`160f81a4`), and the survey it asked for found exactly one internal caller that leaned on silent clipping | **the roofit tutorial group at the tip: PASS 136 / DIFF 57 / FAIL 21 / UNSUPPORTED 19 / SKIP 9 / ORACLE-FAIL 4 / FLAKY 9** (`…/ralph-round-202611232156/tut2`), against round 88's 124 / 69 - rounds 89-90's draws are the first +8, these four the rest. **And the run caught round 90's regression**: its out-of-range warning fired for a NaN and for the `-2.05502e-17` a limited parameter comes back as, so `rf601_intminuit.C`/`.py` and `rf606_nllerrorhandling.C`/`.py` had gone PASS -> DIFF unmeasured. `20460752` keeps a NaN silently and puts an epsilon-out minimiser value back on its limit; the four PASS again. 2 508 roofit/roostats tests pass; gate `TOTAL 125443 0 31464 0 100%` (13 889 + 44) | 1: `W0-208` (`rs101_limitexample` needs `MCMCInterval.GetChainAsDataSet`); `W0-206` closed, `W0-207` re-confirmed |
 
 ## Notes
 
@@ -3317,3 +3318,45 @@ the harness has no vocabulary for "machine-dependent" yet - that is the next rou
 
 **Nothing else moved.** 2 506 roofit and roostats unit tests pass with the new warning, and the gate
 reads `TOTAL 125429 0 31458 0 100%` (13 887 + 44, `…/gate1.log`).
+
+## Round 91's close
+
+Round 91 took `W0-206` - the `invalid_argument` ROOT raises where this kit clipped - and its
+whole-group run afterwards caught a regression **round 90 had shipped without measuring**.
+
+**The throw, and the survey the row asked for.** `RooAbsRealLValue.setVal` now raises
+`CppInvalidArgument` (our `std::invalid_argument`: a `ValueError` with ROOT's `what()`) when the
+value is more than `std::numeric_limits<double>::epsilon()` from the clipped one, with ROOT's own
+two lines and the value left alone; within an epsilon it warns and clips, as round 90 built. Of
+2 508 roofit and roostats tests, **exactly one** leaned on silent clipping: the scalar half of
+`test_roofit_parameter_batches.py`, whose *batched* side never looks at a range at all - ROOT's
+`RooBatchCompute` writes the values into a buffer - so the comparison now runs `setVal` under
+ROOT's own `enableSilentClipping` switch and keeps its bit-for-bit assertion unchanged.
+
+**What the group run found.** The first whole-group run at this round's tip read 132 PASS / 61
+DIFF; four of the DIFFs were ours:
+
+- `rf606_nllerrorhandling.C`/`.py`: ours printed `[#0] WARNING:InputArguments -- Value nan is
+  slightly outside the default range …` where ROOT prints its own
+  `RooAbsMinimizerFcn: Minimized function has error status but is ignored.` and no
+  `InputArguments` line at all. **ROOT keeps a NaN without a word** - that is how a minimiser that
+  has walked into an undefined region carries on - and round 90's rule compared `abs(clip - nan) >
+  eps`, which is false, so it took the *warning* branch.
+- `rf601_intminuit.C`/`.py`: ours warned for `Value -2.05502e-17 is slightly outside the default
+  range [0, 1] of the variable "frac"`, where ROOT says nothing. A limited parameter transformed
+  by Minuit2 comes back **exactly on its limit**; iminuit's comes back one rounding step past it.
+
+`20460752` is both fixes: `setVal` returns a NaN untouched, and the minimiser's own setter
+(`_at_limit`) puts a value within an epsilon of the limit back on it - a value genuinely outside
+still raises, which is what catches a caller's mistake. The four tutorials PASS again
+(`…/nan2`: 4 PASS / 0 DIFF).
+
+**The numbers.** The whole group at the tip is **PASS 136 / DIFF 57 / FAIL 21 / UNSUPPORTED 19 /
+SKIP 9 / ORACLE-FAIL 4 / FLAKY 9** (`…/tut2`) against round 88's 124 / 69: rounds 89 and 90's
+recorded draws are the first eight, these four the rest, and FAIL and UNSUPPORTED are untouched.
+
+**The lesson for the next round, and it is the round's own.** Round 90 changed a message the whole
+suite prints, quoted a green unit gate, and did not run a single tutorial - so it could not see
+that it had turned four PASSes into DIFFs. A round that touches anything RooFit prints must run the
+tutorial group it affects, even when no queue row asks for it. `rs101_limitexample`'s
+`MCMCInterval.GetChainAsDataSet` is the one new gap the run surfaced (`W0-208`).
