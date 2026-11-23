@@ -432,6 +432,27 @@ leave, a running mean, and all of it again on what was left over — and it
 changes the contents only, as ROOT's does: the errors, the running sums and
 the entries still describe what was filled.
 
+### A density estimated from the data
+
+```python
+# ROOT's own constructor: n_ev, the data, the weights, the box, the options, rho
+kde = TKDE(4, [1.0, 2.0, 2.5, 5.0], 0.0, 20.0,
+           "KernelType:Gaussian;Iteration:Adaptive;Mirror:noMirror;Binning:RelaxedBinning", 1)
+kde.GetValue(2.0)  # the estimated density there: 0.28922 for this sample
+kde.SetMirror(kde.kMirrorBoth)  # reflect at the box's edges rather than dropping the mass
+kde.SetUseBinsNEvents(10_000)  # past this many events, grid the data and walk the grid
+```
+
+A `TKDE` is ROOT's kernel density estimate: a point's value is a kernel summed
+over the data, its bandwidth either one number for all of them (the dense form)
+or each point's own from the distance to its *k*-th neighbour (the adaptive
+default `SetIteration` picks). `SetMirror` says which edges the sample is
+reflected into before the sum, which is what keeps a density near a box's edge
+from losing the mass outside it. Gridding the data and walking the grid instead
+of the data is what a large sample wants, and `SetUseBinsNEvents` turns it on by
+itself past *n* events. `SetNBins`, `SetRange` and `SetBinning` say what the box
+and the grid are; `GetValue` and `GetError` say what was estimated.
+
 ## Random numbers
 
 A macro that generates anything — a toy study, a smearing, a histogram filled
