@@ -30,6 +30,7 @@ __all__ = [
     "distinct",
     "distinctive_line",
     "record_order",
+    "same_order",
     "same_output",
     "tutorial_named",
     "varying",
@@ -52,6 +53,13 @@ def same_output(one: RunResult, other: RunResult) -> bool:
     theirs = sorted(normalise(other.stdout)), sorted(normalise(other.stderr))
     mine = sorted(normalise(one.stdout)), sorted(normalise(one.stderr))
     return mine == theirs
+
+
+def same_order(one: RunResult, other: RunResult) -> bool:
+    """Whether two runs printed their lines in the same order, as the judge compares them."""
+    if one.exit_code != other.exit_code:
+        return False
+    return normalise(one.stdout) == normalise(other.stdout)
 
 
 def distinctive_line(one: RunResult, other: RunResult) -> str:
@@ -210,7 +218,7 @@ def record_order(
         if reference is None:
             reference = lines
             continue
-        if lines != reference or any(same_output(result, one) for one in recorded):
+        if lines != reference or any(same_order(result, one) for one in recorded):
             continue
         _store(tutorial, result, files, index,
                f"ROOT's own other draw of this tutorial, run {number}: the same lines, "
