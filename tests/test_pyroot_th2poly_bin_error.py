@@ -272,3 +272,20 @@ def test_a_merge_of_profiles_of_different_binning_says_so_and_adds_nothing() -> 
     other = ROOT.TProfile2Poly("fewer", "fewer", 0.0, 10.0, 0.0, 10.0)
     other.AddBin(0.0, 0.0, 10.0, 10.0)
     assert other.Merge([one]) == 0
+
+
+def test_a_profile_the_constructor_gave_a_range_registers_no_bin_and_reads_zero() -> None:
+    """ROOT's ``TProfile2Poly(name, title, nx, xlo, xhi, ny, ylo, yhi)`` builds no bins at
+    all - the 6.40 oracle answers ``GetNumberOfBins() == 0`` - so every read is 0.0, regions
+    included, however many fills it took. A profile built from ``AddBin`` is the other case:
+    the oracle answers ``GetNumberOfBins() == 100`` and a region holding the mean of what
+    missed every bin, which the test above pins."""
+    ranged = ROOT.TProfile2Poly("t", "t", 10, 1, 4, 10, 1, 4)
+    for value in (1.0, 3.0):
+        ranged.Fill(0.5, 0.5, value, 1.0)  # outside every cell it might have had
+    expect(
+        (ranged.GetNumberOfBins(), 0),
+        (ranged.GetBinContent(-7), 0.0),
+        (ranged.GetBinContent(1), 0.0),
+        (ranged[(ROOT.uhi.loc(1), ROOT.uhi.loc(1))], 0.0),
+    )

@@ -553,8 +553,18 @@ class TProfile2Poly(UnifiedHistogram, TH2Poly):
         return self._xrd_bins.find(float(x), float(y))
 
     def GetBinContent(self, *args: Any) -> float:
-        """``GetBinContent(bin)``, or of the grid cell ``(binx, biny)``: a bin's mean."""
+        """``GetBinContent(bin)``, or of the grid cell ``(binx, biny)``: a bin's mean.
+
+        A profile that has no bins reads 0, as ROOT's does: ``TProfile2Poly``'s constructor
+        with a range registers no bins at all - the 6.40 oracle answers
+        ``GetNumberOfBins() == 0`` and 0.0 in every bin, regions included, after 10 000
+        fills - while a profile built from ``AddBin`` has them and keeps what it is given
+        (the oracle: ``GetNumberOfBins() == 100``, a region holding 2.0 from the values 1
+        and 3, and its entries).
+        """
         number = self.GetBin(*args) if len(args) > 1 else int(args[0])
+        if self.GetNumberOfBins() == 0:
+            return 0.0
         return TH2Poly.GetBinContent(self, number)
 
     def GetBinEntries(self, bin: int) -> float:
