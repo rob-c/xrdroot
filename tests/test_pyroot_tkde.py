@@ -382,3 +382,31 @@ def test_chisquare_is_neymans_over_the_bins_that_hold_something():
     found = histogram.Chisquare(ROOT.TF1("f", "2", 0, 4))
     # (2-2)**2 + (4-2)**2 + (3-2)**2 over the three bins whose error is not zero
     assert found == pytest.approx(5.0, rel=1e-12)
+
+
+def test_a_tkde_carries_the_streamer_info_root_writes_for_it():
+    """The class ROOT 6.40 streams a ``TKDE`` with, element by element.
+
+    Measured off the streamer info of a file the oracle wrote
+    (``TFile::GetStreamerInfoList`` on ``kde.root``, round 78): the checksum, the class
+    version three, the ``TNamed`` base and every member after it, with each STL member's
+    element type. This is the table a ``TKDE`` is written with, so a wrong number here
+    writes a file ROOT cannot read.
+    """
+    from xrdroot.winfo import INFOS
+
+    checksum, version, elements = INFOS["TKDE"]
+    assert (checksum, version) == (3391967380, 3)
+    assert [element[1] for element in elements] == [
+        "TNamed", "fData", "fEvents", "fEventWeights", "fKernelType", "fIteration",
+        "fMirror", "fBinning", "fUseMirroring", "fMirrorLeft", "fMirrorRight", "fAsymLeft",
+        "fAsymRight", "fUseBins", "fNewData", "fUseMinMaxFromData", "fNBins", "fNEvents",
+        "fSumOfCounts", "fUseBinsNEvents", "fMean", "fSigma", "fSigmaRob", "fXMin", "fXMax",
+        "fRho", "fAdaptiveBandwidthFactor", "fWeightSize", "fCanonicalBandwidths",
+        "fKernelSigmas2", "fBinCount", "fSettedOptions",
+    ]
+    assert elements[0][0] == "TStreamerBase" and elements[0][8] == "BASE"
+    # each STL member says which kind it is and what it holds: (vector, double) or (vector, bool)
+    stl = {element[1]: element[9] for element in elements if element[0] == "TStreamerSTL"}
+    assert stl["fData"] == (1, 8) and stl["fSettedOptions"] == (1, 18)
+    assert len(stl) == 7
