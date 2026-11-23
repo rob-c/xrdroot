@@ -85,9 +85,15 @@ class RooWorkspace(RooPrintable):
         return int(key.GetNbytes())
 
     def Write(self, name: str = "", option: int = 0, bufsize: int = 0) -> int:
-        from ..pyroot.core.directories import current_directory
+        """``Write``: into whatever directory is current, through the provider that names it.
 
-        write = getattr(current_directory(), "WriteTObject", None)
+        A workspace is written by the ROOT layer, which owns the directories; this asks it for
+        the current one rather than importing the layer above.
+        """
+        from .. import plugins
+
+        current = plugins.lookup("roofit.current_directory")
+        write = getattr(current(), "WriteTObject", None) if current is not None else None
         return int(write(self, name or self.GetName())) if write is not None else 0
 
     # -- importing ----------------------------------------------------------------

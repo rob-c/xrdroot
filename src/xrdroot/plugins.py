@@ -168,6 +168,9 @@ PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
         "graphics", "xrdroot.canvas.streamer", "streamer_for",
     ),
     ("canvas.classes", "default"): ("graphics", "xrdroot.canvas", "class_registry"),
+    ('roofit.current_directory', 'default'): (
+        'pyroot', 'xrdroot.pyroot.core.directories', 'current_directory',
+    ),
     ('roofit.binding_name', 'default'): (
         'pyroot', 'xrdroot.pyroot.roofit.bindings', 'registered_name',
     ),

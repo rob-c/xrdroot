@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NoReturn
 
 import numpy as np
 
@@ -21,7 +21,7 @@ def transient(owner: Any, name: str) -> bool:
             or (isinstance(owner, RooAbsPdf) and name in PDF_TRANSIENT))
 
 
-def unsupported(value: Any) -> Any:
+def unsupported(value: Any) -> NoReturn:
     raise UnsupportedFeatureError(
         f"Comparing persisted workspace state of type {type(value).__name__} is not "
         "implemented. Use supported RooFit definitions instead of discarding this state."
@@ -71,7 +71,8 @@ class Graph:
     def members(self, values: Any) -> list[Any]:
         if not all(isinstance(one, (str, int, float, bool)) for one in values):
             return unsupported(values)
-        return [self.encode(one) for one in sorted(values, key=repr)]
+        members: list[Any] = [self.encode(one) for one in sorted(values, key=repr)]
+        return members
 
     def fields(self, value: Any) -> dict[str, Any]:
         if isinstance(value, Proxy):
@@ -79,5 +80,9 @@ class Graph:
         module = type(value).__module__
         if not module.startswith(("xrdroot.roofit.", "xrdroot.roostats.")):
             return unsupported(value)
-        return {name: self.encode(held) for name, held in sorted(vars(value).items())
-                if not transient(value, name)}
+        fields: dict[str, Any] = {
+            name: self.encode(held)
+            for name, held in sorted(vars(value).items())
+            if not transient(value, name)
+        }
+        return fields

@@ -48,7 +48,9 @@ def proxies(record: Streamed) -> list[tuple[str, Streamed]]:
 
 def identity(proxy: Streamed) -> dict[str, Any]:
     named = proxy.get("TNamed")
-    return named.get("TObject", {}) if named is not None else proxy.get("TObject", {})
+    found = named.get("TObject", {}) if named is not None else proxy.get("TObject", {})
+    held: dict[str, Any] = found
+    return held
 
 
 def declarations(record: Streamed) -> dict[int, tuple[str, dict[str, Any]]]:

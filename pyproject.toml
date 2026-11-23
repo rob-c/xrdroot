@@ -273,6 +273,7 @@ extensions = [
     { caller = "xrdroot.formula.parser", point = "formula.user_function", provider = "pyroot", target = "xrdroot.pyroot.trees.formula:registered_function" },
     { caller = "xrdroot.roofit.fitting.contour", point = "root.class", provider = "pyroot", target = "xrdroot.pyroot.graphics.shapes:TMarker" },
     { caller = "xrdroot.roofit.fitting.contour", point = "roofit.contour_graph", provider = "pyroot", target = "xrdroot.pyroot.roofit.contour:make_graph" },
+    { caller = "xrdroot.roofit.workspace", point = "roofit.current_directory", provider = "pyroot", target = "xrdroot.pyroot.core.directories:current_directory" },
     { caller = "xrdroot.roostats.mcmc", point = "roostats.posterior_hist", provider = "pyroot", target = "xrdroot.pyroot.roostats.mcmcplot:posterior_hist" },
     { caller = "xrdroot.roostats.inverterscan", point = "roostats.inverter_draw", provider = "pyroot", target = "xrdroot.pyroot.roostats.inverterplot:draw_limit_plot" },
     { caller = "xrdroot.roostats.inverterscan", point = "roostats.inverter_plot", provider = "pyroot", target = "xrdroot.pyroot.roostats.inverterplot:make_plot" },
@@ -361,7 +362,7 @@ optional = ["matplotlib", "plotly", "bokeh", "mplhep", "PIL"]
 
 [tool.xrdroot.components.ownership.roofit]
 modules = ["xrdroot.roofit"]
-depends = ["core", "hist", "cppstd"]
+depends = ["core", "hist", "cppstd", "io"]
 hard = ["numpy"]
 optional = ["scipy", "iminuit"]
 

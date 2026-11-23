@@ -73,7 +73,7 @@ def visit(value: Any, seen: set[int]) -> None:
     seen.add(id(value))
     if isinstance(value, Streamed):
         members(value)
-        values = value.m.values()
+        values: Any = value.m.values()
     elif isinstance(value, dict):
         values = value.values()
     elif isinstance(value, (list, tuple)):
