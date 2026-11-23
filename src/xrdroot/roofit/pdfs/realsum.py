@@ -13,6 +13,7 @@ from typing import Any
 from ..collections import as_list
 from ..pdf import CAN_BE_EXTENDED, CAN_NOT_BE_EXTENDED, RooAbsPdf
 from ..real import Context
+from ..selection import active
 
 __all__ = ["RooRealSumPdf"]
 
@@ -37,7 +38,8 @@ class RooRealSumPdf(RooAbsPdf):
     def compute(self, ctx: Context) -> Any:
         total: Any = 0.0
         for coef, func in zip(self._coefficients(ctx), self.funcs, strict=False):
-            total = total + coef * func.compute(ctx)
+            if active(func):  # RooRealSumPdf::evaluate adds only the components selected
+                total = total + coef * func.compute(ctx)
         return total
 
     def analytic_names(self, names: frozenset[str], rng: Any) -> frozenset[str]:

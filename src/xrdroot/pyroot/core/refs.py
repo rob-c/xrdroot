@@ -13,35 +13,23 @@ from typing import Any
 
 import numpy as np
 
+from ...cppstd.cells import load as _load
+from ...cppstd.cells import store as _store
+
 __all__ = ["store", "load", "store_many"]
 
 
-def _indexed(target: Any) -> bool:
-    """Is ``target`` filled by index - an array, rather than something with ``.value``?"""
-    return not hasattr(target, "value") and hasattr(target, "__setitem__")
-
-
 def store(target: Any, value: Any) -> None:
-    """Put ``value`` where ``target`` says, as ``*target = value`` would."""
-    if target is None:
-        return
-    if _indexed(target):
-        target[0] = value
-        return
-    if not hasattr(target, "value"):
-        raise TypeError(
-            f"a {type(target).__name__} is not somewhere to put a number: hand over a NumPy "
-            f"array, an array.array, a ctypes number or anything with a .value"
-        )
+    """Put ``value`` where ``target`` says, as ``*target = value`` would - and a translated
+    macro's ``Float_t`` rounded as C++ would have rounded it."""
     if getattr(target, "ctype", None) == "float":
-        # A translated macro's Float_t, which C++ would have rounded as it was set.
         value = float(np.float32(value))
-    target.value = value
+    _store(target, value)
 
 
 def load(target: Any) -> Any:
     """What ``target`` holds now: ``*target``."""
-    return target[0] if _indexed(target) else target.value
+    return _load(target)
 
 
 def store_many(target: Any, values: Any) -> None:

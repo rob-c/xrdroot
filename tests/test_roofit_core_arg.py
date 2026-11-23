@@ -275,3 +275,17 @@ def test_a_tree_clone_copies_every_node_under_it() -> None:
     assert made.servers()[0] is not x
     assert made.servers()[0].GetName() == "x"
     assert g.cloneTree().GetName() == "g"
+
+
+def test_a_value_only_walk_leaves_out_a_shape_input() -> None:
+    """``dependsOn(..., valueOnly=True)``: ROOT's component selection walks a model's *value*
+    inputs only, which is what keeps a sample's bin width - shared by every sample of a
+    HistFactory channel - from making its neighbours look selected."""
+    shape = RooRealVar("width", "width", 1)
+    kept = RooRealVar("kept", "kept", 2)
+    node = Summed("node", kept, RooArgList(kept))  # the same input twice: named once
+    node._proxy("shape", shape, True)
+    assert node.dependsOn(kept) and node.dependsOn(shape)
+    assert node.dependsOn(kept, None, True) and not node.dependsOn(shape, None, True)
+    assert [one.GetName() for one in node.value_servers()] == ["kept"]
+    assert [one.GetName() for one in node._walk_value()] == ["node", "kept"]

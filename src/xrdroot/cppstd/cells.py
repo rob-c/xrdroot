@@ -24,7 +24,7 @@ from collections.abc import Iterator
 from typing import Any
 
 __all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast",
-           "byte_offset", "ObjectAddress", "pointer_now"]
+           "byte_offset", "ObjectAddress", "pointer_now", "load", "store"]
 
 
 class Cell:
@@ -239,3 +239,25 @@ def pointer_now(value: Any) -> Any:
     ``__real__``; anything else is itself."""
     real = getattr(type(value), "__real__", None)
     return real(value) if callable(real) else value
+
+
+def store(target: Any, value: Any) -> None:
+    """Put ``value`` where ``target`` keeps it, as ``*target = value`` writes through a pointer
+    or a reference: an array's first element, or anything's ``.value`` - which is what a
+    translated local, a NumPy array of one and a ``Cell`` have in common."""
+    if target is None:
+        return
+    if hasattr(target, "value"):
+        target.value = value
+        return
+    if not hasattr(target, "__setitem__"):
+        raise TypeError(
+            f"a {type(target).__name__} is not somewhere to put a number: hand over a NumPy "
+            f"array, an array.array, a ctypes number or anything with a .value"
+        )
+    target[0] = value
+
+
+def load(target: Any) -> Any:
+    """What ``target`` holds now: ``*target``."""
+    return target.value if hasattr(target, "value") else target[0]

@@ -194,6 +194,33 @@ class RooAbsArg(RooPrintable):
                     found.append(one)
         return found
 
+    def value_servers(self) -> list[Any]:
+        """What this node's *value* is computed from, its shape inputs left out - ROOT's
+        ``valueServerList``. A shape input says how the value is formed rather than what it is,
+        so a component selection does not follow one: ``RooAbsReal::plotOnCompSelect`` walks its
+        nodes with ``valueOnly`` set, which is what keeps a sample's bin width - shared by every
+        sample of a channel - from making its neighbours look selected."""
+        found: list[Any] = []
+        for proxy in self._proxies:
+            if proxy.shape:
+                continue
+            for one in proxy.args():
+                if not any(one is seen for seen in found):
+                    found.append(one)
+        return found
+
+    def _walk_value(self) -> Iterator[RooAbsArg]:
+        """:meth:`_walk` over this node's value inputs only."""
+        seen: list[RooAbsArg] = []
+        stack: list[RooAbsArg] = [self]
+        while stack:
+            node = stack.pop(0)
+            if any(node is one for one in seen):
+                continue
+            seen.append(node)
+            yield node
+            stack[0:0] = node.value_servers()
+
     def clients(self) -> list[RooAbsArg]:
         """The nodes alive that have this one among their inputs, in the order they were made -
         the order RooFit's client list has them in, each having added itself when made."""
@@ -314,7 +341,8 @@ class RooAbsArg(RooPrintable):
 
     def dependsOn(self, other: Any, ignoreArg: Any = None, valueOnly: bool = False) -> bool:
         names = {one.GetName() for one in as_list(other)}
-        return any(node.GetName() in names for node in self._walk() if node is not ignoreArg)
+        walk = self._walk_value() if valueOnly else self._walk()
+        return any(node.GetName() in names for node in walk if node is not ignoreArg)
 
     dependsOnValue = dependsOn
 
