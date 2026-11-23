@@ -215,20 +215,13 @@ class Sampler:
         rest = [run for _, run in self._runs[1:]]
         return np.concatenate([first[self._offset :], *rest])[:count]
 
-    def pop(self) -> float | None:
-        """The next draw held, handed out, or ``None`` if none is."""
-        if not self._runs:
-            return None
-        value = float(self._runs[0][1][self._offset])
-        self.advance(1)
-        return value
-
     def take_one(self) -> float | None:
         """The next draw held, handed out in the same step - the one-at-a-time path's call.
 
         A macro that fills a histogram draws millions of numbers one at a time, and
-        two Python calls for each of them is most of what that costs. This is
-        :meth:`pop` and :meth:`advance` as one call, doing exactly what they do.
+        two Python calls for each of them is most of what that costs: this hands the
+        draw out and advances the cursor itself, which is what ``pop`` and
+        ``advance(1)`` did between them.
         """
         if not self._runs:
             return None
