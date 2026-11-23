@@ -146,7 +146,7 @@
  "gtest/net/netxng/TNetXNGFileTest": "FAIL",
  "gtest/roofit/histfactory/stressHistFactory": "PASS",
  "gtest/roofit/histfactory/testHistFactory": "FAIL",
- "gtest/roofit/histfactory/testHistFactoryPlotting": "FAIL",
+ "gtest/roofit/histfactory/testHistFactoryPlotting": "PASS",
  "gtest/roofit/histfactory/testParamHistFunc": "FAIL",
  "gtest/roofit/histfactory/testPiecewiseInterpolation": "PASS",
  "gtest/roofit/hs3/testJSONInterface": "PASS",
