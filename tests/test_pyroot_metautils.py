@@ -76,3 +76,12 @@ def test_the_cling_pointer_root_keeps_is_nothing_at_all():
     """ROOT's own test asserts ``gCling`` is null before an interpreter starts; this kit has no
     cling at all, its interpreter being ``gInterpreter``."""
     expect((ROOT.gCling is None, True))
+
+
+def test_each_namespace_prints_as_the_class_root_names_it():
+    """``ROOT::TMetaUtils`` and ``ROOT::FoundationUtils`` are namespaces, not objects of ROOT's -
+    printing one says which namespace it is."""
+    expect(
+        (repr(ROOT.TMetaUtils), "<namespace ROOT::TMetaUtils>"),
+        (repr(ROOT.FoundationUtils), "<namespace ROOT::FoundationUtils>"),
+    )
