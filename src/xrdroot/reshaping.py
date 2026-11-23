@@ -466,3 +466,38 @@ def _origin(histogram: Histogram, along: int, rows: Any, columns: Any) -> Any:
     width = histogram.axes[0].nbins + 2
     x, y = (rows, columns) if along == 0 else (columns, rows)
     return x + width * y
+
+
+def projection_profile(histogram: Histogram, axes: str, name: str | None) -> Any:
+    """``TH3::Project3DProfile``: a ``TProfile2D`` of the third axis' mean in bins of two.
+
+    Each bin holds the mean of the axis summed over, weighted by the contents of the bins it
+    sums; the axes kept keep their labels and ranges, as ``DoProjection`` keeps them.
+    """
+    from .profile import Profile
+
+    kept = _letters(histogram, axes)
+    if len(kept) != 2:
+        raise ValueError(
+            f"a 3-D histogram is profiled along two of its axes, and {axes!r} names "
+            f"{len(kept)}: give two letters of 'xyz'"
+        )
+    kept.reverse()  # ROOT reads a projection's letters the other way round: first along y
+    third = next(axis for axis in range(3) if axis not in kept)
+    cells = histogram.values(flow=True)[1:-1, 1:-1, 1:-1]
+    grid = np.moveaxis(cells, third, -1) if third != 2 else cells
+    over = histogram.axes[third].root_centers()[1:-1]
+    weights = grid.sum(axis=-1)
+    sums = (grid * over).sum(axis=-1)
+    means = np.divide(sums, weights, out=np.zeros_like(sums), where=weights != 0)
+    made = Profile.book(
+        name or histogram.name + "_pf",
+        *[_spec(histogram.axes[axis]) for axis in kept],
+        title=histogram.title,
+        labels=[histogram.axes[axis].title for axis in kept],
+    )
+    xs = np.repeat(histogram.axes[kept[0]].root_centers()[1:-1], made.axes[1].nbins)
+    ys = np.tile(histogram.axes[kept[1]].root_centers()[1:-1], made.axes[0].nbins)
+    made.fill(xs, ys, means.ravel(order="C"), weight=weights.ravel(order="C"))
+    _keep_labels(made, histogram, kept)
+    return made

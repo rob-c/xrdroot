@@ -463,3 +463,36 @@ def test_a_projection_keeps_the_bin_labels_of_the_axes_it_keeps() -> None:
     assert names(found.ProjectionX("px")) == ["A", "B"]
     assert names(found.ProfileX("pfx")) == ["A", "B"]
     assert found.ProjectionX("px").GetXaxis().GetNbins() == 2
+
+
+def test_a_3d_histogram_profiled_along_two_axes_keeps_their_labels_and_means() -> None:
+    """``TH3::Project3DProfile("yx")``: the mean of z in each x-y bin, on the axes kept.
+
+    ROOT reads a projection's letters the other way round - the first along y, the second
+    along x - so ``"yx"`` is the one whose x axis is x."""
+    found = ROOT.TH3F("cube", "c;x;y;z", 2, 0.0, 2.0, 2, 0.0, 4.0, 2, 0.0, 2.0)
+    found.GetXaxis().SetBinLabel(1, "A")
+    found.GetXaxis().SetBinLabel(2, "B")
+    found.SetBinContent(1, 1, 1, 4.0)   # x bin 1, y bin 1, z bin 1 (centre 0.5)
+    found.SetBinContent(1, 1, 2, 1.0)   # z bin 2 (centre 1.5)
+    profile = found.Project3DProfile("yx")
+    assert (profile.GetXaxis().GetNbins(), profile.GetYaxis().GetNbins()) == (2, 2)
+    labels = profile.GetXaxis().GetLabels()
+    assert [labels.At(at).GetName() for at in range(labels.GetEntries())] == ["A", "B"]
+    # the mean of z over (x bin 1, y bin 1): (4*0.5 + 1*1.5) / 5
+    assert profile.GetBinContent(1, 1) == pytest.approx((4 * 0.5 + 1 * 1.5) / 5)
+    assert profile.GetBinEntries(profile.GetBin(1, 1)) == pytest.approx(5.0)
+
+
+def test_a_2d_profile_projects_both_of_its_axes_into_a_histogram_of_means() -> None:
+    """``TProfile2D::ProjectionXY``: a ``TH2D`` of the means, ROOT's axes copied whole."""
+    found = ROOT.TProfile2D("means", "m;x;y", 2, 0.0, 2.0, 2, 0.0, 2.0)
+    found.GetXaxis().SetBinLabel(1, "A")
+    found.GetXaxis().SetBinLabel(2, "B")
+    found.Fill(0.5, 0.5, 3.0)
+    found.Fill(0.5, 0.5, 5.0)
+    flat = found.ProjectionXY("flat")
+    assert (flat.GetXaxis().GetNbins(), flat.GetYaxis().GetNbins()) == (2, 2)
+    labels = flat.GetXaxis().GetLabels()
+    assert [labels.At(at).GetName() for at in range(labels.GetEntries())] == ["A", "B"]
+    assert flat.GetBinContent(1, 1) == pytest.approx(4.0)

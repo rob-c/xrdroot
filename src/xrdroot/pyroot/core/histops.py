@@ -406,6 +406,18 @@ class Operations:
         made.SetTitle(f"{self.GetTitle()} {axes} projection")
         return made
 
+    def Project3DProfile(self, option: str = "xy") -> Any:
+        """``Project3DProfile("xy")``: a ``TProfile2D`` of the third axis' mean per bin.
+
+        ROOT's ``TH3::Project3DProfile`` sums, for each bin of the two axes named, the weights
+        and their product with the third axis' bin centre, and answers the profile whose bin is
+        that mean - the axes kept, their ranges and their bin labels, as a projection's are.
+        """
+        from ...reshaping import projection_profile
+
+        axes = "".join(letter for letter in str(option).lower() if letter in "xyz")
+        return _kept(projection_profile(self._xrd, axes, f"{self.GetName()}_pf{axes}"))
+
     def ProfileX(
         self, name: str = "_pfx", firstybin: int = 1, lastybin: int = -1, option: str = ""
     ) -> Any:

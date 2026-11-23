@@ -121,6 +121,27 @@ class _Profiled:
         made.members["TH1"]["fEntries"] = float(self.GetEntries())  # type: ignore[attr-defined]
         return wrap(made)
 
+    def ProjectionXY(self, name: Any = "_pxy", option: Any = "") -> Any:
+        """``ProjectionXY``: a ``TH2D`` whose bin is the profile's mean there.
+
+        ROOT copies both axes whole - their binning, their ranges and their bin labels - and
+        puts the profile's own content, or with ``"b"`` its entries, in the same bin.
+        """
+        from ...hist import Histogram
+
+        called = f"{self.GetName()}{name}" if str(name) == "_pxy" else str(name)  # type: ignore[attr-defined]
+        chosen = str(option).lower()
+        axes = [axis.edges() for axis in self._xrd.axes]
+        values = self._xrd.bin_entries() if "b" in chosen else self._xrd.values()
+        errors = None if "b" in chosen else self._xrd.errors()
+        made = Histogram.new(called, axes, values, title=self.GetTitle(), errors=errors)  # type: ignore[attr-defined]
+        core = made.members["TH2"]["TH1"]
+        for letter, axis in zip("XY", self._xrd.axes, strict=False):
+            if axis.labels:
+                core[f"f{letter}axis"]["_labels"] = {str(b): v for b, v in axis.labels.items()}
+        core["fEntries"] = float(self.GetEntries())  # type: ignore[attr-defined]
+        return wrap(made)
+
     def GetYmin(self) -> float:
         return float(self._xrd.members.get("fYmin", 0.0))
 
