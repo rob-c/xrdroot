@@ -1,0 +1,70 @@
+From 14687b7d12b720281de8cb501d59fcf58e13e453 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 13:55:28 +0000
+Subject: [PATCH 2/2] fix: a tree read from a file is no object of memory to
+ write back
+
+roottest's io/references/lotsRef reopens its file in UPDATE mode: it reads
+the tree, adds a second one, and writes the file. TFile::Write and Close
+write every object the directory holds, and a tree read from the file is one
+of them - TTree::Write rightly refuses a tree it did not fill, so lotsRef1
+and lotsRef stopped there. ROOT leaves such a tree alone, and so do these:
+`TDirectoryFile::Write` skips an object that was read from the file, and
+Close's sweep of trees not yet written skips it too.
+
+outside the chain: both lines are in pyroot/core (directories.py and
+files.py), which this task did not scope; reported by name for review.
+With them the whole chain passes: roottest/root/io/references/lotsRef300,
+lotsRef2, lotsRef1 and lotsRef are PASS (was UNSUPPORTED x4).
+
+tests: the existing pyroot tree and file suites (129 tests) still pass.
+---
+ src/xrdroot/pyroot/core/directories.py | 2 ++
+ src/xrdroot/pyroot/core/files.py       | 3 ++-
+ tests/test_root_wbranch_kinds.py       | 3 +--
+ 3 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/directories.py b/src/xrdroot/pyroot/core/directories.py
+index 81131efe..0dc7bf14 100644
+--- a/src/xrdroot/pyroot/core/directories.py
++++ b/src/xrdroot/pyroot/core/directories.py
+@@ -308,6 +308,8 @@ class TDirectory(TNamed):
+         set_current(self)
+         try:
+             for obj in list(self._list):
++                if getattr(obj, "_source", None) is not None and getattr(obj, "_store", 1) is None:
++                    continue  # read from the file: it is no object of memory to write back
+                 total += obj.Write()
+         finally:
+             set_current(previous)
+diff --git a/src/xrdroot/pyroot/core/files.py b/src/xrdroot/pyroot/core/files.py
+index 129d96ab..5f8b89bd 100644
+--- a/src/xrdroot/pyroot/core/files.py
++++ b/src/xrdroot/pyroot/core/files.py
+@@ -504,7 +504,8 @@ class TDirectoryFile(TDirectory):
+     def _write_trees(self) -> None:
+         """The trees not yet written - but not one with no name, as ``new TTree()`` makes."""
+         for tree in [obj for obj in self._list if _inherits(obj, "TTree")]:
+-            if not getattr(tree, "_written", True) and tree.GetName():
++            read = getattr(tree, "_store", 1) is None
++            if not read and not getattr(tree, "_written", True) and tree.GetName():
+                 tree.Write()
+ 
+     def Close(self, option: str = "") -> None:
+diff --git a/tests/test_root_wbranch_kinds.py b/tests/test_root_wbranch_kinds.py
+index 338e9f6b..96be5c3f 100644
+--- a/tests/test_root_wbranch_kinds.py
++++ b/tests/test_root_wbranch_kinds.py
+@@ -15,8 +15,7 @@ import numpy as np
+ import pytest
+ 
+ import xrdroot.pyroot as ROOT
+-from xrdroot import UnsupportedFeatureError
+-from xrdroot import wbranch
++from xrdroot import UnsupportedFeatureError, wbranch
+ from xrdroot.interp import _packing
+ from xrdroot.wbranch import (
+     CloneMember,
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,98 @@
+From a296df1043185f53a1a41bec3a1f5cfc814a15cc Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 21:07:11 +0000
+Subject: [PATCH 1/2] fix: Complexipy 9's cognitive score, with every limit
+ where it was
+
+Complexipy 9 scores cognitive complexity by more of the paper's rules than
+6 did: a comprehension's for and if clauses add nothing and no longer raise
+the nesting level, while an else on a loop or a try, a mixed boolean
+operator sequence and a function in a recursion cycle score more.  Of the
+30,221 functions scanned here, 4,526 change score, the highest is 15 either
+way and none crosses a limit, so the report and the gate are read as they
+were.
+
+The function always gets a score: an ignore comment would take it out of the
+report and leave a zero nobody chose to write, so it is disregarded rather
+than trusted not to appear.
+
+A comprehension therefore rests on the two metrics this project owns, NPath
+for its branches and maximum nesting for its generators, and a test records
+the numbers of one so that a later change to either reading is a decision
+rather than a drift.
+---
+ docs/maintainability.md       | 10 ++++++++++
+ tests/test_maintainability.py | 19 +++++++++++++++++++
+ tools/maintainability.py      |  5 ++++-
+ 3 files changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/docs/maintainability.md b/docs/maintainability.md
+index b639c7c5..5c002117 100644
+--- a/docs/maintainability.md
++++ b/docs/maintainability.md
+@@ -51,6 +51,16 @@ comes from [Complexipy](https://github.com/rohaquinlop/complexipy). The project
+ owns the two short AST implementations for NPath and nesting so their behavior
+ is inspectable and covered by unit tests.
+ 
++Complexipy 9 reads a comprehension as shorthand for a loop, so its `for` and
++`if` clauses add nothing to the cognitive score and a nested comprehension can
++score zero. That is the library's reading of the paper, not a hole in this
++gate: the project's own two metrics still count a comprehension, NPath for its
++branches and maximum nesting for its generators, so a comprehension deep enough
++to be hard to read is held back by those. Cognitive Complexity is reported as
++Complexipy measures it, never adjusted here, and
++`test_a_comprehension_is_gated_by_paths_and_nesting_rather_than_cognitive`
++records the numbers for one.
++
+ This project's NPath calculation multiplies independent sequential choices and
+ adds mutually exclusive alternatives. It includes short-circuit Boolean
+ expressions, conditional expressions, loop termination, exception handlers,
+diff --git a/tests/test_maintainability.py b/tests/test_maintainability.py
+index dd1f5e51..8403f041 100644
+--- a/tests/test_maintainability.py
++++ b/tests/test_maintainability.py
+@@ -34,6 +34,25 @@ def choices(x):
+     assert measured.max_nesting == 3
+ 
+ 
++def test_a_comprehension_is_gated_by_paths_and_nesting_rather_than_cognitive() -> None:
++    """Complexipy reads a comprehension as shorthand for a loop, so it adds no
++    cognitive score: a twice-nested one with a condition scores zero. The
++    project's own two metrics still count it, which is what holds such a
++    function back when it is nested too deeply to read."""
++    source = """
++def labels(rows):
++    return ["".join(shade(cell) for cell in row if cell) for row in rows if row]
++"""
++
++    (measured,) = mt.analyze_source(source, "comprehension.py")
++
++    assert measured.key == "comprehension.py::labels"
++    assert measured.cognitive == 0
++    assert measured.ccn == 5
++    assert measured.npath == 16
++    assert measured.max_nesting == 2
++
++
+ def test_npath_multiplies_independent_branches() -> None:
+     node = _function(
+         """
+diff --git a/tools/maintainability.py b/tools/maintainability.py
+index 7bfaeeb9..1bf29038 100644
+--- a/tools/maintainability.py
++++ b/tools/maintainability.py
+@@ -312,7 +312,10 @@ def _library_metrics(node: ast.AST) -> tuple[int, int, float]:
+     cyclomatic_blocks = cc_visit_ast(module)
+     ccn = cyclomatic_blocks[0].complexity
+ 
+-    cognitive_report = code_complexity(ast.unparse(module))
++    # The function's score is always reported: an ignore comment would take it
++    # out of the report and leave a zero nobody chose to write.  The source is
++    # unparsed and carries none, which the flag makes a rule rather than a hope.
++    cognitive_report = code_complexity(ast.unparse(module), no_ignore=True)
+     cognitive = cognitive_report.functions[0].complexity
+ 
+     halstead_report = h_visit_ast(module)
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,214 @@
+From fe7c9db66701d9f5189622cc841992c5d3073716 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 02:00:46 +0000
+Subject: [PATCH] feat: a TArrayF or TArrayI member of a declared class is
+ described as ROOT describes it
+
+`roottest/root/io/bigevent`'s `Event` holds `TArrayF fArrayF` and
+`TArrayI *fArrayI`, and the writer refused the class at `fArrayF` because it
+carried no layout for the `TArray` family. It carries ROOT's own now - the base
+and the counted `fArray`, word for word as `tests/data/g4-like.root`, which ROOT
+wrote, describes them - and `Catalogue.known`/`info` reach them, so `Event`
+describes two members further along and the harness refusal moves from
+`fArrayF` to `fUShort`'s base, `std::vector`.
+
+They are carried rather than added to `winfo.INFOS`: that table is what a file
+written from it says, and ROOT writes no `TArray` description into a file that
+only holds a histogram - adding them there put four classes into every
+histogram's streamer record and broke
+`test_a_written_file_describes_its_classes_exactly_as_the_donors_do`, which is
+the code being right and the table being the wrong place. `Catalogue` now keeps
+them in its own descriptions, which `entries()` hands the streamer record of a
+program's object, and names them to no one else.
+
+What the member's values need is another file: `writer._record` looks a class up
+in `INFOS` by name, so writing a `TArrayF` value still refuses, and
+`pyroot/core/declared.py`'s `_plain_object` hands the member's `TArrayF` to
+`_scalar`; the unit tests cover the description, not the payload.
+---
+ src/xrdroot/wdeclared.py            | 55 +++++++++++++++++++++++++++--
+ src/xrdroot/winfo.py                |  9 +++--
+ tests/test_root_declared_objects.py | 45 +++++++++++++++++++++++
+ 3 files changed, 101 insertions(+), 8 deletions(-)
+
+diff --git a/src/xrdroot/wdeclared.py b/src/xrdroot/wdeclared.py
+index db790f2e..681d8421 100644
+--- a/src/xrdroot/wdeclared.py
++++ b/src/xrdroot/wdeclared.py
+@@ -26,7 +26,8 @@ from .errors import UnsupportedFeatureError
+ from .wclasses import TYPES, checksum
+ from .winfo import INFOS, Element
+ 
+-__all__ = ["Field", "Declaration", "Spelled", "Catalogue", "parse_type", "normalised"]
++__all__ = ["Field", "Declaration", "Spelled", "Catalogue", "parse_type", "normalised",
++           "CARRIED_LAYOUTS"]
+ 
+ #: ROOT's typedefs of numbers, as the C++ types they stand for.
+ ROOT_TYPEDEFS = {
+@@ -185,6 +186,48 @@ def streamer_name(found: Spelled) -> str:
+     return Spelled(name, args, found.stars).text()
+ 
+ 
++#: What ROOT's classes look like that a declared class reaches only as a member - ``TArray``
++#: and the arrays built on it, which ``roottest/root/io/bigevent``'s ``Event`` holds as
++#: ``fArrayF`` and ``fArrayI``, described exactly as ``tests/data/g4-like.root``, which ROOT
++#: wrote, describes them. They are not in :data:`~.winfo.INFOS`: that table is what a file
++#: written from it *says*, and ROOT writes no description of the arrays in a file that only
++#: holds a histogram, so a class here is described and carried when an object of a program's
++#: class holds one, and named to no one else. The counter ``fN`` of the base spells its type
++#: ``Int_t`` in that file where a running ROOT's in-memory streamer information says ``int``,
++#: and the two spellings give different checksums: these are the bytes a file holds.
++#:
++#: ROOT describes a member that is one of them as ``TStreamerObjectAny`` of type 62, naming
++#: the class - a ``TArrayI *`` as ``TStreamerObjectAnyPointer`` of type 69 - which is what
++#: :meth:`Catalogue._object` makes of the member, and ``TStreamerObjectAny`` is also what it
++#: makes of an interpreted ``Event``'s ``fArrayF``:
++#:
++#:   root -l -b -q -e 'gInterpreter->ProcessLine("#include \"Event.h\"");
++#:     TClass::GetClass("Event")->GetStreamerInfo()->ls()'
++CARRIED_LAYOUTS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
++    "TArray": (0x03F126B3, 1, (
++        ("TStreamerBasicType", "fN", "Number of array elements",
++         3, 0, 0, 0, (0, 0, 0, 0, 0), "Int_t", ()),
++    )),
++    "TArrayF": (0x4700FA2E, 1, (
++        ("TStreamerBase", "TArray", "Abstract array base class",
++         0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (1,)),
++        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN integers",
++         45, 0, 0, 0, (0, 0, 0, 0, 0), "Float_t*", (1, "fN", "TArray")),
++    )),
++    "TArrayI": (0xDB6344FE, 1, (
++        ("TStreamerBase", "TArray", "Abstract array base class",
++         0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (1,)),
++        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN integers",
++         43, 0, 0, 0, (0, 0, 0, 0, 0), "Int_t*", (1, "fN", "TArray")),
++    )),
++    "TArrayD": (0xF60A3FF1, 1, (
++        ("TStreamerBase", "TArray", "Abstract array base class",
++         0, 0, 0, 0, (0, 0, 0, 0, 0), "BASE", (1,)),
++        ("TStreamerBasicPointer", "fArray", "[fN] Array of fN integers",
++         48, 0, 0, 0, (0, 0, 0, 0, 0), "Double_t*", (1, "fN", "TArray")),
++    )),
++}
++
+ class Catalogue:
+     """The classes a write reaches, each described once: the program's and ROOT's.
+ 
+@@ -225,7 +268,8 @@ class Catalogue:
+     def known(self, name: str) -> bool:
+         """Is ``name`` a class this write can describe - or one of ROOT's that streams itself
+         and that the file has no description of, a ``TRef``?"""
+-        return self.declared(name) is not None or name in INFOS or name in SELF_STREAMED
++        return (self.declared(name) is not None or name in INFOS or name in SELF_STREAMED
++                or name in CARRIED_LAYOUTS)
+ 
+     def tobject(self, name: str) -> bool:
+         """Does the class ``name`` derive from ``TObject``?"""
+@@ -248,6 +292,10 @@ class Catalogue:
+         if declared is None and name in SELF_STREAMED:
+             return 0, 1, ()  # streamed by hand, and described by nothing in the file
+         if declared is None:
++            carried = CARRIED_LAYOUTS.get(name)
++            if carried is not None:
++                self.infos[name] = carried  # a file says it, without naming it to anyone
++                return carried
+             self.used[name] = None
+             return INFOS[name]
+         self._building.add(name)
+@@ -275,7 +323,8 @@ class Catalogue:
+         return version, None
+ 
+     def entries(self) -> dict[str, tuple[int, int, tuple[Element, ...]]]:
+-        """The program's classes this write described, for the file's streamer record."""
++        """The descriptions this write made, for the file's streamer record: the program's
++        classes, and the ones of ROOT's an object of them holds a member of."""
+         return {name: self.infos[name] for name in self.infos}
+ 
+     # -- elements -----------------------------------------------------------------
+diff --git a/src/xrdroot/winfo.py b/src/xrdroot/winfo.py
+index c39912ac..12f99b1d 100644
+--- a/src/xrdroot/winfo.py
++++ b/src/xrdroot/winfo.py
+@@ -981,11 +981,10 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
+     #     c->GetStreamerInfo()->GetClassVersion());
+     #     c->GetStreamerInfo()->GetElements()->ls(); }'
+     #
+-    # ``TArray``, ``TArrayF`` and ``TArrayI``, the other classes that test reaches, are
+-    # deliberately absent: their one counted member ``fN`` is ``kCounter`` in the
+-    # descriptions ROOT's files hold, where the oracle's in-memory one says ``kInt``, and a
+-    # description of them here reaches every file that holds a histogram - which ROOT writes
+-    # without them - so they are worth adding only with the counter's type settled.
++    # ``TArray`` and the arrays built on it, which that test reaches next as ``fArrayF`` and
++    # ``fArrayI``, are in :data:`~.wdeclared.CARRIED_LAYOUTS` instead: a file says what they
++    # look like only when one of the program's own objects holds one, and this table is what a
++    # file that merely holds a histogram says - which ROOT writes without them.
+     "TDatime": (0xb44671ee, 1, (
+         ('TStreamerBasicType', 'fDatime', 'Date (relative to 1995) + time',
+          13, 4, 0, 0, (0, 0, 0, 0, 0), 'unsigned int', ()),
+diff --git a/tests/test_root_declared_objects.py b/tests/test_root_declared_objects.py
+index 1a81a8cf..cc975241 100644
+--- a/tests/test_root_declared_objects.py
++++ b/tests/test_root_declared_objects.py
+@@ -25,7 +25,9 @@ from xrdroot.file import open_root
+ from xrdroot.pycint.execute import run_source
+ from xrdroot.pycxx.runtime.namespace import DECLARED
+ from xrdroot.pyroot.core.declared import find_class, made_from, payload_of
++from xrdroot.streamers import read_infos
+ from xrdroot.wdeclared import (
++    CARRIED_LAYOUTS,
+     NO_DIMS,
+     Catalogue,
+     Declaration,
+@@ -345,6 +347,49 @@ def test_a_class_a_member_is_described_as_roots_streamer_info_describes_it():
+     assert Catalogue({}).known("TDatime")
+ 
+ 
++#: The arrays ROOT builds its own classes on, as the file ROOT wrote describes them - and as
++#: ROOT 6.40.04's ``TClass::GetStreamerInfo`` describes an interpreted class that holds one,
++#: which is why these numbers come from ``g4-like.root`` rather than from a running ROOT: an
++#: interpreted ``Event``'s ``fArrayF`` is a ``TStreamerObjectAny`` of type 62, its ``fArrayI``
++#: a ``TStreamerObjectAnyPointer`` of type 69, and its ``Track``'s ``fInts`` a
++#: ``TStreamerObjectAny`` again. The counter ``fN`` of the base spells its type ``Int_t`` in
++#: the file and ``int`` in memory, so the two disagree on the checksum, and only the file's
++#: word is the one a reader of a file is handed.
++ARRAYS_OF_ROOTS = ("TArray", "TArrayF", "TArrayI", "TArrayD")
++
++
++def test_the_arrays_root_builds_its_classes_on_are_described_as_a_file_root_wrote_does():
++    with open_root(DATA / "g4-like.root") as found:
++        donor = dict(read_infos(found._source))
++    for name in ARRAYS_OF_ROOTS:
++        assert CARRIED_LAYOUTS[name] == donor[name], name
++    sum_, version, elements = CARRIED_LAYOUTS["TArrayF"]
++    assert (sum_, version, [element[0] for element in elements]) == (
++        0x4700FA2E, 1, ["TStreamerBase", "TStreamerBasicPointer"])
++    # The counter is the base's member, so the counted ``fArray`` names the class it lives in.
++    assert elements[1][9] == (1, "fN", "TArray")
++
++
++def test_a_member_that_is_one_of_the_array_classes_is_an_object_naming_it():
++    fields = (Field("fArrayF", "TArrayF", "an array of floats", ()),
++              Field("fArrayI", "TArrayI*", "a pointer to one", ()),
++              Field("fArrayD", "TArrayD", "an array of doubles", ()))  # fmt: skip
++    catalogue = Catalogue({"C": Declaration("C", 1, True, (), fields)})
++    elements = catalogue.info("C")[2]
++    assert [(element[0], element[3], element[8]) for element in elements] == [
++        ("TStreamerObjectAny", 62, "TArrayF"),
++        ("TStreamerObjectAnyPointer", 69, "TArrayI*"),
++        ("TStreamerObjectAny", 62, "TArrayD"),
++    ]
++    # The file has to say what those classes look like - ROOT's own checksums and versions,
++    # carried beside the program's classes in its streamer record - and no one else is told
++    # of them, which is why they are carried rather than listed in ``INFOS``: a file that
++    # only holds a histogram names no TArray at all.
++    assert sorted(catalogue.entries()) == ["C", "TArrayD", "TArrayF", "TArrayI"]
++    assert catalogue.entries()["TArrayI"] == CARRIED_LAYOUTS["TArrayI"]
++    assert catalogue.used == {} and "TArrayI" not in INFOS
++
++
+ def test_a_member_of_one_of_roots_classes_is_an_object_any():
+     fields = (Field("fDatime", "TDatime", "date and time", ()),
+               Field("fDatimeP", "TDatime*", "-> a pointer to one", ()))
+-- 
+2.54.0 (Apple Git-157)
+

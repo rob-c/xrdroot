@@ -1,0 +1,220 @@
+From 0334e1a77313ea2770dbfea765fbf3a2c4f54b4e Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 13:07:31 +0000
+Subject: [PATCH 1/3] docs: bucket the 43 other/math refusals by cause (r36-03)
+
+---
+ R36-math-buckets.md | 201 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 201 insertions(+)
+ create mode 100644 R36-math-buckets.md
+
+diff --git a/R36-math-buckets.md b/R36-math-buckets.md
+new file mode 100644
+index 00000000..901e2708
+--- /dev/null
++++ b/R36-math-buckets.md
+@@ -0,0 +1,201 @@
++# r36-03: the 43 `other/math` refusals, bucketed by cause
++
++Round 35's run (`/tmp/r36/other-before.json`): **21 PASS / 0 FAIL / 43 UNSUPPORTED /
++1 TIMEOUT**. Every refusal had a different sentence, but they come from **22 causes**;
++one of them — the translator refusing the address of a vector element — blocks **10 of
++the 43** by itself, and the ten `ROOT::Math`/MathMore names below cover another 11.
++
++Method: read all 43 reasons plus the round-35 `run.log` of each, then reduced the
++non-obvious ones to two-to-five line `.cxx` snippets under `/tmp/r36/probe` and ran
++`python -m xrdroot run` on them. Nothing here is a guess from the message alone; the
++snippets that reproduce each cause are quoted in the detail sections. The harness was
++not run again.
++
++Sorted by tests blocked. "File" is the first file a fix would touch.
++
++| # | cause | tests | file | first step |
++|---|---|---|---|---|
++| 1 | translator: address of a vector element (`&v[0]`, `&v.front()`, `&v[i]`) as a pointer or iterator | **10** | `src/xrdroot/pycxx/emit_calls.py` (`:354`, `:367`) | emit `&v[i]`/`&v.front()` as a pointer-with-container view (offset + length) instead of refusing, and let `std::sort`/`std::copy`/`std::generate` take it and write back through it |
++| 2 | `ROOT::Math::Random<T>` over the engine kinds (MersenneTwister, MixMax, GSL `GSLRng*`) | 4 | `src/xrdroot/pyroot/core/randoms.py` | add `Random` as a thin front over the existing `TRandom`/`TRandom1/2/3` engines, then a `MixMaxEngine`/`GSLRng*` engine per kind; only the Mersenne path can be exact straight away |
++| 3 | MathMore's GSL wrappers: `assoc_laguerre`, `WrappedFunction`, `MultiRootFinder`, `GSLSimAnFunc` | 4 | `src/xrdroot/pyroot/core/rmath.py` | `assoc_laguerre` is the cheapest (one function over `scipy.special.eval_genlaguerre`); `WrappedFunction` is an `IGenFunction` adapter; the last two are new GSL classes |
++| 4 | translator: `std::generate` / `std::shuffle` / `std::next_permutation` (and `std::default_random_engine{}`) are not algorithms the emitter knows | 3 | `src/xrdroot/cppstd/` (`pycxx/emit_calls.py`, `cursor.py`, `cppstd/random.py`) | add the three to the emitted algorithm set; `generate` needs cause 1's pointer range first |
++| 5 | the k-d tree family: `TKDTreeBinning`, `KDTree`/`TDataPoint<DIM>`, and `ProcInfo_t` for `TSystem::GetProcInfo` | 3 | new engine package `src/xrdroot/kdtree/` (+ `pyroot/core` wrapper) | `ProcInfo_t` is a five-field struct and unblocks the *first line* of `kDTreeTest`; the two trees are real work |
++| 6 | `ROOT::Math::WrappedParamFunction<>` (a C function + its parameters as an `IParametricFunctionMultiDim`) | 2 | `src/xrdroot/pyroot/core/rmath.py` | ~15 lines over the existing `IParamMultiFunction`: hold `(function, dim, par)`, call `function(x, par)` from `operator()` |
++| 7 | `ROOT::Minuit2::Minuit2Minimizer` — absent from the `Minuit2` namespace object | 2 | `src/xrdroot/pyroot/minuit2.py` | subclass `mathtools.Minimizer` (which already maps `"Minuit2"`/algorithm names onto the core) with the `algoName` constructor and the `kMigrad`/`kSimplex`/`kCombined`/`kScan` constants |
++| 8 | `ROOT::Math::GoFTest` (chi2 / KS / Anderson–Darling, and `operator()(kAD2s)` over a test kind) | 1 | `src/xrdroot/pyroot/core/rmath.py` + `src/xrdroot/stats.py` | AD2-sample first — `stressGoFTest` pins ROOT's own `A2` against R's `kSamples` values, so the tail approximation must match ROOT's, not SciPy's |
++| 9 | `ROOT::Math::Interpolator` (GSL interpolation: linear/cubic/Akima/polynomial) | 1 | `rmath.py` + a new `numerics/interpolate.py` | linear and cubic are one `np.interp`/`CubicSpline` away; the test walks every GSL kind in turn |
++| 10 | `ROOT::Math::ChebyshevApprox` (a Chebyshev series of a function, and its `Integral()`) | 1 | `src/xrdroot/pyroot/core/rmath.py` | coefficients by the `numpy.polynomial.chebyshev` nodes; `Integral()` is the same series integrated |
++| 11 | `ROOT::Math::Derivator` (`Derivative1/2/3`, `SetStepSize`) | 1 | `rmath.py` over `src/xrdroot/function/numeric.py` | the Richardson helpers there are exactly ROOT's; the class is a wrapper with the step bookkeeping |
++| 12 | `ROOT::Math::IParametricFunctionMultiDimTempl<T>` as a base class | 1 | `rmath.py` | **not** a one-line alias — see "found but not fixed" |
++| 13 | `TStatistic` (mean, RMS, error, weights, `GetVar`) | 1 | `src/xrdroot/stats.py` + `pyroot/core/` | plain accumulator class; ROOT's `TStatistic` uses the same weighted sums `stats.py` already has |
++| 14 | `ROOT::Fit::Fitter::LikelihoodFit(BinData, model, useEmptyBins)` | 1 | `src/xrdroot/pyroot/core/mathtools.py:325` | the class has the chi-square paths only; the binned-Poisson likelihood is `fit/cost.py`'s |
++| 15 | `ROOT::Math::RootFinder::Name()` (and `Iterations()`) | 1 | `mathtools.py:165` | a name per kind (`Brent`, `GSL_Bisection`, …) — the seven kinds are already class constants; see "found but not fixed" |
++| 16 | `MnUserCovariance(i, j) = value` — `__call__` exists, nothing to assign to | 1 | `src/xrdroot/pyroot/minuit2.py` | `__setitem__` writing into `self._matrix` |
++| 17 | `TMatrixT::Randomize(low, high, seed)` | 1 | `src/xrdroot/pyroot/linalg/matrices.py:107` | fill from a `TRandom(seed)`, as ROOT does — the test only needs A and B filled identically |
++| 18 | `std::cout.width(n)` — the stream stand-in exposes an `int`, not the method | 1 | `src/xrdroot/cppstd/streams.py` | `width`/`precision`/`fill` as the formatting state an ostream really keeps |
++| 19 | translator: `std::max_element(...)->name` (the extreme's *result* used) | 1 | `src/xrdroot/pycxx/emit_calls.py:392` | the `*std::max_element(...)` form is already emitted (`emit_expr.py:451`) and `EXTREMES` exists; `->member` of the found element is the missing half |
++| 20 | translator: the C declarator `static double (*a[N])[M]` (array of pointers to arrays) | 1 | `src/xrdroot/pycint/` declarator reading | it mangles the declarator into a type named `function` and then looks `function` up in the namespace |
++| 21 | translator: `ROOT::Math::WrappedMemFunction<T, double (T::*)(double)>` — a pointer-to-member template argument | 1 | `src/xrdroot/pycint/dialect.py` / `pycxx` template arguments | *"`)` was expected, and `::` is there instead"*: the type reader stops at the `std::function`-style argument |
++| 22 | translator: instantiating `testBinarySearch<Double_t>()` recurses without end | 1 | `src/xrdroot/pycxx/` template instantiation | find which instantiation re-enters itself — the test's two `testBinarySearch` functions differ only in a template parameter, so the instantiation memo is not keyed by the arguments it substituted |
++
++Totals: 10+4+4+3+3+2+2 + 15×1 = **43**.
++
++The one TIMEOUT is not a refusal and not this table: `other/math/minuit2/minuit2_ParallelTest`
++(`math/minuit2/test/MnSim/ParallelTest.cxx`) is a 40-parameter `MnMigrad` over 1000 generated
++events, and reached no refusal in 300 s. It is a **speed** item (`TODO.md` §2 territory), and
++round 35 ran it on a machine at load 15–45, so it is unproven either way.
++
++## 1. The address of a vector element — 10 tests, the widest single cause
++
++Ten refusals whose sentences look unrelated come from one emitter gap: `&v[0]`, `&v.front()`,
++`&v[i]` and `&v[i]+n` are lowered to something that is neither an iterator nor a pointer, and
++each consumer complains in its own words.
++
++Reproduced, three snippets, all refusals:
++
++```c++
++std::vector<int> v={3,1,4,2,5}; std::sort(&v[0], &v[0]+5);            // "an iterator this translator cannot follow back to its container"
++std::copy(v.begin(), &v[3], std::ostream_iterator<double>(cout, " ")); // same refusal, other end
++Long_t i = TMath::BinarySearch(5, &k[0], e);                          // ValueError: setting an array element with a sequence
++```
++
++What ROOT does: `&v[0]` is a `T*` into the vector's own buffer, so `std::sort(&v[0], &v[0]+n)`
++sorts the vector **in place**, `std::copy` reads its elements, and a `T*` argument to
++`TMath::BinarySearch` is the array. The fix has to pass a view (container + offset + length),
++not a copy, or the in-place writes disappear.
++
++| test | line | refusal |
++|---|---|---|
++| `mathcore-testTMath` | 150 | `sort(&sa[0], &sa[0]+n)` |
++| `mathcore-testSortOrder` | 67 | `std::sort(&indexS[0], &indexS[0]+n, CompareDesc<const T*>(&k[0]))` |
++| `mathcore-stdsort` | 78 | the same, timed |
++| `mathcore-SparseDataComparer` | 97 | `std::copy(x1, &x1[ndim], …)` — "a range whose two ends are in different containers" |
++| `mathcore-SparseFit3` | 120 | the same |
++| `mathcore-SparseFit4` | 130 | the same |
++| `mathcore-binarySearchTime` | 48 | `TMath::BinarySearch(n, &k[0], elem)` |
++| `mathcore-testSpecFuncBeta` | 28 (via `&x[0]` at 84) | `TGraph(n, x, y)` given `&x[0]`, `&yb[0]` |
++| `mathmore-testGSLIntegration` | 35 | `Polynomial::SetParameters(&p.front())` |
++| `mathcore-testGraphFit` | 72 | `TGraphErrors(n, &x.front(), &y.front(), 0, &e.front())` — *"xerr has 500 bars for 1 points"*, because a `&v.front()` argument arrives as one value |
++
++`stressTMath` (bucket 4) hits the same pointer range one line after `std::generate` exists.
++
++## 2. `ROOT::Math::Random<T>` — 4 tests
++
++`Random<MersenneTwisterEngine>`, `Random<MixMaxEngine240>`, `Random<GSLRngMT>`,
++`Random<GSLRngRanLux>`, … and `RandomMT`, `QuasiRandomSobol`, `QuasiRandomNiederreiter`.
++ROOT's `Random<E>` is one header over an engine kind, with `Uniform`, `Gaus`, `Poisson`,
++`Exp`, `BreitWigner`, `Landau` and the rest — the same distributions `randoms.py` already
++implements over `TRandom`.
++
++First step is not the distribution maths (there is none new) but the **engines**: xrdroot's
++`random/mersenne.py`, `tausworthe.py` and `ranlux.py` are `TRandom3`, `TRandom2` and
++`TRandom1` — the streams exist but not under an engine name. MixMax and the eight GSL
++`GSLRng*` engines do not exist at all, and `testRandomDist` compares every distribution
++against ROOT's own numbers, so an engine that is merely "a" generator fails on the first
++value. `testMathRandom` only compares engines against each other, which is why it is the
++one to make pass first.
++
++## 3. MathMore's GSL layer — 4 tests
++
++* `assoc_laguerre` (`testSpecFunc`) — a GSL special function name reached as `ROOT.assoc_laguerre`;
++  `scipy.special.eval_genlaguerre` is the same function. **Cheapest single refusal in this
++  bucket**, and `testSpecFunc` walks every special function in turn, so the other names it
++  uses (already present?) are worth checking in the same pass.
++* `WrappedFunction<PdfFunction>` (`testStatFunc`) — `IGenFunction` over any callable; an
++  adapter, like `WrappedTF1` at `rmath.py:534`.
++* `MultiRootFinder` (`testMultiRootFinder`) — runs several `GSLRootFinder`s and keeps the
++  best; `mathtools.py:165` `RootFinder` and `numerics/rootfinder.py` are the pieces.
++* `GSLSimAnFunc` (`simanTSP`) — GSL's simulated annealing, subclassed by the test
++  (`class MySimAnFunc : public GSLSimAnFunc`), so it needs a real virtual interface, and
++  GSL's annealing schedule to match `.ref` numbers.
++
++## 4. Three `std` algorithms the emitter does not know — 3 tests
++
++`std::generate` (`stressTMath:37`), `std::shuffle` with `std::default_random_engine{}`
++(`testSampleQuantiles:42`), `std::next_permutation` (`testPermute:67`). The refusal
++("ROOT has std.generate") is not a missing name in a Python `std` namespace — algorithms
++are emitted by `pycxx` — it is the emitter not recognising the call, so it falls through to
++an attribute lookup. `stressTMath` needs bucket 1's pointer range as well.
++
++## 5. The k-d tree family — 3 tests
++
++`testkdTreeBinning` (`TKDTreeBinning(DATASZ, DATADIM, smp, NBINS)`), `newKDTreeTest`
++(`ROOT::Math::KDTree<TDataPoint<DIM>>`, built over a `std::vector<const DP*>` — the
++`std` stand-in refuses the pointer-to-template type), and `kDTreeTest`, whose **first line
++in the way** is
++
++```c++
++ProcInfo_t procInfo;  gSystem->GetProcInfo(&procInfo);  return procInfo.fMemVirtual;
++```
++
++`ProcInfo_t` is five fields (`fCpuUser`, `fCpuSys`, `fMemResident`, `fMemVirtual`, …) and
++`TSystem::GetProcInfo` is a `getrusage`; that unblocks the test only up to its tree.
++`tests/refmachine.py`-style exactness is not at stake (those are machine numbers), so a
++`resource.getrusage` fill is honest.
++
++## 6/7. Minuit2 — 2 refusals, 1 timeout
++
++`ROOT::Minuit2::Minuit2Minimizer` is the only name missing from an otherwise complete
++`Minuit2` namespace (`pyroot/minuit2.py`), and `ROOT::Math::Minimizer` already exists in
++`mathtools.py:467` with `SetMaxFunctionCalls`, `SetTolerance`, `Minimize`, `Minos`,
++`SetVariable`, … So `Minuit2Minimizer` is a subclass whose constructor maps
++`kMigrad/kSimplex/kCombined/kScan` onto the algorithm names `Minimizer` already takes.
++Two tests (`demoMinimizer`, `testADMinim`) stop on the constructor; both then run the
++Rosenbrock/AD minimisations through the core, which is iminuit-backed.
++
++## 8–12. `ROOT::Math` names with no class behind them — 5 tests
++
++In cost order: `Derivator` (the Richardson helpers in `function/numeric.py` are ROOT's own
++algorithm), `ChebyshevApprox`, `WrappedParamFunction` (2 tests for ~15 lines — the best
++ratio here), `Interpolator` (GSL kinds), `GoFTest` (must match ROOT's own approximations).
++
++`IParametricFunctionMultiDimTempl<T>` is in this list only because that is where the name is
++looked up; it is not a missing name, see below.
++
++## 13–18. Plain missing classes and methods — 6 tests
++
++`TStatistic`, `Fitter::LikelihoodFit`, `RootFinder::Name`, `MnUserCovariance::operator()=`,
++`TMatrixT::Randomize`, `std::cout.width()`. Each is small and each is in a file this worker
++does not own (`stats.py`, `mathtools.py`, `minuit2.py`, `linalg/matrices.py`,
++`cppstd/streams.py`).
++
++`std::cout.width()` is a one-attribute bug with a clear shape: `cppstd/streams.py:123` sets
++`self.width = 0` as state while `precision()` (`:193`) is a method, so `cout.width(12)` calls
++an `int`. Making `width` a method like `precision` — and keeping the state under another
++name — is the whole fix.
++
++## 19–22. Translator one-offs — 4 tests
++
++`std::max_element(...)->name`, the `(*a[N])[M]` declarator, `WrappedMemFunction`'s
++pointer-to-member template argument, and the runaway `testBinarySearch` instantiation.
++Each blocks exactly one test and each is in `pycxx`/`pycint`; the `max_element` one is the
++smallest (the `*std::max_element` emission and the `EXTREMES` table are already there).
++
++## What I found but did not fix
++
++I added **no** name to `rmath.py`. The two candidates I checked honestly are not one-liners:
++
++* `IParametricFunctionMultiDimTempl<T>` would have to be an alias of `IParamMultiFunction`,
++  but the test declares it as a *template base* —
++  `template<class T> class Func : public ROOT::Math::IParametricFunctionMultiDimTempl<T>`
++  (`testLogLExecPolicy.cxx:23-24`) — so an alias would only move the refusal from the name
++  lookup to the instantiation, and I would be claiming a fix I have not measured. It also
++  then needs `ROOT::Fit::Fitter` to run the same fit under two execution policies.
++* `RootFinder::Name()` is two names (`Name` and `Iterations`) over a seven-way kind table,
++  and lives in `mathtools.py:165`, not `rmath.py`.
++
++Also worth queueing from the reading:
++
++* `mathcore-testSpecFuncBetaI` **passes** while `mathcore-testSpecFuncBeta` fails — the
++  difference is only the `drawPoints(&x[0], &yb[0], …)` call, so bucket 1 probably turns a
++  refusal into a PASS-and-a-DIFF-check in one step. Worth rerunning those two together.
++* `stressTF1` ran **27.4 s** before its refusal at `cout.width(12)`. Fixing the stream
++  formatting opens the rest of a 27-second test on a loaded machine — check its runtime
++  against the 300 s timeout before counting it a win.
++* `testBinnedFitExecPolicy` needs `std::max_element(...)->name` and then runs a binned fit
++  under several execution policies; `Minimizer` has no `SetExecutionPolicy` here, so
++  expect a second refusal behind the first.
++* Bucket 1 is where the leverage is: **10 of 43** tests, one emitter change, and the same
++  change almost certainly covers roottest and `math/*` elsewhere — the survey
++  (`tools/cint_survey.py --top 20`) should be asked how often `&v[0]`/`&v.front()` appears
++  before the fix is scoped.
+-- 
+2.54.0 (Apple Git-157)
+

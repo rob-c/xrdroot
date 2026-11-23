@@ -1,0 +1,307 @@
+From 1d00c3edb864a4dceb0a013a215281a2d902cbfc Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 05:04:22 +0000
+Subject: [PATCH 1/3] feat: a clone carries the ProcessID record a TRef in it
+ names
+
+A `CloneTree` copies a split collection's rows as the source file wrote them,
+so a whole `TRef` member arrives as the file's own description of a record
+whose `fPID` is an index among *that* file's `ProcessID` records. The file
+the clone went into had none, so a reference read back out of the clone found
+neither the object it names nor a process to look it up in and gave nothing:
+roottest/root/io/tree/test-rc printed (!NULL!) where ROOT prints N_0_8.
+
+`ClonedSlot` now hands those rows to the writer's own record of a `TRef`
+(which streams them, as a filled clone's are streamed) and gives the file
+being written a `ProcessID` record for each process they name - the UUID read
+from the source file's own record, through `TFile::WriteProcessID` - writing
+back the index that file gave it. roottest's create-rc file now holds
+`ProcessID0` as ROOT's does, and test-rc's 180 reference lines match the .ref.
+The rest of those tests' output is Show's text, which another commit owns.
+---
+ src/xrdroot/pyroot/core/files.py    |  9 +++-
+ src/xrdroot/pyroot/trees/copying.py | 16 +++++-
+ src/xrdroot/pyroot/trees/objects.py | 73 ++++++++++++++++++++++++--
+ tests/test_pyroot_clones_split.py   | 79 +++++++++++++++++++++++++++++
+ 4 files changed, 169 insertions(+), 8 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/files.py b/src/xrdroot/pyroot/core/files.py
+index 129d96ab..dff7f1a9 100644
+--- a/src/xrdroot/pyroot/core/files.py
++++ b/src/xrdroot/pyroot/core/files.py
+@@ -793,14 +793,19 @@ class TFile(TDirectoryFile):
+ 
+     def WriteProcessID(self, pid: Any) -> int:
+         """``WriteProcessID``: the file's index for the process ``pid`` - its ``ProcessID``
+-        record written now if the file has none - or -1 for a file not being written."""
++        record written now if the file has none - or -1 for a file not being written.
++
++        ``pid`` is the process itself, or the UUID another file titled its record with: a
++        clone copies references whose process the new file has only ever seen from that
++        side, and what it has to write is the record the reference was numbered against.
++        """
+         writer = self._writable()
+         if writer is None:
+             return -1
+         from .references import TProcessID
+ 
+         held = pid if pid is not None else TProcessID.GetPID()
+-        return int(writer.process_index(held.GetTitle()))
++        return int(writer.process_index(held if isinstance(held, str) else held.GetTitle()))
+ 
+     def ReadProcessID(self, index: int) -> Any:
+         """``ReadProcessID``: the process the file's ``ProcessID{index}`` names, as the session
+diff --git a/src/xrdroot/pyroot/trees/copying.py b/src/xrdroot/pyroot/trees/copying.py
+index 875fb91b..72c2dd81 100644
+--- a/src/xrdroot/pyroot/trees/copying.py
++++ b/src/xrdroot/pyroot/trees/copying.py
+@@ -375,6 +375,19 @@ def _members(top: str, element: str, leaves: dict[str, Any]) -> list[Any]:
+     return [leaves[name] for name in names]
+ 
+ 
++def _directory(backing: Any) -> Any:
++    """The open file a clone's rows were read out of, or ``None`` for one read from memory.
++
++    A ``TRef`` among those rows is the record its source file wrote, and a record names its
++    process only by the index of a ``ProcessID`` record in that file; a tree keeps the bytes
++    it read through rather than the file, so the session's own list of open files has both.
++    """
++    from ...session import gROOT
++
++    source = getattr(backing, "_source", None)
++    return next((file for file in gROOT.files if file._source is source), None)
++
++
+ def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[str]]:
+     """A slot for each leaf the clone fills, and the split collections' top branches.
+ 
+@@ -384,6 +397,7 @@ def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[s
+     together - is the only one of the two that is read.
+     """
+     elements = {leaf.column: _element(leaf, backing) for leaf in leaves}
++    source = _directory(backing)
+     by_column = {leaf.column: leaf for leaf in leaves}
+     slots: list[Any] = []
+     grouped: set[str] = set()
+@@ -399,7 +413,7 @@ def _slots(tree: Any, leaves: list[Any], backing: Any) -> tuple[list[Any], set[s
+         members = _members(leaf.column, element, by_column)
+         follows = [Follow(tree, one.column, one.vector, one.text) for one in members]
+         sources = [one.column for one in members]
+-        slots.append(ClonedSlot(leaf.column, element, split, sources, follows))
++        slots.append(ClonedSlot(leaf.column, element, split, sources, follows, source))
+         grouped.add(leaf.column)
+         inside |= {one.column for one in members}
+     return _count_slots(slots) + slots, grouped
+diff --git a/src/xrdroot/pyroot/trees/objects.py b/src/xrdroot/pyroot/trees/objects.py
+index acddbea6..1e3a2f95 100644
+--- a/src/xrdroot/pyroot/trees/objects.py
++++ b/src/xrdroot/pyroot/trees/objects.py
+@@ -269,9 +269,7 @@ class Clones(_Whole):
+     """A ``TClonesArray``, unsplit: its objects whole, or member by member when bypassing."""
+ 
+     def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
+-        return Whole(
+-            "TClonesArray", object=True, holds=(obj._class,), split=0, basket_size=bufsize
+-        )
++        return Whole("TClonesArray", object=True, holds=(obj._class,), split=0, basket_size=bufsize)
+ 
+     def entry(self, obj: Any) -> bytes:
+         getters = [_members_of(item) for item in obj]
+@@ -324,10 +322,20 @@ def _objects(member: Any, rows: list[Any]) -> bytes:
+             f"writer streams no {member.typename} into a tree entry yet; write that member "
+             f"as a number instead, or leave the branch out"
+         )
++    if rows and isinstance(rows[0], dict):  # a clone's rows: the source file described them
++        return b"".join(_described_record(ref) for ref in rows)
+     _named_processes(rows)
+     return b"".join(tref_record(ref) for ref in rows)
+ 
+ 
++def _described_record(ref: dict[str, Any]) -> bytes:
++    """A reference as the source file described it, written back as that same record: a clone
++    copies the entry's bytes, so nothing of it may change but the index of its process."""
++    from ...wbranch import _ref_record
++
++    return _ref_record(ref)
++
++
+ def _named_processes(rows: list[Any]) -> None:
+     """The file being written given a record for each process these references name.
+ 
+@@ -344,6 +352,50 @@ def _named_processes(rows: list[Any]) -> None:
+         file.WriteProcessID(getattr(ref, "_pid", None))
+ 
+ 
++def _carried_processes(
++    keys: list[str], members: list[Any], columns: dict[str, Any], source: Any
++) -> None:
++    """The file being written given a record for each process a copied reference names, and
++    each reference's own record naming the index that file gave it.
++
++    A clone copies a ``TRef``'s bytes as its source file wrote them, so the ``fPID`` in one
++    is the index of a ``ProcessID`` record of *that* file, which the new file need not have
++    at all - and then a reader finds neither the object a reference names nor the process to
++    look it up in, though the entry beside it holds the object (roottest/root/io/tree/test-rc).
++    The index is rewritten because a file numbers its ``ProcessID`` records as it writes them.
++    """
++    from ..core.directories import current_file
++
++    file = current_file()
++    for key, member in zip(keys, members, strict=True):
++        if member.stype == OBJECT_TYPE:
++            columns[key] = [
++                [_renumbered(ref, source, file) for ref in refs] for refs in columns[key]
++            ]
++
++
++def _renumbered(ref: dict[str, Any], source: Any, file: Any) -> dict[str, Any]:
++    """A reference read out of its file, naming the index the file being written gives the
++    process it named - the index it had when nothing here can say what that process was, or
++    when nothing is being written at all."""
++    uuid = _source_uuid(source, ref["fPID"])
++    index = -1 if uuid is None or file is None else int(file.WriteProcessID(uuid))
++    return ref if index < 0 else {**ref, "fPID": index}
++
++
++def _source_uuid(source: Any, index: int) -> str | None:
++    """The UUID the file a clone copies from titled its ``ProcessID{index}`` record with, or
++    ``None`` when nothing here knows the file, or it recorded no process at that index."""
++    if source is None:
++        return None
++    try:
++        members = source[f"ProcessID{int(index)}"]
++    except KeyError:  # a reference one file wrote to another's numbering that is not here
++        return None
++    named = members.get("TNamed", members)
++    return str(named.get("fTitle", ""))
++
++
+ def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:
+     """Rows of numbers, one per entry, as one column."""
+     return Jagged(np.asarray([value for row in rows for value in row], dtype=np.float64), offsets)
+@@ -632,7 +684,13 @@ class ClonedSlot:
+     code = ""
+ 
+     def __init__(
+-        self, name: str, element: str, split: int, sources: list[str], follows: list[Any]
++        self,
++        name: str,
++        element: str,
++        split: int,
++        sources: list[str],
++        follows: list[Any],
++        source: Any = None,
+     ) -> None:
+         self.name = self.branch = self.title = name
+         self._kind = SplitArray(element)
+@@ -640,6 +698,9 @@ class ClonedSlot:
+         #: What the tree this copies calls each member's column, in ROOT's order.
+         self.sources = sources
+         self._follows = follows
++        #: The directory of the file these rows were read from: what a ``TRef`` among them
++        #: names only by the index of a ``ProcessID`` record, which only that file holds.
++        self._source = source
+         #: The names the writer keeps the count and each member's rows under.
+         self.keys = column_keys(name, self._spec.build(name, 32000))
+         self.pending: list[Any] = []
+@@ -696,7 +757,9 @@ class ClonedSlot:
+         """How many objects each entry holds, and each member's rows, as ROOT writes them."""
+         self.seal()
+         rows = [row for chunk in self.chunks for row in chunk]
+-        return self._kind.columns(self.keys, rows)
++        columns = self._kind.columns(self.keys, rows)
++        _carried_processes(self.keys[1:], self._kind.members, columns, self._source)
++        return self._kind.written(self.keys, columns)
+ 
+     def spec(self) -> Spec:
+         return self._spec
+diff --git a/tests/test_pyroot_clones_split.py b/tests/test_pyroot_clones_split.py
+index 4d07ac7a..d4ed7dfa 100644
+--- a/tests/test_pyroot_clones_split.py
++++ b/tests/test_pyroot_clones_split.py
+@@ -498,3 +498,82 @@ def test_a_class_nobody_declared_is_made_by_the_part_of_the_kit_that_knows_it():
+     assert _member("TNamed", {"fName": "n", "fTitle": ""}) is None
+     assert _member("Nowhere", {"fName": "n"}) is None
+     assert _member("TNamed", ["n"]) is None  # not a row of members at all
++
++
++def _written_refs(path: str) -> None:
++    """A tree whose objects hold a whole ``TRef`` apiece, referring to a named object of a
++    collection beside them: ``roottest``'s ``create-r`` stage, which writes the file it reads."""
++    run_source(TREF_PID, "tref_test_pid.C", call=False)
++    made_class = find_class("tref_test_pid")
++    counted = ROOT.TProcessID.GetObjectCount()  # the numbers made here are this file's alone
++    out = ROOT.TFile(path, "RECREATE")
++    tree = ROOT.TTree("T", "T")
++    names = ROOT.TClonesArray("TNamed")
++    tree.Branch("N", names)
++    refs = ROOT.TClonesArray("tref_test_pid")
++    tree.Branch("r1", refs)
++    for at in range(2):
++        names.Clear()
++        picked = ROOT.TNamed(f"N_{at}", f"N_{at}")
++        names.AddAt(picked, 0)
++        refs.Clear()
++        made = made_class()
++        made.SetName(f"r1_N_{at}")
++        made.fRef = ROOT.TRef(picked)
++        refs.AddAt(made, 0)
++        tree.Fill()
++    tree.Write()
++    out.Close()
++    ROOT.TProcessID.SetObjectCount(counted)
++
++
++def test_a_clone_of_a_reference_carries_the_process_record_its_file_knew(tmp_path):
++    """A clone copies a ``TRef``'s record as its source file wrote it, so its ``fPID`` names an
++    index among *that* file's ``ProcessID`` records - which the file the clone goes into has
++    never seen. ROOT writes those records into the clone as it copies the entries, and a
++    reader of the clone finds both the object a reference names and the process to look it
++    up in; without them a reference reads back as nothing at all
++    (roottest/root/io/tree/test-rc).
++    """
++    path = str(tmp_path / "refs.root")
++    _written_refs(path)
++    with xrdroot.open_root(path) as before:
++        recorded = before["ProcessID0"]["TNamed"]["fTitle"]
++    source = ROOT.TFile(path)
++    upstream = source.Get("T")
++    clone = upstream.CloneTree()
++    made = str(tmp_path / "clone.root")
++    out = ROOT.TFile(made, "RECREATE")  # the source file stays open while the clone is written
++    clone.SetDirectory(out)
++    clone.Write()
++    out.Close()
++    source.Close()
++    with xrdroot.open_root(made) as after:
++        assert after.keys() == ["ProcessID0", "T"]
++        assert after["ProcessID0"]["TNamed"]["fTitle"] == recorded
++    back = ROOT.TFile(made)
++    read = back.Get("T")
++    held = ROOT.TClonesArray(read.GetBranch("r1").GetClonesName())
++    read.SetBranchAddress("r1", held)
++    read.GetEntry(0)
++    assert held[0].fRef.GetObject().GetName() == "N_0"
++    back.Close()
++
++
++def test_a_clone_with_no_file_to_say_which_process_keeps_the_index_it_read():
++    """A tree read of no file at all - one a clone copied from memory - has no ``ProcessID``
++    record to carry, so a reference keeps the index its own record has. Every other index
++    written here would name a process nothing could look up.
++    """
++    member = CloneMember("tref_test_pid", 0, "fRef", 61, "a reference")
++    described = {"TObject": {"fUniqueID": 3, "fBits": 0}, "fPID": 0}
++    columns = {"r1.fRef": [[described]]}
++    objects._carried_processes(["r1.fRef"], [member], columns, None)
++    # nor has a file nothing is being written to: the index is left as it was read, whatever
++    # process the source files named
++    objects._carried_processes(
++        ["r1.fRef"], [member], columns, {"ProcessID0": {"TNamed": {"fTitle": "a-uuid"}}}
++    )
++    assert columns["r1.fRef"] == [[described]]
++    assert objects._source_uuid({"ProcessID1": {}}, 0) is None  # a file that recorded no process
++    assert objects._source_uuid({"ProcessID0": {"TNamed": {"fTitle": "a-uuid"}}}, 0) == "a-uuid"
+-- 
+2.54.0 (Apple Git-157)
+

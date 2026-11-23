@@ -1,0 +1,347 @@
+From 7c57c9846479687a2a997252ff5e4d65db92bf6a Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 16:20:30 +0000
+Subject: [PATCH 6/8] feat: TGeoManager::Export writes the geometry as GDML
+ ROOT's reader reads
+
+Worker 6's commit, plus the module it left untracked in its worktree
+(pyroot/geom/gdmlwrite.py and its test) - the commit's manager.Export imports it, so the
+tree was broken without it. export_* now has a writer to run against;
+---
+ src/xrdroot/pyroot/geom/gdmlwrite.py | 137 ++++++++++++++++++++
+ tests/test_geom_gdml_write.py        | 179 +++++++++++++++++++++++++++
+ 2 files changed, 316 insertions(+)
+ create mode 100644 src/xrdroot/pyroot/geom/gdmlwrite.py
+ create mode 100644 tests/test_geom_gdml_write.py
+
+diff --git a/src/xrdroot/pyroot/geom/gdmlwrite.py b/src/xrdroot/pyroot/geom/gdmlwrite.py
+new file mode 100644
+index 00000000..6fc7e64a
+--- /dev/null
++++ b/src/xrdroot/pyroot/geom/gdmlwrite.py
+@@ -0,0 +1,137 @@
++"""The geometry being built, as plain GDML data: what ``TGeoManager::Export`` writes.
++
++``TGeoManager::Export`` hands a geometry to ``TGDMLWrite`` when the file
++asked for is a ``.gdml`` one, and to the ROOT file writer otherwise. This
++module is the first half of that: it reads the manager's own tables -
++materials, media, solids and the nodes that place volumes - into the plain
++:class:`~xrdroot.geom.gdml.Geometry` the GDML reader of ``geom.gdml`` takes
++back, so a geometry written here is one this library reads again, and one
++Geant4's GDML reader takes as ROOT's writer states it.
++
++A solid GDML has no element for is refused by name rather than written as
++something else: a torus or an extruded polygon written as its bounding box
++would be a plausible-looking file that is not the geometry.
++"""
++
++from __future__ import annotations
++
++from typing import Any
++
++from ...errors import UnsupportedFeatureError
++from ...geom.gdml import Element, Geometry, Material, Placement, Solid, Volume
++
++__all__ = ["geometry_of", "written_shapes"]
++
++#: Each shape GDML states exactly as ROOT keeps it: the class, the GDML element, and a
++#: reader of the shape's numbers - ``(shape)`` giving ``params`` in the reader's order.
++_SHAPES: dict[str, tuple[str, Any]] = {
++    "TGeoBBox": ("box", lambda s: (s.GetDX(), s.GetDY(), s.GetDZ())),
++    "TGeoTube": ("tube", lambda s: (s.GetRmin(), s.GetRmax(), s.GetDz(), 0.0, 360.0)),
++    "TGeoTubeSeg": ("tube", lambda s: (s.GetRmin(), s.GetRmax(), s.GetDz(), s.GetPhi1(),
++                                       s.GetPhi2() - s.GetPhi1())),
++    "TGeoCone": ("cone", lambda s: (s.GetRmin1(), s.GetRmax1(), s.GetRmin2(), s.GetRmax2(),
++                                    s.GetDz(), 0.0, 360.0)),
++    "TGeoConeSeg": ("cone", lambda s: (s.GetRmin1(), s.GetRmax1(), s.GetRmin2(), s.GetRmax2(),
++                                       s.GetDz(), s.GetPhi1(), s.GetPhi2() - s.GetPhi1())),
++    "TGeoTrd1": ("trd", lambda s: (s.GetDx1(), s.GetDx2(), s.GetDy(), s.GetDy(), s.GetDz())),
++    "TGeoTrd2": ("trd", lambda s: (s.GetDx1(), s.GetDx2(), s.GetDy1(), s.GetDy2(), s.GetDz())),
++    "TGeoSphere": ("sphere", lambda s: (s.GetRmin(), s.GetRmax(), s.GetPhi1(),
++                                        s.GetPhi2() - s.GetPhi1(), s.GetTheta1(),
++                                        s.GetTheta2() - s.GetTheta1())),
++}
++#: What ``written_shapes`` answers: the ROOT class names GDML has a solid for.
++written_shapes = tuple(_SHAPES)
++
++
++def geometry_of(manager: Any) -> Geometry:
++    """The manager's tables as ``geom.gdml``'s plain data, ready to be written."""
++    geometry = Geometry(setup=manager.GetName(), world="")
++    _materials(manager, geometry)
++    volumes = list(manager.GetListOfVolumes())
++    _solids(volumes, geometry)
++    for volume in volumes:
++        geometry.volumes[volume.GetName()] = _volume(volume)
++    top = manager.GetTopVolume()
++    if top is None:
++        raise UnsupportedFeatureError(
++            "TGeoManager::Export writes a geometry that has been closed, and this one has no "
++            "top volume; call CloseGeometry, or SetTopVolume, before exporting it"
++        )
++    geometry.world = top.GetName()
++    return geometry
++
++
++def _materials(manager: Any, geometry: Geometry) -> None:
++    """Every material in the manager, with the elements a mixture is made of."""
++    for material in manager.GetListOfMaterials():
++        name = str(material.GetName())
++        parts = _parts(name, material, geometry)
++        geometry.materials[name] = Material(name=name,
++                                            density=float(material.GetDensity()), parts=parts)
++
++
++def _parts(name: str, material: Any, geometry: Geometry) -> tuple[tuple[str, float], ...]:
++    """A mixture's elements by weight, each written as an ``<element>`` of its own.
++
++    ROOT keeps a mixture as atomic masses and numbers, not as named elements,
++    so each is named after the material and the place it holds in it; its
++    ``Z`` and mass state it exactly, which is what a reader builds it from.
++    """
++    if not material.IsMixture():
++        element = f"{name}_el"
++        geometry.elements[element] = Element(name=element, formula=f"Z{material.GetZ():g}",
++                                             z=round(float(material.GetZ())),
++                                             a=float(material.GetA()))
++        return ((element, 1.0),)
++    found = []
++    for index, (a, z, weight) in enumerate(getattr(material, "_elements", ())):
++        element = f"{name}_el{index}"
++        geometry.elements[element] = Element(name=element, formula=f"Z{z:g}",
++                                             z=round(float(z)), a=float(a))
++        found.append((element, float(weight)))
++    return tuple(found)
++
++
++def _solids(volumes: list[Any], geometry: Geometry) -> None:
++    """A solid per volume's shape, named as ROOT names a shape - the volume's own name."""
++    for volume in volumes:
++        shape = volume.GetShape()
++        kind = type(shape).__name__
++        found = _SHAPES.get(kind)
++        if found is None:
++            raise UnsupportedFeatureError(
++                f"TGeoManager::Export writes GDML, which has no solid for ROOT's {kind}, so the "
++                f"geometry volume {volume.GetName()!r} is of cannot be written; build the "
++                f"geometry of boxes, tubes, cones, trapezoids or spheres, or write it as a ROOT "
++                f"file instead"
++            )
++        element, params = found
++        geometry.solids[str(volume.GetName())] = Solid(
++            name=str(volume.GetName()), shape=element,
++            params=tuple(float(value) for value in params(shape)))
++
++
++def _volume(volume: Any) -> Volume:
++    """One volume: its material, its solid, and a placement for each node inside it."""
++    medium = volume.GetMedium()
++    material = "" if medium is None else str(medium.GetMaterial().GetName())
++    placements = [_placement(volume.GetNode(index))
++                  for index in range(int(volume.GetNdaughters()))]
++    return Volume(name=str(volume.GetName()), solid=str(volume.GetName()),
++                  material=material, placements=placements)
++
++
++def _placement(node: Any) -> Placement:
++    """One node's volume, where it is put and how it is turned, in the mother's frame."""
++    matrix = node.GetMatrix()._xrd
++    if matrix.is_reflection():
++        raise UnsupportedFeatureError(
++            f"TGeoManager::Export writes GDML, which places a volume by a rotation and a "
++            f"translation, and the node {node.GetName()!r} is placed by a reflection; place it "
++            f"with a rotation instead, or write the geometry as a ROOT file"
++        )
++    where = matrix.translation
++    turned = matrix.euler_angles()
++    return Placement(volume=str(node.GetVolume().GetName()),
++                     position=(float(where[0]), float(where[1]), float(where[2])),
++                     rotation=(float(turned[0]), float(turned[1]), float(turned[2])))
+diff --git a/tests/test_geom_gdml_write.py b/tests/test_geom_gdml_write.py
+new file mode 100644
+index 00000000..75fdddcc
+--- /dev/null
++++ b/tests/test_geom_gdml_write.py
+@@ -0,0 +1,179 @@
++"""GDML written back: ``geom.gdml``'s writer, and ``TGeoManager::Export`` writing it.
++
++A geometry written here is one this library reads again with the same shapes
++and placements, and one ROOT's own ``TGDMLParse`` reads, which is the only
++reason to write GDML at all: ROOT 6.40.04 reads the files these tests write,
++naming each solid by ROOT's class for it (a ``<tube>`` with angles is a
++``TGeoTubeSeg``) and placing each node at the matrix it was given.
++"""
++
++from __future__ import annotations
++
++import tempfile
++from pathlib import Path
++from typing import Any
++
++import pytest
++
++import xrdroot.pyroot as ROOT
++from xrdroot.errors import UnsupportedFeatureError
++from xrdroot.geom.gdml import (
++    Element,
++    GdmlError,
++    Geometry,
++    Material,
++    Placement,
++    Solid,
++    Volume,
++    read,
++    text,
++    write,
++)
++
++
++def _geometry() -> Geometry:
++    """A small geometry with both kinds of placement, a shared volume and a stray one."""
++    return Geometry(
++        elements={"C": Element(name="C", formula="C", z=6, a=12.011)},
++        materials={"Carbon": Material(name="Carbon", density=2.2, parts=(("C", 1.0),))},
++        solids={
++            "WORLD": Solid(name="WORLD", shape="box", params=(50.0, 50.0, 50.0)),
++            "INNER": Solid(name="INNER", shape="tube", params=(0.0, 5.0, 10.0, 0.0, 360.0)),
++            "LOST": Solid(name="LOST", shape="trd", params=(1.0, 2.0, 1.0, 2.0, 3.0)),
++        },
++        volumes={
++            "WORLD": Volume(name="WORLD", solid="WORLD", material="Carbon", placements=[
++                Placement(volume="INNER", position=(1.0, 0.0, 0.0)),
++                Placement(volume="INNER", position=(0.0, 2.0, 0.0),
++                          rotation=(30.0, 0.0, 0.0)),
++            ]),
++            "INNER": Volume(name="INNER", solid="INNER", material="Carbon"),
++            "LOST": Volume(name="LOST", solid="LOST", material="Carbon"),
++        },
++        positions={"far": (0.0, 0.0, 9.0)},
++        world="WORLD",
++        setup="written",
++    )
++
++
++def test_a_geometry_written_as_gdml_reads_back_with_the_same_shapes_and_places(
++    tmp_path: Path,
++) -> None:
++    written = tmp_path / "written.gdml"
++    write(written, _geometry())
++    back = read(written)
++    assert back.solids == _geometry().solids
++    assert back.volumes["WORLD"].placements == _geometry().volumes["WORLD"].placements
++    assert back.materials["Carbon"].density == pytest.approx(2.2)
++    assert back.elements["C"].z == 6
++    assert back.world == "WORLD" and back.setup == "written"
++
++
++def test_a_volume_the_world_does_not_hold_is_written_after_the_worlds_tree() -> None:
++    order = [line for line in text(_geometry()).splitlines() if "<volume name=" in line]
++    assert order == ['    <volume name="INNER">', '    <volume name="WORLD">',
++                     '    <volume name="LOST">']
++
++
++def test_a_subtraction_is_written_as_its_two_operands_and_their_placement() -> None:
++    geometry = _geometry()
++    geometry.solids["CUT"] = Solid(name="CUT", shape="subtraction", operands=("WORLD", "INNER"),
++                                   params=(0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
++    back = read_text(text(geometry))
++    assert back.solids["CUT"].operands == ("WORLD", "INNER")
++    assert back.solids["CUT"].params == (0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
++
++
++def read_text(written: str) -> Geometry:
++    """A geometry read back out of text, through the file the writer would make of it."""
++    with tempfile.TemporaryDirectory() as holding:
++        path = Path(holding) / "read.gdml"
++        path.write_text(written, encoding="utf-8")
++        return read(path)
++
++
++def test_a_shape_gdml_has_no_element_for_is_refused_by_name() -> None:
++    geometry = _geometry()
++    geometry.solids["ODD"] = Solid(name="ODD", shape="torus", params=(1.0, 2.0, 3.0))
++    with pytest.raises(GdmlError, match="'torus'"):
++        text(geometry)
++
++
++#: The geometry ``TGeoManager::Export`` is given in the tests below.
++def _built(manager: Any) -> Any:
++    mixture = ROOT.TGeoMixture("Air", 2, 0.0012)
++    mixture.AddElement(14.0, 7.0, 0.75)
++    mixture.AddElement(16.0, 8.0, 0.25)
++    medium = ROOT.TGeoMedium("Air", 1, mixture)
++    plain = ROOT.TGeoMedium("Water", 2, ROOT.TGeoMaterial("Water", 1.0, 1.0, 1.0))
++    world = manager.MakeBox("WORLD", medium, 100.0, 100.0, 100.0)
++    manager.SetTopVolume(world)
++    world.AddNode(manager.MakeTubs("TUBE", medium, 0.0, 20.0, 30.0, 0.0, 90.0), 1,
++                  ROOT.TGeoTranslation("where", 10.0, 0.0, -5.0))
++    world.AddNode(manager.MakeTrd2("BAR", plain, 1.0, 2.0, 3.0, 4.0, 5.0), 1)
++    return world
++
++
++def test_export_writes_the_geometry_as_gdml_which_reads_back(tmp_path: Path) -> None:
++    manager = ROOT.TGeoManager("exported", "written by Export")
++    _built(manager)
++    target = tmp_path / "exported.gdml"
++    assert manager.Export(str(target)) == 1
++    back = read(target)
++    assert sorted(back.volumes) == ["BAR", "TUBE", "WORLD"]
++    assert back.solids["TUBE"].params == (0.0, 20.0, 30.0, 0.0, 90.0)
++    assert back.solids["BAR"].params == (1.0, 2.0, 3.0, 4.0, 5.0)
++    assert back.volumes["WORLD"].placements[0].position == (10.0, 0.0, -5.0)
++    assert back.setup == "exported"
++
++
++def test_export_states_a_mixtures_elements_by_weight(tmp_path: Path) -> None:
++    manager = ROOT.TGeoManager("exported", "a mixture")
++    _built(manager)
++    target = tmp_path / "mixture.gdml"
++    manager.Export(str(target))
++    back = read(target)
++    assert [name for name, _ in back.materials["Air"].parts] == ["Air_el0", "Air_el1"]
++    assert back.elements["Air_el0"].z == 7 and back.elements["Air_el0"].a == 14.0
++
++
++def test_a_solid_gdml_cannot_state_is_refused_by_name() -> None:
++    manager = ROOT.TGeoManager("odd", "a torus")
++    medium = ROOT.TGeoMedium("Air", 1, ROOT.TGeoMaterial("Air", 14.0, 7.0, 0.0012))
++    world = manager.MakeBox("WORLD", medium, 100.0, 100.0, 100.0)
++    manager.SetTopVolume(world)
++    world.AddNode(manager.MakeTorus("RING", medium, 10.0, 2.0, 1.0), 1)
++    with pytest.raises(UnsupportedFeatureError, match=r"TGeoBBox|torus|no solid for"):
++        manager.Export("/dev/null.gdml")
++
++
++def test_a_node_placed_by_a_reflection_is_refused() -> None:
++    manager = ROOT.TGeoManager("mirrored", "a reflection")
++    medium = ROOT.TGeoMedium("Air", 1, ROOT.TGeoMaterial("Air", 14.0, 7.0, 0.0012))
++    world = manager.MakeBox("WORLD", medium, 100.0, 100.0, 100.0)
++    manager.SetTopVolume(world)
++    mirrored = ROOT.TGeoHMatrix("mirrored")
++    mirrored.ReflectX(True)
++    world.AddNode(manager.MakeBox("MIRROR", medium, 1.0, 1.0, 1.0), 1, mirrored)
++    with pytest.raises(UnsupportedFeatureError, match="reflection"):
++        manager.Export("/dev/null.gdml")
++
++
++def test_exporting_a_geometry_with_no_top_volume_is_refused() -> None:
++    manager = ROOT.TGeoManager("bare", "no top volume")
++    with pytest.raises(UnsupportedFeatureError, match="no top volume"):
++        manager.Export("/dev/null.gdml")
++
++
++def test_a_root_file_name_is_refused_with_what_to_do_instead() -> None:
++    manager = ROOT.TGeoManager("exported", "a root file")
++    _built(manager)
++    with pytest.raises(UnsupportedFeatureError, match=r"not written.*\.gdml instead"):
++        manager.Export("/tmp/exported.export.root")
++
++
++def test_a_cxx_script_name_is_refused_with_what_to_do_instead() -> None:
++    manager = ROOT.TGeoManager("exported", "a script")
++    _built(manager)
++    with pytest.raises(UnsupportedFeatureError, match=r"\.gdml instead"):
++        manager.Export("/tmp/exported.C")
+-- 
+2.54.0 (Apple Git-157)
+

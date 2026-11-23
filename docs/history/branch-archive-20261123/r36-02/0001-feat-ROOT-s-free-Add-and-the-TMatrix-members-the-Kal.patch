@@ -1,0 +1,272 @@
+From 31a2891ae0d8aed364edfe600a01e2572d1d8707 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 13:34:04 +0000
+Subject: [PATCH 1/2] feat: ROOT's free Add and the TMatrix members the Kalman
+ benchmark writes, and SMatrix under ROOT::Math
+
+---
+ src/xrdroot/pyroot/core/rmath.py      |  3 ++
+ src/xrdroot/pyroot/linalg/__init__.py |  3 +-
+ src/xrdroot/pyroot/linalg/matrices.py | 74 ++++++++++++++++++++++++++-
+ tests/test_pyroot_linalg.py           | 74 +++++++++++++++++++++++++++
+ tests/test_pyroot_linalg_smatrix.py   | 12 +++++
+ 5 files changed, 164 insertions(+), 2 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/rmath.py b/src/xrdroot/pyroot/core/rmath.py
+index 793a27d2..52939366 100644
+--- a/src/xrdroot/pyroot/core/rmath.py
++++ b/src/xrdroot/pyroot/core/rmath.py
+@@ -17,6 +17,8 @@ import numpy as np
+ from ...fit.defaults import DEFAULTS, minimizer_algo, minimizer_type, set_minimizer
+ from ...function.rootmath import *  # noqa: F403 - scalar ROOT::Math compatibility exports
+ from ...function.rootmath import __all__ as _scalars
++from ..linalg.smatrix import *  # noqa: F403 - ROOT::Math's SVector and SMatrix, and theirs
++from ..linalg.smatrix import __all__ as _tensors
+ from .fitdata import WrappedMultiTF1  # noqa: F401 - ROOT::Math's, by name
+ from .genvector import *  # noqa: F403
+ from .genvector import __all__ as _vectors
+@@ -690,6 +692,7 @@ __all__ = sorted(
+     [name for name, value in list(globals().items()) if _exported(name, value)]
+     + list(_scalars)
+     + list(_vectors)
++    + list(_tensors)
+     + [
+         "Factory",
+         "Minimizer",
+diff --git a/src/xrdroot/pyroot/linalg/__init__.py b/src/xrdroot/pyroot/linalg/__init__.py
+index 4362e47a..15e5ab5e 100644
+--- a/src/xrdroot/pyroot/linalg/__init__.py
++++ b/src/xrdroot/pyroot/linalg/__init__.py
+@@ -18,6 +18,7 @@ import numpy as np
+ from ..core.messages import message
+ from .decompositions import NormalEqn, TDecompBK, TDecompChol, TDecompLU, TDecompQRH, TDecompSVD
+ from .matrices import (
++    Add,
+     THilbertMatrixD,
+     THilbertMatrixDSym,
+     THilbertMatrixF,
+@@ -68,7 +69,7 @@ __all__ = [
+     "TMatrixDDiag", "TMatrixFRow", "TMatrixFColumn", "TMatrixFDiag", "TMatrixDRow_const",
+     "TMatrixDColumn_const", "TMatrixDDiag_const", "TMatrixTRow", "TMatrixTColumn",
+     "TMatrixTDiag", "TDecompLU", "TDecompChol", "TDecompBK", "TDecompSVD", "TDecompQRH",
+-    "NormalEqn", "VerifyVectorIdentity", "VerifyMatrixIdentity",
++    "NormalEqn", "VerifyVectorIdentity", "VerifyMatrixIdentity", "Add",
+     "SVector", "SMatrix", "MatRepStd", "MatRepSym", "AssignSym", "Dot", "Transpose", "Similarity",
+     "SMatrixIdentity",
+     "SimilarityT", "Mag", "Mag2", "Cross", "Unit", "Square", "Times",
+diff --git a/src/xrdroot/pyroot/linalg/matrices.py b/src/xrdroot/pyroot/linalg/matrices.py
+index 73dd3019..d0d0fda1 100644
+--- a/src/xrdroot/pyroot/linalg/matrices.py
++++ b/src/xrdroot/pyroot/linalg/matrices.py
+@@ -214,7 +214,11 @@ class TMatrixT(TObject):
+     # -- in place, giving itself back -------------------------------------------------------
+ 
+     def _became(self, values: Any) -> TMatrixT:
+-        self.values = np.array(values, dtype=np.float64)
++        made = np.array(values, dtype=np.float64)
++        if made.shape == self.values.shape:
++            self.values[...] = made  # ROOT writes into the matrix's own storage, never beside it
++        else:
++            self.values = made
+         return self
+ 
+     def Invert(self, det: Any = None) -> TMatrixT:
+@@ -247,6 +251,36 @@ class TMatrixT(TObject):
+     def UnitMatrix(self) -> TMatrixT:
+         return self._became(np.eye(*self.values.shape))
+ 
++    def Mult(self, one: Any, other: Any) -> TMatrixT:
++        """``Mult(a, b)``: this the product ``a * b``, in the space the matrix already has."""
++        return self._became(values_of(one) @ values_of(other))
++
++    def MultT(self, one: Any, other: Any) -> TMatrixT:
++        """``MultT(a, b)``: this ``a * b^T``, the product a Kalman gain is updated by."""
++        return self._became(values_of(one) @ values_of(other).T)
++
++    def TMult(self, one: Any, other: Any) -> TMatrixT:
++        """``TMult(a, b)``: this ``a^T * b``."""
++        return self._became(values_of(one).T @ values_of(other))
++
++    def Plus(self, one: Any, other: Any) -> TMatrixT:
++        """``Plus(a, b)``: this the sum, without the temporary ``a + b`` makes."""
++        return self._became(values_of(one) + values_of(other))
++
++    def Minus(self, one: Any, other: Any) -> TMatrixT:
++        """``Minus(a, b)``: this the difference, without the temporary ``a - b`` makes."""
++        return self._became(values_of(one) - values_of(other))
++
++    def Use(self, *args: Any) -> TMatrixT:
++        """``Use(nrows, data)`` and ``Use(nrows, ncols, data)``: the matrix made of ``data``
++        itself, which it reads and writes, not a copy of it - how a macro lets a symmetric
++        matrix stand for the still-symmetric sum another matrix holds."""
++        data = np.asarray(args[-1], dtype=np.float64)
++        rows = int(args[0])
++        cols = rows if len(args) == 2 else int(args[1])
++        self.values, self.rowlwb, self.collwb = data[: rows * cols].reshape(rows, cols), 0, 0
++        return self
++
+     # -- what it is ---------------------------------------------------------------------------
+ 
+     def Determinant(self, d1: Any = None, d2: Any = None) -> float:
+@@ -337,6 +371,16 @@ class TMatrixTSym(TMatrixT):
+     SYMMETRIC = True
+     CPP = "TMatrixTSym<double>"
+ 
++    def Similarity(self, other: Any) -> Any:
++        """``Similarity(n)``: ``n * A * n^T`` in place - the covariance a Kalman step
++        propagates - or, given a vector, the scalar ``v^T A v`` ROOT's other overload
++        returns.
++        """
++        if np.ndim(other) == 1 and not isinstance(other, TMatrixT):
++            return float(values_of(other) @ self.values @ values_of(other))
++        made = values_of(other)
++        return self._became(made @ self.values @ made.T)
++
+ 
+ #: ``TMatrixD``, ``TMatrixF`` and their symmetric kinds: of doubles here, all four.
+ TMatrixD = TMatrixT
+@@ -366,3 +410,31 @@ class THilbertMatrixDSym(TMatrixTSym):
+ 
+     def __init__(self, n: Any) -> None:
+         super().__init__(_hilbert(int(n), int(n)))
++
++
++def _product_of(sources: tuple[Any, ...]) -> np.ndarray[Any, Any]:
++    """What a free ``Add`` adds before its scalar: a matrix times a vector, or one matrix."""
++    if len(sources) == 2:
++        return values_of(sources[0]) @ values_of(sources[1])
++    if len(sources) != 1:
++        raise TypeError(
++            f"Add takes one matrix to add or a matrix and a vector to multiply first, not "
++            f"{len(sources)}: write Add(target, scalar, source) or Add(target, scalar, a, b)"
++        )
++    return values_of(sources[0])
++
++
++def Add(target: Any, scalar: Any, *sources: Any) -> Any:
++    """``Add(target, scalar, source)`` and ``Add(target, scalar, a, b)``: ROOT's free ``Add``,
++    which a macro writes as one statement - ``Add(x, 1.0, K, tmp)`` is ``x += K * tmp`` - and
++    which the TMatrix benchmarks lean on because it makes no temporary.
++
++    The sum lands in the target's own elements, so its bounds and its kind survive it: a
++    ``TMatrixDSym`` stays symmetric, and an array a ``Use`` or a ``memcpy`` onto
++    ``GetMatrixArray()`` handed the object is written where the caller can see it.
++    """
++    amount = float(scalar) * _product_of(sources)
++    values = getattr(target, "values", None)
++    values = target.GetMatrixArray() if values is None else values  # a TVectorD has no values
++    values += amount.reshape(values.shape)
++    return target
+diff --git a/tests/test_pyroot_linalg.py b/tests/test_pyroot_linalg.py
+index 8cc3bf29..6d43ed96 100644
+--- a/tests/test_pyroot_linalg.py
++++ b/tests/test_pyroot_linalg.py
+@@ -106,3 +106,77 @@ def test_a_matrix_is_set_whole_printed_and_given_to_numpy(capsys) -> None:
+     a.Print("f=%5.1f ")
+     out = capsys.readouterr().out
+     assert "2x2 matrix is as follows" in out and "  5.0" in out
++
++
++def test_the_free_add_a_macro_writes_adds_a_scalar_times_a_product_into_its_target() -> None:
++    a = ROOT.TMatrixD(2, 2, [1.0, 2.0, 3.0, 4.0])
++    target = ROOT.TMatrixD(2, 2)
++    assert ROOT.Add(target, 2.0, a) is target
++    assert target == ROOT.TMatrixD(2, 2, [2.0, 4.0, 6.0, 8.0])
++    x, v = ROOT.TVectorD(2), ROOT.TVectorD(2)
++    x[0], x[1] = 1.0, 2.0
++    ROOT.Add(v, 1.0, a, x)  # a matrix times a vector, the product no temporary is made of
++    assert list(v) == [5.0, 11.0]
++    ROOT.Add(v, 1.0, x)
++    assert list(v) == [6.0, 13.0]
++
++
++def test_the_free_add_leaves_an_array_it_was_handed_written_where_the_caller_sees_it() -> None:
++    a = ROOT.TMatrixD(2, 2, [1.0, 0.0, 0.0, 1.0])
++    target = ROOT.TMatrixD(2, 2)
++    shared = target.GetMatrixArray()
++    ROOT.Add(target, 3.0, a)
++    assert list(shared) == [3.0, 0.0, 0.0, 3.0]  # the same array, filled in place
++    sym = ROOT.TMatrixDSym(2)
++    ROOT.Add(sym, 1.0, a)
++    assert sym.GetNrows() == 2 and sym(0, 0) == 1.0
++
++
++def test_the_free_add_refuses_a_shape_root_has_no_overload_for() -> None:
++    with pytest.raises(TypeError, match="Add takes one matrix to add"):
++        ROOT.Add(ROOT.TMatrixD(1, 1), 1.0)
++
++
++def test_a_matrix_multiplies_and_sums_into_the_one_it_already_is() -> None:
++    a = ROOT.TMatrixD(2, 2, [1.0, 2.0, 3.0, 4.0])
++    b = ROOT.TMatrixD(2, 2, [5.0, 6.0, 7.0, 8.0])
++    target = ROOT.TMatrixD(2, 2)
++    assert target.Mult(a, b) is target
++    assert list(target[0]) == [19.0, 22.0] and list(target[1]) == [43.0, 50.0]
++    target.MultT(a, b)  # a * b^T, which no temporary is made of either
++    assert list(target[0]) == [17.0, 23.0] and list(target[1]) == [39.0, 53.0]
++    target.TMult(a, b)
++    assert list(target[0]) == [26.0, 30.0] and list(target[1]) == [38.0, 44.0]
++    target.Plus(a, b)
++    assert list(target[0]) == [6.0, 8.0] and list(target[1]) == [10.0, 12.0]
++    target.Minus(a, b)
++    assert list(target[0]) == [-4.0, -4.0] and list(target[1]) == [-4.0, -4.0]
++
++
++def test_a_matrix_transposed_into_another_shape_is_rebound_not_written_over() -> None:
++    wide = ROOT.TMatrixD(2, 3)
++    tall = ROOT.TMatrixD(3, 2)
++    tall.Transpose(wide)
++    assert (tall.GetNrows(), tall.GetNcols()) == (3, 2)
++    assert wide.GetNrows() == 2  # a shape it cannot hold is a new array, not an overwrite
++
++
++def test_a_matrix_uses_an_array_a_caller_holds_and_inverts_it_where_it_lies() -> None:
++    square = ROOT.TMatrixD(2, 2, [4.0, 0.0, 0.0, 2.0])
++    shared = ROOT.TMatrixDSym(2)
++    assert shared.Use(2, square.GetMatrixArray()) is shared
++    shared.Invert()
++    assert list(square.GetMatrixArray()) == [0.25, 0.0, 0.0, 0.5]
++    assert shared.Use(2, 1, [1.0, 2.0]) is shared  # Use(rows, cols, data)
++    assert (shared.GetNrows(), shared.GetNcols()) == (2, 1)
++
++
++def test_a_symmetric_matrix_propagates_a_matrix_and_reduces_a_vector() -> None:
++    a = ROOT.TMatrixDSym(2)
++    a[0, 0], a[1, 1] = 2.0, 3.0
++    turn = ROOT.TMatrixD(2, 2, [0.0, 1.0, 1.0, 0.0])
++    assert a.Similarity(turn) is a
++    assert (a(0, 0), a(1, 1)) == (3.0, 2.0)
++    v = ROOT.TVectorD(2)
++    v[0], v[1] = 1.0, 2.0
++    assert a.Similarity(v) == 3.0 * 1.0 + 2.0 * 4.0  # v^T A v, of the matrix above
+diff --git a/tests/test_pyroot_linalg_smatrix.py b/tests/test_pyroot_linalg_smatrix.py
+index b9daff33..d2387448 100644
+--- a/tests/test_pyroot_linalg_smatrix.py
++++ b/tests/test_pyroot_linalg_smatrix.py
+@@ -3,7 +3,9 @@ prints for them."""
+ 
+ import pytest
+ 
++import xrdroot.pyroot as ROOT
+ from xrdroot.pyroot.linalg import Dot, MatRepStd, MatRepSym, SMatrix, SVector
++from xrdroot.pyroot.linalg.matrices import Add
+ 
+ 
+ def test_a_subscripted_vector_carries_its_size_and_element_type():
+@@ -330,3 +332,13 @@ def test_a_result_that_is_not_a_symmetric_matrix_is_refused_by_name():
+         AssignSym.Evaluate(SMatrix["double", 2, 2](), SMatrix["double", 2, 2]())
+     with pytest.raises(TypeError, match="takes a symmetric SMatrix"):
+         AssignSym.Evaluate(SVector["double", 2](1, 2), SMatrix["double", 2, 2]())
++
++
++def test_the_svector_and_smatrix_free_functions_are_root_maths_own_names() -> None:
++    for name in ("SMatrix", "SVector", "AssignSym", "Cross", "Dot", "Mag", "Mag2", "MatRepStd",
++                 "MatRepSym", "Similarity", "SimilarityT", "SMatrixIdentity", "Square", "Times",
++                 "Transpose", "Unit"):  # fmt: skip
++        assert getattr(ROOT.Math, name) is getattr(ROOT, name), name
++    square = ROOT.SMatrix["double", 2, 2](1, 2, 3, 4)
++    assert ROOT.Math.Transpose(square)(0, 1) == 3.0
++    assert ROOT.Add is Add  # ROOT's TMatrix free function, by that name
+-- 
+2.54.0 (Apple Git-157)
+

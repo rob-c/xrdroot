@@ -1,0 +1,485 @@
+From 817fd1241eaf9b37913e559a23d28ece56798e6d Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 04:16:47 +0000
+Subject: [PATCH 1/3] feat: a TRef member read out of a tree resolves through
+ its TProcessID
+
+roottest/root/io/tree/test-r now prints the names its reference names, and
+the six tests of that family that died reading a TRef record now run.
+
+- references: TRef::Streamer resolves fPID through gFile as it reads, since a
+  record handed to the reader carries only the index of the file's process;
+  filed_object files an object read that a reference may point at, keyed by
+  the number in its identifier, in the file's process its top byte indexes.
+- trees: a reference that finds no object asks the tree being read for the
+  entry's collections (TRefTable keeps them alive - a process table holds its
+  objects weakly), once per entry, since a process numbers from the start in
+  each entry. A clone fills a split collection from the objects its source
+  tree was given rather than from the values last read, which is what numbers
+  them; and a collection written into a tree now writes the file's
+  ProcessID records, which only the object-level writer did before.
+- printing: Show prints a member of one string per object as text and a
+  member of whole objects as the pointer it is, instead of int() of a name.
+
+Still DIFF, not PASS: seven tests of the family differ in Show's output
+formatting (leaf names, line breaks) which is untouched here.
+---
+ src/xrdroot/pyroot/core/references.py | 62 ++++++++++++++++++++++---
+ src/xrdroot/pyroot/trees/branches.py  | 45 +++++++++++++++++++
+ src/xrdroot/pyroot/trees/objects.py   | 45 ++++++++++++++++++-
+ src/xrdroot/pyroot/trees/printing.py  | 30 +++++++++++--
+ src/xrdroot/pyroot/trees/reading.py   |  8 ++++
+ src/xrdroot/pyroot/trees/rebuild.py   |  2 +
+ tests/test_pyroot_trees_print.py      | 17 +++++++
+ tests/test_pyroot_trees_refs.py       | 65 +++++++++++++++++++++++++++
+ 8 files changed, 264 insertions(+), 10 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/references.py b/src/xrdroot/pyroot/core/references.py
+index 8a67ba6d..2d34ddb6 100644
+--- a/src/xrdroot/pyroot/core/references.py
++++ b/src/xrdroot/pyroot/core/references.py
+@@ -24,7 +24,7 @@ from typing import Any, ClassVar
+ 
+ from .objects import TNamed, TObject
+ 
+-__all__ = ["TProcessID", "TProcessUUID", "TRef", "TRefArray"]
++__all__ = ["TProcessID", "TProcessUUID", "TRef", "TRefArray", "filed_object"]
+ 
+ #: ``TObject::kIsReferenced``: the object is filed in a process's table by its number.
+ IS_REFERENCED = 1 << 4
+@@ -259,9 +259,7 @@ class TRef(TObject):
+     def GetObject(self) -> Any:
+         """The object referred to, if its process still has it - after running the action,
+         if there is one and the object was not there - and ``None`` otherwise."""
+-        if self._pid is None or not TProcessID.IsValid(self._pid):
+-            return None
+-        found = self._pid.GetObjectWithID(self.GetUniqueID())
++        found = self._looked_up()
+         if found is not None:
+             return found
+         action = self._action if isinstance(self._action, str) else self._numbered_action()
+@@ -270,6 +268,22 @@ class TRef(TObject):
+         from .troot import gROOT
+ 
+         gROOT.ProcessLine(action)
++        assert self._pid is not None
++        return self._pid.GetObjectWithID(self.GetUniqueID())
++
++    def _looked_up(self) -> Any:
++        """The object in this reference's process, once the entry being read is filed.
++
++        ROOT files an object as its streamer reads it, so by the time a reference asks for
++        it, it is there; a tree read here files nothing of an entry no address was given
++        for, so the entry is filed as the reference asks - and asks again in the entry
++        after, whose objects carry the same numbers (roottest/root/io/tree/test-r).
++        """
++        if self._pid is None or not TProcessID.IsValid(self._pid):
++            return None
++        from ..trees.branches import read_referenced
++
++        read_referenced(self)
+         return self._pid.GetObjectWithID(self.GetUniqueID())
+ 
+     def _numbered_action(self) -> str | None:
+@@ -519,9 +533,44 @@ def _settle_members(found: Any, members: dict[str, Any], file: Any) -> None:
+                 _give_process(held, record, file)
+ 
+ 
++def named_process(file: Any, index: Any) -> TProcessID | None:
++    """The session's process that ``file``'s ``ProcessID{index}`` record names, or ``None``
++    when no file is open or the file has no such record."""
++    return None if file is None or index is None else file_process(file, int(index))
++
++
++def current_file() -> Any:
++    """``gFile``: the file a record being read or written belongs to.
++
++    A record read out of a file names its process only by the process's index in *that*
++    file, so a reader has to know which file is was in - ROOT gets it from ``gFile`` too.
++    """
++    from .directories import current_file as opening
++
++    found = opening()
++    return None if found is None else found.GetFile() or found
++
++
++def filed_object(found: Any, file: Any = None) -> None:
++    """An object read that a ``TRef`` may point at, filed where the reference will look.
++
++    ROOT files such an object as its streamer reads it - keyed by the number in the low
++    bits of its identifier, in the file's process the identifier's top byte indexes - and
++    a ``TRef`` read beside it names that same process, so the reference finds it again.
++    Nothing in this reader runs that streamer, so a split collection's elements are filed
++    once they are made (roottest/root/io/tree/test-r).
++    """
++    if not isinstance(found, TObject) or not found.TestBit(IS_REFERENCED):
++        return
++    identifier = _unique(found)
++    pid = named_process(file if file is not None else current_file(), identifier >> 24)
++    if pid is not None:
++        pid.PutObjectWithID(found, identifier & NUMBER_MASK)
++
++
+ def _give_process(found: Any, members: dict[str, Any], file: Any) -> None:
+     """``found`` given the session's process that the file's ``ProcessID`` record names."""
+-    pid = file_process(file, int(members.get("fPID", 0)))
++    pid = named_process(file, members.get("fPID"))
+     if pid is not None:
+         found._pid = pid
+ 
+@@ -539,6 +588,9 @@ def _filed(found: Any, tobject: dict[str, Any], pid: TProcessID | None) -> None:
+ def _tref_from(members: Any) -> TRef:
+     made = TRef()
+     tobject = members.get("TObject", {})
++    # ``TRef::Streamer`` resolves its ``fPID`` as it reads, through ``gFile``: a reference
++    # kept in a tree's entry is read with no file handed to it here, and finds none.
++    made._pid = named_process(current_file(), members.get("fPID"))
+     made.SetUniqueID(int(tobject.get("fUniqueID", 0)))
+     # ROOT's ``TObject::Streamer`` leaves the memory bits out of what it writes - a stack
+     # object's ``kIsOnHeap`` is not the reader's - so an object read is given them afresh.
+diff --git a/src/xrdroot/pyroot/trees/branches.py b/src/xrdroot/pyroot/trees/branches.py
+index c0746581..e91cd659 100644
+--- a/src/xrdroot/pyroot/trees/branches.py
++++ b/src/xrdroot/pyroot/trees/branches.py
+@@ -242,6 +242,45 @@ def _referenced(value: Any) -> Iterator[Any]:
+             yield from _referenced(item)
+ 
+ 
++def read_referenced(ref: Any) -> None:
++    """File the objects of the entry being read, so that ``ref`` finds the one it names.
++
++    A file ROOT writes says in its ``TRefTable`` which branch holds each referenced object,
++    and ROOT reads that branch when a reference asks for an object no branch was given. A
++    tree read here keeps no such table, so every collection of the entry is read instead -
++    once per entry, because a process numbers its objects from the start in each of them,
++    and an object of the entry before would answer to a reference of this one.
++    """
++    tree = TRefTable._tree
++    if tree is None:
++        return
++    entry = int(tree.GetReadEntry())
++    if TRefTable._filed == (id(tree), entry):
++        return
++    TRefTable._filed = (id(tree), entry)
++    TRefTable._kept[:] = _filed_collections(tree, entry)
++
++
++def _filed_collections(tree: Any, entry: int) -> list[Any]:
++    """Read every split collection of one entry, which files what a reference may name.
++
++    What comes back is kept by the caller: a process's table holds its objects weakly, and a
++    reference to one of these finds it only while something else still has it - here the
++    element the entry was read into, as ROOT's own tree keeps what it read.
++    """
++    from .copying import _element
++    from .rebuild import rebuilt
++
++    backing, made = tree._backing(), []
++    for leaf in tree._leaves():
++        found = _element(leaf, backing)
++        if found is None or entry < 0:
++            continue
++        made.append(rebuilt("TClonesArray", tree._batch.value(leaf.column, entry), None,
++                            found[0]))  # fmt: skip
++    return made
++
++
+ class TRefTable(_TObjectLike):
+     """``TRefTable``: which branch holds each object a ``TRef`` points at.
+ 
+@@ -257,6 +296,12 @@ class TRefTable(_TObjectLike):
+ 
+     #: ``fgRefTable``: the table of the tree an entry is being read or written for.
+     _current: ClassVar[TRefTable | None] = None
++    #: The tree an entry is being read from, which a reference may need an object of.
++    _tree: ClassVar[Any] = None
++    #: Which tree's entry the objects of have been filed already: ``(id(tree), entry)``.
++    _filed: ClassVar[tuple[int, int] | None] = None
++    #: The collections of that entry, which the references filed in it point into.
++    _kept: ClassVar[list[Any]] = []
+ 
+     def __init__(self, owner: Any = None, size: int = 100) -> None:
+         super().__init__("", "")
+diff --git a/src/xrdroot/pyroot/trees/objects.py b/src/xrdroot/pyroot/trees/objects.py
+index 4ddbb568..acddbea6 100644
+--- a/src/xrdroot/pyroot/trees/objects.py
++++ b/src/xrdroot/pyroot/trees/objects.py
+@@ -324,9 +324,26 @@ def _objects(member: Any, rows: list[Any]) -> bytes:
+             f"writer streams no {member.typename} into a tree entry yet; write that member "
+             f"as a number instead, or leave the branch out"
+         )
++    _named_processes(rows)
+     return b"".join(tref_record(ref) for ref in rows)
+ 
+ 
++def _named_processes(rows: list[Any]) -> None:
++    """The file being written given a record for each process these references name.
++
++    A reference's record holds the index of its process among the file's ``ProcessID``
++    records, not the process's name, so the records have to be there for a reader to
++    resolve one - ROOT writes them as its ``TRef::Streamer`` meets the process, through
++    ``TFile::WriteProcessID``. Every other path to a ``TRef`` goes through the writer's
++    own record of it, which writes the record; a collection in a tree does not.
++    """
++    from ..core.directories import current_file
++
++    file = current_file()
++    for ref in rows if file is not None else ():
++        file.WriteProcessID(getattr(ref, "_pid", None))
++
++
+ def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:
+     """Rows of numbers, one per entry, as one column."""
+     return Jagged(np.asarray([value for row in rows for value in row], dtype=np.float64), offsets)
+@@ -632,10 +649,36 @@ class ClonedSlot:
+         return f"<ClonedSlot {self.name!r} of {len(self.sources)} members>"
+ 
+     def read(self, counts: Any = None) -> Any:
+-        """One entry as ``Fill`` reads it: each object of the entry, and its members' values."""
++        """One entry as ``Fill`` reads it: each object of the entry, and its members' values.
++
++        A clone shares its collection's address with the tree it was cloned from, as ROOT's
++        does: once ``SetBranchAddress`` has given that tree the objects to read into, those
++        objects are the entry - and they are the ones a ``TRef`` made from them numbered, so
++        the clone has to write them and not the copies the entry was read as
++        (roottest/root/io/tree/create-r).
++        """
++        live = self._live()
++        if live is not None:
++            return self._kind.entry(live)
+         values = [follow.get() for follow in self._follows]
+         return [tuple(one) for one in zip(*values, strict=True)]
+ 
++    def _live(self) -> Any:
++        """The objects the source tree holds for this collection, if it was given any.
++
++        A collection holding a whole object of its own per row - a ``TRef`` - is copied from
++        the values read instead, which the writer streams itself: those rows are not members
++        of the objects the tree was given but the objects themselves.
++        """
++        if any(member.stype == OBJECT_TYPE for member in getattr(self._kind, "members", ())):
++            return None
++        tree = self._follows[0].tree if self._follows else None
++        address = getattr(tree, "_addresses", {}).get(self.name)
++        if address is None:
++            return None
++        held = address.get() if hasattr(address, "get") else _held(address)
++        return None if held is None or isinstance(held, (int, float)) else held
++
+     def taken(self, read: Any) -> list[Any]:
+         """Every entry copied at once: each of its objects' members, from the columns read."""
+         entries = zip(*[read[column] for column in self.sources], strict=True)
+diff --git a/src/xrdroot/pyroot/trees/printing.py b/src/xrdroot/pyroot/trees/printing.py
+index bfa61e04..b3f1c556 100644
+--- a/src/xrdroot/pyroot/trees/printing.py
++++ b/src/xrdroot/pyroot/trees/printing.py
+@@ -175,7 +175,14 @@ def element_lines(branch: BranchInfo, count: int) -> tuple[list[str], int]:
+ 
+ 
+ def _printed(leaf: LeafInfo, value: Any) -> str:
+-    """One value as ``TLeaf::PrintValue`` prints it: ``%g`` for floating point, else whole."""
++    """One value as ``TLeaf::PrintValue`` prints it: ``%g`` for floating point, else whole.
++
++    A value that is one object's members rather than a number is an object ROOT streams
++    itself - a ``TRef`` - which it prints as the class the value names, or, when the record
++    names no class, as the pointer ROOT would have shown.
++    """
++    if isinstance(value, Mapping):
++        return str(value.get("classname") or "->")
+     number = np.asarray(value).item()
+     if isinstance(number, float):
+         return f"{number:g}"
+@@ -211,14 +218,26 @@ def show_lines(entry: int, leaves: Sequence[tuple[LeafInfo, Any]]) -> list[str]:
+             continue
+         if not leaf.text and not leaf.vector and np.size(value) == 0:
+             continue
+-        lines.append(f" {leaf.name:<15} = {_joined(leaf, value)}")
++        texts = _texts(value)
++        printed = _joined(leaf, value) if texts is None else ", ".join(texts)
++        lines.append(f" {leaf.name:<15} = {printed}")
+     return lines
+ 
+ 
+ def _numbers_or_text(value: Any) -> bool:
+-    """Is this a value ``TLeaf::PrintValue`` can print - numbers, or the text of a ``char[]``?"""
++    """Is this a value ``TLeaf::PrintValue`` can print as numbers - a ``char[]``'s text is not,
++    which the caller has already taken out?"""
++    flat = np.asarray(value).reshape(-1)
++    return bool(flat.size) and flat.dtype.kind in "biufc"
++
++
++def _texts(value: Any) -> list[str] | None:
++    """The strings a member of a ``TString`` per object holds - one name per object of a split
++    collection - or ``None`` when the member is not text."""
+     flat = np.asarray(value).reshape(-1)
+-    return bool(flat.size) and flat.dtype.kind in "biufcUS"
++    if not flat.size or flat.dtype.kind not in "US":
++        return None
++    return [_text_of(each) for each in flat[:SHOW_MAX]]
+ 
+ 
+ def _is_characters(value: Any) -> bool:
+@@ -258,6 +277,9 @@ def _one_member(leaf: LeafInfo, name: str, held: Any, depth: int) -> str | None:
+     marker = f" {'  ' * (depth - 1)}{name:<15} ="
+     if isinstance(held, (str, bytes)) or _is_characters(held):  # a char[] member: its text
+         return f"{marker} {_text_of(held)}"
++    texts = _texts(held)
++    if texts is not None:  # a TString member: every object of the collection's own
++        return f"{marker} {', '.join(texts)}"
+     if _numbers_or_text(held):
+         return f"{marker} {_joined(leaf, held)}"
+     return None if held is None or np.size(held) == 0 else f"{marker} ->"
+diff --git a/src/xrdroot/pyroot/trees/reading.py b/src/xrdroot/pyroot/trees/reading.py
+index 8d6fa583..6d0f6f56 100644
+--- a/src/xrdroot/pyroot/trees/reading.py
++++ b/src/xrdroot/pyroot/trees/reading.py
+@@ -98,6 +98,13 @@ def _vector_for(address: Any, leaves: list[Any]) -> Any:
+     return address.value
+ 
+ 
++def _being_read(tree: Any) -> None:
++    """``tree`` is reading an entry now: a reference that finds no object asks it for one."""
++    from .branches import TRefTable
++
++    TRefTable._tree = tree
++
++
+ def _columns_bound(name: str, branch: Any, leaf: Any, address: Any) -> dict[str, Any]:
+     """What each column of a branch - or the one leaf asked for - is read into."""
+     if branch is not None and is_object(branch):
+@@ -176,6 +183,7 @@ class _Reading(_TreeCore):
+         if not 0 <= entry < self.GetEntries():
+             return 0
+         self._read_entry = entry
++        _being_read(self)
+         wanted = self._columns() if columns is None else columns
+         nbytes = 0
+         for column in wanted:
+diff --git a/src/xrdroot/pyroot/trees/rebuild.py b/src/xrdroot/pyroot/trees/rebuild.py
+index 423d4573..fa37978c 100644
+--- a/src/xrdroot/pyroot/trees/rebuild.py
++++ b/src/xrdroot/pyroot/trees/rebuild.py
+@@ -82,6 +82,7 @@ def _clones(value: Any, current: Any, clones: str = "") -> Any:
+     of the array empty. A class ROOT or the kit describes instead is made by name, as before.
+     """
+     from ..core.collections import TClonesArray
++    from ..core.references import filed_object
+     from ..core.wrapping import from_members
+ 
+     classname = str(getattr(value, "classname", None) or getattr(current, "_class", clones))
+@@ -94,6 +95,7 @@ def _clones(value: Any, current: Any, clones: str = "") -> Any:
+             obj = from_members(classname, flat)
+             if obj is None:
+                 obj = _drawn(classname, flat)
++        filed_object(obj)
+         made.AddAt(obj, at)
+     return made
+ 
+diff --git a/tests/test_pyroot_trees_print.py b/tests/test_pyroot_trees_print.py
+index 9c7c46f6..32a702c2 100644
+--- a/tests/test_pyroot_trees_print.py
++++ b/tests/test_pyroot_trees_print.py
+@@ -11,6 +11,7 @@ docs show for ``staff.C``'s one branch of nine leaves. ``Show`` is
+ from __future__ import annotations
+ 
+ import re
++from types import SimpleNamespace
+ 
+ import numpy as np
+ import pytest
+@@ -260,3 +261,19 @@ def test_print_and_show_of_a_file_root_wrote_are_what_root_6_40_prints(capsys):
+     printed = capsys.readouterr().out.splitlines()
+     assert printed[:2] + printed[3:] == expected[:2] + expected[3:]
+     assert printed[2].endswith("File  Size =      10452 *")
++
++
++def test_a_member_of_one_string_per_object_is_printed_as_the_names_it_holds():
++    from xrdroot.pyroot.trees.printing import show_lines
++
++    leaf = SimpleNamespace(name="N.fName", text=False, vector=False, classname="")
++    lines = show_lines(0, [(leaf, np.array(["N_0_0", "N_0_1"]))])
++    assert lines[-1] == " N.fName         = N_0_0, N_0_1"
++
++
++def test_a_member_of_whole_objects_is_printed_as_the_class_or_the_pointer_it_is():
++    from xrdroot.pyroot.trees.printing import show_lines
++
++    leaf = SimpleNamespace(name="r1.fRef", text=False, vector=False, classname="")
++    lines = show_lines(0, [(leaf, [{"TObject": {"fUniqueID": 1}}])])
++    assert lines[-1] == " r1.fRef         = ->"
+diff --git a/tests/test_pyroot_trees_refs.py b/tests/test_pyroot_trees_refs.py
+index bff00a8b..154d1dfc 100644
+--- a/tests/test_pyroot_trees_refs.py
++++ b/tests/test_pyroot_trees_refs.py
+@@ -267,3 +267,68 @@ def test_a_branch_ref_with_nothing_recorded_writes_the_tree_as_ever():
+     assert tree.Write() > 0
+     out.Close()
+     assert ROOT.TFile("a.root").Get("t").GetEntry(0) > 0
++
++
++def test_the_objects_of_the_entry_being_read_are_filed_once_for_its_references():
++    """ROOT files an object as its streamer reads it, and numbers a process's objects from
++    the start in every entry, so an entry's objects are filed again in the entry after."""
++    from xrdroot.pyroot.trees.branches import read_referenced
++
++    filing = []
++    tree = SimpleNamespace(GetReadEntry=lambda: 3, holds=filing, GetName=lambda: "t")
++    tree.__dict__["_backing"] = lambda: {}
++    tree.__dict__["_leaves"] = lambda: []
++    TRefTable._tree, TRefTable._filed, TRefTable._kept = tree, None, []
++    read_referenced(SimpleNamespace(GetUniqueID=lambda: 1))
++    assert TRefTable._filed == (id(tree), 3)
++    assert TRefTable._kept == []
++    TRefTable._tree, TRefTable._filed, TRefTable._kept = None, None, []
++
++
++def test_a_reference_with_no_tree_being_read_files_nothing():
++    from xrdroot.pyroot.trees.branches import read_referenced
++
++    TRefTable._tree, TRefTable._filed = None, None
++    read_referenced(SimpleNamespace(GetUniqueID=lambda: 1))
++    assert TRefTable._filed is None
++
++
++def test_an_object_a_reference_may_point_at_is_filed_under_the_number_it_carries():
++    from xrdroot.pyroot.core.references import (
++        IS_REFERENCED,
++        TProcessID,
++        filed_object,
++        named_process,
++    )
++
++    out = ROOT.TFile("plain.root", "RECREATE")
++    out.WriteTObject(ROOT.TNamed("only", "no process record here"))
++    out.Close()
++    read = ROOT.TFile("plain.root")
++    pid = TProcessID.AddProcessID()
++    named = ROOT.TNamed("N", "N")
++    named.SetBit(IS_REFERENCED)
++    named.SetUniqueID(7)
++    filed_object(named, read)  # the file has no ProcessID record to file it in
++    plain = ROOT.TNamed("P", "P")
++    filed_object(plain, read)  # and this one is no object a reference may point at
++    assert named_process(None, 0) is None
++    assert named_process(read, None) is None
++    assert pid.GetObjectWithID(7) is None
++    read.Close()
++
++
++def test_the_reference_of_a_member_read_back_names_the_process_of_the_file_it_came_from():
++    """``TRef::Streamer`` resolves its process as it reads, through ``gFile``."""
++    from xrdroot.pyroot.core.references import TProcessID, _tref_from
++
++    out = ROOT.TFile("p.root", "RECREATE")
++    named = ROOT.TNamed("N", "N")
++    ref = ROOT.TRef(named)
++    assert out.WriteProcessID(ref.GetPID()) == 0
++    out.Close()
++    read = ROOT.TFile("p.root")
++    made = _tref_from({"TObject": {"fUniqueID": 1, "fBits": 0}, "fPID": 0})
++    assert isinstance(made.GetPID(), TProcessID)
++    assert made.GetObject() is None  # the object itself was never read into this session
++    read.Close()
+-- 
+2.54.0 (Apple Git-157)
+

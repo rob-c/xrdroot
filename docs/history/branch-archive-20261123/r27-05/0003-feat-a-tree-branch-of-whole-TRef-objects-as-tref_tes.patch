@@ -1,0 +1,216 @@
+From adeb5417db2499a9f005296fc8f8ec5b4c4eff22 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 05:00:00 +0000
+Subject: [PATCH 3/3] feat: a tree branch of whole TRef objects, as tref_test.C
+ writes one
+
+TTree::Branch("Refs", "TRef", &ref, 4000, 0) asks for the reference unsplit,
+and it was refused for want of a layout. ROOT writes each entry as TRef's own
+streamer does - a version, the number, the bits, the index of the file's
+process record - which tref_record already made for a split collection, and
+the file describes TRef by its TObject base alone.
+
+- pyroot/trees/objects.py: WholeReference (a StreamedColumn of those records,
+  with TRef described as wclasses.TREF says, the class carried rather than
+  looked up among INFOS, which has no TRef) and Reference (the kind that
+  writes one record an entry, and the file's ProcessID record for it). A
+  split object branch's fBits now carries the heap's bits, as ROOT writes
+  them - 0x3000008 where it wrote 0x8.
+
+roottest/root/io/tree: tref-write UNSUPPORTED -> PASS, tref-read
+UNSUPPORTED -> DIFF, 11 PASS / 0 FAIL / 9 DIFF / 0 UNSUPPORTED. tref-read
+still prints bits: 0: reading a split branch of a bare TObject does not fill
+the object (its member leaves are named fUniqueID/fBits, as ROOT names them,
+and nothing resolves them to the branch's object).
+
+tests: the refusal test now uses TNamed, and the new branch has a test of its
+own (tests/test_pyroot_trees_objects_more.py).
+---
+ src/xrdroot/pyroot/trees/objects.py     | 58 +++++++++++++++++++++++--
+ tests/test_pyroot_trees_objects.py      |  9 ++--
+ tests/test_pyroot_trees_objects_more.py | 43 ++++++++++++++++++
+ 3 files changed, 104 insertions(+), 6 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/trees/objects.py b/src/xrdroot/pyroot/trees/objects.py
+index acddbea6..25f0cca8 100644
+--- a/src/xrdroot/pyroot/trees/objects.py
++++ b/src/xrdroot/pyroot/trees/objects.py
+@@ -32,10 +32,13 @@ from ...errors import UnsupportedFeatureError
+ from ...tree import Jagged
+ from ...wbranch import (
+     COLLECTION,
++    MEMBER,
+     NOT_A_MEMBER,
+     WHOLE,
+     Branch,
+     Collection,
++    Described,
++    ElementInfo,
+     ElementLeaf,
+     Spec,
+     Split,
+@@ -47,11 +50,12 @@ from ...wbranch import (
+     tref_record,
+     vector_of,
+ )
+-from ...wclasses import Layout, declared, harvested
++from ...wclasses import TREF, Layout, declared, harvested
+ from ...wcolumns import StreamedColumn
+ from ...winfo import INFOS
+ from ...wobjects import named, stream, stream_clones
+ from ...writer import WBuffer
++from ..core.references import TRef
+ from .store import OBJECT
+ 
+ __all__ = ["ObjectSlot", "object_slot"]
+@@ -425,6 +429,8 @@ def _held_kind(obj: Any) -> Kind | None:
+     nested = _nested(obj)
+     if nested is not None:
+         return Nested(nested)
++    if isinstance(obj, TRef):
++        return Reference()  # a class ROOT streams itself: no member to split, one record
+     layout = _root_layout(obj)
+     return None if layout is None else Root(layout)
+ 
+@@ -453,10 +459,11 @@ def _whole_member(obj: Any, name: str) -> Any:
+     """One member of such an object as its own split branch reads it.
+ 
+     ``fBits`` is the object's whole bit word here - the heap's bits included, as ROOT writes
+-    them for a branch of an object - where a split ``TClonesArray`` leaves those out.
++    them for a branch of an object - where a split ``TClonesArray`` leaves those out. An
++    object given to a branch is one ``new`` made, whether or not the class says so.
+     """
+     if name == "fBits":
+-        return int(obj._bitword())
++        return int(obj._bitword()) | HEAP_BITS
+     return _member(obj, name)
+ 
+ 
+@@ -534,6 +541,51 @@ class WholeCollection(Spec):
+         return Branch(name, name, self.split, column, [leaf], info)
+ 
+ 
++@dataclass(frozen=True)
++class WholeReference(Spec):
++    """A ``TRef`` branch written whole: one record an entry, and the file's own description.
++
++    ``INFOS`` holds no ``TRef`` - ROOT streams the class by hand - so its layout is the one
++    :data:`~xrdroot.wclasses.TREF` works out from ROOT's declaration, its ``TObject`` base
++    alone, and the branch's checksum and version are that layout's, as ROOT's file says.
++    """
++
++    def build(self, name: str, basket_size: int) -> Branch:
++        column = StreamedColumn(name, self._size(basket_size))
++        info = ElementInfo("TRef", "", "", TREF.checksum, TREF.version, WHOLE, MEMBER,
++                           NOT_A_MEMBER)  # fmt: skip
++        leaf = ElementLeaf(name, name, 0, WHOLE, NOT_A_MEMBER)
++        return Branch(name, name, self.split, column, [leaf], info)
++
++    def declared(self) -> tuple[Any, ...]:
++        """The description of ``TRef`` the file carries, which ROOT reads the branch back by.
++
++        The class is not among the file's *used* ones, which the writer looks up among ROOT's
++        own descriptions - ``INFOS`` holds no ``TRef``, which streams itself - so it travels
++        described instead, as a macro's class does.
++        """
++        return (Described("TRef", TREF.version, TREF.checksum, TREF.elements()),)
++
++
++class Reference(_Whole):
++    """A branch of whole ``TRef`` objects, one ``TRef::Streamer`` record an entry.
++
++    ``TTree::Branch("Refs", "TRef", &ref, 4000, 0)`` asks ROOT for the reference unsplit -
++    "do not split the TRef's branch", as ``roottest``'s ``tref_test.C`` says - and ROOT
++    writes what the class streams itself: a version, the number of the object it refers
++    to, its bits and the index of the file's process record that numbered it. No layout of
++    members exists to split, so the branch is one column of those records, written by the
++    same ``tref_record`` a split ``TClonesArray`` writes a ``TRef`` member with.
++    """
++
++    def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
++        return WholeReference(basket_size=bufsize)
++
++    def entry(self, obj: Any) -> bytes:
++        _named_processes([obj])
++        return tref_record(obj)
++
++
+ def _no_layout(obj: Any, name: str) -> None:
+     """Refuse, by name, a branch of an object of a class this writer has no layout for.
+ 
+diff --git a/tests/test_pyroot_trees_objects.py b/tests/test_pyroot_trees_objects.py
+index 761a1ccb..988221c8 100644
+--- a/tests/test_pyroot_trees_objects.py
++++ b/tests/test_pyroot_trees_objects.py
+@@ -267,11 +267,14 @@ def test_a_branch_of_a_bare_tobject_is_split_into_the_members_of_its_class():
+ def test_a_branch_of_an_object_this_writer_has_no_layout_for_is_refused_by_name():
+     """The address says its type - it holds an object of a ROOT class - so the advice a
+     branch of a bare number gets would be wrong: what is missing is a layout for the class,
+-    which is what a ``TRef`` branch of ``roottest``'s ``tref_test.C`` has none of."""
++    which ``TNamed`` has none of here, its strings being no numbers. A ``TRef`` branch does
++    have one - a record of its own, which no member splits - so it is not refused."""
+     tree = ROOT.TTree("t", "t")
++    named = Cell(ROOT.TNamed("n", "a name"))
++    with pytest.raises(UnsupportedFeatureError, match="no layout for a TNamed"):
++        tree.Branch("Abc", "TNamed", named, 4000, 0)
+     ref = Cell(ROOT.TRef())
+-    with pytest.raises(UnsupportedFeatureError, match="no layout for a TRef"):
+-        tree.Branch("Refs", "TRef", ref, 4000, 0)
++    assert tree.Branch("Refs", "TRef", ref, 4000, 0).GetName() == "Refs"
+ 
+ 
+ def test_a_branch_of_an_address_that_names_no_class_reads_the_leaf_it_holds():
+diff --git a/tests/test_pyroot_trees_objects_more.py b/tests/test_pyroot_trees_objects_more.py
+index d3c65adc..c9ca3f9a 100644
+--- a/tests/test_pyroot_trees_objects_more.py
++++ b/tests/test_pyroot_trees_objects_more.py
+@@ -131,3 +131,46 @@ def test_a_picture_of_more_than_three_variables_is_refused_by_what_it_would_be()
+     for option, said in (("para", "TParallelCoord"), ("candle", "candles"), ("", "a picture")):
+         with pytest.raises(UnsupportedFeatureError, match=said):
+             tree.Draw("x:x:x:x", "", option)
++
++
++def test_a_branch_of_whole_references_is_one_record_an_entry_and_the_file_describes_TRef():
++    """``TTree::Branch("Refs", "TRef", &ref, 4000, 0)`` asks for the reference unsplit, which
++    ROOT writes as ``TRef::Streamer`` does - a version, the number, the bits and the index of
++    the file's process record - with ``TRef`` described by its ``TObject`` base alone, as the
++    6.40 oracle's ``tref_test.root`` holds it (roottest/root/io/tree/tref-write)."""
++    import xrdroot
++    from xrdroot.pyroot.trees.objects import WholeReference
++
++    spec = WholeReference(basket_size=4000)
++    branch = spec.build("Refs", 4000)
++    assert (branch.info.classname, branch.info.version) == ("TRef", 1)
++    assert [leaf.name for leaf in branch.leaves()] == ["Refs"]
++    assert [(one.name, one.version, one.checksum) for one in spec.declared()] == [
++        ("TRef", 1, 0x91757901)
++    ]  # fmt: skip
++
++    out = ROOT.TFile("refs.root", "RECREATE")
++    tree = ROOT.TTree("tree", "references")
++    ref = Cell(ROOT.TRef())
++    tree.Branch("Refs", "TRef", ref, 4000, 0)
++    named = ROOT.TNamed("N", "referred to")
++    ref.value.Set(named)
++    tree.Fill()
++    ref.value.Set(None)
++    tree.Fill()
++    tree.Write()
++    out.Close()
++    with xrdroot.open_root("refs.root") as held:
++        assert held.keys() == ["ProcessID0", "tree"]
++        written = held["tree"]
++        assert list(written.branches) == ["Refs"]
++        records = list(written.branches["Refs"].array(0, 2))
++        numbers = [record["TObject"]["fUniqueID"] for record in records]
++        assert numbers == [1, 0]  # the object it refers to, then the reference cleared
++    # The session's processes are not what ``fresh`` puts back, and a process numbers its
++    # objects from one: a test after this one would otherwise start where this one stopped.
++    from xrdroot.pyroot.core.references import TProcessID
++
++    TProcessID._pids.clear()
++    TProcessID._current = None
++    TProcessID.SetObjectCount(0)
+-- 
+2.54.0 (Apple Git-157)
+

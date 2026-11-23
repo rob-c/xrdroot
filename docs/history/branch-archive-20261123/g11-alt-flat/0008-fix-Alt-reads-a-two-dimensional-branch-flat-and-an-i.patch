@@ -1,0 +1,468 @@
+From 6ff21717cf21963d777f6f4b998788fb93662313 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 02:36:32 +0000
+Subject: [PATCH 8/8] fix: Alt$ reads a two-dimensional branch flat and an
+ indexed one only where it points
+
+The flat read was the mixed radix of the last dimension's levels, which is
+ROOT's read only where the weak branch has one dimension. ROOT counts the
+loop's index as one number over every level of it and reads the branch at
+that number, into the elements its entry holds: a b[2][2] beside an
+a[2][2][2] is read at i0 * 4 + i1 * 2 + i2, and an m[2][3] - Alt$(c, 0) of a
+c[2][4] at the loop's six indexes rather than in rows of four. A dimension
+given an index pins the run to what lies under it instead - Alt$(v[0], 0) is
+one value an entry and Alt$(b[0], 0) one row - where the constant index being
+0-d raised IndexError out of arrays() and Draw().
+
+The read is done once, at the level the loop ends at, and not at all where
+the branch went its own whole length down every level of the loop, since
+there it read those elements flat as it went: an Alt$ draw keeps the speed it
+had. A dimension given an index after one looped over is the one place this
+still differs from ROOT, which repeats the rows its own strides name there,
+and the module docstring says so.
+
+Three tests carry ROOT's numbers for the shapes this decides - nested and
+jagged weak branches, indexed ones, and a number an entry - and the older
+test's prose named Alt$(v, 6) over a line drawing Alt$(v, 0).
+---
+ src/xrdroot/formula/columns.py |  17 ++++
+ src/xrdroot/formula/loops.py   | 163 +++++++++++++++++++++------------
+ tests/test_formula_trees.py    | 113 ++++++++++++++++++++++-
+ 3 files changed, 232 insertions(+), 61 deletions(-)
+
+diff --git a/src/xrdroot/formula/columns.py b/src/xrdroot/formula/columns.py
+index d87f7e62..7dea1e21 100644
+--- a/src/xrdroot/formula/columns.py
++++ b/src/xrdroot/formula/columns.py
+@@ -75,6 +75,23 @@ class Layout:
+             return np.zeros(len(node), self.content.dtype)
+         return self.content[np.minimum(node, len(self.content) - 1)]
+ 
++    def subtree(self, depth: int, node: Array) -> tuple[Array, Array]:
++        """Where the values under each of ``node`` start, and how many there are.
++
++        ``node`` are nodes of dimension ``depth`` - an entry at 0, an element of
++        one below. Their values are one run of the bottom array, which is what an
++        expression reads a branch flat at: the node at the bottom is one value,
++        or none where a cursor out of range was sent past the last one.
++        """
++        if depth == self.dims:  # the values themselves
++            return node, (node < len(self.content)).astype(np.int64)
++        start, stop = node, node + 1
++        for level in range(depth, self.dims):
++            offsets = self.offsets[level]
++            start = offsets[start]
++            stop = offsets[stop]
++        return start, stop - start
++
+ 
+ def _fixed(shape: tuple[int, ...]) -> list[Array]:
+     """The offsets of the fixed dimensions of an array of ``shape``, outermost first."""
+diff --git a/src/xrdroot/formula/loops.py b/src/xrdroot/formula/loops.py
+index 5d875b72..0253b0ce 100644
+--- a/src/xrdroot/formula/loops.py
++++ b/src/xrdroot/formula/loops.py
+@@ -25,15 +25,22 @@ rest but does not cut the loop short, and where it has run out its value is
+ missing and ``Alt$`` gives the alternative - which is how ROOT's
+ ``arr1 + Alt$(arr2, 0)`` runs the length of ``arr1``.
+ 
+-Running out of dimensions is not the same as running out of loop, though: when
+-the loop has levels left that the weak branch has no dimension for, ROOT reads
+-that branch *flat*, at ``index * count + local`` - the last dimension's index
+-becomes a mixed-radix number whose digits are the remaining levels. So
+-``fMatrix - Alt$(fClosestDistance, 0)`` of a ``fMatrix[4][4]`` and a
+-``fClosestDistance`` of ``fNvertex`` elements subtracts ``fClosestDistance[i0*4
+-+ i1]``, and gives the alternative once that runs past the entry's elements.
+-A strong branch in the same place is simply repeated instead, which is where
+-ROOT's ``m - v`` of a ``m[2][3]`` and a ``v[6]`` reads ``v[i0]``.
++Running out of dimensions is not the same as running out of loop, though: a
++level a weak branch has no dimension for - and every level below a number per
++entry - is one ROOT reads *flat*, at the index the loop is at counted as one
++number over every one of its levels, not one digit per dimension. The number
++indexes the elements the entry holds, and past them the value is missing and
++whatever weakens it takes over. So ``fMatrix - Alt$(fClosestDistance, 0)`` of
++an ``fMatrix[4][4]`` and a ``fClosestDistance`` of ``fNvertex`` elements
++subtracts ``fClosestDistance[i0 * 4 + i1]``; ``a - Alt$(b, 0)`` of an
++``a[2][2][2]`` and a ``b[2][2]`` subtracts ``b[i0 * 4 + i1 * 2 + i2]`` from
++the fifth item on; and a number per entry is read once, so ``m - Alt$(n, 0)``
++of an ``m[2][3]`` gives the alternative from the second item on. A dimension
++given an index pins the read to what lies under it instead, so ``v[0]`` is one
++value and ``b[0]`` is one row - the one place xrdroot does not follow ROOT,
++which repeats the rows its own strides name under a dimension given an index
++after one looped over. A strong branch is simply repeated, which is where
++ROOT's ``m - v`` of an ``m[2][3]`` and a ``v[6]`` reads ``v[i0]``.
+ """
+ 
+ from __future__ import annotations
+@@ -61,6 +68,11 @@ def both(first: Array | None, second: Array | None) -> Array | None:
+     return first & second
+ 
+ 
++def _at(array: Array, pick: Array | None) -> Array:
++    """``array`` at the items ``pick`` names, or itself where they are its own items."""
++    return array if pick is None else array[pick]
++
++
+ class Space:
+     """One level of the loop: which entry each item is in, and which item above it came from.
+ 
+@@ -69,7 +81,7 @@ class Space:
+     the same number - needs none of it but the row lengths.
+     """
+ 
+-    __slots__ = ("entries", "above", "count", "_parent", "_local", "_entry")
++    __slots__ = ("entries", "above", "count", "_parent", "_local", "_entry", "_instance")
+ 
+     def __init__(self, entries: int, above: Space | None = None, count: Array = None) -> None:
+         self.entries = entries
+@@ -79,6 +91,7 @@ class Space:
+         self._parent: Array | None = None
+         self._local: Array | None = None
+         self._entry: Array | None = None if above else np.arange(entries, dtype=np.int64)
++        self._instance: Array | None = None
+ 
+     @classmethod
+     def of_entries(cls, entries: int) -> Space:
+@@ -115,6 +128,23 @@ class Space:
+             self._entry = self.above.entry[self.parent]
+         return self._entry
+ 
++    @property
++    def instance(self) -> Array:
++        """The loop's index at this level as one number per entry: every level's digit in it.
++
++        A weak branch with no dimension left for a level is read at this
++        number, so it counts the loop's index over every level rather than one
++        dimension at a time - which is what ROOT's ``instance`` is.
++        """
++        if self._instance is None:
++            if self.above is None:
++                self._instance = np.zeros(self.entries, dtype=np.int64)
++            else:
++                self._instance = (
++                    self.above.instance[self.parent] * self.count[self.parent] + self.local
++                )
++        return self._instance
++
+     def expand(self, count: Array) -> Space:
+         """The next level: each item repeated ``count`` times, one per element of the loop."""
+         return Space(self.entries, self, count)
+@@ -146,8 +176,9 @@ class Cursor:
+         "weak",
+         "at",
+         "span",
+-        "last",
+-        "index",
++        "ran",
++        "pivot",
++        "pivot_at",
+         "_place",
+         "valid",
+     )
+@@ -162,9 +193,11 @@ class Cursor:
+         self.at = 0
+         #: The run of nodes it is at, while they are one.
+         self.span: tuple[int, int] | None = (0, layout.rows)
+-        #: For a weak one, the nodes its last dimension was read from, and at what index.
+-        self.last: Array | None = None
+-        self.index: Array | None = None
++        #: How many of its dimensions it went down over its own whole length.
++        self.ran = 0
++        #: For a weak one, the deepest node its indexed dimensions pinned it to.
++        self.pivot: Array | None = None
++        self.pivot_at = 0
+         self._place: Array | None = None
+         self.valid: Array | None = None
+ 
+@@ -197,60 +230,47 @@ class Cursor:
+         start, stop = self.span
+         return offsets[start + 1 : stop + 1] - offsets[start:stop]
+ 
+-    @property
+-    def bottom(self) -> bool:
+-        """Is the dimension it is at the last one, below which only values are?"""
+-        return self.at == self.layout.dims - 1
+-
+-    def take(self, node: Array, index: Array) -> None:
+-        """Remember where the last dimension was read, in case the loop goes on past it."""
+-        if self.weak and self.bottom:
+-            self.last = node
+-            self.index = index
+-
+-    def spread(self, space: Space) -> None:
+-        """Read one level past the last dimension: its contents taken flat, as ROOT does.
+-
+-        ROOT pairs a loop's levels with a branch's dimensions left to right; a
+-        branch that has no dimension for a level is read at ``index * count +
+-        local`` there, so the elements of its last dimension line up with the
+-        items of the levels below it. Past the elements the entry has, the
+-        value is missing and whatever weakens it - ``Alt$`` - takes over.
++    def spread(self, space: Space, pick: Array | None) -> None:
++        """Read the branch flat at one level: the elements its entry holds, at the loop's index.
++
++        ROOT counts the loop's index as one number over every level and reads a
++        weak branch there rather than one dimension at a time, so an
++        ``fMatrix[4][4]`` and a shorter ``fClosestDistance`` line up item by
++        item and the alternative takes over past the entry's elements. A
++        dimension given an index pins the run to what lies under it, so only
++        that part is read at the number. ``pick`` names, for each item of
++        ``space``, the item it came from at the level the branch was last read
++        at, or is ``None`` when that is ``space`` itself.
+         """
+-        assert self.last is not None and self.index is not None
+-        parent = space.parent
+-        offsets = self.layout.offsets[self.layout.dims - 1]
+-        node = self.last[parent]
+-        if self.valid is not None:  # where a dimension ran out, its last node is a placeholder
+-            node = np.minimum(node, len(offsets) - 2)
+-        index = self.index[parent] * space.count[parent] + space.local
+-        room = offsets[node + 1] - offsets[node]
+-        valid = both(index < room, None if self.valid is None else self.valid[parent])
+-        self.last = node
+-        self.index = index if valid is None else np.where(valid, index, 0)
+-        self.valid = valid
+-        self.move(offsets[node] + self.index)
++        pivot = space.entry if self.pivot is None else _at(self.pivot, pick)
++        base, room = self.layout.subtree(self.pivot_at, pivot)
++        index = space.instance
++        self.pivot = pivot
++        self.valid = index < room  # past the elements the entry holds it has no value
++        self.move(base + index)  # past them the place is masked, and values() clamps it
+ 
+     def step(self, index: Array, ok: Array | None) -> None:
+         """Go down one dimension, to the ``index``-th child of each node."""
+         sizes = self.sizes()
+         good = both(both((index >= 0) & (index < sizes), ok), self.valid)
+-        self.take(self.place, index)
+         self.move(self.layout.child(self.at, self.place, index, good))
+         self.valid = good
+         self.at += 1
++        if self.weak:  # where it was pinned, in case the loop goes on past it
++            self.pivot, self.pivot_at = self.place, self.at
+ 
+     def follow(self, space: Space, sizes: Array, full: bool) -> None:
+         """Go down the dimension looped over, to the child the loop is at for each new item."""
++        if self.pivot is not None:  # a pinned run is read at the items of this level
++            self.pivot = self.pivot[space.parent]
+         if full and self.span is not None and self.valid is None:
+-            self.take(self.place[space.parent], space.local)
+             offsets = self.layout.offsets[self.at]
+             self.span = (int(offsets[self.span[0]]), int(offsets[self.span[1]]))
+             self._place = None
+             self.at += 1
++            self.ran += 1
+             return
+         place = self.place[space.parent]
+-        self.take(place, space.local)
+         valid = None if self.valid is None else self.valid[space.parent]
+         good = both(space.local < sizes[space.parent], valid) if self.weak else valid
+         self.move(self.layout.child(self.at, place, space.local, True if good is None else good))
+@@ -284,7 +304,7 @@ class Scope:
+     def __init__(self, entries: int) -> None:
+         self.spaces = [Space.of_entries(entries)]
+         self.done: dict[int, tuple[Array, Array | None, int]] = {}
+-        #: The weak cursors that ran out of dimensions, read flat if a level follows.
++        #: The branches read flat - ``Alt$``'s own - which is done once the loop is made.
+         self.flat: list[Cursor] = []
+ 
+     @property
+@@ -292,12 +312,17 @@ class Scope:
+         return self.spaces[-1]
+ 
+     def run(self, cursors: list[Cursor], indexer: Indexer) -> None:
+-        """Make every level of the loop, until no branch has a dimension left to loop over."""
++        """Make every level of the loop, until no branch has a dimension left to loop over.
++
++        The branches read flat are read last, at the level the loop ends at:
++        the index there is the one the expression is asked for, and one
++        recorded on the way down is thrown away by the level below it.
++        """
+         active = self._settle(cursors, indexer)
+         while active:
+             self.spaces.append(self._expand(active))
+-            self._flatten()
+             active = self._settle(active, indexer)
++        self._flatten()
+ 
+     def _settle(self, cursors: list[Cursor], indexer: Indexer) -> list[Cursor]:
+         """Take each cursor through the indexed dimensions in front; keep those still looping."""
+@@ -305,23 +330,41 @@ class Scope:
+         for cursor in cursors:
+             self._index(cursor, indexer)
+             if cursor.finished:
+-                self._record(cursor)
+-                if cursor.weak and cursor.at and len(cursor.specs) == cursor.layout.dims:
+-                    self.flat.append(cursor)  # it may yet be read flat, one level further down
++                self._note(cursor)
++                if self._reads_flat(cursor):
++                    self.flat.append(cursor)  # the loop may go on past it, and _flatten read it
+             else:
+                 active.append(cursor)
+         return active
+ 
+-    def _record(self, cursor: Cursor) -> None:
++    @staticmethod
++    def _reads_flat(cursor: Cursor) -> bool:
++        """Is this one of ``Alt$``'s branches, which ROOT reads at the loop's index flat?"""
++        return cursor.weak and len(cursor.specs) == cursor.layout.dims
++
++    def _note(self, cursor: Cursor) -> None:
+         """Note what a cursor gives at the level it stopped at."""
+         values, valid = cursor.result()
+         self.done[id(cursor.node)] = (values, valid, len(self.spaces) - 1)
+ 
+     def _flatten(self) -> None:
+-        """Let the weak cursors read their last dimension flat at the level just made."""
++        """Read each flat branch at the last level, where the loop's index has every digit of it.
++
++        The values it has are carried from where it stopped down to the last
++        level first. A branch that went down every level the loop has, over its
++        own whole length, read its elements flat as it went and is left alone.
++        """
++        last = len(self.spaces) - 1
+         for cursor in self.flat:
+-            cursor.spread(self.space)
+-            self._record(cursor)
++            level = self.done[id(cursor.node)][2]
++            walked = cursor.ran == cursor.layout.dims  # down every level, over its own length
++            if level == last and cursor.ran and walked:
++                continue  # it read its elements flat already: the loop never left them
++            pick: Array | None = None
++            for space in self.spaces[level + 1 :]:
++                pick = space.parent if pick is None else pick[space.parent]
++            cursor.spread(self.space, pick)
++            self._note(cursor)
+ 
+     def _index(self, cursor: Cursor, indexer: Indexer) -> None:
+         while not cursor.finished and not cursor.looping:
+diff --git a/tests/test_formula_trees.py b/tests/test_formula_trees.py
+index fda32fe6..38b7c2fe 100644
+--- a/tests/test_formula_trees.py
++++ b/tests/test_formula_trees.py
+@@ -235,7 +235,7 @@ def test_a_cut_can_hand_its_columns_to_pandas(flat):
+ def test_alt_reads_a_shorter_array_at_the_loop_s_flat_index(tmp_path):
+     """``Alt$``'s argument is read flat, as ROOT reads it, not row by row.
+ 
+-    ``m[2][3] - Alt$(v, 6)`` loops over ``m``'s six elements in one run, so ROOT
++    ``m[2][3] - Alt$(v, 0)`` loops over ``m``'s six elements in one run, so ROOT
+     reads ``v`` at the flat index ``i0 * 3 + i1`` and supplies the alternative
+     once that runs past the elements an entry holds. A strong branch in the same
+     place is only repeated - ROOT's ``m - v`` of that matrix reads ``v[i0]`` -
+@@ -262,3 +262,114 @@ def test_alt_reads_a_shorter_array_at_the_loop_s_flat_index(tmp_path):
+         assert got["m - Alt$(w, 0)"].tolist() == [[-9.0, -18.0, -27.0, -36.0, 5.0, 6.0]]
+         assert got["m - Alt$(s, 0)"].tolist() == [[-9.0, -18.0, 3.0, 4.0, 5.0, 6.0]]
+         assert got["m - v"].tolist() == [[-9.0, -8.0, -7.0, -16.0, -15.0, -14.0]]
++
++
++def test_alt_reads_a_two_dimensional_array_at_the_one_index_the_loop_is_at(tmp_path):
++    """The flat index counts every level of the loop, not only the last one.
++
++    ``a[2][2][2]`` loops over eight elements in three levels, so ROOT reads a
++    ``b[2][2]`` beside it at ``i0 * 4 + i1 * 2 + i2`` - the one number its
++    levels make together - and a ``w[nw][2]`` of six elements at the same
++    number. Reading ``b`` row by row instead would give the alternative two
++    items early and then read on past it, and stopping the count at the last
++    level would repeat the second row. ``m - Alt$(c, 0)`` is the case where the
++    loop is shorter than the branch: ``c`` is four wide and ``m`` three, and
++    ROOT still reads ``c`` at the loop's six indexes rather than in rows of
++    four. The numbers are ROOT's, from a file it wrote with these same titles.
++    """
++    path = tmp_path / "flat-nested.root"
++    with create(str(path)) as f:
++        f["t"] = {
++            "a": np.arange(100.0, 108.0).reshape(1, 8),
++            "b": np.arange(10.0, 50.0, 10.0).reshape(1, 4),
++            "c": np.arange(200.0, 208.0).reshape(1, 8),
++            "m": np.arange(1.0, 7.0).reshape(1, 6),
++            "q": np.arange(1.0, 17.0).reshape(1, 16),
++            "w": Jagged(np.arange(1.0, 7.0), np.array([0, 6])),
++        }
++    with open_root(str(path)) as f:
++        tree = f["t"]
++        tree["a"].leaf.title = "a[2][2][2]"
++        tree["b"].leaf.title = "b[2][2]"
++        tree["c"].leaf.title = "c[2][4]"
++        tree["m"].leaf.title = "m[2][3]"
++        tree["q"].leaf.title = "q[2][2][2][2]"
++        tree["w"].leaf.title = "w[nw][2]"
++        assert dimensions(tree["a"]) == 3 and dimensions(tree["w"]) == 2
++        got = tree.arrays(
++            [
++                "a - Alt$(b, 0)",
++                "a - Alt$(w, 0)",
++                "q - Alt$(w, 0)",
++                "m - Alt$(b, 0)",
++                "m - Alt$(c, 0)",
++            ]
++        )
++        first = [90.0, 81.0, 72.0, 63.0]
++        assert got["a - Alt$(b, 0)"].tolist() == [[*first, 104.0, 105.0, 106.0, 107.0]]
++        assert got["a - Alt$(w, 0)"].tolist() == [[99.0] * 6 + [106.0, 107.0]]
++        assert got["q - Alt$(w, 0)"].tolist() == [[0.0] * 6 + list(np.arange(7.0, 17.0))]
++        assert got["m - Alt$(b, 0)"].tolist() == [[-9.0, -18.0, -27.0, -36.0, 5.0, 6.0]]
++        assert got["m - Alt$(c, 0)"].tolist() == [[-199.0] * 6]
++
++
++def test_alt_of_an_indexed_array_reads_what_the_index_names_and_no_more(tmp_path):
++    """A dimension given an index is not a level of the loop: it pins the read.
++
++    ``v[0]`` is one value an entry, ``b[0]`` one row of two and ``b[0][0]`` one
++    element, so ROOT supplies the alternative at every item after the first -
++    or the second, for the row. ``b[][0]`` is the one case xrdroot does not
++    follow ROOT in: ROOT repeats the rows its own strides name there, giving
++    ``a - b[1][0]`` at the second item, where xrdroot takes the alternative.
++    The numbers are ROOT's, from a file it wrote with these same titles.
++    """
++    path = tmp_path / "flat-pinned.root"
++    with create(str(path)) as f:
++        f["t"] = {
++            "a": np.arange(100.0, 108.0).reshape(1, 8),
++            "b": np.arange(10.0, 50.0, 10.0).reshape(1, 4),
++            "m": np.arange(1.0, 7.0).reshape(1, 6),
++            "v": np.arange(10.0, 70.0, 10.0).reshape(1, 6),
++        }
++    with open_root(str(path)) as f:
++        tree = f["t"]
++        tree["a"].leaf.title = "a[2][2][2]"
++        tree["b"].leaf.title = "b[2][2]"
++        tree["m"].leaf.title = "m[2][3]"
++        tree["v"].leaf.title = "v[6]"
++        got = tree.arrays(
++            [
++                "a - Alt$(v[0], 0)",
++                "a - Alt$(b[0][0], 0)",
++                "a - Alt$(b[0], 0)",
++                "a - Alt$(b[1], 0)",
++                "a - Alt$(b[][0], 0)",
++                "m - Alt$(v[0], 0)",
++            ]
++        )
++        tail = [102.0, 103.0, 104.0, 105.0, 106.0, 107.0]
++        assert got["a - Alt$(v[0], 0)"].tolist() == [[90.0, 101.0, *tail]]
++        assert got["a - Alt$(b[0][0], 0)"].tolist() == [[90.0, 101.0, *tail]]
++        assert got["a - Alt$(b[0], 0)"].tolist() == [[90.0, 81.0, *tail]]
++        assert got["a - Alt$(b[1], 0)"].tolist() == [[70.0, 61.0, *tail]]
++        assert got["a - Alt$(b[][0], 0)"].tolist() == [[90.0, 101.0, *tail]]
++        assert got["m - Alt$(v[0], 0)"].tolist() == [[-9.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
++
++
++def test_alt_of_a_number_an_entry_reads_it_once_where_the_loop_moves_on(tmp_path):
++    """A number per entry is read at the loop's first index and not again.
++
++    It has no dimension to loop over, so ROOT's one number over the levels runs
++    past the single value an entry holds at the second item and ``Alt$`` takes
++    over - which is not how a *strong* number behaves, repeated at every item.
++    The numbers are ROOT's, from a file it wrote with these same titles.
++    """
++    path = tmp_path / "flat-number.root"
++    with create(str(path)) as f:
++        f["t"] = {"m": np.arange(1.0, 7.0).reshape(1, 6), "s": np.array([50.0])}
++    with open_root(str(path)) as f:
++        tree = f["t"]
++        tree["m"].leaf.title = "m[2][3]"
++        got = tree.arrays(["m - Alt$(s, 0)", "m - s"])
++        assert got["m - Alt$(s, 0)"].tolist() == [[-49.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
++        assert got["m - s"].tolist() == [[-49.0, -48.0, -47.0, -46.0, -45.0, -44.0]]
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,61 @@
+From 3c75abad6ee40c681a93828ba971377667a9bd52 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 15:09:11 +0000
+Subject: [PATCH 3/3] tests: a pointer range end through at(), and the
+ algorithms over a container in process
+
+---
+ tests/cppstd/test_cppstd_pure_values.py | 13 ++++++++++++-
+ tests/test_cint_calls.py                |  5 +++++
+ 2 files changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/tests/cppstd/test_cppstd_pure_values.py b/tests/cppstd/test_cppstd_pure_values.py
+index 80c2b78b..7342f9ee 100644
+--- a/tests/cppstd/test_cppstd_pure_values.py
++++ b/tests/cppstd/test_cppstd_pure_values.py
+@@ -7,7 +7,7 @@ from types import SimpleNamespace
+ import numpy as np
+ import pytest
+ 
+-from xrdroot.cppstd import cells, containers, references, valuecopy
++from xrdroot.cppstd import cells, containers, objects, references, valuecopy
+ 
+ 
+ def test_value_copy_preserves_raw_floating_payloads_and_independent_storage() -> None:
+@@ -56,6 +56,17 @@ def test_a_taken_element_address_is_a_pointer_over_the_containers_own_elements()
+     assert values == [1.5, 7.0, 8.0]
+ 
+ 
++def test_the_standards_algorithms_work_through_a_container_in_place() -> None:
++    values = [3.0, 1.0, 2.0]
++    objects.generate_range(values, 0, 2, lambda: 5.0)
++    assert values == [5.0, 5.0, 2.0]
++    seen: list[float] = []
++    objects.for_each_range(values, 1, None, lambda element: seen.append(element.value))
++    assert seen == [5.0, 2.0]
++    assert objects.equal_range(values, 0, 2, [5.0, 5.0, 9.0])
++    assert not objects.equal_range(values, 1, 2, [2.0])
++
++
+ def test_generic_assignment_updates_held_containers_and_keeps_the_return_contract() -> None:
+     target, source = [1], [2, 3]
+     assert references.assign_into(target, source) is source and target == [2, 3]
+diff --git a/tests/test_cint_calls.py b/tests/test_cint_calls.py
+index fad1c006..55bdb8f9 100644
+--- a/tests/test_cint_calls.py
++++ b/tests/test_cint_calls.py
+@@ -91,6 +91,11 @@ def body(source: str) -> str:
+             'std::sort(&v.back(), &v.back() + 1); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+             "3 1 2\n",
+         ),
++        (
++            "std::vector<int> v; v.push_back(1); v.push_back(3); v.push_back(2);"
++            'std::sort(&v.at(1), &v.at(1) + 2); printf("%d %d %d\\n", v[0], v[1], v[2]);',
++            "1 2 3\n",
++        ),
+         (
+             'double a[3] = {1, 2, 3}; double b[3] = {0, 0, 0};'
+             'std::copy(&a[0], &a[3], &b[0]); printf("%g %g %g\\n", b[0], b[1], b[2]);',
+-- 
+2.54.0 (Apple Git-157)
+

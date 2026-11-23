@@ -1,0 +1,105 @@
+From d7ddaa24a1c6fd022b555170c115f45bd29cf7ab Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 19:50:41 +0000
+Subject: [PATCH] fix: a member of ROOT's read by the getter without a Get, as
+ TObjArray::LowerBound
+
+declared._root_member only looked for Get<member without f> and then the
+attribute, so writing ROOT's own TObjArray as the members its streamer info
+names handed the writer None for fLowerBound and struct.pack refused it
+('required argument is not an integer', datamodelevolution/00/test1:31).
+
+The roottest still fails, now at line 41: what is written for a TObjArray is
+its layout's members and not the objects it holds, which no writer here can
+produce yet - records.py has a TList record and no TObjArray one.
+---
+ src/xrdroot/pyroot/core/declared.py | 12 ++++++++--
+ tests/test_root_declared_objects.py | 35 +++++++++++++++++++++++++++++
+ 2 files changed, 45 insertions(+), 2 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/declared.py b/src/xrdroot/pyroot/core/declared.py
+index a842686e..0c601819 100644
+--- a/src/xrdroot/pyroot/core/declared.py
++++ b/src/xrdroot/pyroot/core/declared.py
+@@ -459,9 +459,17 @@ def root_row(obj: Any, classname: str) -> dict[str, Any]:
+ 
+ 
+ def _root_member(obj: Any, member: str) -> Any:
+-    """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``."""
++    """A member of one of ROOT's bases, from its getter where it has one: ``fLineColor``.
++
++    ROOT names most of them ``Get`` and the member's name without its ``f``, but not all of
++    them - ``TObjArray::fLowerBound`` is read by ``LowerBound()`` - so the name alone is tried
++    before the attribute, which a few classes keep for themselves instead.
++    """
+     getter = getattr(obj, "Get" + member[1:], None)
+-    return getter() if callable(getter) else getattr(obj, member, None)
++    if callable(getter):
++        return getter()
++    terse = getattr(obj, member[1:], None)
++    return terse() if callable(terse) else getattr(obj, member, None)
+ 
+ 
+ def _plain_member(value: Any, field: Any, catalogue: Catalogue,
+diff --git a/tests/test_root_declared_objects.py b/tests/test_root_declared_objects.py
+index acc6f4de..1dac2024 100644
+--- a/tests/test_root_declared_objects.py
++++ b/tests/test_root_declared_objects.py
+@@ -27,12 +27,14 @@ from xrdroot.pycint.execute import run_source
+ from xrdroot.pycxx.runtime.namespace import DECLARED
+ from xrdroot.pyroot.core.declared import (
+     _member_maker,
++    _root_member,
+     catalogue_for,
+     converted,
+     find_class,
+     made_from,
+     payload_of,
+     plain_value,
++    root_row,
+ )
+ from xrdroot.streamers import read_infos
+ from xrdroot.wclasses import checksum
+@@ -579,6 +581,39 @@ def test_one_of_roots_classes_read_a_member_at_a_time_is_made_again():
+     assert back.GetEntries() == 0
+ 
+ 
++def test_a_root_member_is_read_by_its_getter_with_or_without_the_get_prefix():
++    # ROOT names a getter after the member without its ``f`` - ``GetLast`` for ``fLast`` - but
++    # not always with a ``Get``: ``TObjArray::fLowerBound`` is read by ``LowerBound``, so a
++    # member written by the layout alone is the number it holds rather than None.
++    arr = ROOT.TObjArray()
++    arr.SetName("items")
++    assert _root_member(arr, "fLast") == -1
++    assert _root_member(arr, "fLowerBound") == 0
++
++
++def test_a_root_member_with_no_getter_at_all_is_the_attribute_itself():
++    # A class of ROOT's the kit keeps by name - a drawing class's ``fLineColor`` - has no
++    # getter to ask, and the member is what the object holds.
++    class Kept:
++        fLineColor = 4
++
++    assert _root_member(Kept(), "fLineColor") == 4
++    assert _root_member(Kept(), "fLineStyle") is None
++
++
++def test_one_of_roots_collections_is_written_by_the_members_its_layout_names():
++    # A ``TObjArray`` among a declared class's members has no record of its own here, so it
++    # is written by what its streamer info names - its name, its size, its lower bound and
++    # the index of its last filled slot.
++    arr = ROOT.TObjArray()
++    arr.SetName("items")
++    arr.Add(ROOT.TNamed("one", ""))
++    row = root_row(arr, "TObjArray")
++    held = row["TSeqCollection"]["TCollection"]
++    assert (held["fName"], held["fSize"]) == ("items", 1)
++    assert (row["fLowerBound"], row["fLast"]) == (0, 0)
++
++
+ def test_a_clones_array_member_names_the_array_and_not_the_class_it_holds():
+     # The tag in front of an object says what the object is; a TClonesArray says inside
+     # which class its elements are, so the tag is the array's - ROOT reads an object of the
+-- 
+2.54.0 (Apple Git-157)
+

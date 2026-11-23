@@ -1,0 +1,32 @@
+From 9220a17d921ab7b7562d84ce1b8cd2000d7d14de Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 13:48:41 +0000
+Subject: [PATCH 2/2] tests: the free Add and the in-place TMatrix members,
+ against the numbers ROOT's Kalman benchmark prints
+
+---
+ tests/test_pyroot_linalg.py | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/tests/test_pyroot_linalg.py b/tests/test_pyroot_linalg.py
+index 6d43ed96..eb2c7441 100644
+--- a/tests/test_pyroot_linalg.py
++++ b/tests/test_pyroot_linalg.py
+@@ -155,10 +155,10 @@ def test_a_matrix_multiplies_and_sums_into_the_one_it_already_is() -> None:
+ 
+ def test_a_matrix_transposed_into_another_shape_is_rebound_not_written_over() -> None:
+     wide = ROOT.TMatrixD(2, 3)
+-    tall = ROOT.TMatrixD(3, 2)
+-    tall.Transpose(wide)
+-    assert (tall.GetNrows(), tall.GetNcols()) == (3, 2)
+-    assert wide.GetNrows() == 2  # a shape it cannot hold is a new array, not an overwrite
++    holding = ROOT.TMatrixD(2, 3)
++    holding.Transpose(wide)
++    assert (holding.GetNrows(), holding.GetNcols()) == (3, 2)  # a shape it cannot hold
++    assert wide.GetNrows() == 2  # is a new array, not an overwrite of its own
+ 
+ 
+ def test_a_matrix_uses_an_array_a_caller_holds_and_inverts_it_where_it_lies() -> None:
+-- 
+2.54.0 (Apple Git-157)
+

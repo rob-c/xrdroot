@@ -1,0 +1,106 @@
+From ed41609019c7c5f49b97876388fe6552cc646f2b Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 05:07:53 +0000
+Subject: [PATCH 3/3] Revert "docs: a cloned TRef names the source file's
+ ProcessID record"
+
+This reverts commit 650a159e2cb3c0cba395a80f70f858f762cd5da7.
+---
+ docs/README.md                                | 26 ----------
+ ...ned-tref-needs-source-processid-records.md | 51 -------------------
+ 2 files changed, 77 deletions(-)
+ delete mode 100644 docs/README.md
+ delete mode 100644 docs/gotchas/cloned-tref-needs-source-processid-records.md
+
+diff --git a/docs/README.md b/docs/README.md
+deleted file mode 100644
+index f9aa72fe..00000000
+--- a/docs/README.md
++++ /dev/null
+@@ -1,26 +0,0 @@
+-# docs
+-
+-What this project has learned, written down so nobody has to rediscover it.
+-
+-Each file here answers one question a new contributor (or a new agent on a new
+-machine) would otherwise answer wrongly:
+-
+-- `rules/` — hard constraints. Do not break these.
+-- `instructions/` — how work should be done in this project.
+-- `gotchas/` — things that break in non-obvious ways.
+-- `discoveries/` — how something actually behaves, where that is surprising.
+-- `decisions/` — a choice that was made and the reason.
+-- `architecture/` — how the pieces fit together.
+-
+-Every file starts with YAML front matter (`title`, `kind`, `summary`, `tags`,
+-`updated`) so it can be indexed cheaply. Read the front matter first; it is
+-usually enough.
+-
+-**Only files with a front-matter `kind:` are indexed.** A file without one is
+-reported as "not indexed" rather than silently ignored, because this folder is
+-sometimes already a documentation site or an ADR collection that this extension
+-does not own. To add a hand-written page to the index, give it the front matter
+-above; `docs_record` writes it for you.
+-
+-This file is maintained by the `pi-docs-first` extension, but it is ordinary
+-Markdown — edit it by hand whenever it is wrong.
+diff --git a/docs/gotchas/cloned-tref-needs-source-processid-records.md b/docs/gotchas/cloned-tref-needs-source-processid-records.md
+deleted file mode 100644
+index 381a49e7..00000000
+--- a/docs/gotchas/cloned-tref-needs-source-processid-records.md
++++ /dev/null
+@@ -1,51 +0,0 @@
+----
+-title: "A cloned TRef needs the source file's ProcessID records, not just the copied baskets"
+-kind: "gotcha"
+-summary: "A clone must copy the source file's ProcessID records, because a split collection's TRef record names its process only by that index, and TRef::GetObject returns nothing without it."
+-tags: [tref, processid, clonetree, roottest, trees]
+-created: "2026-11-21T05:07:20.620Z"
+-updated: "2026-11-21T05:07:20.620Z"
+----
+-A `TRef` written inside a split collection (a `TClonesArray` member of a class, e.g. roottest's `tref_test_pid::fRef`) is stored as a record whose `fPID` field is an **index among the `ProcessID` records of the file that record was written to** - not a process name and not a session number. `TTree::CloneTree` copies those rows byte for byte, so a clone's file must be given the *source* file's `ProcessID` records (ROOT's clone ends up with the identical UUID, e.g. `ProcessID0` titled `0b183a69-...`); otherwise `TRef::GetObject` reads back null even though the entry beside it holds the object.
+-
+-## How the pieces fit
+-
+-```mermaid
+-graph LR
+-  A[source file<br/>ProcessID0 = uuid] -->|read rows| B[ClonedSlot<br/>rows keep fPID = 0]
+-  A -->|_directory/backing._source| C[_source_uuid]
+-  B --> D[_renumbered]
+-  C --> D
+-  D -->|WriteProcessID uuid| E[new file<br/>ProcessID0 = same uuid]
+-  D -->|fPID rewritten to new index| F[writer streams the record]
+-  E --> F
+-  F --> G[TRef::GetObject finds the object]
+-```
+-
+-## Where it lives in xrdroot
+-
+-- `src/xrdroot/pyroot/trees/objects.py` - `ClonedSlot.columns()` now calls `Kind.written()` and then `_carried_processes(keys, members, columns, source)`, which for every whole-`TRef` member rewrites each row's `fPID` through `_renumbered()` -> `_source_uuid()` -> `TFile::WriteProcessID`. `_objects()` streams a clone's rows with `_described_record()` (`wbranch._ref_record`) instead of `tref_record()`, which needs a live `TRef` object.
+-- `src/xrdroot/pyroot/trees/copying.py` - `_directory(backing)` is how the source *file* is found: an `xrdroot.tree.TTree` keeps the `Source` it was read through (`getattr(backing, "_source")`), not the file, so it matches that source against `xrdroot.session.gROOT.files`. `_slots()` passes the result as `ClonedSlot(..., source=...)`.
+-- `src/xrdroot/pyroot/core/files.py` - `TFile::WriteProcessID(pid)` accepts either a `TProcessID` or the UUID **string** another file titled the record with.
+-- Paths that do *not* work and that the fix routes around: `wbranch.ReferenceWhole.pack` / `_ref_record` (copies `fPID` verbatim, writes no record) and `objects._named_processes` (only handles live `TRef` objects, which a clone never has for these rows).
+-
+-## Checking it
+-
+-```bash
+-cd /tmp/rootsrc-6.40b/roottest/root/io/tree
+-export PYTHONPATH=/tmp/r28/w01/src   # any checkout
+-PY=/path/to/.venv/bin/python
+-for s in first create-r create-rc test-rc; do
+-  $PY -m xrdroot root -e '(void)gROOT->ProcessLine(".L tref_test_pid.C+")' \
+-      -e "#define STAGE \"$s\"" -q -b run.C
+-done
+-$PY -m xrdroot ls -l tref_test_pid_rc.root   # must list ProcessID0 before TTree T
+-```
+-
+-The `-e ... -q -b file.C` word order is `root.exe`'s; `xrdroot run` does not take them. The oracle for comparison: `~/.local/root-oracle/bin/root -l -b -q -e ... run.C`, then `rootls -l` on both files. The harness measures this with `python -m tools.rootsuite run --root /tmp/rootsrc-6.40b --jobs 1 --only 'roottest/root/io/tree/*'`; those tests share one working directory, so always `--jobs 1`.
+-
+-## What is still open in that test family
+-
+-- `test-rcr`, `test-rcrr`, `test-rcrr3`: only `TTree::Show`'s text differs (`src/xrdroot/pyroot/trees/printing.py`).
+-- `test-rcr2`, `test-rcrr2`, `test-rcrr123`: `CloneTree(0)`+`Fill` writes the *values read* for a collection holding whole `TRef`s (see `ClonedSlot._live`), not the live objects `SetBranchAddress` holds, so `r2`'s references find the `N` object rather than the `r1` one. Lifting that guard fixes these three but breaks `r1` in the other three, because `src/xrdroot/pyroot/trees/branches.py::read_referenced` reads *every* collection of the entry and the last one filed wins - ROOT instead reads the branch its `TRefTable` names for each identifier.
+-- `N.fBits` is written as `24` where ROOT keeps `50331672` (`kIsOnHeap|kNotDeleted`, stripped by `objects.py::_member`'s `& ~HEAP_BITS`), and the session's first process is numbered `0` where ROOT numbers it `1` (`fUniqueID` `9` vs `0x01000009`, `src/xrdroot/pyroot/core/references.py`).
+-- 
+2.54.0 (Apple Git-157)
+

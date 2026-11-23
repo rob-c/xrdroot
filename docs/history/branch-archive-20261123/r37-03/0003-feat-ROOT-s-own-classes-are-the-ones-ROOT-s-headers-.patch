@@ -1,0 +1,392 @@
+From 2464376384d66413c1554ffd5f90a12e6aeceb25 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 14:09:47 +0000
+Subject: [PATCH 3/3] feat: ROOT's own classes are the ones ROOT's headers
+ declare
+
+Whether a file's class needs a dictionary is not a question a name's spelling
+answers: a geometry file describes ROOT's TGeoAtt, TGeoVoxelFinder and
+TGeoParallelWorld, which the importer reads past and ROOT opens in silence,
+while roottest's missingClass describes a program's own TEmcl.  reflection
+now asks the names ROOT 6.40's headers declare - 1632 ClassDef classes of the
+root 6.40.04 conda-forge build's top-level headers, in
+pyroot/core/rootdict.py, with how they were harvested - and, besides, what
+the kit implements and what it streams, so a class a macro declared, a
+generated dictionary's or a template's instance of one needs none either.
+The name-shape heuristic that stood in for that table is gone.
+---
+ src/xrdroot/pyroot/core/reflection.py |  18 +-
+ src/xrdroot/pyroot/core/rootdict.py   | 290 ++++++++++++++++++++++++++
+ tests/test_pyroot_reflection.py       |  22 ++
+ 3 files changed, 324 insertions(+), 6 deletions(-)
+ create mode 100644 src/xrdroot/pyroot/core/rootdict.py
+
+diff --git a/src/xrdroot/pyroot/core/reflection.py b/src/xrdroot/pyroot/core/reflection.py
+index 104631a9..373545ce 100644
+--- a/src/xrdroot/pyroot/core/reflection.py
++++ b/src/xrdroot/pyroot/core/reflection.py
+@@ -482,23 +482,29 @@ def _modelled(name: str) -> bool:
+     for, so that opening a file which describes it says nothing?
+ 
+     A name's spelling is no help: a user's class is called ``TEmcl`` or ``TCedarEvent`` as
+-    readily as ROOT's own is called ``TBasket``, and ROOT warns of the program's four
++    readily as ROOT's own is called ``TRegexp``, and ROOT warns of the program's four
+     emulated classes in ``roottest/root/io/tree``'s ``missingClass`` while staying silent
+     about the ``TTree`` beside them. What tells them apart is knowledge of the class, not of
+-    its name, and what the kit knows of ROOT's classes is what it implements - as a Python
+-    class of the namespace's, ``TCanvas`` and ``TUUID`` too, which derive from no ``TObject``
+-    here - and what it streams: the layouts of :data:`xrdroot.winfo.INFOS`, and the readers
+-    of :mod:`xrdroot.objects` and :mod:`xrdroot.known` for the classes the kit writes itself.
+-    A name none of those knows is emulated from the file with ROOT's warning.
++    its name: the names of ROOT's own, harvested from ROOT's headers, are
++    :data:`ROOT_CLASSES` - a template's instance asked about by its head's name, since
++    ``TParameter<double>`` is a layout of ``TParameter``'s - and what the kit knows of them
++    is what it implements, as a Python class of the namespace's (``TCanvas`` and ``TUUID``
++    too, which derive from no ``TObject`` here), and what it streams: the layouts of
++    :data:`xrdroot.winfo.INFOS`, and the readers of :mod:`xrdroot.objects` and
++    :mod:`xrdroot.known` for the classes the kit writes itself. A name none of those knows
++    is emulated from the file with ROOT's warning.
+     """
+     from ...known import KNOWN
+     from ...objects import CLASSES
+     from ...sparse import SPARSE
++    from .rootdict import ROOT_CLASSES
+ 
+     if name in INFOS or name in GENERATED:
+         return True
+     if name in CLASSES or name in KNOWN or name in SPARSE:
+         return True
++    if name.split("<", 1)[0] in ROOT_CLASSES:
++        return True
+     return _implemented(name)
+ 
+ 
+diff --git a/src/xrdroot/pyroot/core/rootdict.py b/src/xrdroot/pyroot/core/rootdict.py
+new file mode 100644
+index 00000000..338e373c
+--- /dev/null
++++ b/src/xrdroot/pyroot/core/rootdict.py
+@@ -0,0 +1,290 @@
++"""The names of ROOT's own classes, as ROOT 6.40's headers declare them.
++
++A file describes every class it holds, and ``TClass::Init`` warns of one nothing has a
++dictionary for - but only of a class the program's own: a file describing ROOT's ``TGeoAtt``
++or ``TBasket`` opens in silence, because ROOT's libraries were built with those dictionaries.
++Nothing here can ask ROOT which classes those are, and a name's spelling tells nothing - a
++program's class is called ``TEmcl`` or ``TCedarEvent`` as readily as ROOT's is called
++``TRegexp`` - so they are listed.
++
++Every class a ROOT 6.40.04 header declares with a ``ClassDef`` is here, as
++
++    python - <<'PY'
++    import re, pathlib
++    pattern = re.compile(r"^\\s*ClassDef[A-Za-z]*\\(\\s*([A-Za-z_][A-Za-z_0-9]*)", re.M)
++    names = {found for path in pathlib.Path(include).glob("*.h")
++             for found in pattern.findall(path.read_text(errors="ignore"))}
++    PY
++
++gives them for ``include`` the ``include`` directory of the ``root`` 6.40.04 conda-forge
++build, 1632 of them. Only the headers at its top are read: the classes of a subdirectory's
++library - ``TMVA/Event``, whose name a roottest program's own ``Event`` shares - are the ones
++ROOT does not have loaded when it opens a file, and ROOT names a program's class of that name.
++"""
++
++from __future__ import annotations
++
++__all__ = ["ROOT_CLASSES"]
++
++#: ROOT's own classes, by name, which is how
++#: :mod:`xrdroot.pyroot.core.reflection` tells one from a program's when a file describes it.
++ROOT_CLASSES = frozenset("""
++    CatVector CodeRepo CpuInfo_t Entry ExpensiveObject GenSpec MemInfo_t MyExtension MyPdf
++    PreScaleEntry_t ProcInfo_t RealFullVector RealVector Roo1DTable Roo2DKeysPdf RooAICRegistry
++    RooAbsAnaConvPdf RooAbsArg RooAbsBinning RooAbsCache RooAbsCacheElement RooAbsCachedPdf
++    RooAbsCachedReal RooAbsCategory RooAbsCategoryLValue RooAbsCollection RooAbsData
++    RooAbsDataStore RooAbsFunc RooAbsGenContext RooAbsHiddenReal RooAbsLValue
++    RooAbsMCStudyModule RooAbsMoment RooAbsPdf RooAbsProxy RooAbsReal RooAbsRealLValue
++    RooAbsSelfCached RooAbsStudy RooAddGenContext RooAddModel RooAddPdf RooAddition RooArgList
++    RooArgProxy RooArgSet RooArgusBG RooBCPEffDecay RooBCPGenDecay RooBDecay RooBMixDecay
++    RooBernstein RooBifurGauss RooBinSamplingPdf RooBinWidthFunction RooBinnedGenContext
++    RooBinning RooBinningCategory RooBlindTools RooBreitWigner RooBrentRootFinder RooBukinPdf
++    RooCBShape RooCFunction1Binding RooCFunction1PdfBinding RooCFunction1Ref
++    RooCFunction2Binding RooCFunction2PdfBinding RooCFunction2Ref RooCFunction3Binding
++    RooCFunction3PdfBinding RooCFunction3Ref RooCFunction4Binding RooCFunction4PdfBinding
++    RooCFunction4Ref RooCacheManager RooCachedPdf RooCachedReal RooCategory RooChangeTracker
++    RooChebychev RooChi2MCSModule RooChiSquarePdf RooCmdArg RooCmdConfig RooCollectionProxy
++    RooCompositeDataStore RooConstVar RooConstraintSum RooConvCoefVar RooConvGenContext
++    RooCrystalBall RooCurve RooDLLSignificanceMCSModule RooDataHist RooDataHistSliceIter
++    RooDataProjBinding RooDataSet RooDecay RooDerivative RooDirItem RooDouble RooDstD0BG
++    RooEffGenContext RooEffProd RooEfficiency RooEllipse RooErrorVar RooExpensiveObjectCache
++    RooExponential RooExtendPdf RooExtendedBinding RooExtendedTerm RooFFTConvPdf
++    RooFactoryWSTool RooFirstMoment RooFit RooFitResult RooFormulaVar RooFracRemainder
++    RooFunctor RooFunctor1DBinding RooFunctor1DPdfBinding RooFunctorBinding RooFunctorPdfBinding
++    RooGExpModel RooGamma RooGaussExpTails RooGaussModel RooGaussian RooGenContext
++    RooGenFitStudy RooGenericPdf RooHist RooHistConstraint RooHistFunc RooHistPdf RooHypatia2
++    RooIntegralMorph RooInvTransform RooJeffreysPrior RooJohnson RooKeysPdf
++    RooLagrangianMorphFunc RooLandau RooLegacyExpPoly RooLegendre RooLinTransBinning
++    RooLinearCombination RooLinearVar RooLinkedList RooLinkedListElem RooLognormal RooMCStudy
++    RooMappedCategory RooMinimizer RooMoment RooMomentMorph RooMomentMorphFunc
++    RooMomentMorphFuncND RooMsgService RooMultiBinomial RooMultiCategory RooMultiPdf
++    RooMultiReal RooMultiVarGaussian RooNDKeysPdf RooNonCPEigenDecay RooNonCentralChiSquare
++    RooNovosibirsk RooNumCdf RooNumConvPdf RooNumConvolution RooNumGenConfig RooNumIntConfig
++    RooNumIntFactory RooNumRunningInt RooONNXFunc RooObjCacheManager RooParamBinning
++    RooParamHistFunc RooParametricStepFunction RooPlot RooPlotable RooPoisson RooPolyFunc
++    RooPolyVar RooPolynomial RooPowerSum RooPrintable RooProdGenContext RooProdPdf RooProduct
++    RooProfileLL RooProjectedPdf RooPullVar RooPyBind RooQuasiRandomGenerator RooRandom
++    RooRandomizeParamMCSModule RooRangeBinning RooRangeBoolean RooRatio RooRealBinding
++    RooRealConstant RooRealIntegral RooRealSumFunc RooRealSumPdf RooRealVar
++    RooRealVarSharedProperties RooRecursiveFraction RooRefArray RooRefCountList
++    RooResolutionModel RooSTLRefCountList RooSecondMoment RooSharedProperties RooSimGenContext
++    RooSimSplitGenContext RooSimultaneous RooSpHarmonic RooSpline RooStepFunction
++    RooStreamParser RooStringVar RooStudentT RooStudyManager RooStudyPackage RooSuperCategory
++    RooTFnBinding RooTFnPdfBinding RooTObjWrap RooTable RooTemplateProxy RooThresholdCategory
++    RooTrace RooTreeDataStore RooTruthModel RooUnblindCPAsymVar RooUnblindOffset
++    RooUnblindPrecision RooUnblindUniform RooUniform RooUniformBinning RooVectorDataStore
++    RooVoigtian RooWorkspace RooWorkspaceHandle RooWrapperPdf SliceInfo_t SysInfo_t TASImage
++    TASImagePlugin TASPaletteEditor TASPluginGS TActionSequence TAdvancedGraphicsDialog
++    TAnnotation TApplication TApplicationImp TApplicationRemote TApplicationServer TArc TArcBall
++    TArchiveFile TArchiveMember TArray TArrayC TArrayD TArrayF TArrayI TArrayL TArrayL64 TArrayS
++    TArrow TArrowEditor TAtt3D TAttAxis TAttBBox TAttBBox2D TAttCanvas TAttFill TAttFillEditor
++    TAttImage TAttLine TAttLineEditor TAttMarker TAttMarkerEditor TAttPad TAttParticle TAttText
++    TAttTextEditor TAuthenticate TAxis TAxis3D TAxisEditor TAxisModLab TBRIK TBackCompFitter
++    TBase64 TBaseClass TBasket TBasketSQL TBenchmark TBinomialEfficiencyFitter TBits TBox
++    TBranch TBranchClones TBranchElement TBranchObject TBranchProxyClassDescriptor
++    TBranchProxyDescriptor TBranchRef TBranchSTL TBrowser TBrowserImp TBrowserPlugin TBtree
++    TBtreeIter TBuffer TBuffer3D TBufferFile TBufferIO TBufferJSON TBufferSQL TBufferSQL2
++    TBufferText TBufferXML TButton TCONE TCONS TCTUB TCandle TCanvas TCanvasImp
++    TCanvasWebSnapshot TChain TChainElement TChainIndex TClass TClassGenerator TClassMenuItem
++    TClassTable TClassTree TClonesArray TCollection TCollectionMethodBrowsable
++    TCollectionPropertyBrowsable TColor TColorGradient TColorLocker TColorWheel TComplex
++    TCondition TConditionImp TConfidenceLevel TConfiguredAction TContextMenu TContextMenuImp
++    TControlBar TControlBarButton TControlBarImp TCrown TCurlFile TCurlyArc TCurlyArcEditor
++    TCurlyLine TCurlyLineEditor TCut TCutG TDNDData TDOMParser TDataMember TDataType
++    TDatabasePDG TDatime TDavixFile TDavixSystem TDecayChannel TDecompBK TDecompBase TDecompChol
++    TDecompLU TDecompQRH TDecompSVD TDecompSparse TDialogCanvas TDiamond TDictAttributeMap
++    TDictionary TDirectory TDirectoryFile TDrawQualityModifier TDrawQualityScaler TELTU
++    TEfficiency TEllipse TEntryList TEntryListArray TEntryListBlock TEntryListFromFile TEnum
++    TEnumConstant TEnv TEnvRec TEve3DProjection TEveArrow TEveArrowEditor TEveArrowGL TEveBox
++    TEveBoxGL TEveBoxProjected TEveBoxProjectedGL TEveBoxSet TEveBoxSetGL TEveBrowser TEveCalo2D
++    TEveCalo2DGL TEveCalo3D TEveCalo3DEditor TEveCalo3DGL TEveCaloData TEveCaloDataHist
++    TEveCaloDataVec TEveCaloLego TEveCaloLegoEditor TEveCaloLegoGL TEveCaloLegoOverlay
++    TEveCaloViz TEveCaloVizEditor TEveChunkManager TEveChunkVector TEveCluster
++    TEveCompositeFrame TEveCompositeFrameInMainFrame TEveCompositeFrameInPack
++    TEveCompositeFrameInTab TEveCompound TEveCompoundProjected TEveContextMenu TEveDigitSet
++    TEveDigitSetEditor TEveDigitSetGL TEveElement TEveElementEditor TEveElementList
++    TEveElementListProjected TEveEventManager TEveException TEveFrameBox TEveFrameBoxGL
++    TEveGDoubleValuator TEveGListTreeEditorFrame TEveGTriVecValuator TEveGValuator
++    TEveGValuatorBase TEveGedEditor TEveGedNameFrame TEveGedNameTextButton TEveGeoManagerHolder
++    TEveGeoNode TEveGeoNodeEditor TEveGeoPolyShape TEveGeoShape TEveGeoShapeExtract
++    TEveGeoShapeProjected TEveGeoTopNode TEveGeoTopNodeEditor TEveGridStepper
++    TEveGridStepperEditor TEveGridStepperSubEditor TEveHit TEveJetCone TEveJetConeEditor
++    TEveJetConeGL TEveJetConeProjected TEveJetConeProjectedGL TEveLegoEventHandler TEveLine
++    TEveLineEditor TEveLineGL TEveLineProjected TEveListTreeInfo TEveListTreeItem
++    TEveMCRecCrossRef TEveMCTrack TEveMacro TEveMagField TEveMagFieldConst TEveMagFieldDuo
++    TEveManager TEvePad TEvePadHolder TEveParamList TEveParamListEditor TEvePathMarkT TEvePlot3D
++    TEvePlot3DGL TEvePointSelector TEvePointSelectorConsumer TEvePointSet TEvePointSetArray
++    TEvePointSetArrayEditor TEvePointSetProjected TEvePolygonSetProjected
++    TEvePolygonSetProjectedGL TEveProjectable TEveProjected TEveProjection TEveProjectionAxes
++    TEveProjectionAxesEditor TEveProjectionAxesGL TEveProjectionManager
++    TEveProjectionManagerEditor TEveQuadSet TEveQuadSetGL TEveRGBAPalette TEveRGBAPaletteEditor
++    TEveRGBAPaletteOverlay TEveRGBAPaletteSubEditor TEveRPhiProjection TEveRecCascade
++    TEveRecKink TEveRecTrackT TEveRecV0 TEveRefBackPtr TEveRefCnt TEveRhoZProjection
++    TEveScalableStraightLineSet TEveScene TEveSceneInfo TEveSceneList TEveSecondarySelectable
++    TEveSelection TEveSelectorToEventList TEveShape TEveShapeEditor TEveStraightLineSet
++    TEveStraightLineSetEditor TEveStraightLineSetGL TEveStraightLineSetProjected TEveText
++    TEveTextEditor TEveTextGL TEveTrack TEveTrackEditor TEveTrackGL TEveTrackList
++    TEveTrackListEditor TEveTrackListProjected TEveTrackProjected TEveTrackProjectedGL
++    TEveTrackPropagator TEveTrackPropagatorEditor TEveTrackPropagatorSubEditor TEveTrans
++    TEveTransEditor TEveTransSubEditor TEveTriangleSet TEveTriangleSetEditor TEveTriangleSetGL
++    TEveUtil TEveVSD TEveVector2T TEveVector4T TEveVectorT TEveViewer TEveViewerList
++    TEveViewerListEditor TEveWindow TEveWindowEditor TEveWindowFrame TEveWindowManager
++    TEveWindowPack TEveWindowSlot TEveWindowTab TEveXZProjection TEveYZProjection
++    TEveZXProjection TEveZYProjection TEventList TExMap TExMapIter TExceptionHandler TExec TF1
++    TF12 TF1AbsComposition TF1Convolution TF1Editor TF1NormSum TF1Parameters TF2 TF2GL TF3
++    TFFTComplex TFFTComplexReal TFFTReal TFFTRealComplex TFITSHDU TFPBlock TFTP TFeldmanCousins
++    TFile TFileCacheRead TFileCacheWrite TFileCollection TFileDrawMap TFileHandler TFileInfo
++    TFileInfoMeta TFileMergeInfo TFileMerger TFilePrefetch TFileStager TFitEditor
++    TFitParametersDialog TFitResult TFitResultPtr TFitter TFoam TFoamCell TFoamIntegrand
++    TFoamMaxwt TFoamVect TFolder TFormula TFractionFitter TFrame TFrameEditor TFree
++    TFriendElement TFriendProxyDescriptor TFumili TFumiliMinimizer TFunction
++    TFunctionParametersDialog TFunctionTemplate TG16ColorSelector TGApplication TGButton
++    TGButtonGroup TGCanvas TGCheckButton TGClient TGCocoa TGColorDialog TGColorFrame
++    TGColorPalette TGColorPick TGColorPopup TGColorSelect TGColumnLayout TGComboBox
++    TGComboBoxPopup TGCommandPlugin TGCompositeFrame TGContainer TGDMLMatrix TGDMLParse
++    TGDMLRefl TGDMLWrite TGDNDManager TGDockButton TGDockHideButton TGDockableFrame
++    TGDoubleHSlider TGDoubleSlider TGDoubleVSlider TGDragWindow TGEventHandler TGFSComboBox
++    TGFileBrowser TGFileContainer TGFileDialog TGFileItem TGFont TGFontDialog TGFontPool
++    TGFontTypeComboBox TGFrame TGFrameElement TGFrameElementPack TGGC TGGCPool TGGotoDialog
++    TGGroupFrame TGHButtonGroup TGHProgressBar TGHScrollBar TGHSlider TGHSplitter TGHeaderFrame
++    TGHorizontal3DLine TGHorizontalFrame TGHorizontalLayout TGHotString TGHtml TGHtmlBrowser
++    TGIcon TGIconLBEntry TGIdleHandler TGImageMap TGInputDialog TGItemContext TGL5DDataSet
++    TGL5DDataSetEditor TGLAdapter TGLAnnotation TGLAutoRotator TGLAxis TGLAxisPainter
++    TGLAxisPainterBox TGLBContainer TGLBEntry TGLBoundingBox TGLBoxCut TGLBoxPainter TGLCamera
++    TGLCameraGuide TGLCameraOverlay TGLClip TGLClipBox TGLClipPlane TGLClipSet TGLClipSetEditor
++    TGLClipSetSubEditor TGLColor TGLColorSet TGLContext TGLContextIdentity TGLCylinder
++    TGLEmbeddedViewer TGLEventHandler TGLFBO TGLFaceSet TGLFaderHelper TGLFont TGLFontManager
++    TGLFormat TGLH2PolyPainter TGLHistPainter TGLIsoPainter TGLLegoPainter TGLLightSet
++    TGLLightSetEditor TGLLightSetSubEditor TGLLine3 TGLLockable TGLLogicalShape TGLManager
++    TGLManip TGLManipSet TGLMatrix TGLObject TGLOrthoCamera TGLOutput TGLOverlayButton
++    TGLOverlayElement TGLOverlayList TGLOvlSelectRecord TGLPShapeObj TGLPShapeObjEditor
++    TGLPShapeRef TGLPadPainter TGLPaintDevice TGLParametricEquation TGLParametricEquationGL
++    TGLParametricPlot TGLPerspectiveCamera TGLPhysicalShape TGLPlane TGLPlot3D TGLPlotBox
++    TGLPlotCamera TGLPlotCoordinates TGLPlotPainter TGLPolyLine TGLPolyMarker TGLQuadric TGLRect
++    TGLRnrCtx TGLRotateManip TGLSAFrame TGLSAViewer TGLScaleManip TGLScene TGLSceneBase
++    TGLSceneInfo TGLScenePad TGLSelectBuffer TGLSelectRecord TGLSelectRecordBase
++    TGLSelectionBuffer TGLSphere TGLStopwatch TGLSurfacePainter TGLTF3Painter TGLTH3Composition
++    TGLTH3CompositionPainter TGLTH3Slice TGLText TGLTransManip TGLUtil TGLVContainer TGLVEntry
++    TGLVector3 TGLVertex3 TGLViewer TGLViewerBase TGLViewerEditor TGLVoxelPainter TGLWidget
++    TGLabel TGLayoutHints TGLayoutManager TGLineLBEntry TGLineStyleComboBox TGLineWidthComboBox
++    TGListBox TGListDetailsLayout TGListLayout TGListTree TGListTreeItem TGListTreeItemStd
++    TGListView TGMainFrame TGMatrixLayout TGMdiButtons TGMdiContainer TGMdiCornerWinResizer
++    TGMdiDecorFrame TGMdiFrame TGMdiFrameList TGMdiGeometry TGMdiHorizontalWinResizer
++    TGMdiMainFrame TGMdiMenuBar TGMdiTitleBar TGMdiTitleIcon TGMdiVerticalWinResizer
++    TGMdiWinResizer TGMenuBar TGMenuEntry TGMenuTitle TGMimeTypes TGMsgBox TGNumberEntry
++    TGNumberEntryField TGNumberEntryLayout TGNumberFormat TGOSXGLManager TGObject TGPack
++    TGPasswdDialog TGPicture TGPictureButton TGPicturePool TGPopupMenu TGPrintDialog
++    TGProgressBar TGQuartz TGRadioButton TGRecorder TGRectMap TGRedirectOutputGuard TGRegion
++    TGRegionWithId TGResourcePool TGRowLayout TGScrollBar TGScrollBarElement TGSearchDialog
++    TGSelectBox TGSelectedPicture TGShapedFrame TGShutter TGShutterItem TGSimpleTable
++    TGSimpleTableInterface TGSlider TGSpeedo TGSplitButton TGSplitFrame TGSplitTool TGSplitter
++    TGStatusBar TGString TGTRA TGTab TGTabElement TGTabLayout TGTable TGTableCell TGTableFrame
++    TGTableHeader TGTableHeaderFrame TGTableLayout TGTableLayoutHints TGText TGTextBuffer
++    TGTextButton TGTextEdit TGTextEditor TGTextEntry TGTextLBEntry TGTextLayout TGTextLine
++    TGTextView TGTextViewStreamBuf TGTextViewostream TGTileLayout TGToolBar TGToolTip
++    TGTransientFrame TGTreeLBEntry TGTreeTable TGTripleHSlider TGTripleVSlider TGUndockedFrame
++    TGUnknownWindowHandler TGVButtonGroup TGVFileSplitter TGVProgressBar TGVScrollBar TGVSlider
++    TGVSplitter TGVertical3DLine TGVerticalFrame TGVerticalLayout TGView TGViewFrame TGViewPort
++    TGWidget TGWindow TGXYLayout TGXYLayoutHints TGaxis TGedEditor TGedFrame TGedMarkerPopup
++    TGedMarkerSelect TGedNameFrame TGedPatternFrame TGedPatternPopup TGedPatternSelect
++    TGedPatternSelector TGedPopup TGedSelect TGenPhaseSpace TGenerator TGeoArb8 TGeoAtt TGeoBBox
++    TGeoBatemanSol TGeoBoolNode TGeoBorderSurface TGeoBranchArray TGeoBuilder TGeoCacheState
++    TGeoChecker TGeoCombiTrans TGeoCompositeShape TGeoCone TGeoConeSeg TGeoCtub TGeoDecayChannel
++    TGeoElemIter TGeoElement TGeoElementRN TGeoElementTable TGeoEltu TGeoExtension TGeoGenTrans
++    TGeoGlobalMagField TGeoGtra TGeoHMatrix TGeoHalfSpace TGeoHelix TGeoHype TGeoIdentity
++    TGeoIntersection TGeoIsotope TGeoIterator TGeoIteratorPlugin TGeoManager TGeoMaterial
++    TGeoMatrix TGeoMedium TGeoMixture TGeoNavigator TGeoNavigatorArray TGeoNode TGeoNodeCache
++    TGeoNodeMatrix TGeoNodeOffset TGeoOpticalSurface TGeoOverlap TGeoPNEntry TGeoPainter
++    TGeoPara TGeoParaboloid TGeoParallelWorld TGeoPatternCylPhi TGeoPatternCylR
++    TGeoPatternFinder TGeoPatternHoneycomb TGeoPatternParaX TGeoPatternParaY TGeoPatternParaZ
++    TGeoPatternSphPhi TGeoPatternSphR TGeoPatternSphTheta TGeoPatternTrapZ TGeoPatternX
++    TGeoPatternY TGeoPatternZ TGeoPcon TGeoPgon TGeoPhysicalNode TGeoPolygon TGeoRCExtension
++    TGeoRegion TGeoRegionCut TGeoRotation TGeoScale TGeoScaledShape TGeoShape TGeoShapeAssembly
++    TGeoSkinSurface TGeoSphere TGeoStateInfo TGeoSubtraction TGeoTessellated TGeoTorus TGeoTrack
++    TGeoTranslation TGeoTrap TGeoTrd1 TGeoTrd2 TGeoTube TGeoTubeSeg TGeoUniformMagField
++    TGeoUnion TGeoVolume TGeoVolumeAssembly TGeoVolumeMulti TGeoVoxelFinder TGeoXtru TGeometry
++    TGlobal TGondzioSolver TGraph TGraph2D TGraph2DAsymmErrors TGraph2DErrors TGraph2DPainter
++    TGraphAsymmErrors TGraphBentErrors TGraphDelaunay TGraphDelaunay2D TGraphEdge TGraphEditor
++    TGraphErrors TGraphMultiErrors TGraphNode TGraphPainter TGraphPolar TGraphPolargram TGraphQQ
++    TGraphSmooth TGraphStruct TGraphTime TGrid TGridCollection TGridJDL TGridJob TGridJobStatus
++    TGridJobStatusList TGridResult TGroupButton TGuiBldAction TGuiBldDragManager TGuiBldEditor
++    TGuiBldGeometryFrame TGuiBldHintsButton TGuiBldHintsEditor TGuiBldNameFrame TGuiBuilder
++    TGuiFactory TH1 TH1C TH1D TH1Editor TH1F TH1I TH1L TH1S TH2 TH2C TH2D TH2Editor TH2F TH2GL
++    TH2I TH2L TH2Poly TH2PolyBin TH2S TH3 TH3C TH3D TH3F TH3GL TH3I TH3L TH3S THLimitsFinder
++    THStack THYPE THaarMatrixT THashList THashTable THashTableIter THelix THilbertMatrixT
++    THilbertMatrixTSym THistPainter THn THnBase THnBaseBrowsable THnChain THnIter THnSparse
++    THnSparseArrayChunk THnSparseT THnT THostAuth THttpCallArg THttpEngine THttpServer
++    THttpWSHandler TImage TImageDump TImagePalette TImagePlugin TInetAddress TInspectCanvas
++    TInspectorImp TInterpreter TIter TIterator TKDE TKDTree TKDTreeBinning TKey TKeyMapFile
++    TKeySQL TKeyXML TLatex TLeaf TLeafB TLeafC TLeafD TLeafD32 TLeafElement TLeafF TLeafF16
++    TLeafG TLeafI TLeafL TLeafO TLeafObject TLeafS TLegend TLegendEntry TLimit TLimitDataSource
++    TLine TLineEditor TLinearFitter TLinearGradient TLinearMinimizer TLink TList TListIter
++    TListOfDataMembers TListOfEnums TListOfEnumsWithLock TListOfEnumsWithLockIter
++    TListOfFunctionTemplates TListOfFunctions TListOfFunctionsIter TLockFile TLockGuard
++    TLorentzRotation TLorentzVector TMD5 TMLPAnalyzer TMacOSXSystem TMacro TMap TMapFile
++    TMapIter TMarker TMarker3DBox TMaterial TMathText TMatrixDEigen TMatrixDSymEigen TMatrixT
++    TMatrixTBase TMatrixTColumn TMatrixTColumn_const TMatrixTDiag TMatrixTDiag_const
++    TMatrixTFlat TMatrixTFlat_const TMatrixTLazy TMatrixTRow TMatrixTRow_const TMatrixTSparse
++    TMatrixTSparseDiag TMatrixTSparseDiag_const TMatrixTSparseRow TMatrixTSparseRow_const
++    TMatrixTSub TMatrixTSub_const TMatrixTSym TMatrixTSymLazy TMehrotraSolver TMemFile
++    TMemberInspector TMessage TMessageHandler TMethod TMethodArg TMethodBrowsable TMethodCall
++    TMinuit TMinuit2TraceObject TMinuitMinimizer TMixture TMonitor TMultiDimFit TMultiGraph
++    TMultiLayerPerceptron TMutex TMutexImp TNDArray TNDArrayRef TNDArrayT TNamed TNetFile
++    TNetFileStager TNetSystem TNetXNGFile TNetXNGFileStager TNetXNGSystem TNeuron TNode TNodeDiv
++    TNonSplitBrowsable TNotifyLink TNotifyLinkBase TNtuple TNtupleD TObjArray TObjArrayIter
++    TObjString TObject TObjectRefSpy TObjectSpy TObjectTable TOptionListItem TOrdCollection
++    TOrdCollectionIter TPARA TPCON TPDF TPGON TPMERegexp TPRegexp TPServerSocket TPSocket TPad
++    TPadEditor TPadPainter TPadPainterBase TPadPainterPS TPadWebSnapshot TPair TPaletteAxis
++    TPaletteEditor TParallelCoord TParallelCoordEditor TParallelCoordRange TParallelCoordSelect
++    TParallelCoordVar TParallelMergingFile TParameter TParticle TParticleClassPDG TParticlePDG
++    TPave TPaveClass TPaveLabel TPaveStats TPaveStatsEditor TPaveText TPavesText TPie TPieEditor
++    TPieSlice TPieSliceEditor TPluginHandler TPluginManager TPointSet3D TPointSet3DGL TPoints
++    TPoints3DABC TPolyLine TPolyLine3D TPolyMarker TPolyMarker3D TPosixCondition TPosixMutex
++    TPosixThread TPosixThreadFactory TPostScript TPrimary TPrincipal TProcessEventTimer
++    TProcessID TProcessUUID TProfile TProfile2D TProfile2Poly TProfile2PolyBin TProfile3D
++    TProtoClass TProtoRealData TPyArg TPyReturn TPythia8 TPythia8Decayer TPython TQClass
++    TQCommand TQConnection TQObjSender TQObject TQUndoManager TQpDataBase TQpDataDens
++    TQpDataSparse TQpLinSolverBase TQpLinSolverDens TQpLinSolverSparse TQpProbBase TQpProbDens
++    TQpProbSparse TQpResidual TQpSolverBase TQpVar TQuaternion TROOT TRWLock TRadialGradient
++    TRandom TRandom1 TRandom2 TRandom3 TRandomGen TRatioPlot TReadLockGuard TRealData
++    TRecCmdEvent TRecEvent TRecExtraEvent TRecGuiEvent TRecWinPair TRecorder TRecorderInactive
++    TRecorderPaused TRecorderRecording TRecorderReplaying TRecorderState TRedirectOutputGuard
++    TRedrawDisabler TRef TRefArray TRefArrayIter TRefTable TRegexp TRemoteObject TRint
++    TRobustEstimator TRolke TRootApplication TRootAuth TRootBrowser TRootBrowserLite TRootCanvas
++    TRootContextMenu TRootControlBar TRootDialog TRootEmbeddedCanvas TRootGuiBuilder
++    TRootGuiFactory TRootHelpDialog TRootSecContext TRootSniffer TRootSnifferFull
++    TRootSnifferScanRec TRootSnifferStore TRootSnifferStoreJson TRootSnifferStoreXml TRotMatrix
++    TRotation TS3HTTPRequest TS3WebFile TSAXParser TSPHE TSPlot TSQLClassColumnInfo
++    TSQLClassInfo TSQLColumnData TSQLColumnInfo TSQLFile TSQLMonitoringWriter TSQLObjectData
++    TSQLObjectDataPool TSQLObjectInfo TSQLResult TSQLRow TSQLServer TSQLStatement TSQLStructure
++    TSQLTableData TSQLTableInfo TSQLiteResult TSQLiteRow TSQLiteServer TSQLiteStatement
++    TSSLSocket TSVDUnfold TSVG TScatter TScatter2D TSchemaRule TSchemaRuleSet TSecContext
++    TSecContextCleanup TSelector TSelectorDraw TSelectorEntries TSelectorList TSelectorScalar
++    TSemaphore TSeqCollection TServerSocket TShape TSignalHandler TSlider TSliderBox TSocket
++    TSortedList TSources TSpectrum TSpectrum2 TSpectrum2Fit TSpectrum2Painter
++    TSpectrum2Transform TSpectrum3 TSpectrumFit TSpectrumTransform TSpider TSpiderEditor TSpline
++    TSpline3 TSpline5 TSplinePoly TSplinePoly3 TSplinePoly5 TStatistic TStdExceptionHandler
++    TStopwatch TStorage TStreamerArtificial TStreamerBase TStreamerBasicPointer
++    TStreamerBasicType TStreamerElement TStreamerInfo TStreamerLoop TStreamerObject
++    TStreamerObjectAny TStreamerObjectAnyPointer TStreamerObjectPointer TStreamerSTL
++    TStreamerSTLstring TStreamerString TString TStringLong TStringToken TStructNode
++    TStructNodeEditor TStructNodeProperty TStructViewer TStructViewerGUI TStyle TStyleDialog
++    TStyleManager TStylePreview TSynapse TSysEvtHandler TSystem TSystemDirectory TSystemFile TTF
++    TTRAP TTRD1 TTRD2 TTUBE TTUBS TTVLVContainer TTVLVEntry TTVRecord TTVSession TTabCom
++    TTableRange TTask TTeXDump TText TTextEditor TThread TThreadFactory TThreadImp TTime
++    TTimeStamp TTimer TToggle TToggleGroup TTree TTreeCache TTreeCacheUnzip TTreeCloner
++    TTreeDrawArgsParser TTreeFormula TTreeFormulaManager TTreeFriendLeafIter TTreeIndex
++    TTreeInput TTreePerfStats TTreePlayer TTreeReader TTreeResult TTreeRow TTreeSQL
++    TTreeTableInterface TTreeViewer TUDPSocket TUUID TUnixSystem TUri TUrl TVector2 TVector3
++    TVectorT TView TView3D TViewer3DPad TVirtualAuth TVirtualBranchBrowsable TVirtualDragManager
++    TVirtualFFT TVirtualFitter TVirtualGLManip TVirtualGLPainter TVirtualGeoChecker
++    TVirtualGeoConverter TVirtualGeoPainter TVirtualGeoTrack TVirtualGraphPainter
++    TVirtualHistPainter TVirtualIndex TVirtualMCDecayer TVirtualMagField TVirtualMapFile
++    TVirtualMonitoringReader TVirtualMonitoringWriter TVirtualMutex TVirtualPS TVirtualPad
++    TVirtualPadEditor TVirtualPadPainter TVirtualPaveStats TVirtualPerfStats TVirtualRWMutex
++    TVirtualStreamerInfo TVirtualTableInterface TVirtualTreePlayer TVirtualViewer3D TVirtualX
++    TWbox TWebCanvas TWebControlBar TWebFile TWebPadPainter TWebPainting TWebSnapshot TWebSystem
++    TWin32Condition TWin32Mutex TWin32Thread TWin32ThreadFactory TWriteLockGuard TXMLAttr
++    TXMLDocument TXMLEngine TXMLFile TXMLNode TXMLParser TXMLPlayer TXMLSetup TXTRU TZIPFile
++    TZIPMember WSDir
++""".split())
+diff --git a/tests/test_pyroot_reflection.py b/tests/test_pyroot_reflection.py
+index 7ec0da18..cf1dc3d5 100644
+--- a/tests/test_pyroot_reflection.py
++++ b/tests/test_pyroot_reflection.py
+@@ -1105,3 +1105,25 @@ def test_a_files_classes_are_warned_of_in_the_order_root_wrote_them(capfd):
+     reflection.note_file_infos(described)
+     printed = capfd.readouterr().err
+     assert printed.index("class TEmcl") < printed.index("class TPhysObj")
++
++
++def test_a_class_of_roots_own_needs_no_dictionary_whatever_the_kit_models(capfd):
++    """ROOT's libraries were built with the dictionaries of their own classes, so a file
++    describing ``TGeoAtt`` - which the geometry importer reads past - ``TRegexp`` or a
++    ``TParameter<double>``, whose dictionary is the template's, opens in silence; the names
++    come from ROOT's headers, since not every one of them has a layout or a class here."""
++    described = [
++        ("TGeoAtt", (0x21, 1, ())),
++        ("TRegexp", (0x22, 1, ())),
++        ("TParameter<double>", (0x23, 1, ())),
++    ]
++    reflection.note_file_infos(described)
++    assert capfd.readouterr().err == ""
++
++
++def test_a_class_a_generated_dictionary_describes_needs_no_dictionary(capfd):
++    """``gInterpreter->GenerateDictionary`` gives a class a dictionary there and then, so a
++    file read afterwards describes a class ROOT knows and says nothing about it."""
++    ROOT.TClassTable.Add("TEmcl", 1)
++    reflection.note_file_infos([("TEmcl", (0x31, 1, ()))])
++    assert capfd.readouterr().err == ""
+-- 
+2.54.0 (Apple Git-157)
+

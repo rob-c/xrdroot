@@ -1,0 +1,327 @@
+From 481427cf3273cc61b1decb9277fb6f5bef6937cd Mon Sep 17 00:00:00 2001
+From: w07 <w07@local>
+Date: Fri, 20 Nov 2026 13:53:28 +0000
+Subject: [PATCH] fix(rootsuite): leave a test's output log where its siblings
+ read it
+
+RootTestDriver.cmake writes what it judges to <build>/<testname>.log, and
+roottest's tests read that file by name: reference seds the log schemaRun1
+left in the directory, and every schemaRun*check diffs its sed against
+<build>/reference.log. The harness judged the output in memory and wrote no
+log at all, so those four checks died on 'sed: schemaRun1.log: No such file'
+with a fixture that had in fact been set up.
+
+The plan now gives each roottest test its log path (plan.log_file, the
+directory being the working copy's mirror of CMAKE_CURRENT_BINARY_DIR) and
+judging writes the compared output there - empty for a test that checks only
+stderr, as the driver's  is. An OUTREF naming <build>/x is resolved to
+x, which discovery recorded as 'dir/<build>/dir/x' before, and read from the
+working copy when a test produced it there.
+
+roottest/root/treeformula/schemaEvolution: 5 FAIL -> PASS (reference,
+schemaRun2check, schemaRun2acheck, schemaRun4check, schemaRun4acheck); the
+two schemaRun3* checks stay UNSUPPORTED for xrdroot's missing TTreeFormula.
+No PASS lost over roottest/root/treeformula/* (163 tests).
+---
+ tests/test_rootsuite_discovery.py | 16 ++++++++++
+ tests/test_rootsuite_judging.py   | 41 ++++++++++++++++++++++++++
+ tests/test_rootsuite_running.py   | 25 ++++++++++++++++
+ tools/rootsuite/cmake.py          |  8 ++++-
+ tools/rootsuite/judge.py          | 49 +++++++++++++++++++++++--------
+ tools/rootsuite/plan.py           | 19 ++++++++++++
+ tools/rootsuite/runner.py         |  3 +-
+ 7 files changed, 147 insertions(+), 14 deletions(-)
+
+diff --git a/tests/test_rootsuite_discovery.py b/tests/test_rootsuite_discovery.py
+index d4e40800..a0e95a79 100644
+--- a/tests/test_rootsuite_discovery.py
++++ b/tests/test_rootsuite_discovery.py
+@@ -397,3 +397,19 @@ def test_roottests_edges_automacros_oldtests_and_target_names(edges):
+     assert found["roottest/r/make"].skip.startswith("runs roottest's old Makefile")
+     assert "roottest/r/f" in found
+     assert found["roottest/r/assertOkay-auto"].depends == bad.depends
++
++
++def test_an_outref_the_build_tree_produces_is_the_working_copys_file(tmp_path):
++    """``OUTREF ${CMAKE_CURRENT_BINARY_DIR}/reference.log``: no source tree has that file."""
++    write(tmp_path, {
++        "CMakeLists.txt": "ROOT_ADD_TEST_SUBDIRECTORY(roottest)\n",
++        "roottest/CMakeLists.txt": "ROOTTEST_ADD_TESTDIRS()\n",
++        "roottest/schema/CMakeLists.txt": (
++            "ROOTTEST_ADD_TEST(reference COMMAND sed -e s,a,b,g schemaRun1.log "
++            "WORKING_DIR ${CMAKE_CURRENT_BINARY_DIR} STOREOUT)\n"
++            "ROOTTEST_ADD_TEST(check COMMAND sed -e s,a,b,g schemaRun2.log "
++            "OUTREF ${CMAKE_CURRENT_BINARY_DIR}/reference.log)\n"),
++    })
++    found = by_id(tmp_path)
++    assert found["roottest/schema/reference"].runner == "command"
++    assert found["roottest/schema/check"].outref == "roottest/schema/reference.log"
+diff --git a/tests/test_rootsuite_judging.py b/tests/test_rootsuite_judging.py
+index e120eb58..aea03aa3 100644
+--- a/tests/test_rootsuite_judging.py
++++ b/tests/test_rootsuite_judging.py
+@@ -311,3 +311,44 @@ def test_the_reason_quotes_a_diagnosis_rather_than_clings_echo_of_the_return_val
+     assert status(roottest(outref="a/t.ref"), result("(int) 1", code=1), root) == "FAIL"
+     assert judge(roottest(outref="a/t.ref"), result("(int) 1", code=1), root, root).reason == (
+         "exit 1, expected 0: (int) 1")
++
++
++# --- the log the driver leaves behind ------------------------------------------
++
++
++def test_the_output_judged_is_left_in_the_log_a_sibling_test_reads(tmp_path, root):
++    work = tmp_path / "work"
++    log = work / "a" / "t.log"
++    verdict = judge(roottest(outref="a/t.ref"), result("value=1\nptr ok\n"), root, root,
++                    work=work, log=log)
++    assert verdict.status == "PASS" and log.read_text() == "value=1\nptr ok\n"
++
++
++def test_the_log_holds_the_output_as_the_outcnvcmd_filtered_it(tmp_path):
++    log = tmp_path / "t.log"
++    test = roottest(outcnvcmd=("grep", "-v", "drop"))
++    judge(test, result("keep\ndrop\n"), tmp_path, tmp_path, log=log)
++    assert log.read_text() == "keep\n"
++
++
++def test_a_test_checking_only_standard_error_leaves_an_empty_log(tmp_path):
++    log = tmp_path / "t.log"
++    judge(roottest(check_out=False, check_err=True), result("not judged\n"), tmp_path, tmp_path,
++          log=log)
++    assert log.read_text() == ""
++
++
++def test_a_reference_a_test_wrote_into_the_working_copy_is_read_from_there(tmp_path, root):
++    work = tmp_path / "work"
++    (work / "a").mkdir(parents=True)
++    (work / "a/t.ref").write_text("value = 2\n")
++    verdict = judge(roottest(outref="a/t.ref"), result("value=2\n"), root, root, work=work)
++    assert verdict.status == "PASS"
++
++
++def test_a_committed_reference_is_read_from_the_sources_when_the_working_copy_lacks_it(
++        tmp_path, root):
++    work = tmp_path / "work"
++    work.mkdir()
++    verdict = judge(roottest(outref="a/t.ref"), result("value=1\nptr ok\n"), root, root, work=work)
++    assert verdict.status == "PASS"
+diff --git a/tests/test_rootsuite_running.py b/tests/test_rootsuite_running.py
+index 00cf41ee..dfa7d4dc 100644
+--- a/tests/test_rootsuite_running.py
++++ b/tests/test_rootsuite_running.py
+@@ -512,3 +512,28 @@ def test_a_second_run_reuses_the_working_copy_and_the_hsimple_already_made(tmp_p
+     assert records["py"]["status"] == "PASS" and records["ok"]["status"] == "PASS"
+     assert not (tmp_path / "out/logs/build/hsimple").exists()
+     runner._copy(source / "d/ok.C", tmp_path / "out/work/d/ok.C")
++
++
++def test_a_roottests_output_log_is_where_the_driver_leaves_it_for_its_siblings(tmp_path):
++    made = planned(tmp_path, id="roottest/d/schemaRun1", directory="d", working_dir="elsewhere")
++    assert made.log == tmp_path / "work/d/schemaRun1.log"
++    assert planned(tmp_path, kind="gtest", id="gtest/d/t").log is None
++
++
++def test_a_test_reads_the_log_the_test_before_it_wrote(tmp_path, source, fake):
++    """``reference`` seds ``schemaRun1.log``: the driver writes it into the build directory."""
++    for name in ("schemaRun1", "schemaRun2"):
++        (source / "d" / f"{name}.C").write_text("//out:value = 1\n")
++    (source / "d" / "reference.log").write_text("stale\n")
++    records = run_all(tmp_path, source, fake, [
++        macro("schemaRun1", fixtures_setup=("run",)),
++        macro("schemaRun2"),
++        spec(id="reference", runner="command", command=("cat", "schemaRun1.log"),
++             fixtures_required=("run",), fixtures_setup=("made",)),
++        spec(id="check", runner="command", command=("cat", "schemaRun2.log"),
++             outref="d/reference.log", fixtures_required=("made",)),
++    ])
++    work = tmp_path / "out" / "work" / "d"
++    assert {key: record["status"] for key, record in records.items()} == {
++        "schemaRun1": "PASS", "schemaRun2": "PASS", "reference": "PASS", "check": "PASS"}
++    assert (work / "reference.log").read_text() == (work / "schemaRun1.log").read_text()
+diff --git a/tools/rootsuite/cmake.py b/tools/rootsuite/cmake.py
+index 76c2c30d..7ab50045 100644
+--- a/tools/rootsuite/cmake.py
++++ b/tools/rootsuite/cmake.py
+@@ -201,7 +201,13 @@ class Directory(Interpreter):
+         return Path(text) if text.startswith("/") else self.source / text
+ 
+     def relative_path(self, text: str) -> str:
+-        """A path below ROOT's source tree, as tests record their files."""
++        """A path below ROOT's source tree, as tests record their files.
++
++        The build tree mirrors the source tree, so a ``<build>/x`` a test names -
++        the ``OUTREF`` a sibling test wrote - is recorded as ``x``.
++        """
++        if text.startswith("<build>/"):
++            return text[len("<build>/"):]
+         path = self.path(text)
+         try:
+             return path.resolve().relative_to(Path(self.registry.root).resolve()).as_posix()
+diff --git a/tools/rootsuite/judge.py b/tools/rootsuite/judge.py
+index f7951b3b..6d8fbdc3 100644
+--- a/tools/rootsuite/judge.py
++++ b/tools/rootsuite/judge.py
+@@ -155,18 +155,22 @@ def first_failure(result: Result) -> str:
+ 
+ 
+ def judge(test: Test, result: Result, root: Path, cwd: Path,
+-          post: Result | None = None) -> Verdict:
++          post: Result | None = None, work: Path | None = None,
++          log: Path | None = None) -> Verdict:
+     """The status ctest would give ``test`` for ``result``, xrdroot's refusals told apart.
+ 
+     ``post`` is how the ``POSTCMD`` ran, which the driver checks after the
+-    output is converted and before it is compared.
++    output is converted and before it is compared. ``work`` is the working
++    copy of ROOT's tree, where a test's own log lives - the file another test
++    in its directory reads as a reference (:func:`_reference_file`) - and
++    ``log`` that log (:func:`~tools.rootsuite.plan.log_file`).
+     """
+     if result.timed_out:
+         return Verdict("TIMEOUT", f"still running after {result.runtime:.0f} s")
+     refused = refusal(result)
+     if refused:
+         return Verdict("UNSUPPORTED", refused)
+-    verdict = _driver(test, result, root, cwd, post)
++    verdict = _driver(test, result, root, cwd, post, work, log)
+     verdict = _regexes(test, result, verdict)
+     return declared_failure(verdict) if test.will_fail else verdict
+ 
+@@ -180,7 +184,8 @@ def _exit(result: Result, expected: int) -> str:
+     return f"exit {code}, expected {expected}: {first_failure(result)}"
+ 
+ 
+-def _driver(test: Test, result: Result, root: Path, cwd: Path, post: Result | None) -> Verdict:
++def _driver(test: Test, result: Result, root: Path, cwd: Path, post: Result | None,
++            work: Path | None, log: Path | None) -> Verdict:
+     unexpected = refdiff.unexpected_errors(result.stderr) if test.check_err and not test.check_out \
+         else []
+     if unexpected:
+@@ -188,40 +193,60 @@ def _driver(test: Test, result: Result, root: Path, cwd: Path, post: Result | No
+     wrong = _exit(result, test.passrc if test.passrc is not None else 0)
+     if wrong:
+         return Verdict("FAIL", wrong)
+-    return _references(test, result, root, cwd, post)
++    return _references(test, result, root, cwd, post, work, log)
+ 
+ 
+-def _references(test: Test, result: Result, root: Path, cwd: Path,
+-                post: Result | None) -> Verdict:
++def _references(test: Test, result: Result, root: Path, cwd: Path, post: Result | None,
++                work: Path | None, log: Path | None) -> Verdict:
+     """The output, converted by any ``OUTCNV``, diffed against ``OUTREF`` and ``ERRREF``.
+ 
+     A ``POSTCMD`` that failed fails the test first, as in the driver. A test
+     that does not check its standard output - an ``assert*`` macro - has the
+     driver write nothing to the file its ``OUTREF`` is compared with.
+     """
+-    output, errors = _streams(test, result, root, cwd)
++    output, errors = _streams(test, result, root, cwd, log)
+     if post is not None and post.exit_code != 0:
+         return Verdict("FAIL", f"the post-command {_exit(post, 0)}")
+     for reference, text, stream in ((test.outref, output, "output"),
+                                     (test.errref, errors, "error output")):
+-        diff = _compare(test, (root / reference).read_text(errors="replace"), text) \
+-            if reference else ""
++        diff = _compare(test, _reference_file(reference, root, work).read_text(errors="replace"),
++                        text) if reference else ""
+         if diff:
+             return Verdict("DIFF", f"standard {stream} differs from {reference}", diff)
+     return Verdict("PASS")
+ 
+ 
+-def _streams(test: Test, result: Result, root: Path, cwd: Path) -> tuple[str, str]:
+-    """The output and error streams as compared: converted by ``OUTCNVCMD`` and ``OUTCNV``."""
++def _streams(test: Test, result: Result, root: Path, cwd: Path,
++             log: Path | None) -> tuple[str, str]:
++    """The output and error streams as compared: converted by ``OUTCNVCMD`` and ``OUTCNV``.
++
++    The driver writes what it compares to the test's log - ``<build>/<name>.log``
++    - whether or not an ``OUTREF`` reads it, which is how a sibling test in the
++    same directory comes by ``schemaRun1.log``.
++    """
+     output, errors = (result.stdout if test.check_out else ""), result.stderr
+     if test.outcnvcmd:
+         output = _converted_by(test.outcnvcmd, output, cwd)
+     if test.outcnv:
+         output = _converted(root / test.outcnv, output, cwd)
+         errors = _converted(root / test.outcnv, errors, cwd) if test.errref else errors
++    if log is not None:
++        log.parent.mkdir(parents=True, exist_ok=True)
++        log.write_text(output, encoding="utf-8")
+     return output, errors
+ 
+ 
++def _reference_file(reference: str, root: Path, work: Path | None) -> Path:
++    """The file an ``OUTREF`` names: ROOT's committed one, or one a test wrote in the working copy.
++
++    The build tree mirrors the source tree, so ``<build>/x/reference.log`` is
++    ``x/reference.log`` - a file ROOT's build produced, which no committed copy
++    has, and which the working copy holds (:func:`~tools.rootsuite.plan.log_file`).
++    """
++    made = work / reference if work is not None else None
++    return made if made is not None and made.is_file() else root / reference
++
++
+ def _compare(test: Test, reference: str, output: str) -> str:
+     return (refdiff.custom_diff if test.custom_diff else refdiff.exact)(reference, output)
+ 
+diff --git a/tools/rootsuite/plan.py b/tools/rootsuite/plan.py
+index 2ba2057e..e80afc87 100644
+--- a/tools/rootsuite/plan.py
++++ b/tools/rootsuite/plan.py
+@@ -86,6 +86,7 @@ class Invocation:
+     merge: bool = False
+     stdin: Path | None = None
+     junit: Path | None = None
++    log: Path | None = None
+     before: tuple[Step, ...] = ()
+     after: tuple[Step, ...] = ()
+     commands: frozenset[str] = frozenset()
+@@ -203,11 +204,29 @@ def _invocation(test: Test, context: Context, logs: Path, main: Line,
+         merge=test.check_out and test.check_err and not test.errref,
+         stdin=context.work / test.input if test.input else None,
+         junit=logs / "junit.xml" if test.runner == "pyunittest" else None,
++        log=log_file(test, context.work),
+         before=(*_builds(test, context), *before), after=after,
+         commands=commands | used | building,
+         copy=tuple(context.work / name for name in test.copy))
+ 
+ 
++def log_file(test: Test, work: Path) -> Path | None:
++    """The file ``RootTestDriver.cmake`` writes a test's output to, or ``None`` if it writes none.
++
++    ``ROOTTEST_ADD_TEST`` gives the driver ``OUTPUT``
++    ``<build>/<directory>/<testname>.log`` for every test it registers - the
++    output it judges, filtered by any ``OUTCNVCMD``, and nothing at all for a
++    test that checks only standard error. The tests around it read that file
++    by name from the build directory (``reference`` seds ``schemaRun1.log``),
++    which the working copy mirrors, so each test's log is left where the next
++    one looks for it. Only roottest's tests go through the driver; ctest runs
++    the others' programs itself.
++    """
++    if test.kind != "roottest":
++        return None
++    return work / test.directory / f"{test.id.rsplit('/', 1)[-1]}.log"
++
++
+ def _cwd(test: Test, context: Context) -> Path:
+     """Where a test runs: its ``WORKING_DIR``, else its directory; a build, where it builds."""
+     if test.runner == "setup" and test.builds:
+diff --git a/tools/rootsuite/runner.py b/tools/rootsuite/runner.py
+index 7737e150..526838d7 100644
+--- a/tools/rootsuite/runner.py
++++ b/tools/rootsuite/runner.py
+@@ -289,7 +289,8 @@ class Runner:
+         if test.runner == "pyunittest" and invocation.junit is not None:
+             verdict = cases.judge_pyunittest(test, result, invocation.junit)
+         else:
+-            verdict = judge.judge(test, result, self.settings.root, invocation.cwd, post)
++            verdict = judge.judge(test, result, self.settings.root, invocation.cwd, post,
++                                  work=self.work, log=invocation.log)
+         if test.runner == "gtest":
+             verdict.cases = cases.gtest_counts(result.stdout + result.stderr)
+             verdict.failures = cases.gtest_failures(result.stdout + result.stderr)
+-- 
+2.54.0 (Apple Git-157)
+

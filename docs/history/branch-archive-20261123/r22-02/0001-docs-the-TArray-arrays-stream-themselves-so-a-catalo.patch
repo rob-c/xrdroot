@@ -1,0 +1,170 @@
+From d13c7ae274beb1c66bf728b9bc0cadc66e5d8671 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 00:16:05 +0000
+Subject: [PATCH] docs: the TArray arrays stream themselves, so a catalogue
+ gives them no plan
+
+A TArrayF or TArrayI member of a declared class is described by the file's
+streamer information as an object naming the class, and that description is
+now pinned for every spelling a macro reaches it by - by value and through a
+pointer. The bytes of one are not that description: ROOT's TArrayF::Streamer
+writes fN and then the values, with no record round the object and nothing of
+the TArray base, so SELF_STREAMING_ARRAYS names the family a catalogue must
+answer written_as with None for, and a test writes a TArrayF member through
+the writer and compares the twelve bytes with the ones ROOT 6.40.04 wrote for
+the same member.
+---
+ src/xrdroot/wdeclared.py                     | 22 ++++-
+ tests/test_declared_self_streaming_arrays.py | 93 ++++++++++++++++++++
+ 2 files changed, 113 insertions(+), 2 deletions(-)
+ create mode 100644 tests/test_declared_self_streaming_arrays.py
+
+diff --git a/src/xrdroot/wdeclared.py b/src/xrdroot/wdeclared.py
+index a23634a5..968b64e7 100644
+--- a/src/xrdroot/wdeclared.py
++++ b/src/xrdroot/wdeclared.py
+@@ -27,7 +27,7 @@ from .wclasses import TYPES, checksum
+ from .winfo import INFOS, Element
+ 
+ __all__ = ["Field", "Declaration", "Spelled", "Catalogue", "parse_type", "normalised",
+-           "CARRIED_LAYOUTS"]
++           "CARRIED_LAYOUTS", "SELF_STREAMING_ARRAYS"]
+ 
+ #: ROOT's typedefs of numbers, as the C++ types they stand for.
+ ROOT_TYPEDEFS = {
+@@ -262,6 +262,21 @@ CARRIED_LAYOUTS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
+     )),
+ }
+ 
++#: The same classes, and every other array built on ``TArray``, *stream themselves*: an
++#: object of one is its ``fN`` and then that many values, with no record round it and nothing
++#: of the base class it inherits - ``TArrayF::Streamer`` writes ``fN`` and ``WriteFastArray``
++#: and ``TArrayI``'s does the same - so the description above is the schema a file states, and
++#: not the bytes of one. Measured twice against ROOT 6.40.04: the ``TArrayF f`` member of a
++#: class holding one is ``00000002 3fc00000 40200000`` and no byte count precedes it, where a
++#: member of a class with a dictionary gets its own record. So a catalogue answers
++#: :meth:`Catalogue.written_as` with ``None`` for these - the writer lays one out by hand, as
++#: :data:`~.wdobjects` and :data:`~.rootarrays.ARRAYS` do for the reader's side - and none of
++#: them may be given a plan of elements here: written by the elements it would carry a record
++#: and a base record ROOT's own bytes do not have.
++SELF_STREAMING_ARRAYS = frozenset({"TArray", "TArrayC", "TArrayS", "TArrayI", "TArrayL",
++                                   "TArrayL64", "TArrayF", "TArrayD"})  # fmt: skip
++
++
+ class Catalogue:
+     """The classes a write reaches, each described once: the program's and ROOT's.
+ 
+@@ -362,7 +377,10 @@ class Catalogue:
+     def written_as(self, name: str) -> tuple[int, int | None, tuple[Element, ...]] | None:
+         """How a record of ``name`` is written: its version, the checksum a foreign class
+         carries after it, and the elements its members are written by - or ``None`` for a
+-        class the program did not declare, whose record ROOT's own layout writes.
++        class the program did not declare, whose record ROOT's own layout writes: one of
++        ROOT's described classes, or an array that streams itself (see
++        :data:`SELF_STREAMING_ARRAYS`), which is laid out as the count and the values it is
++        rather than as the elements a file states of it.
+ 
+         Kept, for the reason :attr:`infos` is: ``TClass::Streamer`` in a bulk loop writes
+         ten million records of one class and asks this once for every one of them.
+diff --git a/tests/test_declared_self_streaming_arrays.py b/tests/test_declared_self_streaming_arrays.py
+new file mode 100644
+index 00000000..9ee44255
+--- /dev/null
++++ b/tests/test_declared_self_streaming_arrays.py
+@@ -0,0 +1,93 @@
++"""The ``TArray`` family a declared class holds: what a file says of one, and what one is.
++
++``roottest/root/io/bigevent``'s ``Event`` holds a ``TArrayF`` by value and a
++``TArrayI`` through a pointer, and ``Track`` holds a ``TArrayI`` by value, so a
++class a macro declares can reach these from either side. Two different things
++are pinned here, and telling them apart is the point: the *description* a file
++holds of such a class is a base and its counted pointer, which is the schema
++ROOT's streamer information states, while the *bytes* of one are its count and
++then that many values, with no record round the object and nothing of the base
++- ROOT streams these classes by hand. ROOT 6.40.04 wrote the bytes asserted
++below for a class holding exactly these members.
++"""
++
++from __future__ import annotations
++
++import numpy as np
++import pytest
++
++from xrdroot.errors import UnsupportedFeatureError
++from xrdroot.wdeclared import (
++    CARRIED_LAYOUTS,
++    SELF_STREAMING_ARRAYS,
++    Catalogue,
++    Declaration,
++    Field,
++)
++from xrdroot.wdobjects import Instance, write_instance
++from xrdroot.winfo import INFOS
++from xrdroot.writer import WBuffer
++
++
++def _holding(*fields: Field) -> Catalogue:
++    """A catalogue of one class holding ``fields``, as a macro's declaration of one."""
++    return Catalogue({"C": Declaration("C", 1, True, (), fields)})
++
++
++def test_every_array_built_on_tarray_streams_itself_and_is_never_written_by_elements():
++    assert SELF_STREAMING_ARRAYS == frozenset({
++        "TArray", "TArrayC", "TArrayS", "TArrayI", "TArrayL", "TArrayL64",
++        "TArrayF", "TArrayD",
++    })  # fmt: skip
++    catalogue = Catalogue({})
++    for name in SELF_STREAMING_ARRAYS:
++        # A plan of elements would put a byte count and a base record round the object, which
++        # ROOT's own bytes of one do not have, so the writer lays one out by hand instead.
++        assert catalogue.written_as(name) is None
++        assert name not in INFOS
++
++
++def test_the_arrays_a_file_states_a_description_of_are_the_four_a_declared_class_reaches():
++    catalogue = Catalogue({})
++    assert set(CARRIED_LAYOUTS) == {"TArray", "TArrayF", "TArrayI", "TArrayD"}
++    for name in CARRIED_LAYOUTS:
++        assert catalogue.known(name)
++        assert catalogue.info(name) == CARRIED_LAYOUTS[name]
++
++
++def test_an_array_a_file_states_no_description_of_is_refused_rather_than_laid_out_wrong():
++    # A TArrayC streams itself in ROOT's kit and no measurement here has pinned the checksum
++    # a file states of one, and a member written by invented numbers would read back as
++    # another class: refusing is the honest answer until someone measures it.
++    catalogue = _holding(Field("fArrayC", "TArrayC", "an array of chars", ()))
++    assert not catalogue.known("TArrayC")
++    with pytest.raises(UnsupportedFeatureError, match="C::fArrayC is a TArrayC"):
++        catalogue.info("C")
++
++
++@pytest.mark.parametrize("spelled", ["TArrayF", "TArrayI", "TArrayD*", "TArrayI*"])
++def test_a_member_the_array_classes_are_named_by_is_an_object_any_of_that_class(
++    spelled: str,
++) -> None:
++    catalogue = _holding(Field("f", spelled, "", ()))
++    element = catalogue.info("C")[2][0]
++    stars = "*" in spelled
++    assert (element[0], element[3], element[8]) == (
++        "TStreamerObjectAnyPointer" if stars else "TStreamerObjectAny",
++        69 if stars else 62,
++        spelled,
++    )
++    # An object of one cannot be read by a file that holds no description of it, so the write
++    # carries the description - and the class itself is named to no one else.
++    assert spelled.rstrip("*") in catalogue.entries()
++    assert catalogue.used == {}
++
++
++def test_the_bytes_of_an_array_member_are_its_count_and_its_values_and_nothing_round_them():
++    catalogue = _holding(Field("f", "TArrayF", "an array of floats", ()))
++    buf = WBuffer()
++    write_instance(buf, Instance("C", {"f": np.array([1.5, 2.5], dtype="f")}), catalogue)
++    # ROOT 6.40.04 wrote these twelve bytes for the ``TArrayF f`` member of a class it wrote:
++    # ``b << fN; b.WriteFastArray(fArray, fN)`` - where a member of a class with a dictionary
++    # is preceded by a byte count and a version of its own.
++    assert bytes(buf.data)[-12:] == bytes.fromhex("000000023fc0000040200000")
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,569 @@
+From c05b68c34a7419a1b706b3e24f16a8abb6e4f13e Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 13:54:56 +0000
+Subject: [PATCH] perf: a record of numbers goes out in one struct and comes
+ back into its members
+
+The four `roottest/root/io/perf` buffers ran at 211-261 s of the 300 s limit
+after round 6 closed them functionally, so any loaded machine turned them into
+TIMEOUTs. `--jobs 1` and cProfile on the four said the cost was per record, not
+per byte:
+
+WriteBuffer. `TClass::Streamer` wrote each of nine members through
+`_ELEMENTS` dispatch -> `_basic` -> `_number` -> `pack_one` -> `WBuffer.raw`,
+nine `struct` calls and nine appends per record. `wpacking.pack_row` builds one
+`struct` of every member's code when a record is all plain numbers, and
+`_Writer.record` writes the whole row in one `pack`; a number `struct` refuses -
+one too wide for its member, a float where an integer is declared - falls back to
+the member-by-member writer, which wraps or truncates it as ROOT on file holds
+it. The row plan is an `lru_cache` on (catalogue, class) rather than a
+`WeakKeyDictionary`, whose lookup makes a weakref out of the catalogue per
+record.
+
+Both. `find_class` walked every class the interpreter had declared on every
+call; the name a streamer prints is a key of `DECLARED` almost always, so it is
+answered by a dictionary lookup and kept, validated by `DECLARED` still holding
+that same class under that key - so a class declared again under one name is
+answered afresh, which `test_a_class_declared_again_under_one_name_...` pins.
+
+ReadBuffer. `_fill` ran nine times through `getattr(obj, attribute)` and a maker
+closure each, whose `_scalar_number` re-masked an `int` that came off the buffer
+already in range. `_fill` now hands the attribute a whole number of the member's
+own C++ width directly (`declared._unchanged` names the range), and everything
+else - a float where an integer is declared, a number too wide - goes the way it
+always did.
+
+Measured as CPU time of one in-process loop against the same binary at HEAD
+(machine at load ~150, so wall clock says nothing): WriteBuffer 2.79 -> 1.58 s
+per 2*10^5 records (1.77x), ReadBuffer 3.80 -> 1.72 s (2.21x). The bytes are
+unchanged: the new tests pin a record of numbers against the member-by-member
+writer, against ROOT's own wrapped and truncated values, and against the record
+read back into an object.
+---
+ src/xrdroot/pyroot/core/declared.py | 147 +++++++++++++++++++++++-----
+ src/xrdroot/wdobjects.py            |  61 +++++++++++-
+ src/xrdroot/wpacking.py             |  28 +++++-
+ tests/test_root_declared_objects.py |  74 ++++++++++++++
+ tests/test_wpacking.py              |  22 +++++
+ 5 files changed, 303 insertions(+), 29 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/declared.py b/src/xrdroot/pyroot/core/declared.py
+index 1e5649b2..217708bd 100644
+--- a/src/xrdroot/pyroot/core/declared.py
++++ b/src/xrdroot/pyroot/core/declared.py
+@@ -66,6 +66,8 @@ FLOATS = ("float", "double", "Double32_t", "Float16_t", "long double")
+ #: How many class descriptions are kept at once: a program declares a bounded number of
+ #: classes, and a description is derived from one class alone.
+ CATALOGUES_KEPT = 4096
++#: How many objects' member plans are kept at once: one per class a catalogue describes.
++PLANS_KEPT = 4096
+ 
+ #: ROOT's collections that hand themselves to a reader as the plain list of what they held -
+ #: they stream themselves, so no streamer information is what reads them - and that the
+@@ -99,12 +101,42 @@ def find_class(name: str) -> type | None:
+     from ...pycxx.runtime.namespace import DECLARED
+ 
+     wanted = _squashed_name(name)
++    kept = _FOUND.get(wanted)
++    if kept is not None and DECLARED.get(kept[0]) is kept[1]:
++        return kept[1]
++    return _declared_as(wanted) or _among_declared(wanted)
++
++
++def _declared_as(wanted: str) -> type | None:
++    """The class the interpreter holds under ``wanted``, or under its name alone.
++
++    The names a program declared are the interpreter's own, so the name a streamer prints -
++    and the last part of a qualified one - is usually one of them: a dictionary lookup, where
++    walking every class declared so far is what a bulk ``TClass::Streamer`` loop of 10^7
++    records used to spend a tenth of its time on. A name that is a key but declares itself by
++    something else is left to the walk, which is what decides a fallback.
++    """
++    from ...pycxx.runtime.namespace import DECLARED
++
++    for key in (wanted, wanted.split("::")[-1]):
++        found = DECLARED.get(key)
++        if found is not None and _own_name(found) == wanted:
++            _FOUND[wanted] = (key, found)
++            return found  # type: ignore[no-any-return]
++    return None
++
++
++def _among_declared(wanted: str) -> type | None:
++    """The class ``wanted`` among every class the interpreter holds: the one that declares
++    itself by that whole name, else the first whose own name is its last part."""
++    from ...pycxx.runtime.namespace import DECLARED
++
+     last = wanted.split("::")[-1]
+     fallback = None
+     for cls in list(DECLARED.values()):
+-        if not declared_class(cls):
++        own = _own_name(cls)
++        if own is None:
+             continue
+-        own = _squashed_name(str(cls.__dict__["_cxx_layout_"][0]))
+         if own == wanted:
+             return cls  # type: ignore[no-any-return]
+         if own.split("::")[-1] == last:
+@@ -112,10 +144,22 @@ def find_class(name: str) -> type | None:
+     return fallback
+ 
+ 
++#: Each name's class, kept with the name the interpreter holds it under: the answer stands
++#: while that is still the class under that name, which is what makes a class declared again
++#: under one name a new class here too - exactly as the walk below decides it.
++_FOUND: dict[str, tuple[str, Any]] = {}
++
++
++def _own_name(cls: Any) -> str | None:
++    """The name a class declares itself by, with the spaces out of it - ``None`` for one that
++    is not a class a program declared, which the interpreter also keeps."""
++    return _squashed_name(str(cls.__dict__["_cxx_layout_"][0])) if declared_class(cls) else None
++
++
+ def _squashed_name(name: str) -> str:
+     """A class name's spelling with the spaces out of it, which is what two spellings of one
+     template instance agree on: ``A<B<int> >`` and ``A<B<int>>`` are the one class."""
+-    return name.strip().replace(" ", "")
++    return name.strip().replace(" ", "") if " " in name else name.strip()
+ 
+ 
+ def declaration_of(cls: type, name: str | None = None) -> Declaration:
+@@ -359,20 +403,21 @@ class _Plan(NamedTuple):
+     fields: tuple[tuple[Field, str, Spelled | None], ...]
+ 
+ 
+-#: Each catalogue's plans by class name. Held weakly: a catalogue is kept with the class it
+-#: describes, and a plan says nothing about anything outside it.
+-_PLANS: WeakKeyDictionary[Catalogue, dict[str, _Plan]] = WeakKeyDictionary()
++def _plan(catalogue: Catalogue, name: str) -> _Plan:
++    """How the class ``name``'s members come off an object, made the first time it is asked.
+ 
++    Kept by :func:`functools.lru_cache` rather than in a dictionary of weak keys, which is
++    what the bulk loop below pays for: a ``WeakKeyDictionary.get`` makes a reference out of
++    the catalogue every time it is asked, and this is asked once per record.
++    """
++    return _planned_by(catalogue, name)
+ 
+-def _plan(catalogue: Catalogue, name: str) -> _Plan:
+-    """How the class ``name``'s members come off an object, made the first time it is asked."""
+-    held = _PLANS.get(catalogue)
+-    if held is None:
+-        held = _PLANS[catalogue] = {}
+-    found = held.get(name)
+-    if found is None:
+-        found = held[name] = _planned(catalogue, name)
+-    return found
++
++@functools.lru_cache(maxsize=PLANS_KEPT)
++def _planned_by(catalogue: Catalogue, name: str) -> _Plan:
++    """The plan for one class, kept while the catalogue is: a bounded number of classes, and
++    a plan says nothing about anything outside the catalogue it was made for."""
++    return _planned(catalogue, name)
+ 
+ 
+ def _planned(catalogue: Catalogue, name: str) -> _Plan:
+@@ -478,6 +523,13 @@ def _plain(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
+     return _plain_object(value, found, catalogue)
+ 
+ 
++@functools.lru_cache(maxsize=CATALOGUES_KEPT)
++def _streamed_name(found: Spelled) -> str:
++    """The name a type's class is streamed under, kept: the write asks for it once per record
++    and a type taken apart is nothing a record changes."""
++    return class_name(found)
++
++
+ def _present(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
+     """A member's value as there to write: an object held by value that is not made yet as
+     a default-made one, and a pointer a macro set to 0 as the null it is."""
+@@ -495,7 +547,7 @@ def _plain_object(value: Any, found: Spelled, catalogue: Catalogue) -> Any:
+     a macro's ``ArrayHolderT<int>`` is declared under that name, where the spelled type
+     of the member says only ``ArrayHolderT``.
+     """
+-    name = class_name(found)
++    name = _streamed_name(found)
+     if catalogue.declared(name) is not None and name not in STRINGS:
+         return _object_of(value, name, catalogue)
+     if isinstance(value, TObject):
+@@ -603,19 +655,28 @@ def _new(cls: type) -> Any:
+         return object.__new__(cls)
+ 
+ 
++#: The row a member is not in at all, as opposed to in it with a value of ``None``.
++_MISSING: Any = object()
++
++
+ def _fill(obj: Any, cls: type, row: Mapping[str, Any]) -> None:
+     """``obj`` given the members of ``row``, by the declaration of ``cls``."""
+     _own, bases, _fields = cls.__dict__["_cxx_layout_"]
+     for base in bases:
+         _fill_base(obj, cls, str(base), row.get(str(base)))
+-    for name, attribute, made in _fills_of(cls):
+-        if name in row:
+-            setattr(obj, attribute, made(row[name], getattr(obj, attribute, None)))
++    for name, attribute, made, holds in _fills_of(cls):
++        value = row.get(name, _MISSING)
++        if value is _MISSING:
++            continue
++        if holds is not None and type(value) is holds[0] and holds[1] <= value <= holds[2]:
++            setattr(obj, attribute, value)
++            continue
++        setattr(obj, attribute, made(value, getattr(obj, attribute, None)))
+ 
+ 
+-def _fills_of(cls: type) -> tuple[tuple[str, str, Callable[[Any, Any], Any]], ...]:
+-    """The members of ``cls`` a read fills: its name in the row, its attribute, and how the
+-    value it was read as becomes the member's own.
++def _fills_of(cls: type) -> tuple[tuple[str, str, Callable[[Any, Any], Any], Any], ...]:
++    """The members of ``cls`` a read fills: its name in the row, its attribute, how the value
++    it was read as becomes the member's own, and the numbers that value already is.
+ 
+     Kept per class - a ``TClass::Streamer`` in roottest's bulk loop fills ten million
+     records of one class of nine numbers, and working out which attribute a name is and
+@@ -624,15 +685,24 @@ def _fills_of(cls: type) -> tuple[tuple[str, str, Callable[[Any, Any], Any]], ..
+     found = _FILLS.get(cls)
+     if found is None:
+         found = _FILLS[cls] = tuple(
+-            (str(name), _attribute(str(name)), _member_maker(parse_type(str(spelled)), dims))
+-            for name, spelled, comment, dims in cls.__dict__["_cxx_layout_"][2]
+-            if not str(comment).startswith("!")
+-        )
++            (name, _attribute(name), _member_maker(spelled, dims), _unchanged(spelled, dims))
++            for name, spelled, dims in _declared_fields(cls)
++        )  # fmt: skip
+     return found
+ 
+ 
++def _declared_fields(cls: type) -> list[tuple[str, Spelled, Any]]:
++    """Each member of ``cls`` a read fills: its name, its type taken apart and the lengths it
++    is declared with - the members a trailing ``!`` keeps out of a file's record left out."""
++    return [
++        (str(name), parse_type(str(spelled)), dims)
++        for name, spelled, comment, dims in cls.__dict__["_cxx_layout_"][2]
++        if not str(comment).startswith("!")
++    ]
++
++
+ #: Each class's fill plan, held weakly: a plan says nothing about anything outside the class.
+-_FILLS: WeakKeyDictionary[type, tuple[tuple[str, str, Callable[[Any, Any], Any]], ...]] = (
++_FILLS: WeakKeyDictionary[type, tuple[tuple[str, str, Callable[[Any, Any], Any], Any], ...]] = (
+     WeakKeyDictionary()
+ )
+ 
+@@ -668,6 +738,29 @@ def _number_maker(typename: str) -> Callable[[Any, Any], Any]:
+     return made
+ 
+ 
++def _unchanged(found: Spelled, dims: Any = ()) -> tuple[Any, Any, Any] | None:
++    """The numbers a member of the type ``found`` holds as the value read is, or ``None`` for a
++    member whose every value :func:`_number_maker` must look at.
++
++    A number a stream read is nearly always the number the member holds already: an ``int``
++    member read from an ``int`` on file is one, and in range. ``_scalar_number`` would mask it
++    and convert it again - which for the nine members of a class of numbers read ten million
++    times is what the read was - so a whole number of the member's own C++ width is the
++    attribute's value as it stands. Anything else, a float where an integer is declared or a
++    number too wide for the member, goes the way it always did and is truncated or wrapped.
++    """
++    if found.stars or dims or found.name not in _PLAIN:
++        return None
++    c_type = TYPES[found.name][1]
++    found_width = WIDTHS.get(_c_name(c_type)) if c_type not in FLOATS else None
++    if found_width is None:  # a float, or a ``bool`` whose every number is a truth value
++        return None
++    bits, signed = found_width
++    low, high = (-(1 << (bits - 1)), (1 << (bits - 1)) - 1) if signed else (0, (1 << bits) - 1)
++    return int, low, high
++
++
++
+ def _fill_base(obj: Any, cls: type, base: str, row: Any) -> None:
+     if not isinstance(row, Mapping):
+         return
+diff --git a/src/xrdroot/wdobjects.py b/src/xrdroot/wdobjects.py
+index 82b84f0a..9ff7dec3 100644
+--- a/src/xrdroot/wdobjects.py
++++ b/src/xrdroot/wdobjects.py
+@@ -19,6 +19,8 @@ hands a file one, with the descriptions of every class it reached.
+ 
+ from __future__ import annotations
+ 
++import functools
++import struct
+ from collections.abc import Callable, Mapping
+ from typing import Any, NamedTuple
+ 
+@@ -46,11 +48,14 @@ from .wdeclared import (
+     parse_type,
+ )
+ from .winfo import INFOS, Element
+-from .wpacking import pack_member, pack_one
++from .wpacking import pack_member, pack_one, pack_row
+ from .writer import Record, WBuffer, _payload, _record, info_entry
+ 
+ __all__ = ["Clones", "Instance", "DeclaredObject", "write_instance", "write_members", "write_value"]
+ 
++#: How many classes' row plans are kept at once: one per class a catalogue describes.
++ROWS_KEPT = 4096
++
+ #: ``TObject``'s ``kIsOnHeap`` and ``kNotDeleted``, which ROOT keeps out of what it writes.
+ MEMORY_BITS = 0x03000000
+ #: The version ROOT 6.40 gives the record round a container or string inside an object:
+@@ -168,6 +173,9 @@ class _Writer:
+         if sum_ is not None:
+             self.buf.u32(sum_)
+         members = _members(value)
++        if _row_as(self.catalogue, classname).numbers(self, members):
++            self.buf.end(at)
++            return
+         for element in elements:
+             _ELEMENTS[element[0]](self, element, members.get(element[1]), members)
+         self.buf.end(at)
+@@ -530,6 +538,57 @@ class _Writer:
+         self.buf.end(at)
+ 
+ 
++class _Row:
++    """How a record whose members are every one of them a plain number is written: the names
++    to take off the object, in order, and the one ``struct`` that writes them all.
++
++    ``None`` for the members it holds means the record is not one of numbers and every element
++    keeps the writer its kind asks for. Worked out once per class, since what the members are
++    is nothing a record changes.
++    """
++
++    def __init__(self, pack: struct.Struct | None, names: tuple[str, ...]) -> None:
++        self.pack = pack
++        self.names = names
++
++    def numbers(self, writer: _Writer, members: Mapping[str, Any]) -> bool:
++        """``members`` written in one call, and whether they were: a number ``struct`` refuses -
++        one too wide for its member, a float where an integer is declared, a string where a
++        number is - is left to the writer each element's own kind gives, which wraps or
++        truncates it as ROOT on file holds it."""
++        if self.pack is None:
++            return False
++        take = members.get
++        try:
++            writer.buf.raw(self.pack.pack(*[take(name, 0) for name in self.names]))
++        except (struct.error, TypeError):
++            return False
++        return True
++
++
++@functools.lru_cache(maxsize=ROWS_KEPT)
++def _row_as(catalogue: Catalogue, classname: str) -> _Row:
++    """How the class ``classname``'s record is written, made the first time it is asked.
++
++    Kept by :func:`functools.lru_cache` and not in a dictionary of weak keys: a bulk
++    ``TClass::Streamer`` loop asks this once per record, and a weak lookup makes a reference
++    out of the catalogue every time. What is kept says nothing about anything outside the
++    catalogue it was made for, so a bounded cache of them is the width of the memory.
++    """
++    _version, _sum, elements = catalogue.written_as(classname) or (0, None, ())
++    return _Row(_row_pack(elements), tuple(element[1] for element in elements))
++
++
++def _row_pack(elements: tuple[Element, ...]) -> struct.Struct | None:
++    """The ``struct`` that writes every member of a record of numbers, or ``None`` where one of
++    them is something else - an object, a container, a string, a packed float, an array."""
++    plain = all(
++        element[0] == "TStreamerBasicType" and not element[5] and not element[6]
++        for element in elements
++    )
++    return pack_row([element[3] for element in elements]) if plain else None
++
++
+ #: How each kind of element is written.
+ _ELEMENTS: dict[str, Callable[[_Writer, Element, Any, Mapping[str, Any]], None]] = {
+     "TStreamerBase": _Writer._base,
+diff --git a/src/xrdroot/wpacking.py b/src/xrdroot/wpacking.py
+index 828669ed..139d4074 100644
+--- a/src/xrdroot/wpacking.py
++++ b/src/xrdroot/wpacking.py
+@@ -15,6 +15,7 @@ for a ``Float16_t``. The arithmetic is ``TBufferFile::WriteDouble32``'s and
+ from __future__ import annotations
+ 
+ import struct
++from collections.abc import Sequence
+ from functools import cache
+ from typing import Any
+ 
+@@ -23,7 +24,15 @@ import numpy as np
+ from .errors import UnsupportedFeatureError
+ from .interp import _range
+ 
+-__all__ = ["BASIC", "DOUBLE32", "FLOAT16", "pack_member", "pack_one", "packed_size"]
++__all__ = [
++    "BASIC",
++    "DOUBLE32",
++    "FLOAT16",
++    "pack_member",
++    "pack_one",
++    "pack_row",
++    "packed_size",
++]
+ 
+ #: ``TStreamerInfo``'s ``kDouble32`` and ``kFloat16``: the two packed float types.
+ DOUBLE32, FLOAT16 = 9, 19
+@@ -128,6 +137,23 @@ def pack_one(stype: int, title: str, value: Any) -> bytes:
+     return pack_member(stype, title, np.asarray([value]))
+ 
+ 
++def pack_row(stypes: Sequence[int]) -> struct.Struct | None:
++    """One ``struct`` for a record whose members are every one of them a plain number, or
++    ``None`` where one is not: a packed float, a member of a width ``struct`` has no code for.
++
++    A class of numbers is written as nine members each of which costs a ``struct`` call, a
++    ``bytes`` object and an append - roottest's own benchmark writes ten million of them -
++    where one ``pack`` of all nine is the same bytes in one call. The codes are exactly those
++    :func:`pack_one` uses, so a record written this way is the record written member by member.
++    """
++    codes = []
++    for stype in stypes:
++        if stype not in BASIC or stype in (DOUBLE32, FLOAT16):
++            return None
++        codes.append(_packer(stype).format.lstrip("<>"))
++    return struct.Struct(">" + "".join(codes))
++
++
+ def pack_member(stype: int, title: str, values: Any) -> bytes:
+     """A column of one member's values, as its streamer type writes them."""
+     if stype not in (DOUBLE32, FLOAT16):
+diff --git a/tests/test_root_declared_objects.py b/tests/test_root_declared_objects.py
+index 1c71b9a2..0793eb09 100644
+--- a/tests/test_root_declared_objects.py
++++ b/tests/test_root_declared_objects.py
+@@ -13,6 +13,7 @@ from __future__ import annotations
+ 
+ import pathlib
+ import re
++from typing import Any
+ 
+ import numpy as np
+ import pytest
+@@ -28,6 +29,7 @@ from xrdroot.pycxx.runtime.namespace import DECLARED
+ from xrdroot.pyroot.core.declared import (
+     _member_maker,
+     catalogue_for,
++    catalogue_of,
+     converted,
+     find_class,
+     made_from,
+@@ -2181,3 +2183,75 @@ def test_a_container_of_roots_core_objects_is_written_by_the_members_their_layou
+     # container, ``TObject``'s version and the count - one column per member of a ``TObject``.
+     assert bytes(buf.data)[24:].hex() == "40000010" + "400a" + "0001" + "00000001" \
+         + "00000000" + "03000000"
++
++
++#: A class of nothing but numbers, which is what roottest's own bulk ``Streamer`` benchmark
++#: writes ten million times: every member of its record is written by the same one ``struct``.
++NUMBERS = r"""
++class Numbers {
++public:
++   int a1;
++   float a2;
++   int a3;
++   Numbers() : a1(0), a2(0), a3(0) {}
++};
++"""
++
++
++def _numbers_for() -> tuple[type, Catalogue, Any]:
++    """``the numbers`` class declared, its catalogue, and an object of it holding 7, 1.5, -3."""
++    run_source(NUMBERS, "numbers.C", call=False)
++    cls = find_class("Numbers")
++    catalogue = catalogue_of(cls)
++    obj = cls()
++    obj.a1, obj.a2, obj.a3 = 7, 1.5, -3
++    return cls, catalogue, obj
++
++
++def _record(catalogue: Catalogue, obj: Any) -> bytes:
++    buf = WBuffer()
++    write_value(buf, "Numbers", plain_value(obj, "Numbers", catalogue), catalogue)
++    return bytes(buf.data)
++
++
++def test_a_record_of_numbers_is_one_struct_and_is_the_bytes_of_its_members():
++    """Nine members of numbers in a bulk loop cost nine ``struct`` calls, a ``bytes`` and an
++    append each; one ``pack`` of all of them is the same bytes in one call."""
++    _cls, catalogue, obj = _numbers_for()
++    written = _record(catalogue, obj)
++    # The count and, a class without ``ClassDef`` carrying its checksum where a version goes,
++    # the zero and the checksum; then the three numbers, in the width each is declared with.
++    assert written[:6] == bytes.fromhex("40000012" "0000")
++    assert written[10:] == bytes.fromhex("00000007" "3fc00000" "fffffffd")
++
++
++def test_a_record_of_numbers_written_member_by_member_is_the_same_bytes(monkeypatch):
++    """The one call is a shortcut, not another writer: the record a class of numbers is
++    written as is the record its members are written one by one."""
++    from xrdroot import wdobjects
++
++    _cls, catalogue, obj = _numbers_for()
++    one_call = _record(catalogue, obj)
++    monkeypatch.setattr(wdobjects, "_row_as", lambda seen, name: wdobjects._Row(None, ()))
++    assert _record(catalogue, obj) == one_call
++
++
++def test_a_number_struct_refuses_is_written_the_way_its_member_alone_writes_it():
++    """``struct`` refuses a number too wide for its member and a float where an integer is
++    declared; those go to the writer the member's kind gives, which wraps or truncates them
++    as ROOT on file holds it - so the record is the record it always was."""
++    _cls, catalogue, obj = _numbers_for()
++    obj.a1, obj.a2, obj.a3 = 2**31, 1.5, 1.9
++    assert _record(catalogue, obj)[10:] == bytes.fromhex("80000000" "3fc00000" "00000001")
++
++
++def test_a_member_read_as_a_number_it_cannot_hold_is_wrapped_as_it_always_was():
++    """The read hands an attribute the number it was read as where that is already the
++    member's - an integer of its own width - and everything else the way it always went: a
++    number too wide for the member is wrapped, and a float where an integer is declared is
++    truncated."""
++    from xrdroot.pyroot.core.declared import _fill
++
++    _cls, _catalogue, obj = _numbers_for()
++    _fill(obj, find_class("Numbers"), {"a1": 2**31, "a2": 1.5, "a3": 3.0})
++    assert (obj.a1, obj.a2, obj.a3) == (-(2**31), 1.5, 3)
+diff --git a/tests/test_wpacking.py b/tests/test_wpacking.py
+index f0a41b1a..388baebd 100644
+--- a/tests/test_wpacking.py
++++ b/tests/test_wpacking.py
+@@ -22,6 +22,7 @@ from xrdroot.wpacking import (
+     _packer,
+     pack_member,
+     pack_one,
++    pack_row,
+ )
+ 
+ #: One value of every plain streamer type whose file image ``struct`` can write, with
+@@ -85,3 +86,24 @@ def test_a_value_the_member_cannot_hold_is_written_as_the_column_converts_it() -
+     assert pack_one(3, "", 1.9) == bytes.fromhex("00000001")
+     assert pack_one(3, "", 2**31) == b"\x80\x00\x00\x00"
+     assert pack_one(DOUBLE32, "[-10,10,12] a packed double", -2.0) == bytes.fromhex("00000666")
++
++
++def test_a_row_of_plain_numbers_is_one_struct_of_every_member_s_width() -> None:
++    """Nine members of numbers - what roottest's own bulk ``Streamer`` loop writes ten million
++    times - are one ``pack`` of all nine, so the struct is the width of each member in turn."""
++    row = pack_row([3, 3, 5, 3, 5, 3, 5, 3, 5])
++    assert row is not None and row.format == ">iifififif"
++    stypes = [3, 3, 5, 3, 5, 3, 5, 3, 5]
++    values = [1, 2, 0.5, 3, 0.25, 4, 0.125, 5, 0.0625]
++    assert row.pack(*values) == b"".join(
++        pack_one(stype, "", value) for stype, value in zip(stypes, values, strict=True)
++    )
++
++
++def test_a_row_that_is_not_every_member_a_plain_number_has_no_struct() -> None:
++    """A packed float, and a type with no ``struct`` code, are written member by member: the
++    packed ones by the recipe their comment gives, which one ``pack`` cannot do."""
++    assert pack_row([3, DOUBLE32]) is None
++    assert pack_row([3, FLOAT16]) is None
++    assert pack_row([3, 7]) is None  # a ``char *``, which is the length and then the text
++    assert pack_row([3, 36]) is None  # an array of ``int``, which is its length and then them
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,123 @@
+From 8bff48cfbef3900eadaa030f3b715332e342278a Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 15:14:51 +0000
+Subject: [PATCH 4/8] feat: a class answers GetListOfEnums with the part of the
+ session's enum table it owns
+
+TClass had no GetListOfEnums, so five of roottest's enum tests stopped with
+AttributeError before they printed anything. It is now the filter of the
+interpreter's table (troot.class_enums) by the class's - or namespace's - own
+name, which is how ROOT answers: the table is TROOT's fEnums and a class holds
+the subset it declares. A class declaring no enum answers with an empty
+TListOfEnums, never nullptr, which execEnumsTest dereferences; `load` reads
+nothing, since nothing here reads a library to find an enum.
+
+With it, roottest/root/meta/enums/{duplicateEnums,enumsInNamespaces,
+enumsInNamespaces2,execEnumsTest} and meta/runTEnum-auto run to completion and
+compare (FAIL -> DIFF) instead of aborting. They still DIFF because nothing
+fills the table: note_enum is never called by the translator - pycxx's
+enum_def writes enumerators as plain names and never reports the enum - so
+every class's list is empty. That fix is outside this file (pycxx dialect hook,
+pycint/dialect.py, pycint/library); see the round's report.
+
+(cherry picked from commit 38ff4936716919b6ea24973467fe853401bfe73a)
+---
+ src/xrdroot/pyroot/core/reflection.py | 16 +++++++++++++
+ tests/test_pyroot_reflection.py       | 33 ++++++++++++++++++++++++++-
+ 2 files changed, 48 insertions(+), 1 deletion(-)
+
+diff --git a/src/xrdroot/pyroot/core/reflection.py b/src/xrdroot/pyroot/core/reflection.py
+index bd810e98..985b3682 100644
+--- a/src/xrdroot/pyroot/core/reflection.py
++++ b/src/xrdroot/pyroot/core/reflection.py
+@@ -742,6 +742,22 @@ class TClass(TNamed):
+                 return deeper
+         return None
+ 
++    def GetListOfEnums(self, load: bool = False) -> Any:
++        """``GetListOfEnums``: the enumerations the class - or the namespace - declares.
++
++        ROOT keeps one table of the interpreter's enumerations and answers a class with the
++        part of it that class owns, so this is a filter of the session's table and not a
++        list of its own: a class declaring no enum answers with an empty ``TListOfEnums``,
++        never with ``nullptr`` (roottest's ``execEnumsTest`` dereferences it).
++
++        ``load`` is the autoloading ROOT would do to fill the list in by reading the class's
++        payload, which no library here is read for - so it changes nothing, as an enum the
++        interpreter has not declared is one nothing here can find.
++        """
++        from .troot import class_enums
++
++        return class_enums(self._name)
++
+     def GetListOfDataMembers(self, load: bool = True) -> Any:
+         """``GetListOfDataMembers``: the class's members - and its enum constants, which C++
+         lists as members too (``TObject::kZombie`` is one of ``TNamed``'s)."""
+diff --git a/tests/test_pyroot_reflection.py b/tests/test_pyroot_reflection.py
+index 93dfab79..08f863a2 100644
+--- a/tests/test_pyroot_reflection.py
++++ b/tests/test_pyroot_reflection.py
+@@ -18,7 +18,7 @@ from pyrootsupport import expect, fresh
+ from xrdroot import streamers
+ from xrdroot.pycint.execute import run_source
+ from xrdroot.pycxx.runtime.namespace import DECLARED
+-from xrdroot.pyroot.core import reflection
++from xrdroot.pyroot.core import reflection, troot
+ 
+ DATA = pathlib.Path(__file__).parent / "data"
+ SOURCE = (DATA / "declared_objects.C").read_text()
+@@ -28,6 +28,8 @@ SOURCE = (DATA / "declared_objects.C").read_text()
+ def _fresh(tmp_path):
+     declared = dict(DECLARED)
+     infos = {name: list(found) for name, found in reflection.FILE_INFOS.items()}
++    enums = dict(troot._ENUMS)
++    troot._ENUMS.clear()
+     yield from fresh(tmp_path)
+     DECLARED.clear()
+     DECLARED.update(declared)
+@@ -36,6 +38,8 @@ def _fresh(tmp_path):
+     reflection.DISAGREED.clear()
+     reflection.GENERATED.clear()
+     reflection.INTERPRETED_METHODS.clear()
++    troot._ENUMS.clear()
++    troot._ENUMS.update(enums)
+ 
+ 
+ def _names(cls):
+@@ -764,6 +768,33 @@ def test_an_enum_constant_is_one_of_a_class_s_data_members_as_cpp_lists_it():
+     assert list(ROOT.TClass("NobodyKnowsThis").GetListOfDataMembers()) == []
+ 
+ 
++def test_a_class_lists_the_enums_it_declares_and_an_empty_list_for_none():
++    """``TClass::GetListOfEnums`` is the session's table filtered by owner, as ROOT's is: a
++    class declaring no enumeration answers with an empty list rather than ``nullptr``, which
++    is what roottest's ``execEnumsTest`` walks."""
++    nested = troot.note_enum("A::B::C::enumC1", [("kClassEnumC1A", 0)])
++    sibling = troot.note_enum("A::B::C::enumC2", [("kClassEnumC2A", 0)])
++    troot.note_enum("A::B::enumB", [("kClassEnumB1", 0)])
++    troot.note_enum("ETest", [("kA", 3)])
++    listed = ROOT.TClass.GetClass("A::B::C").GetListOfEnums()
++    assert listed.ClassName() == "TListOfEnums"
++    assert list(listed) == [nested, sibling]
++    assert listed.FindObject("enumC1") is nested
++    # The flag ROOT reads the class's payload for fills the same table in, so it adds nothing.
++    assert list(ROOT.TClass.GetClass("A::B::C").GetListOfEnums(True)) == [nested, sibling]
++    assert ROOT.TClass.GetClass("TNamed").GetListOfEnums().GetSize() == 0
++    assert list(ROOT.TClass("NobodyKnowsThis").GetListOfEnums()) == []
++
++
++def test_a_namespace_answers_with_the_enums_declared_in_it():
++    """A namespace is a ``TClass`` too, and ``TClass::GetClass("N")->GetListOfEnums()`` is
++    how ``runTEnum`` reaches ``N::namespaceEnum`` - the enum's owner is what owns it."""
++    namespaced = troot.note_enum("N::namespaceEnum", [("kNamespace", 1)])
++    troot.note_enum("N2::otherEnum", [("kOther", 1)])
++    assert namespaced.GetClass() is not None
++    assert list(ROOT.TClass.GetClass("N", True).GetListOfEnums()) == [namespaced]
++
++
+ def test_a_file_written_before_a_class_had_a_version_is_listed_above_the_librarys():
+     """ROOT records version 1 for a class whose library had none when the file was written, so
+     that layout belongs above the in-memory one rather than at 1 where ``ClassDef`` put it -
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,255 @@
+From d2dd40075c9a90a3d05e47cf4a9acc5f2851c8ae Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Mon, 23 Nov 2026 00:44:22 +0000
+Subject: [PATCH] feat: an axis' bin labels are written, in the layout ROOT
+ writes them
+
+TAxis.SetBinLabel named a bin in a dict this kit kept to itself, so a histogram
+of named bins lost its names in the file: ROOT streams them as
+TAxis::fLabels, and the file said so - the element is in the axis' layout and
+the writer wrote a null pointer for it.
+
+Measured off ROOT 6.40's own file (tests/data/labels-6.40.root, three bins with
+the first and third named): fLabels is a TList of the named bins only, each a
+TObjString whose fUniqueID is its bin number and whose fString is the name, and
+an axis nobody labelled streams no list at all. This kit writes exactly that,
+reads it back exactly that (TAxis._labels answers from fLabels when a file
+brought it), and the four tests pin both directions - including a byte-structure
+comparison with ROOT's own file.
+
+W0-180 is closed; the labels a projection keeps (round 68) now survive a file
+too.
+---
+ src/xrdroot/pyroot/core/axes.py |  31 +++++++++++++++-
+ tests/data/README.md            |   1 +
+ tests/data/labels-6.40.root     | Bin 0 -> 3815 bytes
+ tests/test_pyroot_axes.py       |  63 ++++++++++++++++++++++++++++++++
+ 4 files changed, 93 insertions(+), 2 deletions(-)
+ create mode 100644 tests/data/labels-6.40.root
+
+diff --git a/src/xrdroot/pyroot/core/axes.py b/src/xrdroot/pyroot/core/axes.py
+index 6f7e695d..b48eff50 100644
+--- a/src/xrdroot/pyroot/core/axes.py
++++ b/src/xrdroot/pyroot/core/axes.py
+@@ -333,12 +333,39 @@ class TAxis(TNamed, TAttAxis):
+     # -- labels and time ---------------------------------------------------------------------
+ 
+     def _labels(self) -> dict[str, str]:
+-        """The labels by bin, the bin numbers as text: the members are walked by name."""
+-        labels: dict[str, str] = self._row.setdefault("_labels", {})
++        r"""The labels by bin, the bin numbers as text: ROOT's ``fLabels``, read back as such.
++
++        A file keeps a labelled axis' names in ``fLabels`` - the ``TObjString``\ s that have
++        one, each with its bin number as its ``fUniqueID`` - so an axis read from a file has
++        its labels where ROOT put them and an axis a program labels has them here.
++        """
++        row = self._row
++        if "_labels" not in row:
++            row["_labels"] = {
++                str(item.get("TObject", {}).get("fUniqueID", at + 1)): str(item.get("fString", ""))
++                for at, item in enumerate(row.get("fLabels") or ())
++            }
++        labels: dict[str, str] = row["_labels"]
+         return labels
+ 
+     def SetBinLabel(self, bin: int, label: Any) -> None:
++        """``SetBinLabel``: ``bin``'s name, kept in the axis' ``fLabels`` as ROOT keeps it."""
+         self._labels()[str(int(bin))] = str(label)
++        self._store_labels()
++
++    def _store_labels(self) -> None:
++        """``fLabels`` written as ROOT writes it: the named bins, each a ``TObjString`` whose
++        ``fUniqueID`` is its bin number - the layout measured off ROOT 6.40's own file."""
++        from ...writer import Record
++
++        held = self._labels()
++        self._row["fLabels"] = [
++            Record(
++                "TObjString",
++                {"TObject": {"fUniqueID": int(bin), "fBits": 0}, "fString": str(label)},
++            )
++            for bin, label in sorted(held.items(), key=lambda pair: int(pair[0]))
++        ]
+ 
+     def GetBinLabel(self, bin: int) -> str:
+         return self._labels().get(str(int(bin)), "")
+diff --git a/tests/data/README.md b/tests/data/README.md
+index 84ea114c..92223d14 100644
+--- a/tests/data/README.md
++++ b/tests/data/README.md
+@@ -64,6 +64,7 @@ The layouts it writes trees with were harvested the same way — from
+ | `hf-example-6.40.root` | HistFactory's example input, made by ROOT 6.40.04's `makeExample.C`: `data`, `signal`, two backgrounds and a relative statistical error histogram, two bins each |
+ | `hf-measurement-6.40.root` | the `channel1` output file ROOT 6.40.04's `hf001_example.C` writes from it: the `meas` key - a `RooStats::HistFactory::Measurement` streamed with its nested classes, the donor of the measurement writer's bytes and checksums - beside the channel's histograms and the workspace |
+ | `hypotestinv-6.21.root` | ROOT 6.21's `roofit/roostats/test/testHypoTestInvResult_1.root`: one `RooStats::HypoTestInverterResult` of six scanned values, a `HypoTestResult` at each and the sampling distributions behind them - the layouts of RooStats' result classes, and the toys its expected limits are worked out from |
++| `labels-6.40.root` | ROOT 6.40.04's `TH1D("lab")` of three bins with bins 1 and 3 named `A` and `C`: how an axis streams its `fLabels` - the named bins as `TObjString`s whose `fUniqueID` is the bin number, and no list at all for an axis nobody labelled |
+ | `hf-allkinds-6.40.root` | a measurement of every kind of piece - two channels, extra data, overall, histogram, shape and normalisation systematics and factors, statistical errors with and without a histogram, preprocess functions, Asimov datasets, parameter values and the four systematic maps - written whole by ROOT 6.40.04 with `WriteTObject`: how ROOT streams a base class, a string and a map inside a vector written member-wise |
+ 
+ No file here holds a `TEntryList`, `TEventList`, `THnSparse` or `THStack`,
+diff --git a/tests/data/labels-6.40.root b/tests/data/labels-6.40.root
+new file mode 100644
+index 0000000000000000000000000000000000000000..364968787d103304e116641bc6c1255bb4a6cf26
+GIT binary patch
+literal 3815
+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
+Vw9iqM%p?C%o2<;V7Oa>C_!ot_#by8i
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/test_pyroot_axes.py b/tests/test_pyroot_axes.py
+index cf1b0990..fcef210f 100644
+--- a/tests/test_pyroot_axes.py
++++ b/tests/test_pyroot_axes.py
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ import array
++import pathlib
+ 
+ import numpy as np
+ import pytest
+@@ -11,6 +12,8 @@ import xrdroot.pyroot as ROOT
+ from pyrootsupport import expect, fresh
+ from xrdroot.pyroot.core import axes as core_axes
+ 
++DATA = pathlib.Path(__file__).parent / "data"
++
+ 
+ @pytest.fixture(autouse=True)
+ def _fresh(tmp_path):
+@@ -379,3 +382,63 @@ def test_an_axis_roots_own_constructor_checks_its_limits_and_reports_them(
+         )
+     assert ROOT.TAxis(1, 0.0, 1.0).GetNbins() == 1
+     assert ROOT.TH1D("h", "", 2, array.array("d", [0, 1, 3])).GetXaxis().GetNbins() == 2
++
++
++def test_a_labelled_axis_keeps_its_labels_through_a_file() -> None:
++    """ROOT streams an axis' names as ``fLabels``: the named bins as ``TObjString``\\ s, each
++    with its bin number as its ``fUniqueID`` - so a histogram read back names its bins."""
++    made = ROOT.TH1D("lab", "", 3, 0.0, 3.0)
++    made.GetXaxis().SetBinLabel(1, "A")
++    made.GetXaxis().SetBinLabel(3, "C")
++    holder = ROOT.TFile("labelled.root", "RECREATE")
++    made.Write()
++    holder.Close()
++
++    back = ROOT.TFile("labelled.root").Get("lab")
++    labels = back.GetXaxis().GetLabels()
++    expect(
++        (labels.GetEntries(), 2),
++        ([labels.At(at).GetName() for at in range(2)], ["A", "C"]),
++        ([labels.At(at).GetUniqueID() for at in range(2)], [1, 3]),
++        (back.GetXaxis().GetBinLabel(2), ""),
++    )  # fmt: skip
++
++
++def test_the_labels_a_file_holds_are_the_ones_root_writes_for_them() -> None:
++    """The layout is ROOT 6.40's own: measured off a file the oracle wrote, and compared here
++    with what this kit writes for the same two labels."""
++    import xrdroot
++
++    made = ROOT.TH1D("lab", "", 3, 0.0, 3.0)
++    made.GetXaxis().SetBinLabel(1, "A")
++    made.GetXaxis().SetBinLabel(3, "C")
++    holder = ROOT.TFile("ours.root", "RECREATE")
++    made.Write()
++    holder.Close()
++    theirs_path = str(DATA / "labels-6.40.root")
++    with xrdroot.open_root("ours.root") as ours, xrdroot.open_root(theirs_path) as theirs:
++        expect(
++            (ours["lab"].members["TH1"]["fXaxis"]["fLabels"],
++             theirs["lab"].members["TH1"]["fXaxis"]["fLabels"]),
++        )  # fmt: skip
++
++
++def test_a_root_written_histogram_comes_back_with_the_bin_names_it_was_given() -> None:
++    back = ROOT.TFile(str(DATA / "labels-6.40.root")).Get("lab")
++    labels = back.GetXaxis().GetLabels()
++    expect(
++        ([labels.At(at).GetName() for at in range(labels.GetEntries())], ["A", "C"]),
++        (back.GetXaxis().GetBinLabel(3), "C"),
++    )  # fmt: skip
++
++
++def test_an_axis_no_one_labelled_writes_no_list_at_all() -> None:
++    import xrdroot
++
++    made = ROOT.TH1D("plain", "", 2, 0.0, 2.0)
++    holder = ROOT.TFile("plain.root", "RECREATE")
++    made.Write()
++    holder.Close()
++    with xrdroot.open_root("plain.root") as f:
++        expect((f["plain"].members["TH1"]["fXaxis"]["fLabels"], None))  # fmt: skip
++    expect((ROOT.TFile("plain.root").Get("plain").GetXaxis().GetLabels(), None))  # fmt: skip
+-- 
+2.54.0 (Apple Git-157)
+

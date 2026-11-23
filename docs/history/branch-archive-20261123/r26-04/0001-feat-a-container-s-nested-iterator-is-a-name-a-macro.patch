@@ -1,0 +1,300 @@
+From a6336c7523ea44ef3489592f1475587d26132a62 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 02:54:35 +0000
+Subject: [PATCH 1/2] feat: a container's nested iterator is a name a macro can
+ declare
+
+std::list<std::pair<TBranch*,TClonesArray*> >::iterator iBranch; is a declaration
+the translator emits as std.list.iterator(), the template arguments of a nested
+name being dropped - and _Template answered no iterator, so roottest/root/io/tree/
+test-r stopped at an AttributeError before it read a branch.
+
+_Template now names iterator and const_iterator for every container template, one
+class for all of them, since the arguments a per-element class would need are not
+there. What a declaration makes exists, is compared and stepped, and is replaced
+by the begin() assigned to it; reading through one never assigned refuses with
+what to do instead. src/xrdroot/pyroot/stl.py needs no change: it re-exports the
+same TEMPLATES.
+
+Two gaps a declared iterator walked into:
+ - a std::set and std::multiset had no begin()/end() at all, so their iterators
+   could hold nothing (_SetIterator counts off the sorted elements);
+ - printf("%d", *it) of a vector<int> iterator needed __int__, as %g already had
+   __float__.
+
+roottest/root/io/tree/test-r: UNSUPPORTED -> DIFF (it now runs, and its remaining
+diff is TRef::GetObject() resolving to NULL). create-r: UNSUPPORTED -> PASS,
+copy: FAIL -> PASS. No PASS lost in roottest/root/io/tree/*.
+---
+ src/xrdroot/cppstd/containers.py            | 96 +++++++++++++++++++-
+ tests/cppstd/test_cppstd_pure_containers.py | 97 +++++++++++++++++++++
+ 2 files changed, 190 insertions(+), 3 deletions(-)
+
+diff --git a/src/xrdroot/cppstd/containers.py b/src/xrdroot/cppstd/containers.py
+index 08511578..91738366 100644
+--- a/src/xrdroot/cppstd/containers.py
++++ b/src/xrdroot/cppstd/containers.py
+@@ -419,6 +419,50 @@ class _Container:
+     __cpp_name__ = ""
+ 
+ 
++class _DeclaredIterator:
++    """``std::list<T>::iterator it;``: the iterator a macro declares before it walks.
++
++    A macro keeps the iterator outside the loop and assigns a container's
++    ``begin()`` to it - ``std::list<T>::iterator i; for (i = l.begin(); ...)`` - so
++    what the declaration makes has to exist, be compared and stepped, and is
++    replaced by the value assigned to it. The translator drops the template
++    arguments of a nested type name, so one class stands for the iterator of every
++    container and for its ``const_iterator``; reading through one that was never
++    assigned refuses, there being no element it is at.
++    """
++
++    __slots__ = ()
++
++    def __repr__(self) -> str:
++        return "<iterator, no container given>"
++
++    def __eq__(self, other: object) -> bool:
++        """Equal to another unassigned one, as two default-made C++ iterators are."""
++        return isinstance(other, _DeclaredIterator)
++
++    def __ne__(self, other: object) -> bool:
++        return not self.__eq__(other)
++
++    __hash__ = None  # type: ignore[assignment]
++
++    def __iadd__(self, step: int) -> _DeclaredIterator:
++        return self
++
++    def __add__(self, step: int) -> _DeclaredIterator:
++        return self
++
++    def __deref__(self) -> Any:
++        raise TypeError(
++            "an iterator made by a declaration points at no element; assign it a "
++            "container's begin() before reading through it"
++        )
++
++    def __getattr__(self, name: str) -> Any:
++        if name.startswith("__"):
++            raise AttributeError(name)
++        return getattr(self.__deref__(), name)
++
++
+ class _Template:
+     """``std.vector``: a class for each element type, by ``[...]`` or by ``(...)``.
+ 
+@@ -426,6 +470,12 @@ class _Template:
+     and a tree's check of what it was handed work whichever was used.
+     """
+ 
++    #: C++'s nested iterator names, which a macro declares a variable of
++    #: (``std::vector<int>::iterator``) - by the class the declaration makes, and the
++    #: ``const_iterator``, which differs from it only in what it may be assigned.
++    iterator = _DeclaredIterator
++    const_iterator = _DeclaredIterator
++
+     def __init__(self, name: str, arity: int, build: Any) -> None:
+         self._name = name
+         self._arity = arity
+@@ -832,9 +882,14 @@ class _VectorIterator:
+     def __init__(self, owner: Any, position: int) -> None:
+         self._owner, self._position = owner, position
+ 
+-    def __deref__(self) -> Any:
++    def _element(self) -> Any:
++        """The thing at :attr:`_position` - read through the owner, which is what an
++        iterator of another container overrides, as a set's does."""
+         return self._owner[self._position]
+ 
++    def __deref__(self) -> Any:
++        return self._element()
++
+     def __getattr__(self, name: str) -> Any:
+         if name.startswith("__"):
+             raise AttributeError(name)
+@@ -843,17 +898,22 @@ class _VectorIterator:
+     def __float__(self) -> float:
+         return float(self.__deref__())
+ 
++    def __int__(self) -> int:
++        """``printf("%d", *it)``: the number the iterator is at, as ``%g`` reads it through
++        :meth:`__float__`."""
++        return int(self.__deref__())
++
+     def __iadd__(self, step: int) -> _VectorIterator:
+         self._position += int(step)
+         return self
+ 
+     def __add__(self, step: int) -> _VectorIterator:
+-        return _VectorIterator(self._owner, self._position + int(step))
++        return type(self)(self._owner, self._position + int(step))
+ 
+     def __sub__(self, other: Any) -> Any:
+         if isinstance(other, _VectorIterator):
+             return self._position - other._position
+-        return _VectorIterator(self._owner, self._position - int(other))
++        return type(self)(self._owner, self._position - int(other))
+ 
+     def __eq__(self, other: object) -> bool:
+         if not isinstance(other, _VectorIterator):
+@@ -870,6 +930,19 @@ class _VectorIterator:
+     __hash__ = None  # type: ignore[assignment]
+ 
+ 
++class _SetIterator(_VectorIterator):
++    """A ``std::set`` iterator: the element at a place among the elements in order.
++
++    A set holds its elements unordered here, so an iterator counts off the sorted
++    ones instead of indexing the container as a vector's does, and
++    ``for (std::set<float>::const_iterator i = s.begin(); i != s.end(); ++i)`` steps
++    them in the order iteration gives.
++    """
++
++    def _element(self) -> Any:
++        return self._owner._ordered()[self._position]
++
++
+ def _insertion(what: Sequence[Any]) -> list[Any]:
+     """What ``insert`` puts in: one value, ``n`` copies of one, or another vector's range."""
+     if len(what) == 2 and isinstance(what[0], _VectorIterator):
+@@ -1181,6 +1254,19 @@ class _Set(_Container):
+     def count(self, value: Any) -> int:
+         return int(value in self)
+ 
++    def _ordered(self) -> list[Any]:
++        """The elements in the order iteration gives them, which is what an iterator of a set
++        counts off: a set has no place to index, so its iterator is a step count."""
++        return sorted(self._items)
++
++    def begin(self) -> _SetIterator:
++        """``begin()``: an iterator at the first element, which ``*it`` and ``it += 1`` use."""
++        return _SetIterator(self, 0)
++
++    def end(self) -> _SetIterator:
++        """``end()``: the iterator one past the last element."""
++        return _SetIterator(self, len(self))
++
+     def insert(self, value: Any) -> None:
+         self._items.add(self._value(value))
+ 
+@@ -1227,6 +1313,10 @@ class _Multiset(_Set):
+         kept = sorted(self._counts.items(), key=lambda pair: (pair[0],))
+         return [value for value, count in kept for _ in range(count)]
+ 
++    def _ordered(self) -> list[Any]:
++        """The copies in order, as many as there are of each - what an iterator steps over."""
++        return self._flat()
++
+     def __len__(self) -> int:
+         return sum(self._counts.values())
+ 
+diff --git a/tests/cppstd/test_cppstd_pure_containers.py b/tests/cppstd/test_cppstd_pure_containers.py
+index 6ee0d15b..da2d5b97 100644
+--- a/tests/cppstd/test_cppstd_pure_containers.py
++++ b/tests/cppstd/test_cppstd_pure_containers.py
+@@ -166,3 +166,100 @@ def test_the_stream_names_std_has_are_the_streams_own() -> None:
+     assert containers.std.setw is streams.setw
+     with pytest.raises(AttributeError, match=r"ROOT has std\.nothing"):
+         containers.std.nothing  # noqa: B018
++
++
++#: Every template of the family whose C++ declarations name ``::iterator`` and
++#: ``::const_iterator`` - the names the translator emits for a declared iterator.
++CONTAINER_TEMPLATES = ("vector", "list", "deque", "set", "multiset", "map", "multimap",
++                       "forward_list", "unordered_map", "unordered_set",
++                       "unordered_multimap", "unordered_multiset")  # fmt: skip
++
++
++def test_every_container_template_names_the_iterator_a_declaration_makes() -> None:
++    """``std::list<std::pair<TBranch*,TClonesArray*> >::iterator iBranch;`` of a macro: the
++    translator drops the template arguments of a nested name, so every template answers the
++    one class, and its ``const_iterator`` is the same one."""
++    for name in CONTAINER_TEMPLATES:
++        template = containers.TEMPLATES[name]
++        assert template.const_iterator is template.iterator
++        assert repr(template.iterator()) == "<iterator, no container given>"
++
++
++def test_a_declared_iterator_is_walked_from_begin_to_end_as_cpp_walks_one() -> None:
++    """The loop of ``readauto``: assign ``begin()``, compare against ``end()``, ``iBranch->first``
++    and ``iBranch++`` - over the containers a macro declares one of."""
++    declared = containers.TEMPLATES["list"].iterator
++    branches = containers.std.list["std::pair<int,double>"]()
++    branches.push_back(containers.std.make_pair(1, 2.0))
++    branches.push_back(containers.std.make_pair(3, 4.0))
++    walked = []
++    it = declared()
++    it = branches.begin()
++    while it != branches.end():
++        walked.append((it.first, it.second))
++        it += 1
++    assert walked == [(1, 2.0), (3, 4.0)]
++
++    numbers = containers.std.vector["int"]([7, 8])
++    held = []
++    at = numbers.begin()
++    while at != numbers.end():
++        held.append((int(at), float(at)))
++        at = at + 1
++    assert held == [(7, 7.0), (8, 8.0)]
++
++    table = containers.std.map["std::string","int"]()
++    table["a"] = 1
++    pairs = []
++    key = containers.std.map.iterator()
++    key = table.find("a")
++    while key != table.end():
++        pairs.append((key.first, key.second))
++        key += 1
++    assert pairs == [("a", 1)]
++
++
++def test_an_iterator_no_container_gave_out_reads_nothing_and_steps_nowhere() -> None:
++    """An unassigned one is compared and stepped before ``begin()`` replaces it; reading
++    through it refuses with what to do instead of failing on an index."""
++    unassigned = containers.std.deque.iterator()
++    assert unassigned == containers.std.deque.iterator()
++    assert unassigned != containers.std.vector["int"]([1]).begin()
++    assert unassigned.__iadd__(1) is unassigned and unassigned + 1 is unassigned
++    with pytest.raises(TypeError, match="assign it a container's begin"):
++        unassigned.__deref__()
++    with pytest.raises(TypeError, match="assign it a container's begin"):
++        unassigned.second  # noqa: B018
++    assert not hasattr(unassigned, "__wrapped__")
++
++
++def test_a_sets_iterator_steps_the_elements_in_the_order_iteration_gives() -> None:
++    """``std::set<float>::const_iterator i = s.begin(); i != s.end(); ++i``: a set is indexed
++    by no position, so its iterator counts off the elements in the order iteration gives."""
++    values = containers.std.set["double"]()
++    for value in (3.0, 1.0, 2.0):
++        values.insert(value)
++    walked = []
++    at = values.begin()
++    while at != values.end():
++        walked.append(float(at))
++        at += 1
++    assert walked == [1.0, 2.0, 3.0]
++    assert values.end() - values.begin() == 3
++    assert float(values.begin() + 2) == 3.0 and float(values.end() - 1) == 3.0
++    assert at == values.end()
++
++    names = containers.std.set["std::string"]()
++    names.insert("b")
++    assert names.begin().c_str() == "b"
++
++    repeats = containers.std.multiset["int"]()
++    repeats.insert(1)
++    repeats.insert(2)
++    repeats.insert(1)
++    seen = []
++    each = repeats.begin()
++    while each != repeats.end():
++        seen.append(int(each))
++        each += 1
++    assert seen == [1, 1, 2]
+-- 
+2.54.0 (Apple Git-157)
+

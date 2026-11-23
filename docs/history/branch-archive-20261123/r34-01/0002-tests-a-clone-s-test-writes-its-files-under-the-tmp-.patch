@@ -1,0 +1,40 @@
+From 0ae6206aaa669637d4315e741de2ec3bf104378b Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 11:24:10 +0000
+Subject: [PATCH 2/2] tests: a clone's test writes its files under the tmp
+ directory
+
+The identifier tests write a file to say which ProcessID record a process got,
+and the suite must not leave it in the checkout.
+---
+ tests/test_pyroot_clones_split.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/tests/test_pyroot_clones_split.py b/tests/test_pyroot_clones_split.py
+index 24d3bd9b..a7d5ce59 100644
+--- a/tests/test_pyroot_clones_split.py
++++ b/tests/test_pyroot_clones_split.py
+@@ -17,6 +17,7 @@ import pytest
+ 
+ import xrdroot
+ import xrdroot.pyroot as ROOT
++from pyrootsupport import fresh
+ from xrdroot.errors import UnsupportedFeatureError
+ from xrdroot.pycint.execute import run_source
+ from xrdroot.pyroot.core.declared import find_class
+@@ -50,6 +51,12 @@ PRINTED = """\
+ """
+ 
+ 
++@pytest.fixture(autouse=True)
++def _elsewhere(tmp_path: Any) -> Any:
++    """A test that writes a file writes it under the tmp directory, not the checkout."""
++    yield from fresh(tmp_path)
++
++
+ def _written(path: str) -> None:
+     """Three entries of one, two and three ``TNamed``, the branch split as ROOT splits it."""
+     out = ROOT.TFile(path, "RECREATE")
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,82 @@
+From 572b39e2de6ddcaa159a2d763b6278a7a9716879 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 02:55:44 +0000
+Subject: [PATCH 2/2] docs: a nested C++ type name reaches Python without its
+ template arguments
+
+---
+ docs/README.md                                | 26 +++++++++++++++++
+ ...ches-python-with-its-template-arguments.md | 28 +++++++++++++++++++
+ 2 files changed, 54 insertions(+)
+ create mode 100644 docs/README.md
+ create mode 100644 docs/gotchas/a-c-nested-type-name-reaches-python-with-its-template-arguments.md
+
+diff --git a/docs/README.md b/docs/README.md
+new file mode 100644
+index 00000000..f9aa72fe
+--- /dev/null
++++ b/docs/README.md
+@@ -0,0 +1,26 @@
++# docs
++
++What this project has learned, written down so nobody has to rediscover it.
++
++Each file here answers one question a new contributor (or a new agent on a new
++machine) would otherwise answer wrongly:
++
++- `rules/` — hard constraints. Do not break these.
++- `instructions/` — how work should be done in this project.
++- `gotchas/` — things that break in non-obvious ways.
++- `discoveries/` — how something actually behaves, where that is surprising.
++- `decisions/` — a choice that was made and the reason.
++- `architecture/` — how the pieces fit together.
++
++Every file starts with YAML front matter (`title`, `kind`, `summary`, `tags`,
++`updated`) so it can be indexed cheaply. Read the front matter first; it is
++usually enough.
++
++**Only files with a front-matter `kind:` are indexed.** A file without one is
++reported as "not indexed" rather than silently ignored, because this folder is
++sometimes already a documentation site or an ADR collection that this extension
++does not own. To add a hand-written page to the index, give it the front matter
++above; `docs_record` writes it for you.
++
++This file is maintained by the `pi-docs-first` extension, but it is ordinary
++Markdown — edit it by hand whenever it is wrong.
+diff --git a/docs/gotchas/a-c-nested-type-name-reaches-python-with-its-template-arguments.md b/docs/gotchas/a-c-nested-type-name-reaches-python-with-its-template-arguments.md
+new file mode 100644
+index 00000000..b613d238
+--- /dev/null
++++ b/docs/gotchas/a-c-nested-type-name-reaches-python-with-its-template-arguments.md
+@@ -0,0 +1,28 @@
++---
++title: "A C++ nested type name reaches Python with its template arguments dropped"
++kind: "gotcha"
++summary: "std::list<T>::iterator is translated to std.list.iterator() — no arguments — so a nested name must be a class on _Template, not on the per-element class."
++tags: []
++created: "2026-11-21T02:55:39.732Z"
++updated: "2026-11-21T02:55:39.732Z"
++---
++When a macro declares a variable of a nested type, `xrdroot.pycint` emits the name as an attribute chain on the template *object* and drops the template arguments, so `std::list<std::pair<TBranch*,TClonesArray*> >::iterator iBranch;` becomes `iBranch = std.list.iterator()` (`std.list` is a `_Template`, not a class). Anything a macro can write after `::` must therefore exist on `_Template` in `src/xrdroot/cppstd/containers.py`, and it must be constructible with no arguments, because the arguments were never passed on. Check what the translator actually emits before designing the Python side:
++
++```
++PYTHONPATH=$PWD/src python -c "import xrdroot.pycint as c; print(c.translate(open('M.C').read(), 'M.C'))"
++```
++
++```mermaid
++graph LR
++  A["std::list<std::pair<TBranch*,TClonesArray*> >::iterator iBranch;"] -->|pycint| B["iBranch = std.list.iterator()"]
++  B --> C["_Template.iterator<br/>(cppstd/containers.py)"]
++  C --> D["_DeclaredIterator()<br/>compares, steps, refuses to read"]
++  D -->|"iBranch = branches.begin()"| E["_VectorIterator<br/>it->first, it += 1"]
++```
++
++## What this cost and what fixed it
++
++- `_Template` answered no `iterator`, so `roottest/root/io/tree/test-r` died with `AttributeError: '_Template' object has no attribute 'iterator'` before reading a branch. `_DeclaredIterator` plus `_Template.iterator` / `_Template.const_iterator` fixed it for the whole family at once (vector, list, deque, set, multiset, map, multimap, forward_list, `unordered_*`) — and `src/xrdroot/pyroot/stl.py` needs no edit, since it re-exports the same `TEMPLATES` dict.
++- One class stands for every container's iterator, because per-element specialisation is impossible without the arguments. That is why the "default-constructed" iterator can only compare, step and be replaced by a `begin()`; reading through one refuses with a full sentence instead of failing on an index.
++- A declared iterator is only half the feature: `std::set`/`std::multiset` had no `begin()`/`end()` at all, so check for those too when a macro declares an iterator of a container you have not exercised. `_SetIterator` counts off `_Set._ordered()` because a set has no position to index.
++- `printf("%d", *it)` passes the iterator itself to the runtime's `printf` (that is how `*it` is emitted), so the iterator needs `__int__` as well as the `__float__` that `%g` and `cout` use.
+-- 
+2.54.0 (Apple Git-157)
+

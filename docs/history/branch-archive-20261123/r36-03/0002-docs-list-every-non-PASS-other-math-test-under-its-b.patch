@@ -1,0 +1,67 @@
+From 54b7791d68443fc1bfce7ee210e0d90460d1cc8c Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 13:08:02 +0000
+Subject: [PATCH 2/3] docs: list every non-PASS other/math test under its
+ bucket (r36-03)
+
+---
+ R36-math-buckets.md | 46 +++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 46 insertions(+)
+
+diff --git a/R36-math-buckets.md b/R36-math-buckets.md
+index 901e2708..9ff5ea09 100644
+--- a/R36-math-buckets.md
++++ b/R36-math-buckets.md
+@@ -199,3 +199,49 @@ Also worth queueing from the reading:
+   change almost certainly covers roottest and `math/*` elsewhere — the survey
+   (`tools/cint_survey.py --top 20`) should be asked how often `&v[0]`/`&v.front()` appears
+   before the fix is scoped.
++
++## Appendix: every non-PASS test, by bucket
++
++Written out so the next worker can check the counts against the JSON rather than trust them.
++
++**1 — `&v[i]` pointer family (10).** `mathcore-testTMath`, `mathcore-testSortOrder`,
++`mathcore-stdsort`, `mathcore-SparseDataComparer`, `mathcore-SparseFit3`,
++`mathcore-SparseFit4`, `mathcore-binarySearchTime`, `mathcore-testSpecFuncBeta`,
++`mathmore-testGSLIntegration`, `mathcore-testGraphFit`
++
++**2 — `Math::Random<T>` (4).** `mathcore-testMathRandom`, `mathmore-testRandom`,
++`mathmore-testRandomDist`, `mathmore-testQuasiRandom`
++
++**3 — MathMore's GSL layer (4).** `mathmore-testSpecFunc`,
++`mathmore-testStatFunc`, `mathmore-testMultiRootFinder`, `mathmore-simanTSP`
++
++**4 — three `std` algorithms (3).** `mathcore-stressTMath` (`std::generate`),
++`mathcore-testSampleQuantiles` (`std::shuffle`), `mathmore-testPermute`
++(`std::next_permutation`)
++
++**5 — k-d trees (3).** `mathcore-kDTreeTest`, `mathcore-newKDTreeTest`,
++`mathcore-testkdTreeBinning`
++
++**6 — `WrappedParamFunction` (2).** `mathcore-testIntegrationMultiDim`,
++`mathmore-testMCIntegration`
++
++**7 — `Minuit2Minimizer` (2).** `minuit2_demoMinimizer`, `minuit2_testADMinim`
++
++**8–22 — one test each (15).**
++`mathcore-stressGoFTest` (`GoFTest`) ·
++`mathmore-testInterpolation` (`Interpolator`) ·
++`mathmore-testChebyshev` (`ChebyshevApprox`) ·
++`mathmore-testDerivation` (`Derivator`) ·
++`mathcore-testLogLExecPolicy` (`IParametricFunctionMultiDimTempl<T>`) ·
++`mathcore-testTStatistic` (`TStatistic`) ·
++`mathcore-testFit` (`Fitter::LikelihoodFit`) ·
++`mathmore-testGSLRootFinder` (`RootFinder::Name`) ·
++`minuit2_testCovariance` (`MnUserCovariance(i,j)=`) ·
++`minuit2_testMinimizer` (`TMatrixT::Randomize`) ·
++`mathcore-stressTF1` (`cout.width`) ·
++`mathcore-testBinnedFitExecPolicy` (`max_element(...)->name`) ·
++`mathmore-testVavilov` (`(*a[N])[M]` declarator) ·
++`mathmore-testFunctor` (`WrappedMemFunction<T, double (T::*)(double)>`) ·
++`mathcore-testBinarySearch` (RecursionError)
++
++**TIMEOUT (1).** `minuit2_ParallelTest` — speed, not a refusal.
+-- 
+2.54.0 (Apple Git-157)
+

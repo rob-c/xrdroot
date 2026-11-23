@@ -1,0 +1,496 @@
+From 6168d6a281c32dad2af7aa7c50372b6a953b0072 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Mon, 23 Nov 2026 00:34:20 +0000
+Subject: [PATCH] perf: a profile reads what it fills into once, and a poly
+ finds its bin by box
+
+TProfile2Poly's fifth gtest case stopped at TProfile2D.GetNumberOfBins, which
+ROOT answers as fBinEntries.GetSize() - a Double_t counting the flow bins - and
+the program's four remaining cases took 83 s of the 300 s limit for four fills
+of 1e6 points apiece.
+
+- TProfile2D.GetNumberOfBins, as ROOT's header declares it.
+- A profile's Fill keeps what it fills into - the bins, their value squares,
+  the bin weights, the squared weights and the moments - beside the wrapper,
+  and reads them afresh when the profile replaces one, so no fill is lost:
+  4.9 us to 3.1 us an entry.
+- PolyBins.find works the region and the grid cell out in place, and drops a
+  candidate whose box does not hold the point before walking its crossing
+  count: 2.2 us to 1.6 us a poly fill.
+
+Both the fast fill and the boxed search are the engine's to the last bit, and
+tests/test_pyroot_profile_fill_loop.py checks them member by member.
+---
+ src/xrdroot/polybins.py                |  57 ++++---
+ src/xrdroot/pyroot/core/profiles.py    | 120 ++++++++++++++-
+ tests/test_pyroot_profile_fill_loop.py | 197 +++++++++++++++++++++++++
+ 3 files changed, 352 insertions(+), 22 deletions(-)
+ create mode 100644 tests/test_pyroot_profile_fill_loop.py
+
+diff --git a/src/xrdroot/polybins.py b/src/xrdroot/polybins.py
+index c508ab33..18cc11ba 100644
+--- a/src/xrdroot/polybins.py
++++ b/src/xrdroot/polybins.py
+@@ -64,6 +64,10 @@ class PolyBins:
+         self.squares: np.ndarray[Any, Any] | None = None
+         #: Which bins each cell of the search grid holds, built by :meth:`grid`.
+         self._table: dict[tuple[int, int], tuple[int, ...]] | None = None
++        #: The bins' boxes as plain tuples, for the fill that rejects a candidate with them.
++        self._boxed: list[tuple[float, float, float, float]] = []
++        #: ``x0, y0, 1/stepx, 1/stepy, ncellsx, ncellsy``, built with the table by :meth:`grid`.
++        self._fast: tuple[float, float, float, float, int, int] = (0.0, 0.0, 1.0, 1.0, 1, 1)
+ 
+     def copy(self) -> PolyBins:
+         """A copy of these bins, deep enough that neither histogram can move the other's."""
+@@ -73,7 +77,6 @@ class PolyBins:
+         made.overflow, made.sums = self.overflow.copy(), list(self.sums)
+         made.squares = None if self.squares is None else self.squares.copy()
+         return made
+-
+     def add(self, polygons: Sequence[tuple[Any, Any]]) -> int:
+         """A bin of these polygons - each ``(xs, ys)`` - and its number, from 1."""
+         made = [([float(v) for v in x], [float(v) for v in y]) for x, y in polygons]
+@@ -125,21 +128,39 @@ class PolyBins:
+             return float(self.overflow[-number - 1]) if -number <= REGIONS else 0.0
+         return float(self.contents[number - 1]) if 0 < number <= len(self.contents) else 0.0
+ 
+-    def region(self, x: float, y: float) -> int:
+-        """Which region round the range ``(x, y)`` is in: -1..-9, -5 within the range."""
+-        row = -1 if y > self.yrange[1] else -4 if y > self.yrange[0] else -7
+-        return row + (-2 if x > self.xrange[1] else -1 if x > self.xrange[0] else 0)
+-
+     def find(self, x: float, y: float) -> int:
+-        """The bin holding ``(x, y)``, or the region it fell in, as ``TH2Poly::Fill`` finds."""
+-        region = self.region(x, y)
+-        if region != -5:
+-            return region
++        """The bin holding ``(x, y)``, or the region it fell in: -1..-9, -5 within the range.
++
++        The region's number is worked out and the search grid's cell looked up here,
++        rather than by a method of their own, and a candidate whose box does not hold
++        the point is dropped before the crossing count is walked: a fill is the hottest
++        method a ``TH2Poly`` has - a program fills one a million times over - and the
++        calls and the wasted crossing counts cost more than the search does.
++        """
++        row = -1 if y > self.yrange[1] else -4 if y > self.yrange[0] else -7
++        column = -2 if x > self.xrange[1] else -1 if x > self.xrange[0] else 0
++        if row + column != -5:
++            return row + column
+         table = self._table if self._table is not None else self.grid()
+-        for index in table.get(self._key(x, y), ()):
+-            for px, py in self.polygons[index]:
+-                if inside(px, py, x, y):
+-                    return index + 1
++        ox, oy, sx, sy, nx, ny = self._fast
++        key = (min(max(int((x - ox) * sx), 0), nx - 1),
++               min(max(int((y - oy) * sy), 0), ny - 1))  # fmt: skip
++        return self._first(table.get(key, ()), x, y)
++
++    def _first(self, candidates: Sequence[int], x: float, y: float) -> int:
++        """The first of one cell's bins that holds ``(x, y)``, or -5 if none does.
++
++        A bin's box is tested before its crossing count is walked, as no point outside
++        a polygon's box can be inside the polygon: a cell holds about four boxes and
++        the fill reaches the crossing count once rather than four times.
++        """
++        boxes = self._boxed
++        for index in candidates:
++            box = boxes[index]
++            if box[0] <= x <= box[1] and box[2] <= y <= box[3]:
++                for px, py in self.polygons[index]:
++                    if inside(px, py, x, y):
++                        return index + 1
+         return -5
+ 
+     def grid(self) -> dict[tuple[int, int], tuple[int, ...]]:
+@@ -151,12 +172,12 @@ class PolyBins:
+         """
+         if self._table is None:
+             side = max(1, math.isqrt(max(1, len(self.polygons))))
+-            #: ``x0, y0, 1/stepx, 1/stepy, ncellsx, ncellsy``: what a cell lookup needs.
+             self._fast = (self.xrange[0], self.yrange[0],
+                           side / ((self.xrange[1] - self.xrange[0]) or 1.0),
+                           side / ((self.yrange[1] - self.yrange[0]) or 1.0),
+                           side, side)  # fmt: skip
+             self.steps = (side, side)
++            self._boxed = [tuple(box) for box in self.boxes.tolist()]
+             found: dict[tuple[int, int], list[int]] = {}
+             for index, box in enumerate(self.boxes.tolist()):
+                 for key in self._covered(box):
+@@ -172,12 +193,6 @@ class PolyBins:
+         y1 = _cell(box[3], self.yrange[0], (self.yrange[1] - self.yrange[0]) or 1.0, self.steps[1])
+         return [(ix, iy) for ix in range(x0, x1 + 1) for iy in range(y0, y1 + 1)]
+ 
+-    def _key(self, x: float, y: float) -> tuple[int, int]:
+-        """The cell of the grid a point falls in, clamped to it."""
+-        ox, oy, sx, sy, nx, ny = self._fast
+-        return (min(max(int((x - ox) * sx), 0), nx - 1),
+-                min(max(int((y - oy) * sy), 0), ny - 1))  # fmt: skip
+-
+     def moments(self, w: float, x: float, y: float) -> None:
+         """One fill's moments: the weight, its square, and x's and y's, which only a fill
+         inside a bin adds."""
+diff --git a/src/xrdroot/pyroot/core/profiles.py b/src/xrdroot/pyroot/core/profiles.py
+index 89bd2f02..214504a7 100644
+--- a/src/xrdroot/pyroot/core/profiles.py
++++ b/src/xrdroot/pyroot/core/profiles.py
+@@ -9,12 +9,14 @@ range of values averaged, then the error option.
+ 
+ from __future__ import annotations
+ 
++from collections.abc import Sequence
+ from functools import partial
+ from typing import Any
+ 
+ import numpy as np
+ 
+ from ...booking import ERROR_OPTIONS
++from ...filling import one_bin
+ from ...profile import ERROR_MODES
+ from .histcore import axis_specs
+ from .hists import TH1, TH2, TH3
+@@ -31,6 +33,110 @@ def _value_range(rest: tuple[Any, ...]) -> tuple[Any, str]:
+     return found, option
+ 
+ 
++def _fill_target(profile: Any) -> tuple[Any, ...]:
++    """What a loop of fills adds to, read out of the profile's members once.
++
++    A profile filled an entry at a time - ROOT's own way, and every tutorial's - is
++    filled a million times over, and finding each of these in the members for every
++    entry costs about twice what the entry's arithmetic does. The layout is ``axes,
++    widths, nbins, members, core, home, key, cells, squares, weights, the squared
++    weights as the members keep them, the squared weights as a fill uses them, the
++    moments, the value range's two member names, and the identities
++    :func:`_still_ours` compares``. Nothing here is a copy: every array is the member
++    itself, so a fill through the target is a fill of the profile.
++    """
++    letter = profile._value_letter()
++    homes = profile._moment_homes()
++    named = (f"fTsumw{letter}", f"fTsumw{letter}2")
++    terms = profile._moment_terms() + tuple((homes[name], name) for name in named)
++    kept = profile.members.get("fBinSumw2")
++    return (profile.axes, profile._widths, tuple(axis.nbins for axis in profile.axes),
++            profile.members, profile._core, profile._home, profile._key,
++            profile._cells(), profile._value_squares(), profile._bin_weights(), kept,
++            profile._bin_sumw2(), terms, f"f{letter.upper()}min", f"f{letter.upper()}max",
++            (id(profile.axes), id(profile._home.get(profile._key)),
++             id(profile._core.get("fSumw2")), id(profile.members.get("fBinEntries")),
++             id(kept)))  # fmt: skip
++
++
++def _still_ours(target: tuple[Any, ...], profile: Any) -> bool:
++    """Does the profile still keep the very arrays and moments this target was read from?
++
++    A fill written into an array the profile has let go of is a fill lost, so a profile
++    that replaced one - reading replaced the bins of a file written in another byte
++    order, and ``Sumw2`` and the first weight that is not one start or stop keeping the
++    squared weights - is met by a target made afresh. The identities are in one tuple,
++    compared in one go, which costs a fraction of the fill it guards.
++    """
++    home, key = target[5], target[6]
++    members, core = target[3], target[4]
++    now = (id(profile.axes), id(home.get(key)), id(core.get("fSumw2")),
++           id(members.get("fBinEntries")), id(members.get("fBinSumw2")))  # fmt: skip
++    return bool(now == target[15])
++
++
++def _fast_fill(profile: Any, target: tuple[Any, ...], coordinates: Sequence[float],
++               value: float, weight: float) -> int:  # fmt: skip
++    """``TProfile::Fill`` of one entry, added where :func:`~.filling.fill_profile_one` adds it.
++
++    The same sums in the same order - the bin's value, its square, its squared weights,
++    its weights, then the moments, only what fell inside every axis - so a profile
++    filled through here holds the doubles one filled through the engine holds.
++    """
++    found, cell = _fast_place(target, coordinates)
++    members, core, nbins = target[3], target[4], target[2]
++    cells, squares, weights, sq2, terms = target[7], target[8], target[9], target[11], target[12]
++    low, high = float(members.get(target[13], 0.0)), float(members.get(target[14], 0.0))
++    if not (low == high or low <= value <= high):
++        return cell  # outside the range of values averaged: counted nowhere, as ROOT does
++    counts = weight * value
++    squared = counts * value
++    core["fEntries"] = float(core["fEntries"]) + 1
++    cells[cell] += cells.dtype.type(counts)  # a float bin adds in its own precision
++    squares[cell] += squared
++    _fast_squares(profile, sq2, cell, weight)
++    weights[cell] += weight
++    if all(1 <= found[at] <= nbins[at] for at in range(len(nbins))):
++        _fast_moments(terms, weight, coordinates, counts, squared)
++    return cell
++
++
++def _fast_place(target: tuple[Any, ...], coordinates: Sequence[float]) -> tuple[list[int], int]:
++    """Which bin of each axis the entry falls in, and ROOT's global bin number of them."""
++    axes, widths = target[0], target[1]
++    found = [one_bin(axis, x) for axis, x in zip(axes, coordinates, strict=False)]
++    cell = found[-1]
++    for at in range(len(found) - 2, -1, -1):
++        cell = cell * widths[at] + found[at]
++    return found, cell
++
++
++def _fast_squares(profile: Any, sq2: Any, cell: int, weight: float) -> None:
++    """The sum of squared weights one bin takes, which a weight other than one starts."""
++    if sq2 is None and weight != 1.0:
++        sq2 = profile._ensure_sumw2()  # the first weight that is not one starts them
++    if sq2 is not None:
++        sq2[cell] += weight * weight
++
++
++def _fast_moments(terms: Sequence[tuple[dict[str, Any], str]], weight: float,
++                  coordinates: Sequence[float], counts: float, squared: float) -> None:  # fmt: skip
++    """:func:`~.filling.one_terms` added to the moments each belongs to, in its order.
++
++    ``w*x`` is formed before it meets the second ``x``, as ``one_terms`` forms it, so
++    each sum takes the double ROOT's own loop takes.
++    """
++    values = [weight, weight * weight]
++    for x in coordinates:
++        values += [weight * x, weight * x * x]
++    for first in range(len(coordinates)):
++        for second in range(first + 1, len(coordinates)):
++            values.append(weight * coordinates[first] * coordinates[second])
++    values += [counts, squared]
++    for (home, name), value in zip(terms, values, strict=True):
++        home[name] = home[name] + value
++
++
+ class _Profiled:
+     """What the three profiles share over their histogram's methods."""
+ 
+@@ -63,7 +169,10 @@ class _Profiled:
+         count = self.DIM + 1
+         given = [float(value) for value in args[:count]]
+         weight = float(args[count]) if len(args) > count else 1.0
+-        return int(self._xrd.fill_one(given, None if weight == 1.0 else weight))
++        target = self.__dict__.get("_fill_target")
++        if target is None or not _still_ours(target, self._xrd):
++            target = self.__dict__["_fill_target"] = _fill_target(self._xrd)
++        return _fast_fill(self._xrd, target, given[:-1], given[-1], weight)
+ 
+     def FillN(self, ntimes: int, x: Any, y: Any, w: Any = None, stride: int = 1) -> None:
+         count = int(ntimes)
+@@ -143,6 +252,15 @@ class TProfile2D(_Profiled, TH2):  # type: ignore[misc]  # ProjectionX takes a p
+     DIM = 2
+     KIND = "D"
+ 
++    def GetNumberOfBins(self) -> float:
++        """``GetNumberOfBins``: how many cells ``fBinEntries`` holds, the ends with them.
++
++        A ``TProfile2D`` answers this one as ``fBinEntries.GetSize()`` - a ``Double_t``,
++        ``(nx + 2) * (ny + 2)`` - and not as the ``GetNbinsX`` a ``TH2`` answers, so a
++        loop over the bins it counts runs over the flow bins as well.
++        """
++        return float(np.asarray(self._xrd.members["fBinEntries"]).size)
++
+ 
+ class TProfile3D(_Profiled, TH3):  # type: ignore[misc]  # ProjectionX takes a profile's arguments
+     """``TProfile3D``: the mean of t in bins of x, y and z."""
+diff --git a/tests/test_pyroot_profile_fill_loop.py b/tests/test_pyroot_profile_fill_loop.py
+new file mode 100644
+index 00000000..8ca68700
+--- /dev/null
++++ b/tests/test_pyroot_profile_fill_loop.py
+@@ -0,0 +1,197 @@
++"""A profile filled an entry at a time, and the poly search its fill leans on.
++
++ROOT's own ``hist/hist/test/test_tprofile2poly.cxx`` fills a ``TProfile2D`` and a
++``TProfile2Poly`` a million times over from a loop, and the two histograms must
++hold the same doubles to 1e-12. A loop that calls ``Fill`` costs the lookup of
++every array and moment it writes, so a profile keeps what its fills go into
++beside the wrapper (``_fill_target``), and these tests say that the fast path is
++the engine's to the last bit - in every branch of it: the value range, the flow
++bins, the squared weights that a first weight other than one starts, and a
++profile whose arrays have been replaced since the target was read.
++"""
++
++from __future__ import annotations
++
++import math
++from typing import Any
++
++import numpy as np
++import pytest
++
++import xrdroot.pyroot as ROOT
++from pyrootsupport import expect
++from xrdroot.polybins import inside
++
++
++def members(wrapper: Any) -> dict[str, Any]:
++    """Every member of a wrapped histogram, flattened to ``"TH1D.fEntries"`` names."""
++    found: dict[str, Any] = {}
++
++    def walk(row: dict[str, Any], above: str) -> None:
++        for name, value in row.items():
++            if isinstance(value, dict):
++                walk(value, f"{above}{name}.")
++            else:
++                found[f"{above}{name}"] = value
++
++    walk(wrapper._xrd.members, "")
++    return found
++
++
++def same_as_the_engine(fast: Any, plain: Any) -> list[str]:
++    """The members the two histograms do not share, bit for bit."""
++    mine, theirs = members(fast), members(plain)
++    return [name for name, value in mine.items() if "fName" not in name and "fTitle" not in name
++            and np.asarray(value).tobytes() != np.asarray(theirs[name]).tobytes()]  # fmt: skip
++
++
++def entries(count: int) -> list[tuple[float, float, float, float]]:
++    """``count`` entries of a ``(x, y, value, weight)`` table, deterministic and mixed."""
++    made = []
++    for at in range(count):
++        x = math.sin(at * 0.37) * 3.0
++        y = math.cos(at * 0.11) * 2.5
++        value = math.sin(at * 1.7) * 20.0 + 20.0
++        weight = 1.0 + (at % 7) * 0.5 - (at % 3)
++        made.append((x, y, value, weight))
++    return made
++
++
++def pair(cls: type, args: tuple[Any, ...]) -> tuple[Any, Any]:
++    """A histogram filled through the wrapper, and the same one filled through the engine."""
++    return cls("fast", "fast", *args), cls("plain", "plain", *args)
++
++
++@pytest.mark.parametrize("cls,args,plane", [
++    (ROOT.TProfile, (10, -3.0, 3.0), lambda x, y: ([x], y)),
++    (ROOT.TProfile2D, (10, -3.0, 3.0, 10, -3.0, 3.0), lambda x, y: ([x, y], 20.0)),
++    (ROOT.TProfile3D, (4, -3.0, 3.0, 4, -3.0, 3.0, 4, -3.0, 3.0), lambda x, y: ([x, y, x], 20.0)),
++])  # fmt: skip
++def test_a_filled_profile_holds_the_doubles_the_engine_holds(cls: Any, args: Any,
++                                                            plane: Any) -> None:  # fmt: skip
++    fast, plain = pair(cls, args)
++    for x, y, _value, weight in entries(500):
++        coordinates, averaged = plane(x, y)
++        given = [*coordinates, averaged]
++        fast.Fill(*coordinates, averaged, weight)
++        plain._xrd.fill_one(given, weight)
++    expect((same_as_the_engine(fast, plain), []), (fast.GetEntries(), plain.GetEntries()))
++
++
++def test_an_unweighted_loop_leaves_no_squared_weights_to_keep() -> None:
++    fast, plain = pair(ROOT.TProfile2D, (10, -3.0, 3.0, 10, -3.0, 3.0))
++    for x, y, value, _ in entries(200):
++        fast.Fill(x, y, value)
++        plain._xrd.fill_one([x, y, value], None)
++    keep = np.asarray(fast._xrd.members["fBinSumw2"])
++    expect((keep.size, 0), (same_as_the_engine(fast, plain), []))
++
++
++def test_the_first_weight_that_is_not_one_starts_the_squared_weights() -> None:
++    fast, plain = pair(ROOT.TProfile2D, (10, -3.0, 3.0, 10, -3.0, 3.0))
++    fast.Fill(0.5, 0.5, 3.0)  # a weight of one: nothing to keep but the value
++    plain._xrd.fill_one([0.5, 0.5, 3.0], None)
++    expect((np.asarray(fast._xrd.members["fBinSumw2"]).size, 0))
++    fast.Fill(0.5, 0.5, 4.0, 2.5)
++    plain._xrd.fill_one([0.5, 0.5, 4.0], 2.5)
++    kept = np.asarray(fast._xrd.members["fBinSumw2"])
++    expect((kept.size, 144), (float(kept.sum()), 6.25 + 1.0), (same_as_the_engine(fast, plain), []))
++
++
++def test_a_value_outside_the_range_averaged_is_counted_nowhere() -> None:
++    fast, plain = pair(ROOT.TProfile2D, (10, -3.0, 3.0, 10, -3.0, 3.0, 0.0, 10.0))
++    expect((fast.Fill(0.5, 0.5, 12.0), 78))  # outside 0..10: ROOT drops it
++    plain._xrd.fill_one([0.5, 0.5, 12.0], None)
++    expect((fast.GetEntries(), 0.0), (fast.GetBinContent(fast.FindBin(0.5, 0.5)), 0.0))
++    expect((fast.Fill(0.5, 0.5, 2.0), 78), (fast.GetEntries(), 1.0))
++    plain._xrd.fill_one([0.5, 0.5, 2.0], None)
++    expect((same_as_the_engine(fast, plain), []))
++
++
++def test_a_fill_outside_the_axes_counts_an_entry_and_no_moments() -> None:
++    fast, plain = pair(ROOT.TProfile2D, (10, -3.0, 3.0, 10, -3.0, 3.0))
++    expect((fast.Fill(9.0, 9.0, 2.0), 143))  # the region above and to the right
++    plain._xrd.fill_one([9.0, 9.0, 2.0], None)
++    moments = fast._xrd._moment_homes()
++    expect((moments["fTsumw"]["fTsumw"], 0.0), (fast.GetEntries(), 1.0))
++    expect((same_as_the_engine(fast, plain), []))
++
++
++def test_a_profile_that_starts_stopping_its_squares_is_read_afresh() -> None:
++    """``Sumw2(false)`` replaces ``fBinSumw2``: the next fill must land in the new one."""
++    fast, plain = pair(ROOT.TProfile2D, (10, -3.0, 3.0, 10, -3.0, 3.0))
++    fast.Fill(0.5, 0.5, 3.0, 2.0)
++    plain._xrd.fill_one([0.5, 0.5, 3.0], 2.0)
++    fast.Sumw2(False)
++    plain._xrd._drop_sumw2()
++    fast.Fill(0.5, 0.5, 4.0)  # a weight of one: they stay dropped, and the fill still lands
++    plain._xrd.fill_one([0.5, 0.5, 4.0], None)
++    expect((np.asarray(fast._xrd.members["fBinSumw2"]).size, 0))
++    expect((fast.GetBinEntries(fast.FindBin(0.5, 0.5)), 3.0))  # 2 and then 1
++    expect((same_as_the_engine(fast, plain), []))
++
++
++def test_a_reset_profile_fills_from_nothing_again() -> None:
++    fast, plain = pair(ROOT.TProfile, (10, -3.0, 3.0))
++    for x, _y, value, weight in entries(50):
++        fast.Fill(x, value, weight)
++        plain._xrd.fill_one([x, value], weight)
++    fast.Reset()
++    plain._xrd.reset()
++    for x, _y, value, weight in entries(50):
++        fast.Fill(x, value, weight)
++        plain._xrd.fill_one([x, value], weight)
++    expect((same_as_the_engine(fast, plain), []), (fast.GetEntries(), 50.0))
++
++
++def test_a_TProfile2D_counts_the_cells_of_fBinEntries_as_its_bins() -> None:
++    found = ROOT.TProfile2D("h", "h", 1, 0.0, 1.0, 1, 0.0, 1.0)
++    found.SetCanExtend(ROOT.TH1.kAllAxes)
++    made = found.Clone()
++    found.Fill(0.5, 0.5, 0.0)
++    made.Fill(1.5, 0.5, 0.0)
++    listing = ROOT.TList()
++    listing.Add(made)
++    found.Merge(listing)
++    expect((found.GetNumberOfBins(), 9.0), (found.GetEntries(), 2.0))
++    expect((sum(found.GetBinEntries(at) for at in range(int(found.GetNumberOfBins()))), 2.0))
++
++
++def scanned(bins: Any, x: float, y: float) -> int:
++    """The bin a scan of every polygon in the order they were added finds, or -5 for none."""
++    for at, polygons in enumerate(bins.polygons):
++        if any(inside(px, py, x, y) for px, py in polygons):
++            return at + 1
++    return -5
++
++
++def test_a_poly_bin_is_found_where_a_scan_of_every_bin_finds_it() -> None:
++    """The search grid and its boxes choose no bin a scan from the first would not."""
++    poly = ROOT.TH2Poly("poly", "poly", -10.0, 10.0, -10.0, 10.0)
++    for at in range(-10, 10, 2):
++        poly.AddBin(at, at + 4, at + 2, at + 6)  # rectangles off the diagonal, overlapping
++    bins = poly._xrd_bins
++    for x in np.arange(-9.5, 9.5, 0.7):
++        for y in np.arange(-9.5, 9.5, 0.7):
++            expect((bins.find(float(x), float(y)), scanned(bins, float(x), float(y))))
++
++
++def test_a_poly_fill_outside_the_axes_goes_to_the_region_round_them() -> None:
++    poly = ROOT.TProfile2Poly("poly", "poly", 0.0, 1.0, 0.0, 1.0)
++    poly.AddBin(0.0, 0.0, 1.0, 1.0)
++    expect((poly.FindBin(0.5, 0.5), 1), (poly.FindBin(-1.0, 0.5), -4),
++           (poly.FindBin(0.5, -1.0), -8), (poly.FindBin(-1.0, -1.0), -7),
++           (poly.FindBin(2.0, 2.0), -3), (poly.FindBin(0.5, 2.0), -2),
++           (poly.FindBin(2.0, 0.5), -6))  # fmt: skip
++
++
++def test_a_point_on_the_edge_of_a_box_is_the_bin_the_crossing_count_finds() -> None:
++    """A box rejects only a point no crossing count can call inside, edges included."""
++    poly = ROOT.TH2Poly("poly", "poly", 0.0, 1.0, 0.0, 1.0)
++    poly.AddBin(0.0, 0.0, 0.5, 0.5)
++    poly.AddBin(0.5, 0.5, 1.0, 1.0)
++    bins = poly._xrd_bins
++    for x, y in [(0.0, 0.0), (0.5, 0.5), (1.0, 1.0), (0.0, 0.5), (0.5, 0.0), (1.0, 0.5),
++                 (0.25, 0.25), (0.75, 0.75)]:  # fmt: skip
++        found = bins.find(x, y)
++        expect((found, scanned(bins, x, y) if found > 0 or found == -5 else found))
+-- 
+2.54.0 (Apple Git-157)
+

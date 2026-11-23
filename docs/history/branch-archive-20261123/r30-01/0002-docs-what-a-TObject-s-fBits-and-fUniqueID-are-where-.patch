@@ -1,0 +1,93 @@
+From 0236350db73290fef12fa24abbee93762eaaf7b9 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 06:33:03 +0000
+Subject: [PATCH 2/2] docs: what a TObject's fBits and fUniqueID are where ROOT
+ prints them
+
+The same finding as ae646b4e's message, in the project's docs store: the file holds
+fBits & ~0x03000000 and a plain identifier, ROOT's reader puts the heap's two bits and
+the ProcessID index + 1 (TBufferIO::GetPidOffset, held in TKey::fSeekPdir's high bits)
+on the object, and trying to do it in buffer.py::referenced broke seven round-trip
+tests. Nothing here changes behaviour; the io/tree six need the reassembly in
+interp.py's element read.
+---
+ docs/README.md                                | 26 +++++++++++++++
+ ...queid-the-file-holds-are-not-what-ttree.md | 33 +++++++++++++++++++
+ 2 files changed, 59 insertions(+)
+ create mode 100644 docs/README.md
+ create mode 100644 docs/gotchas/a-tobject-s-fbits-funiqueid-the-file-holds-are-not-what-ttree.md
+
+diff --git a/docs/README.md b/docs/README.md
+new file mode 100644
+index 00000000..f9aa72fe
+--- /dev/null
++++ b/docs/README.md
+@@ -0,0 +1,26 @@
++# docs
++
++What this project has learned, written down so nobody has to rediscover it.
++
++Each file here answers one question a new contributor (or a new agent on a new
++machine) would otherwise answer wrongly:
++
++- `rules/` — hard constraints. Do not break these.
++- `instructions/` — how work should be done in this project.
++- `gotchas/` — things that break in non-obvious ways.
++- `discoveries/` — how something actually behaves, where that is surprising.
++- `decisions/` — a choice that was made and the reason.
++- `architecture/` — how the pieces fit together.
++
++Every file starts with YAML front matter (`title`, `kind`, `summary`, `tags`,
++`updated`) so it can be indexed cheaply. Read the front matter first; it is
++usually enough.
++
++**Only files with a front-matter `kind:` are indexed.** A file without one is
++reported as "not indexed" rather than silently ignored, because this folder is
++sometimes already a documentation site or an ADR collection that this extension
++does not own. To add a hand-written page to the index, give it the front matter
++above; `docs_record` writes it for you.
++
++This file is maintained by the `pi-docs-first` extension, but it is ordinary
++Markdown — edit it by hand whenever it is wrong.
+diff --git a/docs/gotchas/a-tobject-s-fbits-funiqueid-the-file-holds-are-not-what-ttree.md b/docs/gotchas/a-tobject-s-fbits-funiqueid-the-file-holds-are-not-what-ttree.md
+new file mode 100644
+index 00000000..d23c01c8
+--- /dev/null
++++ b/docs/gotchas/a-tobject-s-fbits-funiqueid-the-file-holds-are-not-what-ttree.md
+@@ -0,0 +1,33 @@
++---
++title: "A TObject's fBits/fUniqueID the file holds are not what TTree::Show prints"
++kind: "gotcha"
++summary: "ROOT prints fBits with kIsOnHeap|kNotDeleted and fUniqueID with the process in its top byte, and both are set on the object, not by the record reader - so fix them where objects are made, never in buffer.py."
++tags: [tobject, fbits, funiqueid, references, interp, roottest, io-tree]
++created: "2026-11-21T06:32:55.404Z"
++updated: "2026-11-21T06:32:55.404Z"
++---
++`TTree::Show`, `TScan` and a `TRef` all report two numbers a ROOT file does not hold: an object's `fBits` with `kIsOnHeap|kNotDeleted` (0x03000000) set, and its `fUniqueID` with the process in the top byte. Both are put there by ROOT's *reader when it fills an object*, so the fix belongs where an object is made - not in the byte reader, and not in the split-branch column reader unless the column is the only place the value exists.
++
++## What ROOT actually stores and prints
++
++Measured with the 6.40.04 oracle (`~/.local/root-oracle/bin/root -l -b -q probe.C`, `probe2.C`, `show.C` in `/tmp/r30/oracle`) against `roottest/root/io/tree`'s `tref_test_pid*.root`, which are written by `create`/`addref` in `/tmp/rootsrc-6.40b/roottest/root/io/tree/tref_test_pid.C`:
++
++- the file holds `fBits & ~0x03000000` (`wdobjects.py` masks on write, correctly) and `Show` prints the file's word with those two bits back: stored `0x18` prints `50331672`, stored `0` prints `50331648`;
++- the file holds a plain number (`09 00 00 00 08 …` in the `N.fUniqueID` basket) and `Show` prints `16777225` = `0x01000009` for it. The top byte is the **file's `ProcessID` index + 1**, not the index: `test-rc` (only `ProcessID0` in the file) prints `0x01…`, `test-rcr` (whose `r1` objects belong to `ProcessID1`) prints `0x02…`. The +1 is `TBufferIO::GetPidOffset`; `TKey` keeps that offset in the high bits of `fSeekPdir`. A probe that read an unsplit pidf-0 object in a session holding two processes got `0x00000000`, so it is a property of the key, not a constant.
++
++## Why not in `buffer.py::referenced`
++
++`Buffer.referenced()` is the `TObject` word reader under every read path. Returning `bits | 0x03000000` there was tried and broke seven tests that pin the file's word, because these members are read and written again as they came in: `tests/test_wdobjects_nested_records.py`, `test_histfactory_streamed.py`, `test_cli_diff.py`, `test_root_known.py`, `test_roofit_io_records.py`, `test_interp_member_wise_bases.py`, `test_root_containers.py`. The process likewise stays beside the identifier (`referenced()` returns `(unique, bits, pidf)`) so a `TRef`/`TRefArray` record written back is byte-identical. The object-side rule already lives in `pyroot/core/objects.py` (`TObject._bitword` adds `HEAP_BITS`, `_store_bits` drops it) and in `pyroot/core/declared.py::root_row`, which masks it again on the way out.
++
++## Where the io/tree family really needs it
++
++`roottest/root/io/tree/test-rc{,-rcr,-rcr2,-rcrr,-rcrr2,-rcrr3}` print through `TTree::Show`, which reads **split-branch** values (`pyroot/trees/player.py`, `Show` → `self._batch.value(leaf.column, at)`); `N.fUniqueID`, `N.fBits` and `r1.fBits` are `interp.Rows` columns (`src/xrdroot/interp.py`, `build` → `_element` → `_primitive_element` → `_primitive_shape`) that read the basket bytes directly, and for a split collection the pidf is nowhere in the file. The reassembly therefore has to happen in `interp.py`'s element read (the process from the basket key's pid offset, the bits always), and an object built from those columns (`pyroot/trees/rebuild.py`, `pyroot/core/wrapping.py::from_members`) needs the same information from whoever holds the file.
++
++```mermaid
++flowchart LR
++  F[file bytes: fUniqueID=9, fBits=0x18, no pidf in split branches] --> R[Buffer.referenced / interp Rows]
++  R -->|"as written, always"| W[written back byte-identical]
++  R -->|"interp element read: +bits, +process byte"| S[TTree::Show / Scan]
++  R --> M[object made: TObject._bitword adds HEAP_BITS, declared.root_row masks]
++  M --> P[printed fBits / GetUniqueID / TRef GetObject]
++```
+-- 
+2.54.0 (Apple Git-157)
+

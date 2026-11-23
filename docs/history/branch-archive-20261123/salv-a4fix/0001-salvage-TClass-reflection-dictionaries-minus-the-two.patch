@@ -1,0 +1,1188 @@
+From 60336ffc3668be852c6e5ddbbeff9f61d0850bc8 Mon Sep 17 00:00:00 2001
+From: salvage <s@x.invalid>
+Date: Sat, 21 Nov 2026 23:37:29 +0000
+Subject: [PATCH] salvage: TClass reflection dictionaries, minus the two hunks
+ main already has
+
+---
+ docs/root.md                            |  17 +
+ src/xrdroot/pycint/library/build.py     |   3 +-
+ src/xrdroot/pycint/library/loading.py   |  10 +-
+ src/xrdroot/pycint/library/manifest.py  |   6 +
+ src/xrdroot/pycint/library/selection.py |  32 +-
+ src/xrdroot/pycxx/emit_classes.py       |  39 ++
+ src/xrdroot/pycxx/nodes.py              |   2 +
+ src/xrdroot/pycxx/parse_decl.py         |   2 +
+ src/xrdroot/pycxx/parse_types.py        |   2 +-
+ src/xrdroot/pycxx/program.py            |  30 +-
+ src/xrdroot/pyroot/core/collections.py  |   4 +
+ src/xrdroot/pyroot/core/reflection.py   | 482 ++++++++++++++++++++++--
+ tests/test_cint_layouts.py              |  47 +++
+ tests/test_pycint_library.py            |  23 ++
+ tests/test_pyroot_reflection.py         | 191 ++++++++++
+ 15 files changed, 863 insertions(+), 27 deletions(-)
+
+diff --git a/docs/root.md b/docs/root.md
+index fb4473e6..b1d089bd 100644
+--- a/docs/root.md
++++ b/docs/root.md
+@@ -3039,6 +3039,23 @@ it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
+ lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
+ file opened since describes the class with.
+ 
++Its functions are described too, as a dictionary describes them:
++`GetListOfMethods` lists a `TMethod` per overload - a const function of the
++same parameters is an overload of the non-const one - and
++`GetMethod(name, params)` and `GetMethodWithPrototype` find one by its
++parameters' types, preferring the non-const overload for a non-const object
++and taking a `char*` for a `const char*` unless `ROOT::kExactMatch` is asked
++for. A `TMethod` answers `GetReturnTypeName` (`int&`), `GetPrototype`
++(`int& Holder::data()`), `GetClass` and `ExtraProperty`, whose bits are
++ROOT's `kIsInlined`, `kIsConstructor`, `kIsDestructor`, `kIsConversion` and
++`kIsOperator`; `GetFunctionTemplate` gives a member function template.
++`GetMissingDictionaries(ht, recurse)` fills a `THashTable` with the `TClass`
++of each class no dictionary describes - the class itself where nothing does,
++the class of each data member, a standard container's elements, and, with
++`recurse`, what those hold in turn. `TObject::SetObjectStat` and
++`GetObjectStat` are ROOT's switch for its object table, which no table here
++keeps, so a threaded program sets it and reads it back.
++
+ `f->WriteObject(&obj, "name")`, `obj.Write()` and `TBufferFile` write such an
+ object byte for byte as ROOT does - numbers, `Double32_t` and `Float16_t`
+ packed by their comment, fixed and counted arrays, `std::string` and
+diff --git a/src/xrdroot/pycint/library/build.py b/src/xrdroot/pycint/library/build.py
+index 00e3d93a..f9cc7c74 100644
+--- a/src/xrdroot/pycint/library/build.py
++++ b/src/xrdroot/pycint/library/build.py
+@@ -25,7 +25,7 @@ from ...pycxx.errors import CxxError
+ from ..dialect import LIBRARY as DIALECT
+ from . import checks
+ from .manifest import SUFFIX, Library, read, write
+-from .selection import requested
++from .selection import requested, selected
+ from .translate import Declared, digest, translated_unit
+ 
+ __all__ = [
+@@ -147,6 +147,7 @@ def build_dictionary(
+     warnings = _unused(requested(linkdef, selection), found)
+     _warned(warnings + checks.io_targets(parsed, found.members), strict.fail_on_warnings)
+     library.kind, library.rootmap = "dictionary", rootmap
++    library.selected = selected(linkdef, selection)
+     library.libraries = _joined(existing, libraries)
+     return write(library, place)
+ 
+diff --git a/src/xrdroot/pycint/library/loading.py b/src/xrdroot/pycint/library/loading.py
+index 0592c64a..77f8e150 100644
+--- a/src/xrdroot/pycint/library/loading.py
++++ b/src/xrdroot/pycint/library/loading.py
+@@ -285,13 +285,19 @@ def _dictionaried(loaded: Loaded) -> None:
+     """Tell ROOT's class table which classes this library's dictionary describes.
+ 
+     A program asks ``TClassTable::GetDict("Event")`` to decide whether it must load the
+-    library first, which under ROOT is answered by the dictionary the library carries.
++    library first, which under ROOT is answered by the dictionary the library carries. A
++    dictionary describes the classes it was asked to select, and no other class of a header
++    it read: the table holds those, under both the qualified name a LinkDef writes and the
++    plain one the class is declared by here.
+     """
+-    classes = [
++    declared = [
+         name
+         for name, value in loaded.module.items()
+         if isinstance(value, type) and getattr(value, "__module__", None) == MODULE
+     ]
++    selected = loaded.library.selected
++    wanted = {each.split("::")[-1].split("<")[0].strip() for each in selected}
++    classes = [*selected, *(name for name in declared if not wanted or name in wanted)]
+     if not classes:
+         return
+     from ...pyroot.core.reflection import note_generated_dictionary
+diff --git a/src/xrdroot/pycint/library/manifest.py b/src/xrdroot/pycint/library/manifest.py
+index 0efe0472..404dfedf 100644
+--- a/src/xrdroot/pycint/library/manifest.py
++++ b/src/xrdroot/pycint/library/manifest.py
+@@ -64,6 +64,12 @@ class Library:
+     #: The enumerations it declares, as ROOT's interpreter knows them once it is loaded: each
+     #: by its qualified name, with its constants' values (:class:`.translate.EnumNote`).
+     enums: list[dict[str, Any]] = field(default_factory=list)
++    #: What a dictionary was asked to select - a LinkDef's ``#pragma link`` lines, a genreflex
++    #: selection file's classes - which are the classes it gives a dictionary to. A header's
++    #: other classes are translated with it but have none, as ROOT's dictionary has none of
++    #: them. Empty when the selection names classes by pattern, and so selects whatever of the
++    #: header matches: then every class the dictionary was built from has one.
++    selected: list[str] = field(default_factory=list)
+     #: Whether autoloading finds it by the names it provides, as ROOT's rootmap file does.
+     rootmap: bool = True
+     #: The libraries to load before it.
+diff --git a/src/xrdroot/pycint/library/selection.py b/src/xrdroot/pycint/library/selection.py
+index 50788628..8a3f99eb 100644
+--- a/src/xrdroot/pycint/library/selection.py
++++ b/src/xrdroot/pycint/library/selection.py
+@@ -14,7 +14,7 @@ from __future__ import annotations
+ import re
+ from pathlib import Path
+ 
+-__all__ = ["requested", "linkdef_rules", "xml_rules"]
++__all__ = ["requested", "patterned", "selected", "linkdef_rules", "xml_rules"]
+ 
+ #: ``#pragma link C++ class Foo+;``: the kind of thing selected and its name.
+ LINK = re.compile(
+@@ -56,6 +56,36 @@ def xml_rules(text: str) -> list[str]:
+     return names
+ 
+ 
++#: A genreflex element's ``pattern`` attribute, ``pattern="myTyped*"``, which selects whatever
++#: of the headers matches it rather than the one name the attribute a list can be read from is.
++PATTERN = re.compile(r"""\bpattern\s*=\s*["']""")
++
++
++def patterned(linkdef: Path | None, selection: Path | None) -> bool:
++    """Does the selection name classes by pattern, so that what it selects is not its list?
++
++    A LinkDef's ``#pragma link C++ class geo::*;`` and a genreflex element's
++    ``pattern="secondOrderType*"`` select every class the headers declare that matches, so a
++    dictionary built from one describes more than the names such a file can be read for.
++    """
++    if linkdef is not None and any("*" in rule for rule in linkdef_rules(
++            linkdef.read_text(encoding="utf-8", errors="replace"))):  # fmt: skip
++        return True
++    if selection is not None:
++        text = selection.read_text(encoding="utf-8", errors="replace")
++        return PATTERN.search(IGNORED.sub("", text)) is not None
++    return False
++
++
++def selected(linkdef: Path | None, selection: Path | None) -> list[str]:
++    """The classes a selection gives a dictionary to, by name.
++
++    None where it names them by pattern, because then it selects whatever of the headers
++    matches and every class the dictionary was built from has one.
++    """
++    return [] if patterned(linkdef, selection) else requested(linkdef, selection)
++
++
+ def requested(linkdef: Path | None, selection: Path | None) -> list[str]:
+     """Every type the LinkDef and the selection file ask for, in their order."""
+     rules: list[str] = []
+diff --git a/src/xrdroot/pycxx/emit_classes.py b/src/xrdroot/pycxx/emit_classes.py
+index 3f7e83f6..7880a419 100644
+--- a/src/xrdroot/pycxx/emit_classes.py
++++ b/src/xrdroot/pycxx/emit_classes.py
+@@ -162,6 +162,7 @@ class ClassEmitter(FunctionEmitter):
+         spellings = self.program.templates.spellings
+         values = _enumerators(self._lineage(info))
+         self.out.line(f"_cxx_layout_ = {_layout(info, spellings, values)!r}", info.decl.where)
++        self.out.line(f"_cxx_methods_ = {_methods_layout(info, spellings)!r}", info.decl.where)
+         self.out.line("_cxx_destroyed = False", info.decl.where)
+         self.out.line("_cxx_released = False", info.decl.where)
+         for name, var in info.statics.items():
+@@ -417,6 +418,44 @@ def _constant(value: Expr) -> int | None:
+ Layout = tuple[str, tuple[str, ...], tuple[tuple[str, str, str, tuple[int | None, ...]], ...]]
+ 
+ 
++#: One function a class declares, as a reflection dictionary describes it: its C++ name, its
++#: return type as written, each parameter's type, and whether it is const, static, inline and
++#: virtual, a template, and its kind - ``function``, ``constructor``, ``destructor``, ``operator``.
++Method = tuple[str, str, tuple[str, ...], bool, bool, bool, bool, bool, str]
++
++
++def _methods_layout(info: ClassInfo, spellings: dict[str, str]) -> tuple[Method, ...]:
++    """A class's functions as a reflection dictionary describes them, so that the ``TMethod``
++    made from one knows its signature - what a program searching the class by prototype and
++    reading a method's return type asks about. A constructor returns the class it makes and a
++    destructor nothing, as ROOT's ``TMethod`` says of them."""
++    found: list[Method] = []
++    for func in info.overloads.values():
++        found.append((
++            func.name, _function_return(info, func, spellings),
++            tuple(_declared_type(param.ctype, spellings) for param in func.params),
++            bool(func.const), bool(func.static), bool(func.inlined),
++            bool(func.virtual), func.template is not None, func.kind,
++        ))
++    return tuple(found)
++
++
++def _function_return(info: ClassInfo, func: Function, spellings: dict[str, str]) -> str:
++    """What a function returns, as a signature writes it: the class a constructor builds."""
++    if func.kind == "constructor":
++        return spellings.get(info.name, info.name)
++    if func.kind == "destructor":
++        return "void"
++    return _declared_type(func.returns, spellings)
++
++
++def _declared_type(ctype: CType, spellings: dict[str, str]) -> str:
++    """A type as a function's signature spells it: the typedef it was written as, a ``&`` and a
++    leading ``const`` kept - which is what a ``TMethod`` reports its return type as."""
++    text = _spelled(ctype, spellings) + "&" * int(ctype.reference)
++    return f"const {text}" if ctype.const and not text.startswith("const ") else text
++
++
+ def _layout(info: ClassInfo, spellings: dict[str, str], values: dict[str, int]) -> Layout:
+     """A class's data members as a reflection dictionary would describe them, for a library
+     that writes objects member by member - an instance of a template by its C++ name."""
+diff --git a/src/xrdroot/pycxx/nodes.py b/src/xrdroot/pycxx/nodes.py
+index 117cb94a..b8214695 100644
+--- a/src/xrdroot/pycxx/nodes.py
++++ b/src/xrdroot/pycxx/nodes.py
+@@ -420,6 +420,8 @@ class Function(Stmt):
+     const: bool = False
+     static: bool = False
+     virtual: bool = False
++    #: Defined where it is declared - in its class's body - and so inline, as C++ makes it.
++    inlined: bool = False
+     variadic: bool = False
+     inits: list[tuple[str, list[Expr]]] = field(default_factory=list)
+     template: list[str] | None = None
+diff --git a/src/xrdroot/pycxx/parse_decl.py b/src/xrdroot/pycxx/parse_decl.py
+index 00466876..3b007cd8 100644
+--- a/src/xrdroot/pycxx/parse_decl.py
++++ b/src/xrdroot/pycxx/parse_decl.py
+@@ -504,6 +504,7 @@ class Parser(StmtParser):
+             func.static, func.variadic = spec.static, variadic
+             func.virtual = "virtual" in spec.words
+             func.constant_evaluation = bool(spec.words & {"constexpr", "consteval"})
++            func.inlined = bool(spec.words & {"inline"})
+             self._qualifiers(func)
+             if self.accept("="):
+                 func.special = self.take().text
+@@ -515,6 +516,7 @@ class Parser(StmtParser):
+                 raise self.refuse("a function-try-block, a try around a whole function body")
+             if not self.accept(";"):
+                 func.body = self.block()
++                func.inlined = func.inlined or not scope
+         finally:
+             self.pop()
+         return func
+diff --git a/src/xrdroot/pycxx/parse_types.py b/src/xrdroot/pycxx/parse_types.py
+index 2a4c49b8..c61194bf 100644
+--- a/src/xrdroot/pycxx/parse_types.py
++++ b/src/xrdroot/pycxx/parse_types.py
+@@ -27,7 +27,7 @@ QUALIFIERS = frozenset(
+ 
+ #: The words among those that say something the translation keeps.
+ KEPT = frozenset({"const", "constexpr", "consteval", "static", "thread_local",
+-                  "virtual", "friend", "explicit", "extern"})
++                  "virtual", "friend", "explicit", "extern", "inline"})
+ 
+ 
+ @dataclass
+diff --git a/src/xrdroot/pycxx/program.py b/src/xrdroot/pycxx/program.py
+index a125a9f8..4f6d438c 100644
+--- a/src/xrdroot/pycxx/program.py
++++ b/src/xrdroot/pycxx/program.py
+@@ -78,6 +78,10 @@ class ClassInfo:
+     fields: dict[str, VarDecl] = field(default_factory=dict)
+     statics: dict[str, VarDecl] = field(default_factory=dict)
+     methods: dict[str, list[Function]] = field(default_factory=dict)
++    #: Every function the class declares, one an overload - which a const function of the same
++    #: parameters is - of another: what a reflection dictionary lists, and what the translation
++    #: of a method's name alone cannot tell apart.
++    overloads: dict[tuple[Any, ...], Function] = field(default_factory=dict)
+     constants: dict[str, str] = field(default_factory=dict)
+     #: The classes declared inside it, which are classes of the program like any other.
+     types: list[ClassDecl] = field(default_factory=list)
+@@ -89,6 +93,7 @@ class ClassInfo:
+         return self.decl.name
+ 
+     def add_method(self, func: Function) -> None:
++        self._overload(func)
+         found = self.methods.setdefault(func.name, [])
+         for index, other in enumerate(found):
+             if _same_signature(other, func):
+@@ -97,6 +102,28 @@ class ClassInfo:
+                 return
+         found.append(func)
+ 
++    def _overload(self, func: Function) -> None:
++        """Note ``func`` as one of the class's overloads, or - the same one declared and then
++        defined outside the class - add what its definition says to what was declared."""
++        key = _overload_key(func)
++        known = self.overloads.get(key)
++        if known is None:
++            self.overloads[key] = func
++            return
++        known.inlined = known.inlined or func.inlined
++        known.static = known.static or func.static
++        known.virtual = known.virtual or func.virtual
++
++
++def _overload_key(func: Function) -> tuple[Any, ...]:
++    """What tells one overload of a name from another: its parameters, its constness, its kind."""
++    return (func.name, tuple(_same_type_key(param.ctype) for param in func.params),
++            func.const, func.kind)  # fmt: skip
++
++
++def _same_type_key(ctype: CType) -> tuple[str, int, bool]:
++    return (ctype.name, ctype.pointer, ctype.reference)
++
+ 
+ def _same_signature(one: Function, other: Function) -> bool:
+     if len(one.params) != len(other.params):
+@@ -105,7 +132,7 @@ def _same_signature(one: Function, other: Function) -> bool:
+ 
+ 
+ def _same_type(one: CType, other: CType) -> bool:
+-    return (one.name, one.pointer, one.reference) == (other.name, other.pointer, other.reference)
++    return _same_type_key(one) == _same_type_key(other)
+ 
+ 
+ def _merged(declared: Function, defined: Function) -> Function:
+@@ -117,6 +144,7 @@ def _merged(declared: Function, defined: Function) -> Function:
+             mine.name = theirs.name
+     defined.static = defined.static or declared.static
+     defined.virtual = defined.virtual or declared.virtual
++    defined.inlined = defined.inlined or declared.inlined
+     defined.constant_evaluation |= declared.constant_evaluation
+     return defined
+ 
+diff --git a/src/xrdroot/pyroot/core/collections.py b/src/xrdroot/pyroot/core/collections.py
+index 5876ab6b..38b8c035 100644
+--- a/src/xrdroot/pyroot/core/collections.py
++++ b/src/xrdroot/pyroot/core/collections.py
+@@ -770,6 +770,10 @@ class THashTable(TCollection):
+ 
+     CLASS_TITLE = "A hash table"
+ 
++    def Empty(self) -> bool:
++        """``Empty``: does the table hold nothing? - ROOT's name for it, beside ``IsEmpty``."""
++        return self.IsEmpty()
++
+ 
+ def _text(other: Any) -> str | None:
+     """What a ``TObjString`` is compared with as a string - a string, a ``TString`` or
+diff --git a/src/xrdroot/pyroot/core/reflection.py b/src/xrdroot/pyroot/core/reflection.py
+index 32874c7f..367526f9 100644
+--- a/src/xrdroot/pyroot/core/reflection.py
++++ b/src/xrdroot/pyroot/core/reflection.py
+@@ -18,6 +18,7 @@ from __future__ import annotations
+ import re
+ import sys
+ from typing import Any, ClassVar
++from weakref import WeakKeyDictionary
+ 
+ from ...wdeclared import ROOT_TYPEDEFS as TYPEDEFS
+ from ...winfo import INFOS, Element
+@@ -52,8 +53,97 @@ __all__ = [
+     "TStreamerLoop",
+     "TDataMember",
+     "TBaseClass",
++    "TMethod",
++    "TFunctionTemplate",
++    "kIsClass",
++    "kIsStruct",
++    "kIsUnion",
++    "kIsEnum",
++    "kIsTypedef",
++    "kIsFundamental",
++    "kIsAbstract",
++    "kIsVirtual",
++    "kIsPureVirtual",
++    "kIsUnionMember",
++    "kIsPublic",
++    "kIsProtected",
++    "kIsPrivate",
++    "kIsPointer",
++    "kIsArray",
++    "kIsStatic",
++    "kIsDefault",
++    "kIsReference",
++    "kIsDirectInherit",
++    "kIsCCompiled",
++    "kIsCPPCompiled",
++    "kIsCompiled",
++    "kIsNotReacheable",
++    "kIsConstant",
++    "kIsVirtualBase",
++    "kIsConstPointer",
++    "kIsScopedEnum",
++    "kIsConstexpr",
++    "kIsExplicit",
++    "kIsNamespace",
++    "kIsConstMethod",
++    "kIsUsing",
++    "kIsDefinedInStd",
++    "kIsConstructor",
++    "kIsConversion",
++    "kIsDestructor",
++    "kIsOperator",
++    "kIsInlined",
++    "kIsTemplateSpec",
++    "kExactMatch",
++    "kConversionMatch",
+ ]
+ 
++#: ``TDictionary::EProperty`` and ``EFunctionProperty``, and ``ROOT::EFunctionMatchMode``: the
++#: bits and modes ``TMethod::ExtraProperty`` and ``TClass::GetMethodWithPrototype`` answer
++#: with. C++ declares them twice - the two enums overlap on purpose - so the ones both name
++#: have one value here, and each is a name of the namespace, as ``ROOT::kIsInlined`` is.
++kIsClass = 0x00000001
++kIsStruct = 0x00000002
++kIsUnion = 0x00000004
++kIsEnum = 0x00000008
++kIsTypedef = 0x00000010
++kIsFundamental = 0x00000020
++kIsAbstract = 0x00000040
++kIsVirtual = 0x00000080
++kIsPureVirtual = 0x00000100
++kIsUnionMember = 0x00000100
++kIsPublic = 0x00000200
++kIsProtected = 0x00000400
++kIsPrivate = 0x00000800
++kIsPointer = 0x00001000
++kIsArray = 0x00002000
++kIsStatic = 0x00004000
++kIsDefault = 0x00008000
++kIsReference = 0x00010000
++kIsDirectInherit = 0x00020000
++kIsCCompiled = 0x00040000
++kIsCPPCompiled = 0x00040000
++kIsCompiled = 0x00040000
++kIsNotReacheable = 0x00080000
++kIsConstant = 0x00100000
++kIsVirtualBase = 0x00200000
++kIsConstPointer = 0x00400000
++kIsScopedEnum = 0x00800000
++kIsConstexpr = 0x02000000
++kIsExplicit = 0x04000000
++kIsNamespace = 0x08000000
++kIsConstMethod = 0x10000000
++kIsUsing = 0x20000000
++kIsDefinedInStd = 0x40000000
++kIsConstructor = 0x00000001
++kIsConversion = 0x00000002
++kIsDestructor = 0x00000004
++kIsOperator = 0x00000008
++kIsInlined = 0x00000010
++kIsTemplateSpec = 0x00000020
++kExactMatch = 0
++kConversionMatch = 1
++
+ #: One layout of one class: its checksum, version and elements.
+ Layout = tuple[int, int, tuple[Element, ...]]
+ #: The layouts files read so far describe each class with, in the order they were met.
+@@ -75,11 +165,24 @@ NUMBERS = frozenset({
+ #: names: their classes have a ``TClass`` bootstrap from then on, as a loaded library's would.
+ GENERATED: set[str] = set()
+ 
++#: The ``TMethod`` objects made for each class of a program's, by the class, and its member
++#: function templates: made once, so the one a search answers with is still the one its list
++#: holds after a ``GenerateDictionary`` replaces what the interpreter described of it.
++METHODS: WeakKeyDictionary[type, list[Any]] = WeakKeyDictionary()
++TEMPLATES: WeakKeyDictionary[type, list[Any]] = WeakKeyDictionary()
++
+ #: The functions looked up in a class only the interpreter describes, by class: ROOT asks the
+ #: interpreter for the one a program names and keeps the ``TMethod`` it made, which is what lets
+ #: a program hold that method across the dictionary that replaces the interpreter's description.
+ INTERPRETED_METHODS: dict[str, list[TNamed]] = {}
+ 
++#: What a class's translation says of each of its functions, by position - which is what
++#: ``TMethod`` is made of: the name, the return type as written, each parameter's type, whether
++#: it is const, static, inline, virtual and a template, and its kind (``function``,
++#: ``constructor``, ``destructor`` or ``operator``). A kit class that knows nothing of its C++
++#: signatures keeps none, and its methods are found only where no prototype is asked for.
++Signature = tuple[str, str, tuple[str, ...], bool, bool, bool, bool, bool, str]
++
+ #: The standard containers, whose classes ROOT knows without a dictionary of their own.
+ CONTAINERS = ("vector", "list", "deque", "map", "multimap", "set", "multiset",
+               "unordered_map", "unordered_set", "pair", "array", "forward_list",
+@@ -878,49 +981,177 @@ class TClass(TNamed):
+         return next((m for m in self.GetListOfAllPublicDataMembers() if m.GetName() == wanted),
+                     None)
+ 
++    def GetMissingDictionaries(self, result: Any, recurse: bool = False) -> None:
++        """``GetMissingDictionaries``: fill ``result`` - a ``THashTable`` - with the ``TClass``es
++        of the classes no dictionary describes.
++
++        The class itself where nothing describes it, and the class of each of its data
++        members - a member of ``std::vector<Elem>`` adds ``vector<Elem>`` and, a standard
++        container's elements being what the interpreter describes of it, ``Elem``. With
++        ``recurse`` those classes' own members are walked too; without it a class it found is
++        listed and not walked, as ROOT lists what a class refers to and leaves the descent to
++        the walk into it. A class a dictionary here describes - ROOT's own, or one a built
++        dictionary was loaded for - is not among them.
++        """
++        self._missing_into(result, bool(recurse), set(), members=True)
++
++    def _missing_into(self, result: Any, recurse: bool, seen: set[str], members: bool) -> None:
++        """Add the classes ``self`` refers to that no dictionary describes, walking their
++        members when ``members`` - or a recursion, or a description - says to."""
++        if self._name in seen:
++            return
++        seen.add(self._name)
++        described = not self._dictless()
++        if not described:
++            result.Add(self)  # ``seen`` has each class once, however many members are of it
++            for base in self._base_names():
++                TClass(base)._missing_into(result, recurse, seen, members=False)
++        if recurse or members or described:
++            for klass in self._referenced(recurse):
++                klass._missing_into(result, recurse, seen, members=recurse)
++
++    def _referenced(self, recurse: bool) -> list[TClass]:
++        """The classes the class's data members are, as ``GetMissingDictionaries`` walks them:
++        each member's own class, a standard container's elements', and with ``recurse`` the
++        arguments of any template instance.
++
++        An instance of a standard container or of a wrapper has no data members to read here -
++        the interpreter describes ``vector<Elem>`` from its element - so what it refers to is
++        what it holds.
++        """
++        if _template(self._name) or _wrapper(self._name):
++            return _classes_of(_arguments(self._name))
++        found = self._member_classes(recurse)
++        if recurse:
++            found.extend(_classes_of(_arguments(self._name)))
++        return found
++
++    def _member_classes(self, recurse: bool) -> list[TClass]:
++        """Each data member's class, and - a standard container's or a wrapper's, whose
++        elements the interpreter describes as its members - the classes it holds."""
++        found: list[TClass] = []
++        for _, spelled, _, _ in self._fields():
++            name = _class_spelling(str(spelled))
++            if name is None:
++                continue
++            found.append(TClass(name))
++            if recurse or _template(name) or _wrapper(name):
++                found.extend(_classes_of(_arguments(name)))
++        return found
++
++    def _dictless(self) -> bool:
++        """Is this a class no dictionary describes?
++
++        ROOT's own classes are described by the kit's layouts, and one a loaded dictionary
++        selected is described by it - a dictionary's other classes, translated with it, have
++        no dictionary of their own. A standard container is described where ROOT's own
++        dictionaries instantiate it, for the built-in types, and otherwise only where one was
++        generated for it: a member of ``std::vector<Elem>`` is ``vector<Elem>`` even when
++        ``Elem`` itself has a dictionary. A wrapper that streams what it holds -
++        ``std::unique_ptr<T>``, ``std::array<T, N>``, ``std::tuple<...>`` - is described by
++        what it holds, and is never itself a class a dictionary is missing for.
++        """
++        name = self._name
++        if name in INFOS or name in GENERATED or _last(name) in GENERATED:
++            return False
++        if _instance(name):
++            if _wrapper(name):
++                return False
++            if _template(name):
++                return not all(_built_in(each) for each in _arguments(name))
++            return True
++        return _declared(name) is not None or _class_named(name) is None
++
+     def GetListOfMethods(self, load: bool = True) -> Any:
+         """``GetListOfMethods``: the class's own functions, by name.
+ 
+-        A class only the interpreter describes lists the functions a search has made so far,
+-        as ROOT's list of them holds what the interpreter has been asked for.
++        A class C++ declared lists the functions its translation describes, and after them the
++        ones only the namespace's class carries - ``Class``, ``IsA``, the ``ClassDef`` helpers.
++        A class only the interpreter describes lists the functions a search has made so far, as
++        ROOT's list of them holds what the interpreter has been asked for.
+         """
+         from .collections import TList
+ 
+         made = TList()
++        for method in self._methods():
++            made.Add(method)
++        return made
++
++    def _methods(self) -> list[Any]:
++        """The class's functions as :meth:`GetListOfMethods` lists them.
++
++        A class's are made once and kept, so the ``TMethod`` a search answers with is still the
++        list's after - and whatever a dictionary does to the class later.
++        """
+         cls = self._class()
+-        for found in sorted(vars(cls) if cls is not None else ()):
+-            if callable(getattr(cls, found)) and not found.startswith("_"):
+-                made.Add(TNamed(found, ""))
+         if cls is None:
+-            for looked_up in INTERPRETED_METHODS.get(self._name, ()):
+-                made.Add(looked_up)
+-        return made
++            return INTERPRETED_METHODS.get(self._name, [])
++        kept = METHODS.get(cls)
++        if kept is None:
++            kept = METHODS[cls] = self._made_methods(cls)
++        return kept
++
++    def _made_methods(self, cls: type) -> list[Any]:
++        """The ``TMethod`` of each function ``cls`` describes, then one a Python name alone made."""
++        found: list[Any] = []
++        spelled: set[str] = set()
++        for signature in cls.__dict__.get("_cxx_methods_", ()):
++            found.append(TMethod(signature[0], self, tuple(signature)))
++            spelled.add(_python_name(signature[0]))
++        for name in sorted(vars(cls)):
++            if name in spelled or name.startswith("_") or not callable(getattr(cls, name)):
++                continue
++            found.append(TMethod(name, self))
++        return found
+ 
+     def GetMethodAny(self, name: Any) -> Any:
+         return next((m for m in self.GetListOfMethods() if m.GetName() == str(name)), None)
+ 
+     GetMethodAllAny = GetMethodAny
+ 
++    def GetMethod(self, method: Any, params: Any = "", isconst: bool = False) -> Any:
++        """``GetMethod``: the function called ``method`` that ``params`` - its parameters'
++        types, comma separated - can be given, as ``GetMethodWithPrototype`` finds it."""
++        return self.GetMethodWithPrototype(method, params, isconst, kConversionMatch)
++
+     def GetMethodWithPrototype(self, name: Any, proto: Any = "", isconst: bool = False,
+-                               mode: int = 0) -> Any:  # fmt: skip
+-        """``GetMethodWithPrototype``: the function called ``name`` with the prototype
+-        ``proto``, or ``nullptr`` when the class has none.
+-
+-        A function looked up in a class only the interpreter describes is made here and stays
+-        in its list, as ROOT asks the interpreter for it and keeps the ``TMethod`` it made: that
+-        is what lets a program hold the method across the dictionary a later
+-        ``GenerateDictionary`` gives the class (roottest's ``ReuseMethod``), where the
+-        dictionary would otherwise have replaced the interpreter's description.
++                               mode: int = kConversionMatch) -> Any:  # fmt: skip
++        """``GetMethodWithPrototype``: the function called ``name`` that ``proto`` - its
++        parameters' types - can be given, or ``nullptr`` when the class has none.
++
++        ``isconst`` asks for one a const object can call: a const member or a static one. A
++        non-const object prefers the non-const overload, as C++ overload resolution does. A
++        function looked up in a class only the interpreter describes is made here and stays in
++        its list, as ROOT asks the interpreter for it and keeps the ``TMethod`` it made: that is
++        what lets a program hold the method across the dictionary a later
++        ``GenerateDictionary`` gives the class (roottest's ``ReuseMethod``).
+         """
+-        for found in self.GetListOfMethods(False):
+-            if found.GetName() == str(name) and found.GetTitle() == str(proto):
+-                return found
++        wanted = _parameters(proto)
++        candidates = [
++            found for found in self._methods()
++            if found.GetName() == str(name) and found._given(wanted, int(mode), bool(isconst))
++        ]  # fmt: skip
++        if candidates:
++            return _preferred(candidates, bool(isconst))
+         if not self._made_here(str(name), str(proto)):
+             return None
+-        made = TNamed(str(name), str(proto))
++        made = TMethod(str(name), self)
+         INTERPRETED_METHODS.setdefault(self._name, []).append(made)
+         return made
+ 
++    def GetFunctionTemplate(self, name: Any) -> Any:
++        """``GetFunctionTemplate``: the member function template called ``name``, or ``nullptr``."""
++        cls = self._class()
++        if cls is None:
++            return None
++        kept = TEMPLATES.get(cls)
++        if kept is None:
++            kept = TEMPLATES[cls] = [
++                TFunctionTemplate(each[0], self, tuple(each))
++                for each in cls.__dict__.get("_cxx_methods_", ()) if each[7]
++            ]
++        return next((each for each in kept if each.GetName() == str(name)), None)
++
+     def _made_here(self, name: str, proto: str) -> bool:
+         """Is the function one this kit makes for a class only the interpreter describes - a
+         member every container declares with no argument, and nothing else?"""
+@@ -1315,3 +1546,212 @@ def element_of(element: Element) -> TStreamerElement:
+     if element[0] in ("TStreamerSTL", "TStreamerSTLstring") and element[3] == 500:
+         element = (*element[:3], 300, *element[4:])
+     return ELEMENT_CLASSES.get(element[0], TStreamerElement)(element)
++
++
++#: The ``EFunctionProperty`` bit each kind of C++ function is, as ``TDictionary`` numbers them.
++FUNCTION_KINDS = {"constructor": kIsConstructor, "destructor": kIsDestructor,
++                  "operator": kIsOperator}  # fmt: skip
++
++
++def _parameters(proto: Any) -> tuple[str, ...]:
++    """``GetMethod``'s parameter list as the types it is made of: ``"int, char*"`` is two.
++
++    ``""`` is a function taking none, and a ``void`` written out is taken as none, as C++
++    takes it. A type is compared with its spaces and its ``std::`` out - the spellings a
++    caller may differ in - and a default it wrote out is not part of the type.
++    """
++    text = str(proto).strip()
++    if not text:
++        return ()
++    found = tuple(_squashed(part) for part in _split_parameters(text))
++    return () if found == ("void",) else found
++
++
++def _split_parameters(text: str) -> list[str]:
++    """``text`` split at the commas outside brackets, so ``map<int, char>, bool`` is two."""
++    parts: list[str] = []
++    depth, start = 0, 0
++    for at, letter in enumerate(text):
++        if letter in "<([":
++            depth += 1
++        elif letter in ">)]":
++            depth -= 1
++        elif letter == "," and not depth:
++            parts.append(text[start:at])
++            start = at + 1
++    parts.append(text[start:])
++    return parts
++
++
++def _squashed(one: str) -> str:
++    """A type as two spellings of it are compared: no spaces, no ``std::``, no default."""
++    text = one.split("=", 1)[0]
++    return text.replace(" ", "").replace("std::", "")
++
++
++def _matches(wanted: str, declared: str, mode: int) -> bool:
++    """Can an argument of type ``wanted`` be passed to a parameter declared ``declared``?
++
++    An exact match takes the type as declared; a conversion match also takes the ones C++
++    would - a ``char*`` for a ``const char*``, which is a pointer to more than it promises.
++    """
++    if wanted == declared:
++        return True
++    return mode == kConversionMatch and wanted == declared.replace("const", "")
++
++
++def _preferred(candidates: list[Any], isconst: bool) -> Any:
++    """The overload of ``candidates`` a search answers with.
++
++    A const object's is a const - or a static - function; a non-const object's is the non-const
++    overload, as C++ prefers it, and a const one where that is all the class declares.
++    """
++    def rank(found: Any) -> int:
++        signature = found._signature
++        const = signature is not None and signature[3]
++        static = signature is not None and signature[4]
++        if isconst:
++            return 0 if const else (2 if static else 1)
++        return 2 if const else (3 if static else 0)
++
++    return min(candidates, key=rank)
++
++
++def _python_name(name: str) -> str:
++    """The Python attribute a C++ function's name is written as in a class of the kit's."""
++    from ...pycxx.symbols import member_name
++
++    return member_name(name)
++
++
++def _instance(name: str) -> bool:
++    """Is ``name`` a template made a class by its arguments - ``vector<Elem>``, ``Tmplt<int>``?"""
++    return "<" in name and name.endswith(">")
++
++
++def _wrapper(name: str) -> bool:
++    """Is ``name`` an instance of one of the standard ways of holding one thing?"""
++    return name.split("<", 1)[0] in WRAPPERS
++
++
++def _arguments(name: str) -> list[str]:
++    """The template arguments ``name`` is an instance with: ``map<int,char>`` gives two."""
++    if "<" not in name or not name.endswith(">"):
++        return []
++    inside = name[name.index("<") + 1 : -1]
++    return [part.strip() for part in _split_parameters(inside)]
++
++
++def _class_spelling(spelled: str) -> str | None:
++    """The class a member's type as written names - ``TNamed*`` is ``TNamed`` - or none for a
++    type that is no class: a number, a pointer to nothing, the ``void`` of a member that is
++    not there."""
++    text = re.sub(r"\[[^\]]*\]", "", spelled).strip()
++    while text.endswith(("*", "&")):
++        text = text[:-1].strip()
++    text = text.removeprefix("const ").strip()
++    if not text or text in FUNDAMENTAL or text in NUMBERS or text == "void":
++        return None
++    if text[0].isdigit() or text[0] == "-":  # ``std::array<Elem, 4>``'s length
++        return None
++    return _known_as(text)
++
++
++#: The standard ways of holding one thing that ROOT streams by what they hold - no dictionary
++#: of their own describes them, and one is never a class a dictionary is missing for.
++WRAPPERS = frozenset({"unique_ptr", "shared_ptr", "array", "tuple", "optional", "variant",
++                      "atomic", "weak_ptr"})  # fmt: skip
++
++
++def _classes_of(spellings: list[str]) -> list[TClass]:
++    """The classes the template arguments ``spellings`` name, the ones that name a class."""
++    return [TClass(name) for name in map(_class_spelling, spellings) if name is not None]
++
++
++def _built_in(spelled: str) -> bool:
++    """Is a template argument one ROOT's own container dictionaries instantiate - a built-in
++    number or a string - rather than a class of a program's own that needs one of its own?"""
++    text = _squashed(spelled)
++    while text.endswith("*"):
++        text = text[:-1]
++    return text in NUMBERS or text in ("string", "bool", "char")
++
++
++
++class TMethod(TNamed):
++    """``TMethod``: one function of a class, as ``GetListOfMethods`` lists it.
++
++    A class C++ declared describes its functions in its translation, so a method made for it
++    knows its signature - what ``GetReturnTypeName``, ``GetPrototype`` and ``ExtraProperty``
++    answer with. One made from a Python name alone knows none of that, and is found only where
++    no prototype is asked for.
++    """
++
++    CLASS_TITLE = "Method or function descriptor"
++
++    def __init__(self, name: Any, owner: TClass | None = None,
++                 signature: Signature | None = None) -> None:  # fmt: skip
++        TNamed.__init__(self, str(name), "")
++        self._owner = owner
++        self._signature = signature
++
++    def GetClass(self) -> TClass | None:
++        """``GetClass``: the class the function is a member of."""
++        return self._owner
++
++    def GetReturnTypeName(self) -> str:
++        """``GetReturnTypeName``: the type it returns, as it was declared - ``int&``, ``void``."""
++        return "" if self._signature is None else self._signature[1]
++
++    def GetPrototype(self) -> str:
++        """``GetPrototype``: the declaration ROOT prints it as, ``int Holder::data() const``."""
++        if self._signature is None:
++            return f"{self.GetName()}(...)"
++        returns, params, const = self._signature[1], self._signature[2], self._signature[3]
++        owner = self._owner.GetName() if self._owner is not None else ""
++        spelled = ", ".join(params)
++        return f"{returns} {owner}::{self.GetName()}({spelled})" + (" const" if const else "")
++
++    def ExtraProperty(self) -> int:
++        """``ExtraProperty``: the ``EFunctionProperty`` bits the function is - an inlined one,
++        a constructor, a destructor, an operator, a conversion."""
++        if self._signature is None:
++            return 0
++        inlined, template, kind = self._signature[5], self._signature[7], self._signature[8]
++        bits = FUNCTION_KINDS.get(kind, 0)
++        if kind == "operator" and self._converts():
++            bits = kIsConversion  # a conversion is no operator to ROOT, but a cast
++        if inlined:
++            bits |= kIsInlined
++        if template:
++            bits |= kIsCompiled
++        return bits
++
++    def _converts(self) -> bool:
++        """Is it a conversion operator - ``operator int``, and not ``operator+``?"""
++        spelled = self.GetName()[len("operator") :].strip()
++        return bool(spelled) and (spelled[0].isalpha() or spelled[0] == "_")
++
++    def _given(self, wanted: tuple[str, ...], mode: int, isconst: bool) -> bool:
++        """Can it be called with arguments of ``wanted`` on a const object, or not?"""
++        if self._signature is None:
++            return not wanted
++        const, static = self._signature[3], self._signature[4]
++        declared = tuple(_squashed(each) for each in self._signature[2])
++        kind = self._signature[8]
++        if isconst and not (const or static) and kind not in ("constructor", "destructor"):
++            return False
++        if len(declared) != len(wanted):
++            return False
++        return all(_matches(one, other, mode)
++                   for one, other in zip(wanted, declared, strict=True))  # fmt: skip
++
++
++class TFunctionTemplate(TMethod):
++    """``TFunctionTemplate``: a member function template, as ``GetFunctionTemplate`` finds it.
++
++    No instance of it is made here, so what it says of its parameters is what the template
++    declared them as; that it is inline and a template is what a search of it asks.
++    """
++
++    CLASS_TITLE = "Template function descriptor"
+diff --git a/tests/test_cint_layouts.py b/tests/test_cint_layouts.py
+index 3e2d5e78..0224922f 100644
+--- a/tests/test_cint_layouts.py
++++ b/tests/test_cint_layouts.py
+@@ -91,3 +91,50 @@ def test_a_template_argument_written_as_a_number_is_the_number_in_the_layout():
+     text = translate("struct S { std::array<int,4> a; std::array<float,2*3> b; };", "t.C")
+     assert "('a', 'std::array<int, 4>', '', ())" in text
+     assert "('b', 'std::array<float, ?>', '', ())" in text
++
++
++#: A class with the functions a reflection dictionary describes: two overloads of one name
++#: that differ only in constness, a constructor, a destructor, a conversion, a member
++#: function template, and functions declared inline in the class and out of it.
++FUNCTIONS = r"""
++class Holder {
++   int fValue;
++public:
++   Holder(int &n) { fValue = n; }
++   ~Holder() {}
++   int data() const { return fValue; }
++   int& data() { return fValue; }
++   operator int() const { return 0; }
++   template <typename T> int templated() { return fValue; }
++   inline int declared();
++   int outOfLine();
++};
++inline int Holder::declared() { return 1; }
++int Holder::outOfLine() { return 2; }
++"""
++
++
++def test_a_class_carries_its_functions_as_a_dictionary_describes_them():
++    """A ``TMethod`` made from a class's translation says its return type, each parameter's
++    type and whether it is const, static, inline and a template - which is what a program
++    searching the class by prototype, and reading what an overload returns, asks about."""
++    text = translate(FUNCTIONS, "t.C")
++    assert (
++        "_cxx_methods_ = (('Holder', 'Holder', ('int&',), False, False, True, False, "
++        "False, 'constructor'), ('~Holder', 'void', (), False, False, True, False, False, "
++        "'destructor'), ('data', 'int', (), True, False, True, False, False, 'function'), "
++        "('data', 'int&', (), False, False, True, False, False, 'function'), "
++        "('operator int', 'auto', (), True, False, True, False, False, 'operator'), "
++        "('templated', 'int', (), False, False, True, False, True, 'function'), "
++        "('declared', 'int', (), False, False, True, False, False, 'function'), "
++        "('outOfLine', 'int', (), False, False, False, False, False, 'function'))"
++    ) in text
++
++
++def test_a_class_with_no_functions_says_so_where_its_bases_say_otherwise():
++    """``_cxx_methods_`` is on every class, so that a class of no functions is not answered
++    with the ones its base declares."""
++    text = translate("struct Base { void f() {} };\nstruct Empty : Base {};", "t.C")
++    assert "class Empty(Base):" in text
++    assert "_cxx_layout_ = ('Empty', ('Base',), ())" in text
++    assert "_cxx_methods_ = ()" in text
+diff --git a/tests/test_pycint_library.py b/tests/test_pycint_library.py
+index 3c614318..354d2f08 100644
+--- a/tests/test_pycint_library.py
++++ b/tests/test_pycint_library.py
+@@ -713,3 +713,26 @@ def test_a_library_is_autoloaded_by_the_name_of_an_enumeration_it_declares() ->
+     assert loading.autoload_enum("myns::Kind")
+     assert ours() == ["libEnums"]
+     assert troot.find_enum("myns::Kind") is not None
++
++
++def test_a_dictionary_describes_only_the_classes_it_selects() -> None:
++    """A header's classes are translated with the dictionary it is built from, but only the
++    ones a LinkDef selects have a dictionary - which is what ``GetMissingDictionaries``
++    reports of a class of such a header."""
++    write("Two.h", "class First { public: int a; };\nclass Second { public: int b; };\n")
++    write("TwoLinkDef.h", "#pragma link C++ class First+;\n")
++    build_dictionary("Two", [Path("Two.h")], linkdef=Path("TwoLinkDef.h"))
++    assert load("libTwo") == 0
++    assert ROOT.TClassTable.GetDict("First") is not None
++    assert ROOT.TClassTable.GetDict("Second") is None
++
++
++def test_a_selection_of_patterns_describes_every_class_the_header_declares() -> None:
++    """``pattern="Fir*"`` selects whatever of the header matches, so a dictionary built from
++    a selection of patterns describes every class its headers declare, not a list of names."""
++    write("Pat.h", "class First { public: int a; };\nclass Second { public: int b; };\n")
++    write("pat.xml", '<lcgdict>\n  <class pattern="Fir*"/>\n</lcgdict>\n')
++    build_dictionary("Pat", [Path("Pat.h")], selection=Path("pat.xml"))
++    assert load("libPat") == 0
++    assert ROOT.TClassTable.GetDict("First") is not None
++    assert ROOT.TClassTable.GetDict("Second") is not None
+diff --git a/tests/test_pyroot_reflection.py b/tests/test_pyroot_reflection.py
+index ee6a4db2..26915bed 100644
+--- a/tests/test_pyroot_reflection.py
++++ b/tests/test_pyroot_reflection.py
+@@ -849,3 +849,194 @@ def test_an_emulated_classs_second_layout_takes_the_next_number():
+     _evo("int", "one.root")
+     ROOT.TFile("one.root")
+     assert _free_version("Evo", 1, {1}) == 2
++
++
++#: A class with what a program searching it by prototype has to tell apart: two overloads of
++#: one name that differ only in constness, a constructor, a destructor, a conversion, a
++#: member function template, and functions declared inline in the class and out of it.
++OVERLOADED = r"""
++class Holder {
++   int fValue;
++   static const int fConfig;
++public:
++   Holder(const char *name) { fValue = 0; }
++   Holder() { fValue = 0; }
++   ~Holder() {}
++   int data() const { return fValue; }
++   int& data() { return fValue; }
++   int value() { return fValue; }
++   static const int& config() { return fConfig; }
++   operator int() const { return 0; }
++   template <typename T> int templated() { return fValue; }
++   inline int declared() const;
++   int outOfLine();
++   int two(int a, const char *b) const { return fValue + a; }
++   int mapped(std::map<int, double> m) const { return fValue; }
++};
++const int Holder::fConfig = 3;
++inline int Holder::declared() const { return fValue; }
++int Holder::outOfLine() { return fValue; }
++"""
++
++
++def _holder():
++    run_source(OVERLOADED, "holder.C", call=False)
++    return ROOT.TClass.GetClass("Holder")
++
++
++def test_a_declared_class_lists_each_overload_its_translation_describes():
++    """A const function and a non-const one of the same parameters are two overloads, and a
++    function declared in the class and defined outside it is one - listed once."""
++    holder = _holder()
++    names = [method.GetName() for method in holder.GetListOfMethods()]
++    assert names == ["Holder", "Holder", "~Holder", "data", "data", "value", "config",
++                     "operator int", "templated", "declared", "outOfLine", "two",
++                     "mapped"]  # fmt: skip
++    assert holder.GetListOfMethods().At(0) is holder.GetListOfMethods().At(0)
++
++
++def test_a_method_is_found_by_name_and_prototype_and_says_what_it_returns():
++    holder = _holder()
++    nonconst = holder.GetMethodWithPrototype("data", "")
++    assert (nonconst.GetName(), nonconst.GetReturnTypeName()) == ("data", "int&")
++    assert (nonconst.GetPrototype(), nonconst.GetClass()) == (
++        "int& Holder::data()", holder
++    )
++    const = holder.GetMethodWithPrototype("data", "", True)
++    assert const.GetReturnTypeName() == "int"
++    assert holder.GetMethodWithPrototype("data", "int&") is None  # a parameter, not a return
++    assert holder.GetMethod("value", "", True) is None  # no const overload to find
++    assert holder.GetMethod("nothing", "") is None
++
++
++def test_an_exact_search_wants_the_type_as_it_is_declared_and_a_conversion_does_not():
++    holder = _holder()
++    assert holder.GetMethodWithPrototype("Holder", "char*", False) is not None
++    assert holder.GetMethodWithPrototype("Holder", "char*", False, ROOT.kExactMatch) is None
++    exact = holder.GetMethodWithPrototype("Holder", "const char*", False, ROOT.kExactMatch)
++    assert exact is not None
++
++
++def test_a_constructor_a_destructor_and_a_conversion_say_what_they_are():
++    holder = _holder()
++    constructor = holder.GetMethod("Holder", "", True)
++    assert constructor.ExtraProperty() & ROOT.kIsConstructor
++    assert constructor.GetReturnTypeName() == "Holder"
++    destructor = holder.GetMethodWithPrototype("~Holder", "", True)
++    assert destructor.ExtraProperty() & ROOT.kIsDestructor
++    conversion = holder.GetMethodWithPrototype("operator int", "", True)
++    assert conversion.ExtraProperty() == ROOT.kIsConversion | ROOT.kIsInlined
++    assert holder.GetMethod("data", "") is not None
++
++
++def test_a_function_defined_in_its_class_is_inline_and_one_defined_out_of_it_is_not():
++    holder = _holder()
++    assert holder.GetMethod("declared", "").ExtraProperty() & ROOT.kIsInlined
++    assert not holder.GetMethod("outOfLine", "").ExtraProperty() & ROOT.kIsInlined
++
++
++def test_a_parameter_list_is_split_at_the_commas_no_bracket_holds():
++    """``GetMethod``'s prototype is a list of types, and a type of its own may hold commas -
++    ``map<int, double>`` - which do not start the next parameter."""
++    holder = _holder()
++    assert holder.GetMethodWithPrototype("two", "int, char*") is not None
++    assert holder.GetMethodWithPrototype("mapped", "map<int, double>") is not None
++    assert holder.GetMethodWithPrototype("mapped", "map<int, double>, int") is None
++
++
++def test_a_member_function_template_is_found_as_one():
++    holder = _holder()
++    found = holder.GetFunctionTemplate("templated")
++    assert found is not None and found.GetName() == "templated"
++    assert found.ExtraProperty() & ROOT.kIsInlined
++    assert found.ExtraProperty() & ROOT.kIsCompiled  # ROOT's bit for a template's function
++    assert holder.GetFunctionTemplate("data") is None
++    # a class of no templates has none, and a class only the interpreter describes neither
++    assert ROOT.TClass.GetClass("Base").GetFunctionTemplate("templated") is None
++    assert ROOT.TClass("vector<int>").GetFunctionTemplate("templated") is None
++
++
++def test_a_function_only_a_python_name_gives_says_nothing_of_its_prototype():
++    """ROOT's own classes have no signatures here, so one is found where no prototype is
++    asked for and it answers no bits - which is where ``TObject::Print`` is."""
++    printed = ROOT.TObject.Class().GetMethodAny("Print")
++    assert printed.GetName() == "Print"
++    assert (printed.ExtraProperty(), printed.GetReturnTypeName()) == (0, "")
++    assert printed.GetPrototype() == "Print(...)"
++    assert ROOT.TObject.Class().GetMethod("Print", "int") is None
++
++
++#: A class of one member of a class, one of a container of it, and a number.
++HOLDING = r"""
++#include <vector>
++class Element { public: int x; };
++class Container { public: std::vector<Element> items; Element one; int n; };
++"""
++
++
++def test_the_classes_no_dictionary_describes_are_a_class_and_what_its_members_are():
++    run_source(HOLDING, "holding.C", call=False)
++    found = ROOT.THashTable()
++    ROOT.TClass.GetClass("Container").GetMissingDictionaries(found)
++    assert sorted(item.GetName() for item in found) == ["Container", "Element", "vector<Element>"]
++
++
++def test_a_class_a_dictionary_describes_is_not_missing_and_its_members_still_are():
++    run_source(HOLDING, "holding.C", call=False)
++    reflection.GENERATED.add("Container")
++    found = ROOT.THashTable()
++    ROOT.TClass.GetClass("Container").GetMissingDictionaries(found)
++    assert sorted(item.GetName() for item in found) == ["Element", "vector<Element>"]
++    assert not ROOT.TClass("TList")._dictless()  # one of ROOT's own is described
++
++
++def test_a_recursion_walks_into_the_classes_it_found_and_a_wrapper_holds_what_it_is_of():
++    run_source(HOLDING, "holding.C", call=False)
++    held = ROOT.THashTable()
++    ROOT.TClass.GetClass("std::unique_ptr<Element>").GetMissingDictionaries(held, True)
++    assert [item.GetName() for item in held] == ["Element"]
++    assert ROOT.TClass("array<long, 4>")._dictless() is False
++    assert ROOT.TClass("vector<int>")._dictless() is False  # a dictionary instantiates it
++    assert ROOT.TClass("vector<Element>")._dictless() is True
++
++
++#: A class deriving from one no dictionary describes, holding one made by a program's own
++#: template, a pointer to a class - two of them - and members that name no class at all.
++DERIVED_HOLDING = r"""
++#include <array>
++#include <map>
++template <typename T> class Box { T held; };
++class Base { public: int b; };
++class Element { public: int x; };
++class Derived : public Base {
++public:
++   Box<Element> box;
++   Element *ptr;
++   Element *other;
++   std::array<Element, 4> arr;
++   std::vector<char*> words;
++   int counts[3];
++   double d;
++};
++"""
++
++
++def test_a_base_and_a_pointer_to_a_class_are_missing_and_a_number_is_no_class():
++    """A class no dictionary describes is reported with its base, the class a pointer member
++    is of - once, however many members are of it - and the class a program's own template
++    makes; a number, an array of them and what a wrapper holds where it is no class are not."""
++    run_source(DERIVED_HOLDING, "derived.C", call=False)
++    found = ROOT.THashTable()
++    ROOT.TClass.GetClass("Derived").GetMissingDictionaries(found)
++    assert sorted(item.GetName() for item in found) == [
++        "Base", "Box<Element>", "Derived", "Element"]
++
++
++def test_a_hash_table_says_whether_it_holds_nothing():
++    """``THashTable::Empty`` is ROOT's name for the question ``IsEmpty`` also answers."""
++    held = ROOT.THashTable()
++    assert held.Empty()
++    held.Add(ROOT.TClass("Container"))
++    assert not held.Empty()
++    held.Clear()
++    assert held.Empty()
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,140 @@
+From c9edf9636dc5f16d66a585a93cf3c12a4f9948a1 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 14:14:25 +0000
+Subject: [PATCH 1/2] feat: ROOT.SetHeuristicMemoryPolicy, ROOT's deprecated
+ memory policy switch
+
+roottest/python/memory/memory's third case saves, sets and restores
+ROOT.SetHeuristicMemoryPolicy; the name was missing, so the case stopped at
+its first line. It is one required argument - 6.40's signature, no default -
+and answers with the policy that was in force, warning as ROOT 6.40 does.
+
+The switch itself is the translator's, since a translated destructor is what
+the policy governs, so it is handed to pycxx's runtime when that has one and
+remembered here when it does not, which keeps a program's set-and-restore
+readable either way. Off by default, as since 6.40.
+---
+ src/xrdroot/pyroot/core/troot.py | 43 ++++++++++++++++++++++++++++++--
+ tests/test_pyroot_groot.py       | 41 ++++++++++++++++++++++++++++++
+ 2 files changed, 82 insertions(+), 2 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/troot.py b/src/xrdroot/pyroot/core/troot.py
+index ad5bf097..f0a5aa11 100644
+--- a/src/xrdroot/pyroot/core/troot.py
++++ b/src/xrdroot/pyroot/core/troot.py
+@@ -20,6 +20,7 @@ import importlib
+ import importlib.util
+ import os
+ import sys
++import warnings
+ from collections.abc import Callable
+ from typing import Any
+ 
+@@ -32,8 +33,8 @@ from .objects import TNamed, TObject
+ from .strings import TString
+ 
+ __all__ = ["TROOT", "gROOT", "gDebug", "gInterpreter", "gObjectTable", "TInterpreter",
+-           "set_line_processor", "TEnum", "TEnumConstant", "TListOfEnums", "class_enums",
+-           "TListOfEnumsWithLock", "find_enum", "note_enum"]
++           "set_line_processor", "SetHeuristicMemoryPolicy", "TEnum", "TEnumConstant",
++           "TListOfEnums", "class_enums", "TListOfEnumsWithLock", "find_enum", "note_enum"]
+ 
+ #: ``gObjectTable``: ROOT's count of objects by class - which is not kept here, so it is null,
+ #: and a macro testing it skips it.
+@@ -593,6 +594,44 @@ class TROOT(TDirectory):
+         return 0
+ 
+ 
++#: ``ROOT.SetHeuristicMemoryPolicy``'s deprecation text, as ROOT 6.40 gives it.
++_HEURISTIC_DEPRECATED = (
++    "ROOT.SetHeuristicMemoryPolicy() is deprecated and will be removed in ROOT 6.44.\n"
++    "        Since ROOT 6.40, the heuristic memory policy is disabled by default, and with\n"
++    "        ROOT 6.44 it won't be possible to re-enable it with "
++    "ROOT.SetHeuristicMemoryPolicy(),\n"
++    "        which was only meant to be used during a transition period and will be removed.\n"
++)
++
++#: Where a translator that owns the policy keeps its switch - the binding is what runs a
++#: translated destructor, so the answer belongs there.
++_HEURISTIC_SWITCH = ("xrdroot.pycxx.runtime.objects", "set_heuristic")
++
++#: The policy as this namespace remembers it, for a translator with no switch of its own:
++#: ROOT 6.40 turned the heuristic memory policy off, so ``False``.
++_heuristic_policy = False
++
++
++def SetHeuristicMemoryPolicy(enabled: Any) -> bool:
++    """``ROOT.SetHeuristicMemoryPolicy``: whether a call that passes an object to a non-const
++    pointer parameter is taken as leaving it to C++, and what the answer was before.
++
++    Off since 6.40, and deprecated: a translated class's destructor runs when its Python
++    object is collected, where the policy used to say the callee had taken the object over.
++    The switch is the translator's, since that is what destroys; one without a switch gets the
++    value remembered here, so a program that sets and restores the policy still reads the
++    sequence it wrote.
++    """
++    global _heuristic_policy
++    warnings.warn(_HEURISTIC_DEPRECATED, FutureWarning, stacklevel=0)
++    module, name = _HEURISTIC_SWITCH
++    switch = getattr(_submodule(module), name, None)
++    if switch is not None:
++        return bool(switch(bool(enabled)))
++    previous, _heuristic_policy = _heuristic_policy, bool(enabled)
++    return previous
++
++
+ #: ``gROOT``.
+ gROOT = TROOT()
+ 
+diff --git a/tests/test_pyroot_groot.py b/tests/test_pyroot_groot.py
+index 02bb03c8..a0230c3e 100644
+--- a/tests/test_pyroot_groot.py
++++ b/tests/test_pyroot_groot.py
+@@ -343,3 +343,44 @@ def test_the_system_loads_no_libraries_a_rootmap_names_because_it_keeps_none() -
+     what roottest/root/core/StatusBitsCheck asks before it walks a map that is null."""
+     assert ROOT.gSystem.LoadAllLibraries() == 0
+     assert ROOT.gInterpreter.GetMapfile() is None
++
++
++def test_the_heuristic_memory_policy_is_off_and_says_what_it_was():
++    """``ROOT.SetHeuristicMemoryPolicy``: deprecated since 6.40, off by default, and it answers
++    with the policy in force before the call - which roottest/python/memory/memory needs, so
++    that the policy it saves and restores around its heuristics is the one it wrote."""
++    assert troot._heuristic_policy is False
++    with pytest.warns(FutureWarning) as warned:
++        expect(
++            (troot.SetHeuristicMemoryPolicy(True), False),
++            (troot.SetHeuristicMemoryPolicy(1), True),
++            (troot.SetHeuristicMemoryPolicy(False), True),
++        )
++    assert [str(each.message) for each in warned.list] == [troot._HEURISTIC_DEPRECATED] * 3
++    assert troot._heuristic_policy is False
++
++
++def test_a_translator_that_owns_the_policy_switch_is_the_one_asked(monkeypatch):
++    """A translator that runs destructors is where the answer belongs, so the name hands the
++    value over rather than keeping a second copy of it."""
++    told = []
++    fake = types.ModuleType("xrdroot.pycxx.runtime.objects")
++    fake.set_heuristic = lambda enabled: told.append(enabled) or True  # type: ignore[attr-defined]
++    monkeypatch.setitem(sys.modules, "xrdroot.pycxx.runtime.objects", fake)
++    with pytest.warns(FutureWarning):
++        assert troot.SetHeuristicMemoryPolicy(1) is True
++    assert told == [True]
++    assert troot._heuristic_policy is False  # the translator holds it, not this namespace
++
++
++def test_the_memory_policy_is_reached_by_root_s_name_as_well():
++    """ROOT has the call on its namespace, not on ``gROOT``: ``ROOT.SetHeuristicMemoryPolicy``
++    is the one function, so a script may import it either way."""
++    assert ROOT.SetHeuristicMemoryPolicy is troot.SetHeuristicMemoryPolicy
++    assert "SetHeuristicMemoryPolicy" in ROOT.__all__
++    kept = troot._heuristic_policy
++    try:
++        with pytest.warns(FutureWarning):
++            assert ROOT.SetHeuristicMemoryPolicy(kept) is kept
++    finally:
++        troot._heuristic_policy = kept
+-- 
+2.54.0 (Apple Git-157)
+

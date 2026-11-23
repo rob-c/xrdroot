@@ -1,0 +1,49 @@
+From a92322784ee5a2585c764a613a674eee4060086d Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 13:10:59 +0000
+Subject: [PATCH 3/3] docs: measure why the rmath one-liner is not a fix
+ (r36-03)
+
+---
+ R36-math-buckets.md | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/R36-math-buckets.md b/R36-math-buckets.md
+index 9ff5ea09..43f27d8a 100644
+--- a/R36-math-buckets.md
++++ b/R36-math-buckets.md
+@@ -26,7 +26,7 @@ Sorted by tests blocked. "File" is the first file a fix would touch.
+ | 9 | `ROOT::Math::Interpolator` (GSL interpolation: linear/cubic/Akima/polynomial) | 1 | `rmath.py` + a new `numerics/interpolate.py` | linear and cubic are one `np.interp`/`CubicSpline` away; the test walks every GSL kind in turn |
+ | 10 | `ROOT::Math::ChebyshevApprox` (a Chebyshev series of a function, and its `Integral()`) | 1 | `src/xrdroot/pyroot/core/rmath.py` | coefficients by the `numpy.polynomial.chebyshev` nodes; `Integral()` is the same series integrated |
+ | 11 | `ROOT::Math::Derivator` (`Derivative1/2/3`, `SetStepSize`) | 1 | `rmath.py` over `src/xrdroot/function/numeric.py` | the Richardson helpers there are exactly ROOT's; the class is a wrapper with the step bookkeeping |
+-| 12 | `ROOT::Math::IParametricFunctionMultiDimTempl<T>` as a base class | 1 | `rmath.py` | **not** a one-line alias — see "found but not fixed" |
++| 12 | `ROOT::Math::IParametricFunctionMultiDimTempl<T>` as a base class | 1 | `cppstd/chrono.py` behind it; the name alone is not the blocker | generic stand-in first, then `std::chrono::time_point` — measured, see "found but not fixed" |
+ | 13 | `TStatistic` (mean, RMS, error, weights, `GetVar`) | 1 | `src/xrdroot/stats.py` + `pyroot/core/` | plain accumulator class; ROOT's `TStatistic` uses the same weighted sums `stats.py` already has |
+ | 14 | `ROOT::Fit::Fitter::LikelihoodFit(BinData, model, useEmptyBins)` | 1 | `src/xrdroot/pyroot/core/mathtools.py:325` | the class has the chi-square paths only; the binned-Poisson likelihood is `fit/cost.py`'s |
+ | 15 | `ROOT::Math::RootFinder::Name()` (and `Iterations()`) | 1 | `mathtools.py:165` | a name per kind (`Brent`, `GSL_Bisection`, …) — the seven kinds are already class constants; see "found but not fixed" |
+@@ -178,9 +178,19 @@ I added **no** name to `rmath.py`. The two candidates I checked honestly are not
+ * `IParametricFunctionMultiDimTempl<T>` would have to be an alias of `IParamMultiFunction`,
+   but the test declares it as a *template base* —
+   `template<class T> class Func : public ROOT::Math::IParametricFunctionMultiDimTempl<T>`
+-  (`testLogLExecPolicy.cxx:23-24`) — so an alias would only move the refusal from the name
+-  lookup to the instantiation, and I would be claiming a fix I have not measured. It also
+-  then needs `ROOT::Fit::Fitter` to run the same fit under two execution policies.
++  (`testLogLExecPolicy.cxx:23-24`). Measured, with a `sitecustomize.py` shim rather than an
++  edit:
++
++  ```
++  no name              -> testLogLExecPolicy.cxx:24 AttributeError: ... has no attribute 'IParametricFunctionMultiDimTempl'
++  plain alias          -> testLogLExecPolicy.cxx:24 TypeError: type 'IParamMultiFunction' is not subscriptable
++  subscriptable stub   -> testLogLExecPolicy.cxx:256 AttributeError: std::chrono has no time_point this runtime knows
++  ```
++
++  So the name is not the blocker: behind it is a generic base class and then
++  `std::chrono::time_point` (`src/xrdroot/cppstd/chrono.py`) for the test's two execution
++  policies. Nothing a line in `rmath.py` can reach, and I would otherwise be claiming a fix
++  I had not measured.
+ * `RootFinder::Name()` is two names (`Name` and `Iterations`) over a seven-way kind table,
+   and lives in `mathtools.py:165`, not `rmath.py`.
+ 
+-- 
+2.54.0 (Apple Git-157)
+

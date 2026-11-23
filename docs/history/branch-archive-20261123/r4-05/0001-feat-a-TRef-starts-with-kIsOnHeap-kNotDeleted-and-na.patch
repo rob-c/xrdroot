@@ -1,0 +1,192 @@
+From fbd059ff90c046875df3c88faf3686cbb0693be2 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 08:17:24 +0000
+Subject: [PATCH] feat: a TRef starts with kIsOnHeap|kNotDeleted and names its
+ action in the bits
+
+ROOT's TObject() sets kNotDeleted, and TStorage::ObjectAlloc fills the block it hands
+out with 0x99999999, which is what a member TObject's fUniqueID reads as before the
+constructor stores it - so a TRef that is a member of a heap object reports
+0x3000000, and TRef::SetAction then sets BIT(16) (one past the start of the bits'
+third byte, holding the action's number among AddExec's), giving 0x3010000. Measured
+on the 6.40.04 oracle: roottest root/io/references/actions prints 0x3010000 for both
+references, and a stack TRef prints 0x2000000, so only the member case moves here.
+
+Unpickling a reference keeps kIsOnHeap as TObject::Streamer does (fBits |= isonheap |
+kNotDeleted), and TRef::operator=(TObject*) - which is Set, numbering the object and
+leaving the bits alone - is the _assign hook cppstd.assign_into looks for.
+
+roottest io/references/actions/test still differs: RefClass::SetRef is translated as
+self.fReference = ROOT.TRef(obj), which is a rebind losing the action's bits, where
+C++ calls TRef::operator=(TObject*). That needs TRef in pycint/dialect.py's ASSIGNED
+pattern (with _assign, here) - out of this change's scope, reported instead. Its three
+dependants also need a TRef member read to keep its fPID, which declared.fill_root
+drops (todo Q-37).
+---
+ src/xrdroot/pyroot/core/references.py | 40 ++++++++++++++++++++++---
+ tests/test_pyroot_references.py       | 43 +++++++++++++++++++++++++++
+ 2 files changed, 79 insertions(+), 4 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/references.py b/src/xrdroot/pyroot/core/references.py
+index 571dfbc6..118c911d 100644
+--- a/src/xrdroot/pyroot/core/references.py
++++ b/src/xrdroot/pyroot/core/references.py
+@@ -40,6 +40,8 @@ MOST = NUMBER_MASK
+ FAR = 0xFF
+ #: ``TObject::kIsOnHeap | kNotDeleted``, which a record carries and an object read does not.
+ HEAP_BITS = 0x03000000
++#: The bits ``TRef::SetAction`` puts the action's number in: one past its index in ``fgExecs``.
++EXEC_BITS = 0xFF0000
+ 
+ 
+ def _unique(obj: Any) -> int:
+@@ -207,6 +209,14 @@ class TRef(TObject):
+     An action - ``SetAction`` given a command, or one of ``AddExec``'s - is what
+     ``GetObject`` runs when the object is not in memory, as ROOT's ``TExec``
+     would load it; then it looks again.
++
++    A reference is a member of the object that holds it, and starts life with
++    ``kIsOnHeap | kNotDeleted``, not with no bits: ``TObject``'s constructor sets
++    ``kNotDeleted``, and finds ``kIsOnHeap`` itself because ``TStorage::ObjectAlloc``
++    fills the block it hands out with ``0x99999999``, which is what the reference's
++    ``fUniqueID`` reads as before the constructor stores it. So a reference in a
++    heap object reports ``0x3000000``, and ``0x3010000`` once ``SetAction`` has
++    named action 1.
+     """
+ 
+     CLASS_TITLE = "Persistent Reference link to a TObject"
+@@ -216,6 +226,7 @@ class TRef(TObject):
+ 
+     def __init__(self, obj: Any = None) -> None:
+         super().__init__()
++        self._store_bits(HEAP_BITS)
+         self._pid: TProcessID | None = None
+         self._action: Any = None
+         if isinstance(obj, TRef):
+@@ -236,16 +247,25 @@ class TRef(TObject):
+         self.SetUniqueID(number)
+         return self
+ 
++    def _action_to_run(self) -> str:
++        """The action to run: the command ``SetAction`` was given, or else the exec whose
++        number it left in the bits - how a reference read from a file names its action."""
++        if isinstance(self._action, str):
++            return self._action
++        number = self.TestBits(EXEC_BITS) >> 16
++        return TRef._execs[number - 1] if 0 < number <= len(TRef._execs) else ""
++
+     def GetObject(self) -> Any:
+         """The object referred to, if its process still has it - after running the action,
+         if there is one and the object was not there - and ``None`` otherwise."""
+         if self._pid is None or not TProcessID.IsValid(self._pid):
+             return None
+         found = self._pid.GetObjectWithID(self.GetUniqueID())
+-        if found is None and isinstance(self._action, str):
++        action = self._action_to_run()
++        if found is None and action:
+             from .troot import gROOT
+ 
+-            gROOT.ProcessLine(self._action)
++            gROOT.ProcessLine(action)
+             found = self._pid.GetObjectWithID(self.GetUniqueID())
+         return found
+ 
+@@ -262,12 +282,24 @@ class TRef(TObject):
+ 
+     def SetAction(self, action: Any) -> None:
+         """``SetAction``: a command to run when the object is wanted and not here - or the
+-        object whose class's ``//EXEC:`` comment names it, which nothing here reads."""
++        object whose class's ``//EXEC:`` comment names it, which nothing here reads.
++
++        ROOT keeps an action as its number among ``AddExec``'s, in the bits, so a
++        reference written to a file names the action without any string; a command
++        that no ``AddExec`` named is kept here instead, and runs all the same.
++        """
+         self._action = str(action) if isinstance(action, str) else action
++        if isinstance(self._action, str) and self._action in TRef._execs:
++            self.SetBit((TRef._execs.index(self._action) + 1) << 16)
+ 
+     def GetAction(self) -> Any:
+         return self._action
+ 
++    def _assign(self, other: Any) -> None:
++        """``operator=``: ``fReference = obj`` is ``Set``, which numbers ``obj`` and leaves the
++        bits - the action's number among them - as they were."""
++        self.Set(other)
++
+     def GetPID(self) -> TProcessID | None:
+         return self._pid
+ 
+@@ -476,7 +508,7 @@ def _tref_from(members: Any) -> TRef:
+     made = TRef()
+     tobject = members.get("TObject", {})
+     made.SetUniqueID(int(tobject.get("fUniqueID", 0)))
+-    made._store_bits(int(tobject.get("fBits", 0)) & ~HEAP_BITS)
++    made._store_bits(int(tobject.get("fBits", 0)) | HEAP_BITS)  # what a read object carries
+     return made
+ 
+ 
+diff --git a/tests/test_pyroot_references.py b/tests/test_pyroot_references.py
+index a172f86d..62fc5d6b 100644
+--- a/tests/test_pyroot_references.py
++++ b/tests/test_pyroot_references.py
+@@ -16,6 +16,7 @@ import pytest
+ 
+ import xrdroot
+ import xrdroot.pyroot as ROOT
++from xrdroot.cppstd import references as cppstd
+ from xrdroot.pyroot.core import references
+ from xrdroot.pyroot.core.references import TProcessID
+ 
+@@ -108,6 +109,48 @@ def test_an_action_runs_when_the_object_is_not_there_and_execs_are_numbered(monk
+     assert ROOT.TRef.AddExec("a") == 1 and ROOT.TRef.GetListOfExecs() == ["a", "b"]
+ 
+ 
++def test_a_reference_begins_with_the_bits_a_member_of_a_heap_object_has(monkeypatch):
++    """ROOT's ``TObject()`` sets ``kNotDeleted``, and finds ``kIsOnHeap`` too because
++    ``TStorage::ObjectAlloc`` fills a heap block with ``0x99999999`` - so a reference that is a
++    member of a heap object reports ``0x3000000``, as ``roottest io/references/actions`` shows."""
++    monkeypatch.setattr(ROOT.TRef, "_execs", [])
++    assert ROOT.TRef().TestBits(0xFFFFFFFF) == 0x3000000
++    plain = ROOT.TObject()
++    plain.SetBit(0x1)
++    assert plain.TestBits(0xFFFFFFFF) == 0x1  # not a reference: the object keeps its own bits
++
++
++def test_an_action_names_itself_in_the_bits_and_runs_after_being_read(monkeypatch):
++    """``TRef::SetAction`` stores the action's number among ``AddExec``'s one past the start of
++    the bits' third byte - ``0x10000`` for action 1 - which is how a reference read from a file
++    names its action at all; ``GetObject`` finds the action by that number."""
++    ran: list[str] = []
++    monkeypatch.setattr(ROOT.gROOT, "ProcessLine", lambda line: ran.append(line))
++    ref = ROOT.TRef(ROOT.TObject())
++    ref.SetAction("load()")
++    assert ref.TestBits(0xFFFFFFFF) == 0x3000000  # no AddExec named it, so no number is kept
++    assert ROOT.TRef.AddExec("onDemand()") == 1
++    ref.SetAction("onDemand()")
++    assert ref.TestBits(0xFFFFFFFF) == 0x3010000
++    read = references._tref_from({"TObject": {"fUniqueID": 1, "fBits": 0x10000}})
++    assert read.GetAction() is None and read.TestBits(0xFFFFFFFF) == 0x3010000
++    read._pid = TProcessID.GetSessionProcessID()  # as settling a reference read finds it
++    TProcessID.GetSessionProcessID().Clear()
++    assert read.GetObject() is None and ran == ["onDemand()"]
++
++
++def test_setting_a_reference_again_leaves_the_bits_the_action_is_in():
++    """``fReference = obj`` is ``TRef::operator=(TObject*)``, which numbers the object and
++    leaves ``fBits`` alone - the action's number included - so a member written to a file keeps
++    saying which action brings its object back."""
++    target, other = ROOT.TObject(), ROOT.TObject()
++    ref = ROOT.TRef(target)
++    ROOT.TRef.AddExec("onDemand()")
++    ref.SetAction("onDemand()")
++    cppstd.assign_into(ref, other)
++    assert ref.GetObject() is other and ref.TestBits(0xFFFFFFFF) == 0x3010000
++
++
+ def _filled() -> tuple[ROOT.TRefArray, ROOT.TNamed, ROOT.TNamed]:
+     first, second = ROOT.TNamed("a", ""), ROOT.TNamed("b", "")
+     array = ROOT.TRefArray()
+-- 
+2.54.0 (Apple Git-157)
+

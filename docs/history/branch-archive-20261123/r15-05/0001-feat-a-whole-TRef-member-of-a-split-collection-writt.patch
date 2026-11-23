@@ -1,0 +1,391 @@
+From 32c89ed7d94de8d985d3bd7c9281a8d4a29521b7 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 13:52:41 +0000
+Subject: [PATCH 1/2] feat: a whole TRef member of a split collection, written
+ as ROOT writes one
+
+`roottest`'s io/references/lotsRef splits a TClonesArray of a macro's A, and
+A holds a TRef of its own: round 13 gave the writer ROOT's description of
+TRef, and the entry is now written by it. A member held by value says how
+long it is through its class, so its ten bytes in the entry are TRef's
+version and then TObject's identifier and bits - no byte count in front,
+which only a record of its own carries. That is what the oracle writes for
+the same macro (C1._o is 00010000000100000000): the same basket.
+SplitArray.written no longer refuses the member, and wbranch's column for
+such a member is given the TRefs themselves, one row per entry, and streams
+each by the member's class.
+
+lotsRef300 and lotsRef2 pass; lotsRef1 and lotsRef are still REFUSED-turned-
+FAILED by two pyroot blockers outside this chain, reported rather than
+touched: TFile::Write writes back a tree it read (TTree::Write refuses a tree
+read from a file), and the same for Close's _write_trees.
+
+tests: held_object's bytes against the oracle's, its refusal by name, the
+column that streams a row of TRefs, and the attribute/member readers.
+---
+ src/xrdroot/pyroot/trees/objects.py |  19 -----
+ src/xrdroot/wbranch.py              |  86 +++++++++++++++++++++--
+ src/xrdroot/wclasses.py             |  30 +++++++-
+ tests/test_pyroot_clones_split.py   |  13 ++--
+ tests/test_root_wbranch_kinds.py    | 103 +++++++++++++++++++++++++++-
+ 5 files changed, 218 insertions(+), 33 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/trees/objects.py b/src/xrdroot/pyroot/trees/objects.py
+index aef3a7e6..70d7b6bd 100644
+--- a/src/xrdroot/pyroot/trees/objects.py
++++ b/src/xrdroot/pyroot/trees/objects.py
+@@ -299,25 +299,6 @@ class SplitArray(Kind):
+             columns[key] = rows if member.stype in KEPT_ROWS else _jagged(rows, offsets)
+         return columns
+ 
+-    def written(self, keys: list[str], columns: dict[str, Any]) -> dict[str, Any]:
+-        """A member that is one whole object of its own has no row this writer can fill yet.
+-
+-        ROOT writes such a row as the object's own record - its byte count, its version
+-        and its members - which is no bytes :mod:`xrdroot.wbranch` packs: the writer there
+-        streams a ``TRef`` a file holds as a key, without the record around it, and has no
+-        description of the class to write one with inside a tree entry.
+-        """
+-        for _key, member in zip(keys[1:], self.members, strict=True):
+-            if member.stype == OBJECT_TYPE:
+-                clones = self.element if isinstance(self.element, str) else self.element.name
+-                raise UnsupportedFeatureError(
+-                    f"a TClonesArray of {clones} holds {member.name}, a whole "
+-                    f"{member.typename} of its own, and nothing here writes another class's "
+-                    f"record into a tree entry yet; write that member as a number instead, or "
+-                    f"leave the branch out"
+-                )
+-        return columns
+-
+ 
+ def _jagged(rows: list[list[Any]], offsets: Any) -> Jagged:
+     """Rows of numbers, one per entry, as one column."""
+diff --git a/src/xrdroot/wbranch.py b/src/xrdroot/wbranch.py
+index 0ca5b991..0380a9f3 100644
+--- a/src/xrdroot/wbranch.py
++++ b/src/xrdroot/wbranch.py
+@@ -32,12 +32,15 @@ tree's, :meth:`leaves` names what the tree's list of leaves points at, and
+ from __future__ import annotations
+ 
+ import struct
++from collections.abc import Callable
+ from dataclasses import dataclass
+ from typing import Any, NamedTuple
+ 
++import numpy as np
++
+ from .buffer import MAP_OFFSET
+ from .errors import UnsupportedFeatureError
+-from .wclasses import OBJECT, Layout, Member, _mixed, harvested
++from .wclasses import OBJECT, Layout, Member, _mixed, harvested, whole_object
+ from .wcolumns import (
+     CountColumn,
+     MemberColumn,
+@@ -48,8 +51,8 @@ from .wcolumns import (
+ )
+ from .winfo import INFOS
+ from .wmeasure import Measuring, version
+-from .wobjects import IGNORED
+-from .wpacking import BASIC
++from .wobjects import IGNORED, TRANSIENT_BITS
++from .wpacking import BASIC, pack_member
+ from .writer import BITS, WBuffer
+ 
+ __all__ = [
+@@ -59,6 +62,8 @@ __all__ = [
+     "Split",
+     "Collection",
+     "SplitClones",
++    "held_object",
++    "WholeObjectRows",
+     "LeafRefs",
+     "column_keys",
+     "clones_members",
+@@ -761,6 +766,36 @@ def _plain(owner: str, fid: int, element: Any) -> CloneMember:
+     return CloneMember(owner, fid, name, stype, title, checksum, version)
+ 
+ 
++def held_object(layout: Layout, get: Callable[[str], Any]) -> bytes:
++    """One whole object, written into a tree entry as a member of another class is.
++
++    A member held by value says how long it is through its class, so this is
++    no record of its own and carries no byte count in front: the entry holds
++    the class's version and then its elements - for a ``TRef``, ``TObject``'s
++    identifier and bits, ten bytes in all, which is what ROOT 6.40 writes for
++    ``roottest``'s ``io/references/lotsRef``. ``get`` reads one member off the
++    object by ROOT's name for it.
++    """
++    buf = WBuffer()
++    buf.raw(struct.pack(">H", layout.version))
++    for kind, name, title, stype, *_rest in layout.elements():
++        if kind == "TStreamerBase" and name == "TObject":
++            # The version in front is the one ``TObject::Streamer`` writes as well, so the
++            # base adds no second one: only the identifier and the bits it keeps.
++            bits = int(get("fBits")) & ~TRANSIENT_BITS
++            buf.raw(struct.pack(">II", int(get("fUniqueID")), bits))
++        elif kind == "TStreamerBasicType" and stype in BASIC:
++            value = np.asarray([get(name)], dtype=np.float64)
++            buf.raw(pack_member(stype, title, value))
++        else:
++            raise UnsupportedFeatureError(
++                f"{layout.name} holds {name}, a {kind[9:]} that is no number, so a member "
++                f"that is a whole {layout.name} of its own cannot be written into a tree "
++                f"entry here; write the member as a number instead, or leave it out"
++            )
++    return bytes(buf.data)
++
++
+ @dataclass(frozen=True)
+ class SplitClones(Spec):
+     """A ``TClonesArray`` of objects of class ``element`` split as ``TTree::Branch`` splits one:
+@@ -821,5 +856,48 @@ def _column(name: str, member: CloneMember, size: int) -> Any:
+     if member.stype == TSTRING:
+         return StringRows(name, size)
+     if member.stype == OBJECT:
+-        return StreamedColumn(name, size)
++        return WholeObjectRows(name, whole_object(member.typename), size)
+     return MemberRows(name, member.stype, member.title, size)
++
++
++class WholeObjectRows(StreamedColumn):
++    """One whole object of every object in a split collection - a ``TRef``: a row of them
++    per entry, each written as ROOT writes a member held by value - its class's version and
++    then its elements, with no byte count in front, which only a record of its own carries.
++
++    The objects arrive as they are rather than as bytes, so this is where a row becomes one
++    entry of the branch: :func:`held_object` lays each object out.
++    """
++
++    __slots__ = ("layout",)
++
++    def __init__(self, name: str, layout: Layout, basket_size: int) -> None:
++        super().__init__(name, basket_size)
++        self.layout = layout
++
++    def pack(self, value: Any) -> bytes:
++        return b"".join(held_object(self.layout, _member_reader(obj)) for obj in value)
++
++
++def _member_reader(obj: Any) -> Callable[[str], Any]:
++    """How a member of one whole object is read off it, by ROOT's name for it: the
++    identifier and the bits through ``TObject``'s own accessors, since a ``TRef`` keeps
++    them where ``TObject`` does and names them no attribute; anything else through the
++    object's table of members or, for an object of a macro's class, its attributes."""
++    if isinstance(obj, dict):
++        return obj.__getitem__
++    members = getattr(obj, "members", None)
++    return members.__getitem__ if members is not None else _attribute_reader(obj)
++
++
++#: ``TObject``'s two members, and the accessor each keeps them behind.
++ACCESSORS = {"fUniqueID": "GetUniqueID", "fBits": "_bitword"}
++
++
++def _attribute_reader(obj: Any) -> Callable[[str], Any]:
++    """``TObject``'s two members as its accessors give them, and the rest by name."""
++
++    def read(name: str) -> Any:
++        return getattr(obj, ACCESSORS[name])() if name in ACCESSORS else getattr(obj, name)
++
++    return read
+diff --git a/src/xrdroot/wclasses.py b/src/xrdroot/wclasses.py
+index b5f8c454..41810809 100644
+--- a/src/xrdroot/wclasses.py
++++ b/src/xrdroot/wclasses.py
+@@ -23,7 +23,15 @@ from typing import Any, NamedTuple, cast
+ from .errors import UnsupportedFeatureError
+ from .winfo import INFOS, Element
+ 
+-__all__ = ["TREF", "Layout", "Member", "checksum", "declared", "harvested"]
++__all__ = [
++    "TREF",
++    "Layout",
++    "Member",
++    "checksum",
++    "declared",
++    "harvested",
++    "whole_object",
++]
+ 
+ #: The integer types ``TClass::GetCheckSum`` does not count as an enum.
+ INTEGERS = ("int", "Int_t", "unsigned int", "UInt_t")
+@@ -198,6 +206,26 @@ def _tref() -> Layout:
+ TREF: Layout = _tref()
+ 
+ 
++def whole_object(name: str) -> Layout:
++    """The description a member that is a whole object of its own is written by.
++
++    Such a member is laid out by its own class, not by the class that declares
++    it, so the writer needs that class's description: ``TRef`` is written by:
++    :data:`TREF`, the description no file of ROOT's needs to carry, and any
++    other class by the donors' description of it.
++    """
++    if name == "TRef":
++        return TREF
++    found = harvested(name)
++    if found is None:
++        raise UnsupportedFeatureError(
++            f"a member that is a whole {name} of its own is written here only for a class "
++            f"this writer carries a description of, and it carries none of {name}; write "
++            f"the member as a number instead, or leave it out of the class"
++        )
++    return found
++
++
+ def declared(cls: Any) -> Layout:
+     """A class a macro declared, from what its translation says of its members."""
+     name, bases, fields = cls._cxx_layout_
+diff --git a/tests/test_pyroot_clones_split.py b/tests/test_pyroot_clones_split.py
+index 204ef45f..b6fff884 100644
+--- a/tests/test_pyroot_clones_split.py
++++ b/tests/test_pyroot_clones_split.py
+@@ -323,16 +323,15 @@ def test_a_split_array_writes_its_numbers_and_strings_as_the_entries_hold_them(m
+     assert kind.written(["a"], columns) is columns
+ 
+ 
+-def test_a_member_that_is_one_whole_object_is_refused_when_a_split_array_is_written():
+-    """ROOT writes a whole ``TRef`` member of a split ``TClonesArray`` as that object's record,
+-    and nothing here writes another class's record into a tree entry: the refusal names the
+-    member rather than failing on a column of bytes that are never made.
++def test_a_split_arrays_whole_object_member_is_written_by_the_column_that_holds_it():
++    """ROOT writes a whole ``TRef`` member of a split ``TClonesArray`` as the object itself,
++    so the rows of its column are the references and the column streams each one: nothing
++    is done to the rows between the ``Fill`` that read them and the basket that holds them.
+     """
+     split = objects.SplitArray(declared(_A))
+     keys = ["C1", "C1.fUniqueID", "C1.fBits", "C1._o"]
+-    columns = split.columns(keys, [((0, 0, None),)])
+-    with pytest.raises(UnsupportedFeatureError, match=r"holds _o, a whole TRef of its own"):
+-        split.written(keys, columns)
++    columns = split.columns(keys, [((0, 0, ROOT.TRef(None)),)])
++    assert split.written(keys, columns) is columns
+ 
+ 
+ def test_a_whole_object_members_leaf_is_typed_by_that_members_class():
+diff --git a/tests/test_root_wbranch_kinds.py b/tests/test_root_wbranch_kinds.py
+index c9041022..338e9f6b 100644
+--- a/tests/test_root_wbranch_kinds.py
++++ b/tests/test_root_wbranch_kinds.py
+@@ -9,13 +9,32 @@ collection of a class of plain members, and entries given one at a time.
+ 
+ from __future__ import annotations
+ 
++from typing import Any
++
+ import numpy as np
+ import pytest
+ 
++import xrdroot.pyroot as ROOT
+ from xrdroot import UnsupportedFeatureError
++from xrdroot import wbranch
+ from xrdroot.interp import _packing
+-from xrdroot.wbranch import SplitClones, nested
+-from xrdroot.wclasses import TREF, Member, checksum, declared, harvested
++from xrdroot.wbranch import (
++    CloneMember,
++    SplitClones,
++    WholeObjectRows,
++    _column,
++    held_object,
++    nested,
++)
++from xrdroot.wclasses import (
++    TREF,
++    Layout,
++    Member,
++    checksum,
++    declared,
++    harvested,
++    whole_object,
++)
+ from xrdroot.wcolumns import StreamedColumn
+ from xrdroot.wpacking import DOUBLE32, FLOAT16, pack_member, packed_size
+ 
+@@ -153,3 +172,83 @@ def test_a_class_root_has_is_split_only_when_its_members_allow():
+     assert [m.name for m in coordinates.members] == ["fX", "fY", "fZ", "fT"]
+     with pytest.raises(UnsupportedFeatureError, match="no description of member by member"):
+         nested(Member("fH", 62, "TH1F", "", 8))
++
++
++def test_roottest_lotsref_writes_a_whole_tref_as_its_version_and_tobject():
++    """ROOT 6.40 writes a split collection's whole ``TRef`` member into the entry as ten
++    bytes: the class's version, then ``TObject``'s identifier and bits - no byte count,
++    which a member held by value does not need since its class says how long it is. The
++    bytes here are the oracle's own for ``roottest``'s ``io/references/lotsRef``."""
++    reference = {"fUniqueID": 1, "fBits": 0}
++
++    def get(name: str) -> Any:
++        return reference[name]
++
++    assert held_object(TREF, get) == bytes.fromhex("00010000000100000000")
++
++
++def test_a_whole_objects_bits_are_written_without_the_ones_streaming_sets():
++    """``TObject::Streamer`` leaves ``kIsOnHeap`` and ``kNotDeleted`` out, so a reference to
++    an object on the heap is written with neither of them."""
++    bits = 0x03000000 | 0x0400
++    assert held_object(TREF, lambda name: 7 if name == "fUniqueID" else bits) == bytes.fromhex(
++        "00010000000700000400"
++    )
++
++
++def _described_elsewhere() -> Layout:
++    """A class of one number, as a file might describe one."""
++    number = Member("fX", 5, "float", "", 4)
++    return Layout("Elsewhere", 3, 0, (number,))
++
++
++def test_a_whole_object_of_a_number_and_a_string_is_written_too():
++    """A member's class need not be ``TRef``: any class the writer carries a description
++    of is written its way, each number packed as its streamer type packs it."""
++    written = held_object(_described_elsewhere(), lambda name: 1.5)
++    assert written == bytes.fromhex("0003") + pack_member(5, "", np.array([1.5]))
++
++
++def test_a_whole_objects_member_that_is_no_number_is_refused_by_name():
++    """Only numbers are packed into such a record here, so a member of anything else says
++    which member it is rather than writing bytes the file could not be read back by."""
++    text = Member("fS", 65, "TString", "", 4)
++    laid_out = Layout("Elsewhere", 1, 0, (text,))
++    with pytest.raises(UnsupportedFeatureError, match=r"Elsewhere holds fS, a BasicType"):
++        held_object(laid_out, lambda name: "")
++
++
++def test_a_whole_object_is_written_by_the_description_of_its_own_class():
++    """The class a whole-object member is written by is the member's, not its owner's, and
++    ``TRef`` is described here alone - no file of ROOT's carries its description."""
++    assert whole_object("TRef") is TREF
++    assert whole_object("TAttLine").name == "TAttLine"
++    with pytest.raises(UnsupportedFeatureError, match=r"carries none of TNamed"):
++        whole_object("TNamed")
++
++
++def test_a_split_collections_whole_object_column_streams_the_objects_of_a_row():
++    """The column of a whole-object member is given the objects themselves, one row per
++    entry, and streams each by its class: a ``TRef``'s identifier is what it holds."""
++    column = _column("C1._o", CloneMember("A", 0, "_o", 61, "", 0, 0, "TRef"), 32000)
++    assert isinstance(column, WholeObjectRows)
++    references = [{"fUniqueID": 3, "fBits": 0}, {"fUniqueID": 9, "fBits": 0}]
++    assert column.pack(references) == bytes.fromhex("00010000000300000000") + bytes.fromhex(
++        "00010000000900000000"
++    )
++    raw, sizes = column.pack_many([references[:1], references[1:]])
++    assert raw == column.pack(references) and list(sizes) == [10, 10]
++
++
++def test_a_whole_objects_member_is_read_off_it_by_the_object_it_is():
++    """A ``TRef`` keeps its identifier and bits where ``TObject`` does and names them no
++    attribute, so they come through its accessors; an object of a macro's class keeps them
++    in its table of members, and anything else - a ``RooFit`` object's row - by name."""
++    reference = ROOT.TRef(None)
++    reference.SetUniqueID(11)
++    read = wbranch._member_reader(reference)
++    assert (read("fUniqueID"), read("fBits")) == (11, reference._bitword())
++    table = type("Row", (), {"members": {"fUniqueID": 4, "fBits": 0x0400}})()
++    assert wbranch._member_reader(table)("fUniqueID") == 4
++    plain = type("Plain", (), {"GetUniqueID": lambda self: 5, "fName": "here"})()
++    assert wbranch._member_reader(plain)("fName") == "here"
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,145 @@
+From 6398b8935a69b8784fe62e41ba0513af60e803b6 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 15:15:32 +0000
+Subject: [PATCH 1/8] feat: a counted pointer to a class is a loop of objects,
+ and an array of pointers keeps its star
+
+(cherry picked from commit 6381e717d00c56208e2c8616b844279d1d0208a4)
+---
+ src/xrdroot/wdeclared.py            | 45 +++++++++++++++++++++++++++--
+ tests/test_root_declared_objects.py | 40 +++++++++++++++++++++++++
+ 2 files changed, 82 insertions(+), 3 deletions(-)
+
+diff --git a/src/xrdroot/wdeclared.py b/src/xrdroot/wdeclared.py
+index 49149cbc..7202fdda 100644
+--- a/src/xrdroot/wdeclared.py
++++ b/src/xrdroot/wdeclared.py
+@@ -358,6 +358,11 @@ class Catalogue:
+ 
+         ``lengths`` is one dimension for a ``std::array``, and all of them outermost first
+         for one nested in another; a count from ``T a[N]`` is the one dimension of its own.
++
++        An array of *pointers*, ``TAxis *fVaxis[3]``, keeps the pointer: ``TStreamerObjectPointer``
++        whose type is the pointer's alone - the oracle gives ``TAxis *fVaxis[3]`` type 64,
++        ``kObjectP`` with no ``kOffsetL``, and the three it holds as its length and its maximum
++        index - and whose room is a pointer per element.
+         """
+         dims = (lengths,) if isinstance(lengths, int) else lengths
+         name = class_name(element)
+@@ -365,11 +370,16 @@ class Catalogue:
+             return None
+         self.describe(name)
+         tobject = self.tobject(name)
+-        kind = "TStreamerObject" if tobject else "TStreamerObjectAny"
+         length = _product(dims)
++        maxidx = (*dims, *NO_DIMS)[:5]
++        if element.stars:
++            kind = "TStreamerObjectPointer" if tobject else "TStreamerObjectAnyPointer"
++            stype = _POINTERS[tobject, field.comment.startswith("->")]
++            return (kind, field.name, field.comment, stype, POINTER_SIZE * length, length,
++                    len(dims), maxidx, streamer_name(element), ())  # fmt: skip
++        kind = "TStreamerObject" if tobject else "TStreamerObjectAny"
+         return (kind, field.name, field.comment, (OBJECT if tobject else ANY) + OFFSET_L,
+-                POINTER_SIZE * length, length, len(dims), (*dims, *NO_DIMS)[:5],
+-                name, ())  # fmt: skip
++                POINTER_SIZE * length, length, len(dims), maxidx, name, ())  # fmt: skip
+ 
+     def _basic(
+         self, owner: Declaration, field: Field, found: Spelled, counter: bool
+@@ -522,6 +532,34 @@ class Catalogue:
+                 f"layout for, so an object holding one cannot be written"
+             )
+ 
++    def _pointer_loop(
++        self, owner: Declaration, field: Field, found: Spelled, counter: bool
++    ) -> Element | None:
++        """``TAxis *fPaxis //[fNvertex]`` and ``TAxis **fQaxis //[fNvertex]``: as many objects
++        as the counter member holds, one after another inside a single record - ROOT's
++        ``kStreamLoop``, the type as it is written with its stars, and the counter's version,
++        name and class.
++
++        A pointer to a class that a ``//[n]`` comment counts is a loop of objects rather than
++        the one object the object rules would make of it, whether it is written with one star
++        or two: ROOT 6.40.04's own description of a ``Probe`` holding both spells
++        each as a ``TStreamerLoop``, naming ``TAxis*`` and ``TAxis**``. Laid out as the pointer
++        to one object that a member without a count is, the file would say the member holds a
++        single object where ROOT wrote a run of them - which is how the bigevent roottest's
++        ``Event`` was wrong before this rule, its ``fPaxis`` silently as much as its
++        ``fQaxis``.
++        """
++        count = _counter_of(field)
++        if count is None or found.stars > 2 or field.dims:
++            return None
++        name = class_name(found)
++        if not self.known(name):
++            return None
++        self.describe(name)
++        counted = (_class_version(owner, owner.version), count, owner.name)
++        return ("TStreamerLoop", field.name, field.comment, STREAM_LOOP, POINTER_SIZE, 0, 0,
++                NO_DIMS, streamer_name(found), counted)  # fmt: skip
++
+     def _object(
+         self, owner: Declaration, field: Field, found: Spelled, counter: bool
+     ) -> Element | None:
+@@ -559,6 +597,7 @@ _MEMBER_RULES: tuple[
+     Catalogue._string,
+     Catalogue._container,
+     Catalogue._complex,
++    Catalogue._pointer_loop,
+     Catalogue._object,
+ )
+ 
+diff --git a/tests/test_root_declared_objects.py b/tests/test_root_declared_objects.py
+index 7f848d6f..babe7df7 100644
+--- a/tests/test_root_declared_objects.py
++++ b/tests/test_root_declared_objects.py
+@@ -1138,6 +1138,46 @@ def _a_class_holding_counted_strings() -> Catalogue:
+         Field("fS", "TString*", "[fN] the strings", ())))})  # fmt: skip
+ 
+ 
++def test_a_counted_pointer_to_a_class_is_roots_streamer_loop_however_many_stars():
++    """``TAxis *f //[n]`` and ``TAxis **f //[n]`` are both ``kStreamLoop`` - not the pointer
++    to one object a member without a count is - with room for a pointer and the counter's
++    version, name and class as their extra fields, the two stars kept in the type name. The
++    oracle says so of ``class Probe : public TObject { Int_t fN; TAxis *fP; //[fN]
++    TAxis **fQ; //[fN] }``, which is how the bigevent roottest's ``Event::fPaxis`` and
++    ``Event::fQaxis`` are described."""
++    made = Catalogue({"Probe": Declaration("Probe", 1, False, ("TObject",), (
++        Field("fN", "Int_t", "how many", ()),
++        Field("fPaxis", "TAxis*", "[fN] pointer to an array of TAxis objects", ()),
++        Field("fQaxis", "TAxis**", "[fN] pointer to an array of pointers to TAxis objects", ()),
++    ))})  # fmt: skip
++    assert made.info("Probe")[2][1:] == (
++        ("TStreamerBasicType", "fN", "how many", 6, 4, 0, 0, NO_DIMS, "int", ()),
++        ("TStreamerLoop", "fPaxis", "[fN] pointer to an array of TAxis objects", 501, 8, 0, 0,
++         NO_DIMS, "TAxis*", (1, "fN", "Probe")),
++        ("TStreamerLoop", "fQaxis", "[fN] pointer to an array of pointers to TAxis objects",
++         501, 8, 0, 0, NO_DIMS, "TAxis**", (1, "fN", "Probe")))  # fmt: skip
++
++
++def test_only_a_pointer_a_count_says_how_many_of_is_a_streamer_loop():
++    """The counted loop is the counted loop alone: an uncounted pointer is the one object it
++    points at, an array of pointers is still the array of objects the array rules make, and a
++    pointer to a class nothing knows, or one star too many, is refused by name rather than
++    guessed at."""
++    def elements(*fields):
++        return Catalogue({"C": Declaration("C", 1, False, (), fields)}).info("C")[2]
++
++    assert elements(Field("p", "TAxis*", "-> never null", ()))[0][0] == "TStreamerObjectPointer"
++    # An array of pointers keeps the pointer - type 64, kObjectP, with no array offset - and
++    # the elements it holds as its length, as the oracle describes `TAxis *fVaxis[3]`.
++    arrayed = elements(Field("p", "TAxis*", "[3] three of them", (3,)))[0]
++    assert arrayed[:4] == ("TStreamerObjectPointer", "p", "[3] three of them", 64)
++    assert arrayed[4:9] == (24, 3, 1, (3, 0, 0, 0, 0), "TAxis*")
++    with pytest.raises(UnsupportedFeatureError, match=r"C::p is a Thing\*\*, which"):
++        elements(Field("p", "Thing**", "[n] two stars of nothing", ()))
++    with pytest.raises(UnsupportedFeatureError, match=r"C::p is a TAxis\*\*\*, which"):
++        elements(Field("p", "TAxis***", "[n] three stars", ()))
++
++
+ def test_a_counted_array_of_strings_is_written_as_one_record_of_them():
+     """ROOT streams a ``TString *f //[n]`` as the record it streams a container in - its count
+     word and version - holding the counter's strings one after another, a ``TString`` each, and
+-- 
+2.54.0 (Apple Git-157)
+

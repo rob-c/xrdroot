@@ -1,0 +1,90 @@
+From ae646b4e9da5ed69b04308cdad47f948363fab16 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 06:32:04 +0000
+Subject: [PATCH 1/2] tests: the identifier is a number and the process travels
+ beside it
+
+W0-78's read side, measured against the 6.40.04 oracle over the five
+roottest/root/io/tree files and two probes of my own, splits into three rules and
+only one of them is the record reader's:
+
+ - fUniqueID's top byte is the process: ROOT prints 0x01000009 for a number the
+   file stores as 9 beside pidf 0, and 0x02000009 where the record names process
+   1 - i.e. the printed byte is the file's process index + 1 (TBufferIO adds the
+   *key's* fPidOffset, which TKey keeps in fSeekPdir's high bits, so a probe that
+   reads an unsplit pidf-0 object in a session holding two processes gets no byte
+   at all). Buffer.referenced already hands back number and process separately,
+   which is what TRef resolution needs; folding the byte in here would also put it
+   into the TRef/TRefArray records this reader writes back, so it stays where the
+   file's ProcessID records are known.
+ - fBits are the file's on this layer: an object the file holds and a program
+   writes again carries the word the file held, so the heap's kIsOnHeap|kNotDeleted
+   are put back on the *object* (TObject._bitword, 8ffa748c) and not in the word
+   read out. Adding them in Buffer.referenced was tried: it broke seven round-trip
+   tests (test_wdobjects_nested_records, test_histfactory_streamed, test_cli_diff,
+   test_root_known, test_roofit_io_records, test_interp_member_wise_bases,
+   test_root_containers) that pin the file's word.
+ - the six io/tree tests do not reach either path: TTree::Show prints the split
+   branches N.fUniqueID / N.fBits / r1.fBits, each an interp Rows column read
+   straight from the basket bytes (payload 09 00 00 00 08 ... and 18 00 00 00 ...),
+   so the reassembly belongs in interp.py's element read - worker 03's file - and
+   not in buffer.py, rdobjects.py or pyroot/core/objects.py.
+
+So this commit is the boundary, said where the next reader will look for it, plus
+the test that pins it; no bytes change and the eight roottest/root/io/tree DIFFs
+stay DIFF (10 PASS / 8 DIFF / 2 UNSUPPORTED before and after).
+---
+ src/xrdroot/buffer.py | 16 ++++++++++++++--
+ tests/test_root.py    |  8 ++++++++
+ 2 files changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/src/xrdroot/buffer.py b/src/xrdroot/buffer.py
+index f4326047..8233b304 100644
+--- a/src/xrdroot/buffer.py
++++ b/src/xrdroot/buffer.py
+@@ -387,9 +387,21 @@ class Buffer:
+ 
+     def referenced(self) -> tuple[int, int, int | None]:
+         """A ``TObject`` and, when a ``TRef`` may point at it - ``kIsReferenced`` - which of the
+-        file's ``ProcessID`` records numbered it; ``None`` for an object no reference names."""
++        file's ``ProcessID`` records numbered it; ``None`` for an object no reference names.
++
++        The two words come back exactly as the file wrote them. The bits are not the reader's to
++        change here: these members are read back out and written again as they came in, so a
++        word with ROOT's ``kIsOnHeap|kNotDeleted`` in it would be a word the file never held.
++        ROOT's reader sets those two bits on the *object* it fills (``TObject::Streamer``), which
++        is :meth:`xrdroot.pyroot.core.objects.TObject._bitword` here.
++
++        The identifier is the number alone for the same reason the process is handed back
++        beside it rather than folded into its top byte: the index means nothing until the file
++        it was written in is known, and it is that file's records that name the process.
++        """
+         _version, unique, bits = self.scalars(_TOBJECT)
+-        return unique, bits, self.u16() if bits & IS_REFERENCED else None
++        process = self.u16() if bits & IS_REFERENCED else None
++        return unique, bits, process
+ 
+     def named(self) -> tuple[str, str]:
+         """A ``TNamed``: the name and title every ROOT object carries."""
+diff --git a/tests/test_root.py b/tests/test_root.py
+index f92f4c9a..8017903a 100644
+--- a/tests/test_root.py
++++ b/tests/test_root.py
+@@ -338,6 +338,14 @@ def test_a_referenced_object_carries_an_extra_word():
+     assert marked.remaining == 0
+ 
+ 
++def test_the_process_beside_an_identifier_is_not_in_it():
++    """The index a record names is that file's, so it comes back beside the identifier and not
++    folded into its top byte - and the bits are the file's, with none of the reader's own:
++    these words go back out to a file as they came in."""
++    assert Buffer(struct.pack(">HIIH", 1, 9, 1 << 4, 1)).referenced() == (9, 1 << 4, 1)
++    assert Buffer(struct.pack(">HII", 1, 9, 0)).referenced() == (9, 0, None)
++
++
+ def test_a_named_object_gives_its_name_and_title():
+     body = struct.pack(">HII", 1, 0, 0) + tstring("pt") + tstring("transverse momentum")
+     buf = Buffer(record(1, body))
+-- 
+2.54.0 (Apple Git-157)
+

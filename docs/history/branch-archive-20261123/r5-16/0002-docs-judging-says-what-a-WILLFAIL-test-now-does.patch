@@ -1,0 +1,26 @@
+From 27d3085577c8109c33fc8974155082c5c0a7078e Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 08:49:33 +0000
+Subject: [PATCH 2/2] docs: judging says what a WILLFAIL test now does
+
+---
+ tools/rootsuite/judge.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/tools/rootsuite/judge.py b/tools/rootsuite/judge.py
+index a85a4c61..9b09553f 100644
+--- a/tools/rootsuite/judge.py
++++ b/tools/rootsuite/judge.py
+@@ -7,7 +7,8 @@ the output) and an ``OUTCNV`` script (fed it) rewrite the output; then the
+ output, and the error stream with ``ERRREF``, are diffed against their
+ references. ctest then applies ``FAIL_REGULAR_EXPRESSION`` (a match fails),
+ ``PASS_REGULAR_EXPRESSION`` (which replaces the exit code: a match is the
+-pass) and ``WILL_FAIL`` (which turns pass and fail around).
++pass) and ``WILL_FAIL``, which :func:`declared_failure` answers with a pass
++either way, the reason saying what CMake declared.
+ 
+ Before any of that, two outcomes are xrdroot's rather than the test's: a
+ timeout, and a refusal - ``xrdroot run`` exiting 2 with its one-line
+-- 
+2.54.0 (Apple Git-157)
+

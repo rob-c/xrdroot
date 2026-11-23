@@ -1,0 +1,205 @@
+From ad8ecdb147c95914f8f592dd87dcb6e3aa09ff1e Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 14:24:40 +0000
+Subject: [PATCH 3/8] perf: a read of a translation's std::atomic hands the
+ interpreter to the thread it waits for
+
+roottest/root/multicore/testSetAddressLoop runs ./testSetAddress thirty-three
+times, and one run took 21.7 s of the harness's 300 s budget: nine workers under
+one mutex between two busy waits. Every C++ thread is a Python thread of one
+interpreter, so the thread spinning on `while (counter < kNThreads) {}` holds
+the GIL while the worker whose counter it waits for needs that GIL to count -
+CPython hands it over only at its switch interval, and 24 ms of file opening
+became 1.3 s per thread. The reads a loop condition makes now give the
+interpreter up with time.sleep(0), as a C++ spin gives up its core: one run is
+0.9 s, the whole test 33.9 s instead of 300 s and a TIMEOUT (the reason was
+"still running after 300 s").
+
+That read is also the C++ meaning of `while (flag) {}`: std::atomic<bool>
+converts to its value, which the plain atomic has no __bool__ for, so a spin on
+one only ever ended because the translated barrier was a Python name rebound by
+the waiting thread. The test for it spins on a flag another thread stores false.
+
+The generic home for the yield is cppstd/threads.py's atomic, which pycxx-only
+translations would then get too; it is outside this worker's scope, so the
+ROOT dialect's runtime subclasses it here instead.
+
+(cherry picked from commit 4ce84ff03179c3082b3f0eb939884bee588a3054)
+---
+ src/xrdroot/pycint/runtime/__init__.py | 10 +++--
+ src/xrdroot/pycint/runtime/spinning.py | 62 ++++++++++++++++++++++++++
+ tests/test_cint_runtime.py             | 54 ++++++++++++++++++++++
+ 3 files changed, 123 insertions(+), 3 deletions(-)
+ create mode 100644 src/xrdroot/pycint/runtime/spinning.py
+
+diff --git a/src/xrdroot/pycint/runtime/__init__.py b/src/xrdroot/pycint/runtime/__init__.py
+index 6e1c838e..da561976 100644
+--- a/src/xrdroot/pycint/runtime/__init__.py
++++ b/src/xrdroot/pycint/runtime/__init__.py
+@@ -4,9 +4,11 @@ Every translation in the ROOT dialect starts with that one import. It brings
+ everything plain C++'s runtime has (:mod:`xrdroot.pycxx.runtime`) - cells,
+ ``printf``, ``cout``, ``<cmath>``, C's arithmetic - with ROOT's meanings of
+ the helpers where ROOT's objects mean more (:mod:`.adapters`), ``ROOT`` (ROOT's
+-names, looked up in :mod:`xrdroot.pyroot`), ROOT's ``Printf`` family, and the
+-batch fill of an ntuple's column a translated loop tries first. Loading it
+-also readies GoogleTest for ROOT's unit tests (:mod:`.diags`).
++names, looked up in :mod:`xrdroot.pyroot`), ROOT's ``Printf`` family, the
++``std::atomic`` whose reads share the interpreter with the thread being waited
++for (:mod:`.spinning`), and the batch fill of an ntuple's column a translated
++loop tries first. Loading it also readies GoogleTest for ROOT's unit tests
++(:mod:`.diags`).
+ """
+ 
+ from __future__ import annotations
+@@ -18,9 +20,11 @@ from .adapters import *  # noqa: F403
+ from .adapters import __all__ as _adapters
+ from .ntuplefill import fill_ntuple_histogram
+ from .root import ROOT, RootProxy
++from .spinning import atomic  # over the runtime's: a spin on one must share the GIL
+ 
+ __all__ = [
+     "ROOT",
++    "atomic",
+     "fill_ntuple_histogram",
+     "RootProxy",
+     *dict.fromkeys([*_LIBRARY, *_adapters]),
+diff --git a/src/xrdroot/pycint/runtime/spinning.py b/src/xrdroot/pycint/runtime/spinning.py
+new file mode 100644
+index 00000000..f2bbc01d
+--- /dev/null
++++ b/src/xrdroot/pycint/runtime/spinning.py
+@@ -0,0 +1,62 @@
++"""``std::atomic`` of a translation: reading one hands the interpreter to another thread.
++
++C++'s ``while (counter < kNThreads) {}`` is a busy wait, and on a machine with a
++core to spare that is all it costs. Here every C++ thread is a Python thread of
++one interpreter: the spinning one holds the GIL, and the thread whose work it is
++waiting for needs that GIL to do the work - CPython hands it over only at its
++switch interval. A test whose workers finish in a millisecond then takes seconds
++per barrier, and ``roottest/root/multicore/testSetAddressLoop`` - nine workers
++between two such spins, thirty-three times - outlasts the harness's 300 s.
++
++So the reads a loop condition makes, truthiness and the comparisons, give the
++interpreter up with ``time.sleep(0)``, as a C++ spin gives up its core. This is
++:class:`xrdroot.cppstd.threads.atomic` and nothing else; the translation's
++``from xrdroot.pycint.runtime import *`` binds it over the plain one.
++"""
++
++from __future__ import annotations
++
++import time
++from typing import Any
++
++from ...cppstd.threads import atomic as _atomic
++
++__all__ = ["atomic"]
++
++
++def _shared() -> None:
++    """Let whoever else wants the interpreter have it, before looking at the value again."""
++    time.sleep(0)
++
++
++class atomic(_atomic):
++    """``std::atomic<T>`` of a translation: a read of one shares the interpreter."""
++
++    def __bool__(self) -> bool:
++        """``operator bool()``: whether the value is true - what ``while (flag) {}`` asks."""
++        _shared()
++        return bool(self._value)
++
++    def load(self) -> Any:
++        _shared()
++        return super().load()
++
++    def __eq__(self, other: object) -> bool:
++        _shared()
++        return super().__eq__(other)
++
++    def __lt__(self, other: Any) -> bool:
++        _shared()
++        return super().__lt__(other)
++
++    def __gt__(self, other: Any) -> bool:
++        _shared()
++        return bool(self._value > other)
++
++    def __le__(self, other: Any) -> bool:
++        _shared()
++        return bool(self._value <= other)
++
++    def __ge__(self, other: Any) -> bool:
++        _shared()
++        return bool(self._value >= other)
+diff --git a/tests/test_cint_runtime.py b/tests/test_cint_runtime.py
+index d327c507..c5993012 100644
+--- a/tests/test_cint_runtime.py
++++ b/tests/test_cint_runtime.py
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ import math
++import threading
+ from pathlib import Path
+ 
+ import numpy as np
+@@ -326,3 +327,56 @@ def test_fscanf_scans_text_into_the_buffer_a_char_array_is_held_in(tmp_path: Pat
+ def test_fscanf_of_a_null_file_says_to_check_the_pointer() -> None:
+     with pytest.raises(TypeError, match="fscanf of a null FILE"):
+         rt.fscanf(None, "%d", Cell(0))
++
++
++def test_the_runtimes_atomic_is_the_one_whose_reads_share_the_interpreter() -> None:
++    from xrdroot.cppstd.threads import atomic as plain
++    from xrdroot.pycint.runtime import spinning
++
++    assert rt.atomic is spinning.atomic
++    assert issubclass(rt.atomic, plain)
++    #: A translation binds it through ``from xrdroot.pycint.runtime import *``.
++    assert "atomic" in rt.__all__
++
++
++def test_an_atomic_read_answers_the_value_it_holds() -> None:
++    counted = rt.atomic(3)
++    assert bool(counted) is True
++    assert (counted.load(), counted == 3, counted < 4) == (3, True, True)
++    assert (counted > 2, counted <= 3, counted >= 3) == (True, True, True)
++    assert rt.atomic(0).__bool__() is False
++
++
++def test_every_read_of_an_atomic_gives_the_interpreter_up(monkeypatch: pytest.MonkeyPatch) -> None:
++    from xrdroot.pycint.runtime import spinning
++
++    shared: list[int] = []
++    monkeypatch.setattr(spinning, "_shared", lambda: shared.append(1))
++    counted = rt.atomic(3)
++    reads = [
++        bool(counted),
++        counted.load(),
++        counted == 3,
++        counted < 4,
++        counted > 2,
++        counted <= 3,
++        counted >= 3,
++    ]
++    assert reads == [True, 3, True, True, True, True, True]
++    assert len(shared) == 7
++
++
++def test_a_spin_ends_when_another_thread_stores_false() -> None:
++    flag = rt.atomic(True)
++    cleared = threading.Event()
++
++    def spin() -> None:
++        while flag:
++            pass
++        cleared.set()
++
++    spinning = threading.Thread(target=spin, daemon=True)
++    spinning.start()
++    flag.store(False)
++    spinning.join(30)
++    assert cleared.is_set(), "a spin on an atomic never saw the false another thread stored"
+-- 
+2.54.0 (Apple Git-157)
+

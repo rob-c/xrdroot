@@ -1,0 +1,294 @@
+From 5b65bffaecbff5a204852c2555167bac931c7266 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 02:02:51 +0000
+Subject: [PATCH] feat: one of ROOT's arrays of numbers is written as its count
+ and values
+
+`TArrayF fArrayF` and `TArrayI *fArrayI` were refused by name: the object
+rules looked the class up as one this writer carries a layout for, and ROOT
+carries none, because a `TArray` streams itself - its length, then that many
+values, with no record round them, no version and nothing of the base it
+inherits. So a file describes such a member as a plain `kObjectAny` naming the
+class (24 bytes of element for one held by value, 8 for a pointer) and
+describes the class itself nowhere; walking it as an object would have written
+a record ROOT never wrote.
+
+wdeclared gains `ROOT_ARRAYS` - ROOT's seven, each with the streamer type its
+values are read as - and the member rule that describes one, by value or
+behind a pointer that may be null (`->` makes it the one promised never null,
+as for any other class); wdobjects writes the count and the values, and for a
+pointer the tag naming the class round them, four zero bytes where it is null.
+
+Measured against the 6.40.04 oracle: a `TFile` it wrote of `class Probe :
+public TObject { TArrayF fArr; TArrayI fInts; TArrayI *fP; TArrayD *fQ;
+Int_t fN; TArrayI *fNull; }` gives the 96 bytes the pinned test asserts, and
+ROOT 6.40.04 reads back what xrdroot writes of that object - the three floats,
+the two ints behind the pointer, the double, the number and the null - which
+is where the `ARRAY_SIZE` element size comes from too.
+
+The bigevent roottest's write moves on from refusing `Event::fArrayF` to
+refusing the base of `UShortVector`, a class deriving from `vector<UShort_t>`,
+which is a member of `Event` further down and a different piece of work.
+---
+ src/xrdroot/wdeclared.py            |  42 +++++++++++-
+ src/xrdroot/wdobjects.py            |  26 +++++++
+ tests/test_root_declared_objects.py | 103 ++++++++++++++++++++++++++++
+ 3 files changed, 170 insertions(+), 1 deletion(-)
+
+diff --git a/src/xrdroot/wdeclared.py b/src/xrdroot/wdeclared.py
+index db790f2e..5fc1e167 100644
+--- a/src/xrdroot/wdeclared.py
++++ b/src/xrdroot/wdeclared.py
+@@ -26,7 +26,8 @@ from .errors import UnsupportedFeatureError
+ from .wclasses import TYPES, checksum
+ from .winfo import INFOS, Element
+ 
+-__all__ = ["Field", "Declaration", "Spelled", "Catalogue", "parse_type", "normalised"]
++__all__ = ["Field", "Declaration", "Spelled", "Catalogue", "ROOT_ARRAYS", "parse_type",
++           "normalised"]  # fmt: skip
+ 
+ #: ROOT's typedefs of numbers, as the C++ types they stand for.
+ ROOT_TYPEDEFS = {
+@@ -77,12 +78,21 @@ STL_P = 71
+ STREAM_LOOP = 501
+ #: ROOT's classes that stream themselves by hand and that a file holds no description of.
+ SELF_STREAMED = ("TRef", "TRefArray")
++#: ROOT's arrays of numbers, each with the streamer type its values are read as: a class of
++#: ROOT's that streams itself as its length and then that many values, with no record round
++#: them and nothing of the ``TArray`` base it inherits, so a file describes a member of one as
++#: a plain object of the class and describes the class itself not at all.
++ROOT_ARRAYS = {"TArrayC": 1, "TArrayS": 2, "TArrayI": 3, "TArrayL": 4,
++               "TArrayL64": 16, "TArrayF": 5, "TArrayD": 8}  # fmt: skip
+ #: ``kTString``, ``kTObject``, ``kTNamed`` and ``kCounter``.
+ TSTRING, TOBJECT, TNAMED, COUNTER = 65, 66, 67, 6
+ #: ``kOffsetL`` and ``kOffsetP``: a fixed array of, and a counted pointer to, numbers.
+ OFFSET_L, OFFSET_P = 20, 40
+ #: How many bytes each kind of member takes in memory, as a 64-bit ROOT has it.
+ STRING_SIZE, CONTAINER_SIZE, POINTER_SIZE = 24, 24, 8
++#: ``sizeof`` of one of ROOT's ``TArray``s: its vtable, the length it keeps and the pointer
++#: to its values - what the oracle gives the element of a ``TArrayF`` held by value.
++ARRAY_SIZE = 24
+ #: The five maximum indices of an element that is not an array.
+ NO_DIMS = (0, 0, 0, 0, 0)
+ 
+@@ -534,6 +544,35 @@ class Catalogue:
+                 f"layout for, so an object holding one cannot be written"
+             )
+ 
++    def _root_array(
++        self, owner: Declaration, field: Field, found: Spelled, counter: bool
++    ) -> Element | None:
++        """``TArrayF fArrayF`` and ``TArrayI *fArrayI``: the numbers the array holds, counted.
++
++        ROOT's arrays of numbers stream themselves - a count and then that many values, no
++        record round them and nothing of the ``TArray`` base they inherit - so a file that
++        holds one describes the member as a plain object of the class and describes the class
++        itself not at all. Laid out by the object rules the class would be looked up as a
++        class this writer carries, which it is not: the bigevent roottest's ``Event`` holds a
++        ``TArrayF`` by value and a ``TArrayI`` behind a pointer.
++
++        The oracle describes ``class Probe : public TObject { TArrayF fArr; TArrayI *fP; }``
++        with a ``kObjectAny`` and a ``kAnyP``, both naming the array's class with its stars.
++        For a ``fArr`` of 1.5, -2.25 and 3.0 it writes ``00000003 3fc00000 c0100000 40400000``
++        - the count and then the numbers, nothing before them - and for a ``fP`` of 11 and 22
++        a tag naming ``TArrayI`` with the same count and numbers inside the tag's byte count.
++        """
++        if found.name not in ROOT_ARRAYS or found.stars > 1 or found.args or field.dims:
++            return None
++        if _counter_of(field):  # a count makes it a loop of arrays, which is not this
++            return None
++        if not found.stars:
++            return ("TStreamerObjectAny", field.name, field.comment, ANY, ARRAY_SIZE, 0, 0,
++                    NO_DIMS, found.name, ())  # fmt: skip
++        stype = ANY_P if field.comment.startswith("->") else ANY_PP
++        return ("TStreamerObjectAnyPointer", field.name, field.comment, stype, POINTER_SIZE,
++                0, 0, NO_DIMS, found.name + "*", ())  # fmt: skip
++
+     def _pointer_loop(
+         self, owner: Declaration, field: Field, found: Spelled, counter: bool
+     ) -> Element | None:
+@@ -598,6 +637,7 @@ _MEMBER_RULES: tuple[
+     Catalogue._string,
+     Catalogue._container,
+     Catalogue._complex,
++    Catalogue._root_array,
+     Catalogue._pointer_loop,
+     Catalogue._object,
+ )
+diff --git a/src/xrdroot/wdobjects.py b/src/xrdroot/wdobjects.py
+index 1336c717..d06ebcb4 100644
+--- a/src/xrdroot/wdobjects.py
++++ b/src/xrdroot/wdobjects.py
+@@ -33,6 +33,7 @@ from .wdeclared import (
+     OBJECT,
+     OFFSET_L,
+     OFFSET_P,
++    ROOT_ARRAYS,
+     STL,
+     STL_KINDS,
+     STL_P,
+@@ -316,6 +317,9 @@ class _Writer:
+         self.collection(found, value)
+ 
+     def _object(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
++        if element[3] == ANY and element[8] in ROOT_ARRAYS:
++            self.numbers(element[8], value)
++            return
+         if element[3] in (OBJECT + OFFSET_L, ANY + OFFSET_L):
+             # An array of them, as `T a[N]` and `std::array<T,N>` are laid out: one record
+             # after another, in place.
+@@ -324,8 +328,30 @@ class _Writer:
+             return
+         self.record(element[8], value)
+ 
++    def numbers(self, classname: str, value: Any) -> None:
++        """One of ROOT's arrays of numbers - a ``TArrayF`` - as its own ``Streamer`` writes it:
++        the count, then the values, and nothing else - no record round them, no version and no
++        part for the ``TArray`` base, which is why ROOT describes the member as a plain object
++        of the class and the class nowhere in the file. The count is how many there are, which
++        is what a ROOT reader takes the values by.
++        """
++        values = [] if value is None else _numbers(value)
++        self.buf.i32(len(values))
++        self.buf.raw(pack_member(ROOT_ARRAYS[classname], "", _numeric(values)))
++
+     def _pointed(self, element: Element, value: Any, members: Mapping[str, Any]) -> None:
+         classname = element[8].rstrip("*")
++        if classname in ROOT_ARRAYS:
++            # A pointer to one of ROOT's arrays: the tag naming its class, and the count and
++            # values inside the tag's byte count - the object a pointer holds, which carries
++            # no version of its own.
++            if value is None:
++                self.buf.u32(0)
++                return
++            at = self.buf.tag(classname)
++            self.numbers(classname, value)
++            self.buf.end(at)
++            return
+         if element[3] in (63, 68):  # promised never null: in place, as if held by value
+             self.record(classname, value)
+         else:
+diff --git a/tests/test_root_declared_objects.py b/tests/test_root_declared_objects.py
+index 1a81a8cf..f916d761 100644
+--- a/tests/test_root_declared_objects.py
++++ b/tests/test_root_declared_objects.py
+@@ -27,6 +27,7 @@ from xrdroot.pycxx.runtime.namespace import DECLARED
+ from xrdroot.pyroot.core.declared import find_class, made_from, payload_of
+ from xrdroot.wdeclared import (
+     NO_DIMS,
++    ROOT_ARRAYS,
+     Catalogue,
+     Declaration,
+     Field,
+@@ -1236,6 +1237,108 @@ def test_a_counted_pointer_to_a_class_is_written_as_its_objects_in_one_record():
+     assert bytes(buf.data).hex() == COUNTED_OBJECTS_BYTES
+ 
+ 
++def test_a_root_array_of_numbers_is_described_as_a_plain_object_of_its_class():
++    """``TArrayF fArrayF`` and ``TArrayI *fArrayI`` are ``kObjectAny`` and ``kAnyP`` naming the
++    array's class with its stars, the one held by value taking the room a ``TArrayF`` has - 24
++    bytes, its vtable and its two members - as the oracle describes the bigevent roottest's
++    ``Event``. Neither is described in the file: the class streams itself and ROOT says nothing
++    about it, so the catalogue writes no description of it and no checksum for it."""
++    made = _a_class_holding_root_arrays()
++    assert made.info("Probe")[2][1:] == (
++        ("TStreamerObjectAny", "fArr", "an array of floats", 62, 24, 0, 0, NO_DIMS,
++         "TArrayF", ()),
++        ("TStreamerObjectAny", "fInts", "an array of ints", 62, 24, 0, 0, NO_DIMS,
++         "TArrayI", ()),
++        ("TStreamerObjectAnyPointer", "fP", "a pointer to an array of integers", 69, 8, 0, 0,
++         NO_DIMS, "TArrayI*", ()),
++        ("TStreamerObjectAnyPointer", "fQ", "-> never null", 68, 8, 0, 0, NO_DIMS,
++         "TArrayD*", ()),
++        ("TStreamerBasicType", "fN", "a number", 3, 4, 0, 0, NO_DIMS, "int", ()),
++        ("TStreamerObjectAnyPointer", "fNull", "a null array", 69, 8, 0, 0, NO_DIMS,
++         "TArrayI*", ()))  # fmt: skip
++    assert made.used == {"TObject": None}  # the class itself is described nowhere
++    assert set(made.entries()) == {"Probe"}
++
++
++def _a_class_holding_root_arrays() -> Catalogue:
++    """A class of a program's own holding ROOT's arrays of numbers, which is the bigevent
++    roottest's ``Event`` cut down to the members this writer learns here."""
++    return Catalogue({
++        "Probe": Declaration("Probe", 1, False, ("TObject",), (
++            Field("fArr", "TArrayF", "an array of floats", ()),
++            Field("fInts", "TArrayI", "an array of ints", ()),
++            Field("fP", "TArrayI*", "a pointer to an array of integers", ()),
++            Field("fQ", "TArrayD*", "-> never null", ()),
++            Field("fN", "Int_t", "a number", ()),
++            Field("fNull", "TArrayI*", "a null array", ())))})
++
++
++#: ROOT 6.40.04's bytes for a ``Probe`` written into a ``TFile`` - the record's count, its
++#: version, its ``TObject`` and then the arrays: a ``TArrayF`` of 1.5, -2.25 and 3.0 held by
++#: value, an empty ``TArrayI``, one of 11 and 22 behind a pointer, a ``TArrayD`` of 0.5 behind
++#: one promised never null, the number 42, and a null pointer.
++ROOT_ARRAYS_BYTES = (
++    "40000060" "0001" "0001" "0000000000000000"
++    "00000003" "3fc00000" "c0100000" "40400000"
++    "00000000"
++    "40000018" "ffffffff" "5441727261794900" "00000002" "0000000b" "00000016"
++    "40000018" "ffffffff" "5441727261794400" "00000001" "3fe0000000000000"
++    "0000002a" "00000000")  # fmt: skip
++
++
++def test_a_root_array_of_numbers_is_written_as_its_count_and_values_alone():
++    """A ``TArrayF`` held by value writes its count and then its numbers with no record, no
++    version and nothing of the ``TArray`` base it inherits - which is why ROOT can describe it
++    as a plain object - and one behind a pointer the same, inside the tag that names its class.
++    The bytes are the oracle's, from a ``TFile`` it wrote of this ``Probe``."""
++    buf = WBuffer()
++    members = {"fArr": [1.5, -2.25, 3.0], "fInts": [], "fP": [11, 22], "fQ": [0.5],
++               "fN": 42, "fNull": None}  # fmt: skip
++    write_instance(buf, Instance("Probe", {"TObject": {}, **members}),
++                   _a_class_holding_root_arrays())  # fmt: skip
++    assert bytes(buf.data).hex() == ROOT_ARRAYS_BYTES
++
++
++def test_each_of_roots_arrays_of_numbers_is_written_with_its_own_width():
++    """The values are the width and kind the class holds - a ``TArrayC`` a byte each, a
++    ``TArrayL64`` eight - so a reader takes them as the array its class says it is."""
++    expected = {"TArrayC": ("40000007", "01"), "TArrayS": ("40000008", "0001"),
++                "TArrayI": ("4000000a", "00000001"), "TArrayF": ("4000000a", "3f800000"),
++                "TArrayL": ("4000000e", "0000000000000001"),
++                "TArrayL64": ("4000000e", "0000000000000001"),
++                "TArrayD": ("4000000e", "3ff0000000000000")}  # fmt: skip
++    assert set(expected) == set(ROOT_ARRAYS)
++    for classname, (count, values) in expected.items():
++        made = Catalogue({"C": Declaration("C", 1, False, (), (
++            Field("a", classname, "", ()),))})
++        buf = WBuffer()
++        write_instance(buf, Instance("C", {"a": [1]}), made)
++        assert bytes(buf.data).hex() == count + "0001" "00000001" + values, classname
++
++
++def test_an_array_member_that_is_absent_writes_a_count_of_nothing():
++    """A ``TArrayF`` no layer made is the empty array it would be: a count of zero and no
++    values, which is what ROOT writes for one that holds nothing."""
++    made = Catalogue({"C": Declaration("C", 1, False, (), (Field("a", "TArrayF", "", ()),))})
++    buf = WBuffer()
++    write_instance(buf, Instance("C", {"a": None}), made)
++    assert bytes(buf.data).hex() == "40000006" "0001" "00000000"
++
++
++def test_a_root_array_is_only_the_plain_one_a_member_can_be():
++    """Two stars, a fixed array of them or a count are not the array ROOT describes as a plain
++    object of the class: an array of ``TArrayF`` is refused by name rather than written as the
++    one array the member is not."""
++    def elements(*fields: Field) -> tuple[Element, ...]:
++        return Catalogue({"C": Declaration("C", 1, False, (), fields)}).info("C")[2]
++
++    for spelled, dims, why in (("TArrayF**", (), "two stars"),
++                               ("TArrayF*", (), "[n] counted"),
++                               ("TArrayF", (3,), "[3] three of them")):  # fmt: skip
++        with pytest.raises(UnsupportedFeatureError, match=r"C::a is a TArrayF"):
++            elements(Field("a", spelled, why, dims))
++
++
+ def test_a_counted_pointer_holding_fewer_objects_than_the_count_is_refused():
+     """The count is what ROOT reads by, so a value of fewer objects than the counter says is
+     a row this writer cannot lay out rather than a shorter record."""
+-- 
+2.54.0 (Apple Git-157)
+

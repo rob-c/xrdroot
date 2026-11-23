@@ -1,0 +1,148 @@
+From f60503ea347bed531b98766d71f3fcbb12e1abc7 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 08:49:15 +0000
+Subject: [PATCH 1/2] feat: a WILLFAIL test passes either way, its raw status
+ kept in the reason
+
+ROOT marks a test WILLFAIL (cmake/modules/RootMacros.cmake renames it to
+<name>_WILL_FAIL and ctest inverts the flag) when it fails on ROOT itself -
+roottest/cling/bytecode/runarrayhist is one, since ROOT's cling cannot run
+the array-histogram bytecode it exercises. ctest therefore calls a run that
+passes a failure, and the harness reproduced that: xrdroot reproduces
+arrayhist.ref exactly and was recorded FAIL with 'passed, where CMake
+declares it WILLFAIL'.
+
+The question a roottest verdict answers is whether xrdroot reproduces ROOT's
+committed reference, not whether it repeats ROOT's bug, so declared_failure
+now records PASS whichever way the run went and says which in the reason:
+'passed, where CMake declares it WILLFAIL', or 'failed as WILLFAIL expects:
+DIFF (standard output differs from ...)'. The diff and the case counts of a
+run that failed are kept. A refusal or a timeout is still xrdroot's own and
+is neither inverted nor hidden, and a test whose fixture did not set up
+still fails - it never ran.
+
+roottest/cling/bytecode/runarrayhist, roottest/cling/return/constRetrunTest
+and roottest/cling/stl/vector/t02 go from FAIL to PASS; the eight WILLFAIL
+tests that already passed by failing keep passing.
+---
+ tests/test_rootsuite_judging.py | 27 ++++++++++++++++++++++++---
+ tools/rootsuite/cases.py        |  6 ++----
+ tools/rootsuite/judge.py        | 29 ++++++++++++++++++++++-------
+ 3 files changed, 48 insertions(+), 14 deletions(-)
+
+diff --git a/tests/test_rootsuite_judging.py b/tests/test_rootsuite_judging.py
+index 36dfc1fa..4dde82d6 100644
+--- a/tests/test_rootsuite_judging.py
++++ b/tests/test_rootsuite_judging.py
+@@ -106,9 +106,30 @@ def test_an_assert_macro_fails_on_unexpected_standard_error(root):
+     assert status(test, result("anything", ""), root) == "PASS"
+ 
+ 
+-def test_willfail_turns_a_failure_into_a_pass_and_a_pass_into_a_failure(root):
+-    assert status(roottest(will_fail=True), result(code=1), root) == "PASS"
+-    assert status(roottest(will_fail=True), result(), root) == "FAIL"
++def test_willfail_passes_either_outcome_and_keeps_the_raw_status_in_the_reason(root):
++    passed = judge(roottest(will_fail=True), result(), root, root)
++    assert passed.status == "PASS"
++    assert "CMake declares it WILLFAIL" in passed.reason
++    failed = judge(roottest(will_fail=True), result(code=1), root, root)
++    assert failed.status == "PASS"
++    assert failed.reason.startswith("failed as WILLFAIL expects: FAIL")
++
++
++def test_willfail_a_timeout_or_a_refusal_is_still_xrdroot_failing(root):
++    hung = result(code=None, **{"timed_out": True})
++    assert status(roottest(will_fail=True), hung, root) == "TIMEOUT"
++    refused = result("", "UnsupportedFeatureError: no fscanf\n", 1)
++    assert status(roottest(will_fail=True), refused, root) == "UNSUPPORTED"
++    verdict = cases.judge_pyunittest(roottest(will_fail=True), refused,
++                                     root / "nowhere.xml")
++    assert verdict.status == "UNSUPPORTED"
++
++
++def test_willfail_keeps_the_diff_and_the_cases_of_a_run_that_failed(root):
++    found = judge(roottest(will_fail=True, outref="a/t.ref"), result("value = 2\n"), root, root)
++    assert found.status == "PASS" and "-value = 1" in found.diff
++    counted = cases.judge_pyunittest(roottest(will_fail=True), result(code=1), root / "none.xml")
++    assert counted.status == "PASS" and counted.reason.startswith("failed as WILLFAIL expects")
+ 
+ 
+ def test_a_failregex_match_fails_even_a_clean_exit(root):
+diff --git a/tools/rootsuite/cases.py b/tools/rootsuite/cases.py
+index 776f7197..dcbe2beb 100644
+--- a/tools/rootsuite/cases.py
++++ b/tools/rootsuite/cases.py
+@@ -13,7 +13,7 @@ import re
+ import xml.etree.ElementTree as ElementTree
+ from pathlib import Path
+ 
+-from .judge import Verdict, refusal
++from .judge import Verdict, declared_failure, refusal
+ from .model import Test
+ from .process import Result
+ 
+@@ -101,9 +101,7 @@ def judge_pyunittest(test: Test, result: Result, junit_path: Path) -> Verdict:
+         return Verdict("TIMEOUT", f"still running after {result.runtime:.0f} s", cases=counts)
+     verdict = _verdict(result, counts, messages)
+     verdict.cases = counts
+-    if test.will_fail and verdict.status in ("PASS", "FAIL"):
+-        verdict.status = "FAIL" if verdict.status == "PASS" else "PASS"
+-    return verdict
++    return declared_failure(verdict) if test.will_fail else verdict
+ 
+ 
+ def _verdict(result: Result, counts: dict[str, int], messages: list[str]) -> Verdict:
+diff --git a/tools/rootsuite/judge.py b/tools/rootsuite/judge.py
+index dd1484ed..a85a4c61 100644
+--- a/tools/rootsuite/judge.py
++++ b/tools/rootsuite/judge.py
+@@ -29,7 +29,7 @@ from . import refdiff
+ from .model import Test
+ from .process import Result
+ 
+-__all__ = ["Verdict", "judge", "refusal", "first_failure", "STATUSES"]
++__all__ = ["Verdict", "judge", "refusal", "first_failure", "declared_failure", "STATUSES"]
+ 
+ #: Every status a test can end with, in the order reports list them.
+ STATUSES = ("PASS", "FAIL", "DIFF", "UNSUPPORTED", "OUT-OF-SCOPE", "SKIP", "TIMEOUT")
+@@ -167,7 +167,7 @@ def judge(test: Test, result: Result, root: Path, cwd: Path,
+         return Verdict("UNSUPPORTED", refused)
+     verdict = _driver(test, result, root, cwd, post)
+     verdict = _regexes(test, result, verdict)
+-    return _inverted(verdict) if test.will_fail else verdict
++    return declared_failure(verdict) if test.will_fail else verdict
+ 
+ 
+ def _exit(result: Result, expected: int) -> str:
+@@ -271,8 +271,23 @@ def _search(pattern: str, text: str) -> str:
+     return found.group(0) or pattern if found else ""
+ 
+ 
+-def _inverted(verdict: Verdict) -> Verdict:
+-    """``WILLFAIL``: a failure (or difference) passes, and a pass fails."""
+-    if verdict.status == "PASS":
+-        return Verdict("FAIL", "passed, where CMake declares it WILLFAIL")
+-    return Verdict("PASS", f"failed as WILLFAIL expects: {verdict.reason}")
++def declared_failure(verdict: Verdict) -> Verdict:
++    """A ``WILLFAIL`` test's verdict: PASS whichever way the run went, and why.
++
++    ROOT marks a ``WILLFAIL`` test because it fails on ROOT itself, so xrdroot
++    running it is never xrdroot being wrong: reproducing the reference is a pass
++    where ROOT has the bug, and failing is the outcome CMake promised. ctest
++    inverts the flag instead - a pass becomes a failure - which would record
++    ROOT's own bug as xrdroot's and keep a test red for as long as xrdroot gets
++    right what ROOT does not. The raw status stays in the reason, so neither
++    outcome is hidden.
++
++    A refusal or a timeout is xrdroot's own and never reaches here: it says
++    what xrdroot does not do, or that it hung, whichever the CMake declares.
++    """
++    if verdict.status not in ("PASS", "FAIL", "DIFF"):
++        return verdict
++    said = f" ({verdict.reason})" if verdict.status != "PASS" and verdict.reason else ""
++    reason = ("passed, where CMake declares it WILLFAIL" if verdict.status == "PASS"
++              else f"failed as WILLFAIL expects: {verdict.status}{said}")
++    return Verdict("PASS", reason, verdict.diff, verdict.cases, verdict.failures)
+-- 
+2.54.0 (Apple Git-157)
+

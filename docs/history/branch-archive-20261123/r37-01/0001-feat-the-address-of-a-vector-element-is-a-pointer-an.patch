@@ -1,0 +1,259 @@
+From c210688e865dc4d0c891efd60062a04e94330070 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 14:05:27 +0000
+Subject: [PATCH 1/3] feat: the address of a vector element is a pointer an
+ algorithm writes through
+
+---
+ src/xrdroot/cppstd/cells.py             | 39 +++++++++++++++++++++----
+ src/xrdroot/pycxx/emit_calls.py         | 36 +++++++++++++++++++++--
+ src/xrdroot/pycxx/emit_expr.py          | 17 +++++++++++
+ tests/cppstd/test_cppstd_pure_values.py | 11 +++++++
+ tests/test_cint_calls.py                | 25 ++++++++++++++++
+ tests/test_cint_expressions.py          |  2 ++
+ 6 files changed, 123 insertions(+), 7 deletions(-)
+
+diff --git a/src/xrdroot/cppstd/cells.py b/src/xrdroot/cppstd/cells.py
+index 32c54038..4f372808 100644
+--- a/src/xrdroot/cppstd/cells.py
++++ b/src/xrdroot/cppstd/cells.py
+@@ -20,6 +20,7 @@ for an interpreter to run, is the very object (:func:`pointer_at`).
+ 
+ from __future__ import annotations
+ 
++from collections.abc import Iterator
+ from typing import Any
+ 
+ __all__ = ["Cell", "Static", "ItemRef", "AttrRef", "address_of", "pointer_at", "integer_cast",
+@@ -74,7 +75,14 @@ def _only_zero(index: Any) -> None:
+ 
+ 
+ class ItemRef:
+-    """``&a[i]``: element ``key`` of ``container``, read and written as ``.value``."""
++    """``&a[i]``: a pointer at element ``key`` of ``container``, read and written as ``.value``.
++
++    C++ takes the address of an element because the element is where a pointer
++    points, so this is a pointer rather than that one element: ``p[n]``, ``*p``
++    and a range ``p[0:n]`` an algorithm sorts or copies into all reach into the
++    container itself, and a call that wants an array - ``TGraph(n, &x[0], ...)``
++    - converts this to the ``len(container) - key`` elements from ``key`` on.
++    """
+ 
+     __slots__ = ("container", "key")
+ 
+@@ -82,6 +90,9 @@ class ItemRef:
+         self.container = container
+         self.key = key
+ 
++    def __repr__(self) -> str:
++        return f"ItemRef({self.container!r}, {self.key!r})"
++
+     @property
+     def value(self) -> Any:
+         return self.container[self.key]
+@@ -90,11 +101,29 @@ class ItemRef:
+     def value(self, value: Any) -> None:
+         self.container[self.key] = value
+ 
+-    def __getitem__(self, index: int) -> Any:
+-        return self.container[self.key + index]
++    def __len__(self) -> int:
++        return len(self.container) - int(self.key)
+ 
+-    def __setitem__(self, index: int, value: Any) -> None:
+-        self.container[self.key + index] = value
++    def __iter__(self) -> Iterator[Any]:
++        return iter(self.container[self.key:])
++
++    def _shifted(self, index: Any) -> Any:
++        """``index`` as the container sees it: a pointer's offset moved into the container.
++
++        The slice that starts nowhere starts at the pointer, since a pointer has no
++        elements before itself: ``p[0:n]`` is the ``n`` elements from ``p`` onward.
++        """
++        if not isinstance(index, slice):
++            return self.key + index
++        start = self.key if index.start is None else self.key + index.start
++        stop = None if index.stop is None else self.key + index.stop
++        return slice(start, stop, index.step)
++
++    def __getitem__(self, index: Any) -> Any:
++        return self.container[self._shifted(index)]
++
++    def __setitem__(self, index: Any, value: Any) -> None:
++        self.container[self._shifted(index)] = value
+ 
+ 
+ class AttrRef:
+diff --git a/src/xrdroot/pycxx/emit_calls.py b/src/xrdroot/pycxx/emit_calls.py
+index 9d8d2ffa..78aee757 100644
+--- a/src/xrdroot/pycxx/emit_calls.py
++++ b/src/xrdroot/pycxx/emit_calls.py
+@@ -32,10 +32,12 @@ from .nodes import (
+     Call,
+     Expr,
+     Function,
++    Index,
+     InitList,
+     Literal,
+     Member,
+     Name,
++    Unary,
+ )
+ from .operators import conversion
+ from .symbols import Symbol
+@@ -359,13 +361,43 @@ class CallEmitter(ExprEmitter):
+         if ends is not None:
+             return ends
+         if isinstance(it, Binary) and it.op == "+":
+-            base, _ = self._iterator(it.left, node, end)
+-            return base, self.value(it.right)
++            base, start = self._iterator(it.left, node, end)
++            moved = self.value(it.right)
++            return base, moved if start == "0" else f"{start} + {moved}"
++        addressed = self._element_pointer(it)
++        if addressed is not None:
++            return addressed
+         found = self.typeof(it)
+         if found is not None and (found.is_array or found.is_pointer):
+             return self.value(it), "0"
+         raise self.refuse("an iterator this translator cannot follow back to its container", node)
+ 
++    def _element_pointer(self, it: Expr) -> tuple[str, str] | None:
++        """``&v[i]`` and ``&v.front()`` as the range end they are: the vector, and the offset.
++
++        C++ hands an algorithm the pointer into the vector's own buffer, and the
++        algorithm writes back through it, so the range names the vector and an
++        index rather than a copy of the elements from there on.
++        """
++        if not isinstance(it, Unary) or it.op != "&":
++            return None
++        target = it.operand
++        if isinstance(target, Index):
++            return self.value(target.obj), self.value(target.index)
++        if isinstance(target, Call) and isinstance(target.func, Member):
++            return self._element_call_end(target)
++        return None
++
++    def _element_call_end(self, call: Call) -> tuple[str, str] | None:
++        """``&v.front()`` as ``(v, 0)`` and ``&v.at(i)`` as ``(v, i)``."""
++        assert isinstance(call.func, Member)
++        first = self.value(call.func.obj)
++        if call.func.name == "front" and not call.args:
++            return first, "0"
++        if call.func.name == "at" and len(call.args) == 1:
++            return first, self.value(call.args[0])
++        return None
++
+     def _container_end(self, it: Expr) -> tuple[str, str] | None:
+         """``v.begin()`` as ``(v, 0)`` and ``v.end()`` as ``(v, None)``: where a range starts."""
+         if not isinstance(it, Call) or it.args or not isinstance(it.func, Member):
+diff --git a/src/xrdroot/pycxx/emit_expr.py b/src/xrdroot/pycxx/emit_expr.py
+index 1602e7a0..d34a6377 100644
+--- a/src/xrdroot/pycxx/emit_expr.py
++++ b/src/xrdroot/pycxx/emit_expr.py
+@@ -482,6 +482,7 @@ class ExprEmitter(NameEmitter):
+         if isinstance(operand, Unary) and operand.op in ("++", "--") and not operand.postfix:
+             borrowed = self.borrowed_reference(operand)
+         borrowed = borrowed if borrowed is not None else self.reader_reference(operand)
++        borrowed = borrowed if borrowed is not None else self._element_call_address(operand)
+         if borrowed is None and _is_unaddressable_update(operand):
+             # An update whose destination has no reference at all has no address to take.
+             raise Refusal(
+@@ -520,6 +521,22 @@ class ExprEmitter(NameEmitter):
+             return f"{array}[{index}:]", P.POSTFIX
+         return f"ItemRef({self.value(operand.obj)}, {index})", P.POSTFIX
+ 
++    def _element_call_address(self, operand: Expr) -> str | None:
++        """``&v.front()``: element 0 of the vector, which is what ``&v[0]`` is.
++
++        ``v.front()`` on its own is that element's value; the address of it is a
++        pointer into the vector, and a call given it - ``TGraph(n, &x.front(), ...)``
++        - must see every element rather than the one value.
++        """
++        if not isinstance(operand, Call) or not isinstance(operand.func, Member):
++            return None
++        func = operand.func
++        if func.name == "front" and not operand.args:
++            return f"ItemRef({self.value(func.obj)}, 0)"
++        if func.name == "at" and len(operand.args) == 1:
++            return f"ItemRef({self.value(func.obj)}, {self.value(operand.args[0])})"
++        return None
++
+     def reference(self, target: Expr) -> str:
+         """What reads and writes ``target`` as ``.value``: a cell, an ItemRef or an AttrRef."""
+         borrowed = self.reader_reference(target)
+diff --git a/tests/cppstd/test_cppstd_pure_values.py b/tests/cppstd/test_cppstd_pure_values.py
+index 28af3a27..4f815d58 100644
+--- a/tests/cppstd/test_cppstd_pure_values.py
++++ b/tests/cppstd/test_cppstd_pure_values.py
+@@ -44,6 +44,17 @@ def test_cell_item_and_attribute_references_write_the_storage_they_capture() ->
+         number[1] = 4
+ 
+ 
++def test_a_taken_element_address_is_a_pointer_over_the_containers_own_elements() -> None:
++    values = [1.5, 2.5, 3.5]
++    pointer = cells.ItemRef(values, 1)
++    assert len(pointer) == 2 and list(pointer) == [2.5, 3.5]
++    assert pointer[1:2] == [3.5] and pointer[:] == [2.5, 3.5]
++    pointer[0:1] = [7.0]
++    assert values == [1.5, 7.0, 3.5]
++    pointer[1:] = [8.0]
++    assert values == [1.5, 7.0, 8.0]
++
++
+ def test_generic_assignment_updates_held_containers_and_keeps_the_return_contract() -> None:
+     target, source = [1], [2, 3]
+     assert references.assign_into(target, source) is source and target == [2, 3]
+diff --git a/tests/test_cint_calls.py b/tests/test_cint_calls.py
+index 8218ce23..4e2285e4 100644
+--- a/tests/test_cint_calls.py
++++ b/tests/test_cint_calls.py
+@@ -66,6 +66,31 @@ def body(source: str) -> str:
+             "3.5\n",
+         ),
+         ('double w[3] = {1, 2, 3}; printf("%g\\n", std::accumulate(w, w + 2, 10.0));', "13\n"),
++        (
++            'double a[4] = {3, 1, 2, 0}; std::sort(&a[0], &a[0] + 3);'
++            'printf("%g %g\\n", a[0], a[3]);',
++            "1 0\n",
++        ),
++        (
++            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
++            'std::sort(&v[0], &v[0] + 2); printf("%d %d %d\\n", v[0], v[1], v[2]);',
++            "1 3 2\n",
++        ),
++        (
++            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
++            'std::sort(&v.front(), &v.front() + 2); printf("%d %d %d\\n", v[0], v[1], v[2]);',
++            "1 3 2\n",
++        ),
++        (
++            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
++            'int *p = &v[0]; std::reverse(p, p + 3); printf("%d %d %d\\n", v[0], v[1], v[2]);',
++            "2 1 3\n",
++        ),
++        (
++            'double a[3] = {1, 2, 3}; double b[3] = {0, 0, 0};'
++            'std::copy(&a[0], &a[3], &b[0]); printf("%g %g %g\\n", b[0], b[1], b[2]);',
++            "1 2 3\n",
++        ),
+         ('printf("%d %d %d\\n", abs(-3), std::max(2, 5), std::min(1.5, 0.5) < 1);', "3 5 1\n"),
+         ('long big = 5; unsigned char c = 260; printf("%ld %d\\n", big, c);', "5 4\n"),
+         ('int x; x = {3}; printf("%d\\n", x);', "3\n"),
+diff --git a/tests/test_cint_expressions.py b/tests/test_cint_expressions.py
+index 799c0ab6..e26a928e 100644
+--- a/tests/test_cint_expressions.py
++++ b/tests/test_cint_expressions.py
+@@ -41,6 +41,8 @@ def method(source: str) -> str:
+         ('int *p = nullptr; int *same = &*p; auto *s = &"abc";', "same = p"),
+         ("TVirtualPad **pad = &gPad;", "pad = ROOT.gPad"),
+         ("int *e = &v[0];", "e = ItemRef(ROOT.v, 0)"),
++        ("int *f = &v.front();", "f = ItemRef(ROOT.v, 0)"),
++        ("int *g = &v.at(2);", "g = ItemRef(ROOT.v, 2)"),
+         (
+             "int i = 0; int x = a[i]++; int y = o.n++; int *p = nullptr; int z = (*p)++;",
+             "z = postinc(ItemRef(p, 0), 1)",
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,99 @@
+From 4a5bdc965905d36c6730165d9f621d8697dd9144 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 18:32:51 +0000
+Subject: [PATCH 2/3] fix: cout.width(n) is the member C++ declares, not the
+ field it sets
+
+ostream held the pending width in an attribute named width, so a macro's
+cout.width(12) called an int. The state is _width now, setw writes that,
+and width() answers the width in force as ios_base::width does.
+
+Measured: with this fix mathcore-stressTF1 gets past its refusals but runs
+548 s here, so it is a speed item (TODO 2), not a PASS yet.
+---
+ src/xrdroot/cppstd/streams.py                 | 16 ++++++++++---
+ .../cppstd/test_cppstd_pure_streams_random.py | 23 +++++++++++++++++++
+ 2 files changed, 36 insertions(+), 3 deletions(-)
+
+diff --git a/src/xrdroot/cppstd/streams.py b/src/xrdroot/cppstd/streams.py
+index 898ff9b1..41635cc3 100644
+--- a/src/xrdroot/cppstd/streams.py
++++ b/src/xrdroot/cppstd/streams.py
+@@ -92,7 +92,7 @@ noshowpos = Manipulator("noshowpos", plus=False)
+ 
+ 
+ def setw(width: int) -> Manipulator:
+-    return Manipulator("setw", width=int(width))
++    return Manipulator("setw", _width=int(width))
+ 
+ 
+ def setprecision(digits: int) -> Manipulator:
+@@ -120,7 +120,9 @@ class ostream:
+         self.alpha = False
+         self.base = 10
+         self.plus = False
+-        self.width = 0
++        #: ``width()``'s state, kept under another name because ``width`` is the method
++        #: C++ declares - ``cout.width(12)`` sets the next field's width.
++        self._width = 0
+         self.digits = 6
+         self.fill = " "
+         self._pending = ""
+@@ -151,7 +153,7 @@ class ostream:
+         self.target.write(text)
+ 
+     def pad(self, text: str) -> str:
+-        width, self.width = self.width, 0
++        width, self._width = self._width, 0
+         if len(text) >= width:
+             return text
+         filler = self.fill * (width - len(text))
+@@ -196,6 +198,14 @@ class ostream:
+             self.digits = int(digits)
+         return old
+ 
++    def width(self, columns: int | None = None) -> int:
++        """``width(n)``: the next field is ``n`` wide, and the call answers the width that
++        was in force - which the one field then uses up, as ``ios_base::width`` does."""
++        old = self._width
++        if columns is not None:
++            self._width = int(columns)
++        return old
++
+     def setf(self, *flags: Any) -> None:
+         for flag in flags:
+             if isinstance(flag, Manipulator):
+diff --git a/tests/cppstd/test_cppstd_pure_streams_random.py b/tests/cppstd/test_cppstd_pure_streams_random.py
+index ee528063..fd038de7 100644
+--- a/tests/cppstd/test_cppstd_pure_streams_random.py
++++ b/tests/cppstd/test_cppstd_pure_streams_random.py
+@@ -51,3 +51,26 @@ def test_normal_distribution_reuses_its_pair_then_reset_uses_the_current_engine_
+     distribution.reset()
+     fresh = random.normal_distribution(5, 2)
+     assert distribution(engine) == fresh(clone)
++
++
++def test_the_default_engine_is_libcxxs_minstd_rand0_and_spans_its_modulus() -> None:
++    engine = random.default_random_engine()
++    assert engine() == 16807
++    assert random.default_random_engine(0)() == 0
++    reseeded = random.default_random_engine(7)
++    reseeded.discard(2)
++    stepped = random.default_random_engine(7)
++    stepped()
++    stepped()
++    assert reseeded() == stepped()
++    assert random.default_random_engine.min() == 1
++    assert random.default_random_engine.max() == 2147483646
++
++
++def test_width_is_the_member_cpp_declares_and_the_one_field_it_applies_to() -> None:
++    output = streams.ostringstream()
++    assert output.width() == 0
++    assert output.width(6) == 0
++    assert output.width() == 6
++    output << "ab"
++    assert output.str() == "    ab" and output.width() == 0
+-- 
+2.54.0 (Apple Git-157)
+

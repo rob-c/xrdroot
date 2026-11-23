@@ -1,0 +1,306 @@
+From 6f60b3e7548bcccf562274a58830a323fd1e4c56 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 18:32:12 +0000
+Subject: [PATCH 1/3] feat: std::shuffle, std::generate and
+ std::next_permutation over the range a macro hands them
+
+The emitter lowers an algorithm it has no entry for to an attribute of
+ROOT.std, so the three arrive at _Namespace as the range the call gave:
+two iterators of one vector, or a pointer and the tail it leaves over. The
+algorithms themselves are in cppstd.objects beside sort_range, and take the
+container with the span, because C++ writes back through the iterators.
+std::default_random_engine is libc++'s minstd_rand0, which shuffle needs.
+
+other/math: mathcore-stressTMath and mathcore-testSampleQuantiles now PASS.
+---
+ src/xrdroot/cppstd/containers.py            | 47 ++++++++++++++++++++-
+ src/xrdroot/cppstd/objects.py               | 47 +++++++++++++++++++++
+ src/xrdroot/cppstd/random.py                | 34 ++++++++++++++-
+ tests/cppstd/test_cppstd_pure_containers.py | 29 +++++++++++++
+ tests/cppstd/test_cppstd_pure_objects.py    | 47 +++++++++++++++++++++
+ 5 files changed, 202 insertions(+), 2 deletions(-)
+
+diff --git a/src/xrdroot/cppstd/containers.py b/src/xrdroot/cppstd/containers.py
+index 87841f4b..4e18ddd4 100644
+--- a/src/xrdroot/cppstd/containers.py
++++ b/src/xrdroot/cppstd/containers.py
+@@ -1698,6 +1698,48 @@ class _ArrayTemplate:
+         return self[deduced(values), len(values)](values)
+ 
+ 
++def _range_span(first: Any, last: Any, name: str) -> tuple[Any, int, int]:
++    """The container and the half-open span that the two ends of a range name.
++
++    A range arrives as the emitter leaves it: two iterators of one vector, or a
++    pointer and the tail it leaves over - ``a, a + n`` is ``a`` and ``a[n:]``, so the
++    end is what the first still holds after the second's. The container itself, not a
++    copy of the span, is what an algorithm gets, because C++ writes back through the
++    iterators and a copy would swallow the write.
++    """
++    if isinstance(first, _VectorIterator) and isinstance(last, _VectorIterator):
++        if first._owner is not last._owner:
++            raise TypeError(f"std::{name}() over the ends of two different containers; "
++                            "give it the begin() and end() of one of them.")
++        return first._owner, first._position, last._position
++    if not isinstance(first, _VectorIterator) and hasattr(first, "__len__") \
++            and hasattr(last, "__len__"):
++        return first, 0, len(first) - len(last)
++    raise TypeError(f"std::{name}() over a range xrdroot cannot follow back to its container; "
++                    "give it v.begin(), v.end() or a pointer and its end.")
++
++
++def _shuffle(first: Any, last: Any, engine: Any = None) -> None:
++    """``std::shuffle(begin, end, g)``: the span's elements in an order ``g`` draws."""
++    from .objects import shuffle_range
++
++    shuffle_range(*_range_span(first, last, "shuffle"), engine)
++
++
++def _generate(first: Any, last: Any, generate: Any) -> None:
++    """``std::generate(begin, end, gen)``: ``gen()`` called into each element in turn."""
++    from .objects import generate_range
++
++    generate_range(*_range_span(first, last, "generate"), generate)
++
++
++def _next_permutation(first: Any, last: Any) -> bool:
++    """``std::next_permutation(begin, end)``: the next permutation, in place."""
++    from .objects import next_permutation_range
++
++    return next_permutation_range(*_range_span(first, last, "next_permutation"))
++
++
+ class _Stream:
+     """``std::cout`` and ``std::cerr``: what ``<<`` is given, written as text."""
+ 
+@@ -1720,7 +1762,6 @@ class _Stream:
+ 
+ class _Namespace:
+     """``ROOT.std``: the containers, the streams, and a refusal by name for the rest of it."""
+-
+     cout = _Stream("cout")
+     cerr = _Stream("cerr")
+     endl = "\n"
+@@ -1752,6 +1793,7 @@ class _Namespace:
+     get = _GetTemplate()
+     bitset = _bitset.bitset
+     mt19937 = _random.mt19937
++    default_random_engine = _random.default_random_engine
+     normal_distribution = _random.normal_distribution
+     uniform_real_distribution = _random.uniform_real_distribution
+     string = string
+@@ -1767,6 +1809,9 @@ class _Namespace:
+     piecewise_construct = _stdlib._Tag("piecewise_construct")
+     rand = staticmethod(_stdlib.rand)
+     srand = staticmethod(_stdlib.srand)
++    shuffle = staticmethod(_shuffle)
++    generate = staticmethod(_generate)
++    next_permutation = staticmethod(_next_permutation)
+ 
+     def __repr__(self) -> str:
+         return "<namespace std>"
+diff --git a/src/xrdroot/cppstd/objects.py b/src/xrdroot/cppstd/objects.py
+index 8c4efeec..c5e29ae5 100644
+--- a/src/xrdroot/cppstd/objects.py
++++ b/src/xrdroot/cppstd/objects.py
+@@ -278,6 +278,53 @@ def reverse_range(container: Any, start: int, stop: Any) -> None:
+     container[start:end] = list(container[start:end])[::-1]
+ 
+ 
++def generate_range(container: Any, start: int, stop: Any, generate: Callable[[], Any]) -> None:
++    """``std::generate(begin, end, gen)``: a call of ``gen`` into each element, in order."""
++    end = len(container) if stop is None else int(stop)
++    for at in range(start, end):
++        container[at] = generate()
++
++
++def shuffle_range(
++    container: Any, start: int, stop: Any, engine: Any = None
++) -> None:
++    """``std::shuffle(begin, end, g)``: each element swapped with one drawn before it.
++
++    The engine is the one the macro named - ``std::default_random_engine`` when it gave
++    none, which C++ has no overload for but a shuffle without one plainly means - and
++    each step draws one word and scales it into ``[0, i]``, as
++    ``std::uniform_int_distribution`` does over that engine's own range.
++    """
++    from .random import default_random_engine
++
++    spread = default_random_engine() if engine is None else engine
++    low, span = int(spread.min()), int(spread.max()) - int(spread.min()) + 1
++    end = len(container) if stop is None else int(stop)
++    for at in range(end - 1, start, -1):
++        chosen = start + int((float(spread()) - low) / span * (at - start + 1))
++        container[at], container[chosen] = container[chosen], container[at]
++
++
++def next_permutation_range(container: Any, start: int, stop: Any) -> bool:
++    """``std::next_permutation(begin, end)``: the next permutation in place; ``False``
++    when the range was the last one, which is then rewound to its first, as C++ does."""
++    end = len(container) if stop is None else int(stop)
++    items = list(container[start:end])
++    pivot = len(items) - 2
++    while pivot >= 0 and not items[pivot] < items[pivot + 1]:
++        pivot -= 1
++    if pivot < 0:
++        container[start:end] = items[::-1]
++        return False
++    successor = len(items) - 1
++    while not items[pivot] < items[successor]:
++        successor -= 1
++    items[pivot], items[successor] = items[successor], items[pivot]
++    items[pivot + 1:] = items[pivot + 1:][::-1]
++    container[start:end] = items
++    return True
++
++
+ class CppException(Exception):
+     """A C++ ``throw`` of anything: the value thrown, and ``what()`` as ``std::exception`` has."""
+ 
+diff --git a/src/xrdroot/cppstd/random.py b/src/xrdroot/cppstd/random.py
+index 4ea90f65..8567f340 100644
+--- a/src/xrdroot/cppstd/random.py
++++ b/src/xrdroot/cppstd/random.py
+@@ -14,7 +14,8 @@ from typing import Any
+ 
+ import numpy as np
+ 
+-__all__ = ["mt19937", "normal_distribution", "uniform_real_distribution"]
++__all__ = ["default_random_engine", "mt19937", "normal_distribution",
++           "uniform_real_distribution"]
+ 
+ #: The twister's word count, its shift, and the constants of its recurrence and tempering.
+ N, M = 624, 397
+@@ -64,6 +65,37 @@ class mt19937:
+         return 0xFFFFFFFF
+ 
+ 
++class default_random_engine:
++    """``std::default_random_engine``: libc++'s ``minstd_rand0``, the 31-bit LCG of
++    ``16807 * x mod (2**31 - 1)``, seeded 1. `std::shuffle` and the distributions
++    take one where a macro names no engine of its own."""
++
++    MODULUS = 2147483647
++    MULTIPLIER = 16807
++
++    def __init__(self, seed: int = 1) -> None:
++        self.seed(seed)
++
++    def seed(self, value: int = 1) -> None:
++        self._state = int(value) % self.MODULUS
++
++    def __call__(self) -> int:
++        self._state = (self.MULTIPLIER * self._state) % self.MODULUS
++        return self._state
++
++    def discard(self, count: int) -> None:
++        for _ in range(int(count)):
++            self()
++
++    @staticmethod
++    def min() -> int:
++        return 1
++
++    @staticmethod
++    def max() -> int:
++        return default_random_engine.MODULUS - 1
++
++
+ def _tempered(state: np.ndarray[Any, Any]) -> list[int]:
+     """The words a twisted state gives, in the order they are drawn (last first, for ``pop``)."""
+     y = state.copy()
+diff --git a/tests/cppstd/test_cppstd_pure_containers.py b/tests/cppstd/test_cppstd_pure_containers.py
+index da2d5b97..9cd6ea7d 100644
+--- a/tests/cppstd/test_cppstd_pure_containers.py
++++ b/tests/cppstd/test_cppstd_pure_containers.py
+@@ -263,3 +263,32 @@ def test_a_sets_iterator_steps_the_elements_in_the_order_iteration_gives() -> No
+         seen.append(int(each))
+         each += 1
+     assert seen == [1, 1, 2]
++
++
++def test_the_std_algorithms_take_the_range_a_translated_call_hands_them() -> None:
++    """``std.shuffle(v.begin(), v.end(), g)``, ``std.generate(x, x + n, f)``: the emitter
++    lowers an algorithm it does not name to an attribute of ``std``, so the namespace must
++    read a range back to the container it came from and write there."""
++    std = containers.std
++    values = std.vector["int"]([3, 1, 2])
++    std.shuffle(values.begin(), values.end())
++    assert sorted(values) == [1, 2, 3]
++    std.next_permutation(values.begin(), values.end())
++    ordered = list(values)
++    assert ordered == [1, 3, 2] or ordered == [2, 1, 3]
++    doubles = std.vector["double"]([0.0, 0.0])
++    std.generate(doubles.begin(), doubles.end(), lambda: 2.5)
++    assert list(doubles) == [2.5, 2.5]
++    array = np.zeros(3)
++    std.generate(array, array[3:], lambda: 1.0)
++    assert array.tolist() == [1.0, 1.0, 1.0]
++
++
++def test_a_std_algorithm_refuses_a_range_it_cannot_follow_back_to_one_container() -> None:
++    std = containers.std
++    left = std.vector["int"]([1, 2]).begin()
++    right = std.vector["int"]([3, 4]).end()
++    with pytest.raises(TypeError, match=r"the ends of two different containers"):
++        std.shuffle(left, right)
++    with pytest.raises(TypeError, match=r"cannot follow back to its container"):
++        std.generate(3, 4, lambda: 0)
+diff --git a/tests/cppstd/test_cppstd_pure_objects.py b/tests/cppstd/test_cppstd_pure_objects.py
+index 1df0f839..ba3653b2 100644
+--- a/tests/cppstd/test_cppstd_pure_objects.py
++++ b/tests/cppstd/test_cppstd_pure_objects.py
+@@ -81,3 +81,50 @@ def test_thrown_exceptions_preserve_the_original_value_and_exception_identity()
+     with pytest.raises(objects.CppException) as caught:
+         objects.throw(7)
+     assert caught.value.value == 7 and caught.value.what() == "7"
++
++
++def test_generate_puts_one_call_into_each_element_of_the_span_and_no_other() -> None:
++    from xrdroot.cppstd import objects
++
++    values = [0, 0, 9, 9]
++    objects.generate_range(values, 0, 2, lambda: 7)
++    assert values == [7, 7, 9, 9]
++    objects.generate_range(values, 1, None, lambda: 1)
++    assert values == [7, 1, 1, 1]
++
++
++def test_shuffle_permutes_the_span_in_place_with_the_default_or_given_engine() -> None:
++    from xrdroot.cppstd import objects, random
++
++    values = list(range(20))
++    objects.shuffle_range(values, 0, None, random.default_random_engine(3))
++    assert sorted(values) == list(range(20)) and values != sorted(values)
++    again = list(range(20))
++    objects.shuffle_range(again, 0, 20, random.default_random_engine(3))
++    assert again == values  # the same engine and seed draw the same swaps
++    tail = [1, 2, 3]
++    objects.shuffle_range(tail, 0, 1)
++    assert tail == [1, 2, 3]  # a span of one has nowhere to swap
++
++
++def test_next_permutation_walks_the_orders_and_rewinds_to_the_first() -> None:
++    from xrdroot.cppstd import objects
++
++    values = [1, 2, 3]
++    assert objects.next_permutation_range(values, 0, None) is True
++    assert values == [1, 3, 2]
++    assert objects.next_permutation_range(values, 0, 3) is True
++    assert values == [2, 1, 3]
++    assert objects.next_permutation_range([1, 2, 2], 0, 3) is True
++
++
++def test_the_last_permutation_rewinds_to_the_first_and_one_element_is_the_last() -> None:
++    from xrdroot.cppstd import objects
++
++    rewind = [3, 2, 1]
++    assert objects.next_permutation_range(rewind, 0, None) is False
++    assert rewind == [1, 2, 3]
++    single = [5]
++    assert objects.next_permutation_range(single, 0, 3) is False
++    assert single == [5]
++    assert objects.next_permutation_range([3, 2, 1], 0, 3) is False
+-- 
+2.54.0 (Apple Git-157)
+

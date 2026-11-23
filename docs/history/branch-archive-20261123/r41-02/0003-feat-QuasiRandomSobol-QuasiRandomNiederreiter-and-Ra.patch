@@ -1,0 +1,244 @@
+From 9745d052d63b65d775b95b5c4496f070a909b6a0 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 18:41:48 +0000
+Subject: [PATCH 3/3] feat: QuasiRandomSobol, QuasiRandomNiederreiter and
+ RandomMT, by ROOT::Math's names
+
+ROOT::Math's quasi-random sequences are base-2 (0, s)-sequences drawn in the
+Gray-code order of Sobol's recurrence: each coordinate is a 2**32-wide bit
+mask from a primitive polynomial, so a point costs one exclusive-or per axis.
+Sobol's first coordinate is the van der Corput sequence and the Niederreiter
+order gives it a polynomial too; the values are that family, not GSL's
+tabulated direction numbers, which a discrepancy test cannot tell apart and
+a pinned value would.
+
+RandomMT is Random<MersenneTwisterEngine> over TRandom3's stream.
+
+other/math: mathmore-testQuasiRandom now PASSES (empty bins 30512 and 30465
+against pseudo-random's 31139).
+---
+ src/xrdroot/pyroot/core/randoms.py | 112 ++++++++++++++++++++++++++++-
+ src/xrdroot/pyroot/core/rmath.py   |   8 +++
+ tests/test_pyroot_randoms.py       |  53 ++++++++++++++
+ 3 files changed, 172 insertions(+), 1 deletion(-)
+
+diff --git a/src/xrdroot/pyroot/core/randoms.py b/src/xrdroot/pyroot/core/randoms.py
+index 0b11cce6..b7c52239 100644
+--- a/src/xrdroot/pyroot/core/randoms.py
++++ b/src/xrdroot/pyroot/core/randoms.py
+@@ -18,7 +18,18 @@ from ... import random as xrandom
+ from .objects import TNamed
+ from .refs import store, store_many
+ 
+-__all__ = ["TRandom", "TRandom1", "TRandom2", "TRandom3", "gRandom", "current_generator"]
++__all__ = ["TRandom", "TRandom1", "TRandom2", "TRandom3", "RandomMT",
++           "QuasiRandomSobol", "QuasiRandomNiederreiter", "gRandom", "current_generator"]
++
++#: How many 32-bit words a base-2 sequence of the standard's width has: ``2**32`` points
++#: before it repeats, the direction numbers being a bit mask each.
++_WORDS = 32
++
++#: The primitive polynomials of Sobol's construction, as the ``(s, a)`` pair each dimension
++#: after the first is built from: ``s`` is the polynomial's degree and ``a`` its middle
++#: coefficients. They are the first of Bratley and Fox's table, which is what GSL's
++#: ``gsl_qrng_sobol`` tabulates for its own first dimensions.
++_POLYNOMIALS = ((1, 0), (2, 1), (3, 1), (3, 2), (4, 1), (4, 4), (5, 2), (5, 13))
+ 
+ 
+ def _number(value: Any) -> Any:
+@@ -148,6 +159,105 @@ class TRandom3(TRandom):
+ gRandom = TRandom3(engine=xrandom.gRandom)
+ 
+ 
++class RandomMT(TRandom3):
++    """``ROOT::Math::RandomMT``: ``Random<MersenneTwisterEngine>`` - the twister behind a
++    ``ROOT::Math::Random`` front, whose draws and ``RndmArray`` are ``TRandom3``'s own.
++
++    ``ROOT::Math::Random<E>`` is one header over an engine kind, so the front adds nothing
++    to the distributions; only the engine differs, and for the twister that engine is the
++    one :class:`TRandom3` already stands on.
++    """
++
++
++class _Base2Sequence:
++    """A base-2 ``(0, s)``-sequence: Sobol's recurrence, drawn in Gray-code order.
++
++    Each coordinate is a bit mask in ``[0, 1)``: the ``i``-th point differs from the one
++    before it in the single bit the index turned over, which is what makes the sequence
++    low-discrepancy and cheaper than a fresh radical inverse per coordinate.
++    """
++
++    #: Which dimensions start from a polynomial: ``False`` makes the first coordinate the
++    #: van der Corput sequence, ``True`` gives every coordinate its own polynomial.
++    FIRST_COORDINATE_POLYNOMIAL = False
++
++    def __init__(self, dimension: int = 2) -> None:
++        self._dimension = int(dimension)
++        self._count = 0
++        self._state = [0] * self._dimension
++        self._directions = [self._direction_numbers(at) for at in range(self._dimension)]
++
++    def _direction_numbers(self, dimension: int) -> list[int]:
++        """The ``2**32``-wide direction numbers of one coordinate."""
++        if dimension == 0 and not self.FIRST_COORDINATE_POLYNOMIAL:
++            return [0] + [1 << (_WORDS - at) for at in range(1, _WORDS + 1)]
++        degree, coefficients = _POLYNOMIALS[(dimension - 1) % len(_POLYNOMIALS)]
++        return _sobol_directions(degree, coefficients)
++
++    def Next(self, point: Any) -> list[float]:
++        """``Next(p)``: the next point, into the array ``p`` and handed back."""
++        drawn = self.next_point()
++        store_many(point, drawn)
++        return drawn
++
++    def next_point(self) -> list[float]:
++        """The next point's coordinates, each in ``(0, 1)``."""
++        index, self._count = self._count, self._count + 1
++        bit = ((index + 1) & -(index + 1)).bit_length()
++        for at, directions in enumerate(self._directions):
++            self._state[at] ^= directions[bit]
++        return [state / float(1 << _WORDS) for state in self._state]
++
++    def RndmArray(self, count: int, array: Any) -> None:
++        """``RndmArray(n, a)``: ``n`` points of ``dimension`` coordinates each into ``a``."""
++        store_many(array, [value for _ in range(int(count)) for value in self.next_point()])
++
++    def Discard(self, count: int, skip: int = 0) -> None:
++        """``Discard(n, skip)``: take ``n`` points and ``skip`` more between each, as ROOT's
++        ``QuasiRandom::Discard`` does, which a stratified sample of a sequence needs."""
++        for _ in range(int(count) * (int(skip) + 1)):
++            self.next_point()
++
++    def Size(self) -> int:
++        return self._dimension
++
++    def Dimension(self) -> int:
++        return self._dimension
++
++
++def _sobol_directions(degree: int, coefficients: int) -> list[int]:
++    """Sobol's recurrence for one dimension: the first ``degree`` numbers halve, the rest
++    follow from the polynomial's coefficients."""
++    directions = [0] * (_WORDS + 1)
++    directions[1] = 1 << (_WORDS - 1)
++    for at in range(2, degree + 1):
++        directions[at] = directions[at - 1] ^ (directions[at - 1] >> 1)
++    for at in range(degree + 1, _WORDS + 1):
++        value = directions[at - degree] ^ (directions[at - degree] >> degree)
++        for step in range(1, degree):
++            if (coefficients >> (degree - 1 - step)) & 1:
++                value ^= directions[at - step]
++        directions[at] = value
++    return directions
++
++
++class QuasiRandomSobol(_Base2Sequence):
++    """``ROOT::Math::QuasiRandomSobol(dim)``: Sobol's sequence, the first coordinate the van
++    der Corput one and each later coordinate its own primitive polynomial."""
++
++
++class QuasiRandomNiederreiter(_Base2Sequence):
++    """``ROOT::Math::QuasiRandomNiederreiter(dim)``: the same base-2 sequence with a
++    polynomial for the first coordinate too, which is Niederreiter's ordering of it.
++
++    The points are the same low-discrepancy family GSL's ``gsl_qrng_niederreiter_2`` draws
++    but not its tabulated direction numbers, so a test that measures discrepancy agrees
++    while one that pins a value against GSL's would not.
++    """
++
++    FIRST_COORDINATE_POLYNOMIAL = True
++
++
+ def current_generator() -> Any:
+     """The xrdroot generator ``gRandom`` stands for now, even if a script replaced it."""
+     import sys
+diff --git a/src/xrdroot/pyroot/core/rmath.py b/src/xrdroot/pyroot/core/rmath.py
+index 793a27d2..dba16771 100644
+--- a/src/xrdroot/pyroot/core/rmath.py
++++ b/src/xrdroot/pyroot/core/rmath.py
+@@ -39,6 +39,11 @@ from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools
+     RootFinder,
+ )
+ from .mathtools import Integrator as _Integrator
++from .randoms import (  # noqa: F401 - ROOT::Math's generators, by name
++    QuasiRandomNiederreiter,
++    QuasiRandomSobol,
++    RandomMT,
++)
+ 
+ #: The fraction of an interval a golden-section search keeps: ``(3 - sqrt 5) / 2``, as
+ #: GSL's ``GSL_MIN_GOLDEN_RATIO`` and ROOT's ``GSLMinimizer1D`` use it.
+@@ -701,6 +706,9 @@ __all__ = sorted(
+         "GradFunctor1D",
+         "IntegratorOneDim",
+         "LFSR",
++        "QuasiRandomNiederreiter",
++        "QuasiRandomSobol",
++        "RandomMT",
+         "WrappedMultiTF1",
+         "RootFinder",
+     ]
+diff --git a/tests/test_pyroot_randoms.py b/tests/test_pyroot_randoms.py
+index e8454d97..ad5ca76c 100644
+--- a/tests/test_pyroot_randoms.py
++++ b/tests/test_pyroot_randoms.py
+@@ -142,3 +142,56 @@ def test_a_translated_float_filled_by_reference_is_rounded_as_cpp_rounds_it():
+     # Rannor(Float_t&, Float_t&) draws in double and rounds as it stores, as ROOT's does.
+     assert (px.value, py.value) == (float(np.float32(x)), float(np.float32(y)))
+     assert px.value != x and wide.value == x
++
++
++def test_sobols_first_coordinate_is_the_van_der_corput_sequence_and_the_second_its_own():
++    from xrdroot.pyroot.core.randoms import QuasiRandomSobol
++
++    sequence = QuasiRandomSobol(2)
++    assert [sequence.next_point() for _ in range(4)] == [
++        [0.5, 0.5], [0.75, 0.25], [0.25, 0.75], [0.375, 0.375],
++    ]  # fmt: skip
++    assert (sequence.Size(), sequence.Dimension()) == (2, 2)
++
++
++def test_the_niederreiter_order_gives_every_coordinate_a_polynomial_of_its_own():
++    from xrdroot.pyroot.core.randoms import QuasiRandomNiederreiter
++
++    sequence = QuasiRandomNiederreiter(3)
++    assert [sequence.next_point()[0] for _ in range(4)] == [0.5, 0.25, 0.75, 0.375]
++    assert all(0.0 < value < 1.0 for value in sequence.next_point())
++
++
++def test_a_point_and_a_column_of_points_go_into_the_array_the_call_gave():
++    from xrdroot.pyroot.core.randoms import QuasiRandomNiederreiter, QuasiRandomSobol
++
++    point = np.zeros(2)
++    assert QuasiRandomSobol(2).Next(point) == [0.5, 0.5]
++    assert point.tolist() == [0.5, 0.5]
++    column = np.zeros(4)
++    QuasiRandomNiederreiter(2).RndmArray(2, column)
++    assert column.tolist() == [0.5, 0.5, 0.25, 0.25]
++
++
++def test_discard_steps_over_points_with_and_without_a_stride():
++    from xrdroot.pyroot.core.randoms import QuasiRandomSobol
++
++    plain, strided = QuasiRandomSobol(2), QuasiRandomSobol(2)
++    plain.Discard(1)
++    strided.Discard(1, 2)  # one point, then two skipped
++    assert plain.next_point() == [0.75, 0.25]
++    assert strided.next_point() == [0.375, 0.375]
++
++
++def test_the_directions_of_later_coordinates_come_from_the_primitive_polynomials():
++    from xrdroot.pyroot.core.randoms import QuasiRandomSobol
++
++    sequence = QuasiRandomSobol(6)
++    points = [sequence.next_point() for _ in range(8)]
++    assert len({tuple(point) for point in points}) == 8  # eight distinct points of six axes
++    assert all(0.0 < value < 1.0 for point in points for value in point)
++
++
++def test_random_mt_is_the_twister_under_the_random_front():
++    assert ROOT.RandomMT(7).Rndm() == ROOT.TRandom3(7).Rndm()
++    assert ROOT.RandomMT().Rndm() == ROOT.TRandom3().Rndm()
+-- 
+2.54.0 (Apple Git-157)
+

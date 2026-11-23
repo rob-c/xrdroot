@@ -1,0 +1,302 @@
+From 46fc0d335e3de785f2e68c7a6dd36d903e4b10f1 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 14:51:28 +0000
+Subject: [PATCH 2/3] feat: the standard's generate, for_each and equal over a
+ pointer range
+
+---
+ src/xrdroot/cppstd/objects.py           | 34 ++++++++++++++
+ src/xrdroot/pycxx/emit_calls.py         | 62 ++++++++++++++++++-------
+ src/xrdroot/pycxx/runtime/objects.py    |  6 +++
+ tests/cppstd/test_cppstd_pure_values.py |  1 +
+ tests/test_cint_calls.py                | 26 +++++++++++
+ tests/test_cint_expressions.py          |  2 +
+ tests/test_cppstd_objects.py            |  9 ++++
+ 7 files changed, 122 insertions(+), 18 deletions(-)
+
+diff --git a/src/xrdroot/cppstd/objects.py b/src/xrdroot/cppstd/objects.py
+index 8c4efeec..896e91ab 100644
+--- a/src/xrdroot/cppstd/objects.py
++++ b/src/xrdroot/cppstd/objects.py
+@@ -18,6 +18,7 @@ from typing import Any
+ import numpy as np
+ 
+ from .buffers import CharBuffer
++from .cells import ItemRef
+ from .valuecopy import value_copy as value_copy
+ 
+ __all__ = [
+@@ -35,6 +36,9 @@ __all__ = [
+     "iterate",
+     "sort_range",
+     "reverse_range",
++    "generate_range",
++    "for_each_range",
++    "equal_range",
+     "CppException",
+     "throw",
+     "pointee",
+@@ -278,6 +282,36 @@ def reverse_range(container: Any, start: int, stop: Any) -> None:
+     container[start:end] = list(container[start:end])[::-1]
+ 
+ 
++def generate_range(container: Any, start: int, stop: Any, make: Callable[[], Any]) -> None:
++    """``std::generate(first, last, f)``: each element of the range given ``f()``, in place."""
++    end = len(container) if stop is None else int(stop)
++    for index in range(int(start), end):
++        container[index] = make()
++
++
++def for_each_range(container: Any, start: int, stop: Any, apply: Callable[[Any], Any]) -> None:
++    """``std::for_each(first, last, f)``: ``f`` given each element's address, in order.
++
++    C++ hands ``f`` the element itself - a reference, which is a pointer an
++    ``operator()(T *)`` takes - so an ``ItemRef`` is what it is called with.
++    """
++    end = len(container) if stop is None else int(stop)
++    for index in range(int(start), end):
++        apply(ItemRef(container, index))
++
++
++def equal_range(container: Any, start: int, stop: Any, other: Any, other_start: int = 0) -> bool:
++    """``std::equal(first, last, other)``: the range's values and the ones from ``other``.
++
++    The second sequence only has to be long enough, as C++ requires, so only as
++    many of its elements as the first range holds are compared.
++    """
++    end = len(container) if stop is None else int(stop)
++    wanted = list(container[int(start):end])
++    first = int(other_start)
++    return wanted == list(other[first:first + len(wanted)])
++
++
+ class CppException(Exception):
+     """A C++ ``throw`` of anything: the value thrown, and ``what()`` as ``std::exception`` has."""
+ 
+diff --git a/src/xrdroot/pycxx/emit_calls.py b/src/xrdroot/pycxx/emit_calls.py
+index 78aee757..c0163650 100644
+--- a/src/xrdroot/pycxx/emit_calls.py
++++ b/src/xrdroot/pycxx/emit_calls.py
+@@ -348,6 +348,28 @@ class CallEmitter(ExprEmitter):
+         items = f"{container}[{start}:{stop_text}]"
+         return f"sum({items}, {self.value(node.args[2])})", P.POSTFIX
+ 
++    def _generate(self, func: Name, node: Call) -> Out | None:
++        """``std::generate(first, last, f)``: each element of the range set from ``f()``."""
++        if len(node.args) != 3:
++            raise self.refuse(f"std::{func.last} without a range and a function", node)
++        helper = "for_each_range" if func.last == "for_each" else "generate_range"
++        return self._ranged(helper, node)
++
++    def _ranged(self, helper: str, node: Call) -> Out | None:
++        """``helper(v, start, stop, f)``: the range an algorithm works through and its function."""
++        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
++        return f"{helper}({container}, {start}, {stop}, {self.value(node.args[2])})", P.POSTFIX
++
++    def _equal(self, func: Name, node: Call) -> Out | None:
++        """``std::equal(first, last, other)``: whether the range holds what ``other`` does."""
++        if len(node.args) not in (3, 4):
++            raise self.refuse("std::equal over ranges of two lengths", node)
++        if len(node.args) == 4:
++            raise self.refuse("std::equal with a comparison of its own", node)
++        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
++        other, other_start = self._iterator(node.args[2], node, "begin")
++        return f"equal_range({container}, {start}, {stop}, {other}, {other_start})", P.POSTFIX
++
+     def iterator_range(self, first: Expr, last: Expr, node: Expr) -> tuple[str, str, str]:
+         """``v.begin(), v.end()`` or ``a, a + n``: the container, start and stop they mean."""
+         container, start = self._iterator(first, node, "begin")
+@@ -361,42 +383,43 @@ class CallEmitter(ExprEmitter):
+         if ends is not None:
+             return ends
+         if isinstance(it, Binary) and it.op == "+":
+-            base, start = self._iterator(it.left, node, end)
+-            moved = self.value(it.right)
+-            return base, moved if start == "0" else f"{start} + {moved}"
+-        addressed = self._element_pointer(it)
+-        if addressed is not None:
+-            return addressed
++            return self._moved_iterator(it, node, end)
++        if isinstance(it, Unary) and it.op == "&":
++            return self._element_pointer(it.operand, node)
+         found = self.typeof(it)
+         if found is not None and (found.is_array or found.is_pointer):
+             return self.value(it), "0"
+         raise self.refuse("an iterator this translator cannot follow back to its container", node)
+ 
+-    def _element_pointer(self, it: Expr) -> tuple[str, str] | None:
++    def _moved_iterator(self, it: Binary, node: Expr, end: str) -> tuple[str, str]:
++        """``p + n``: where the range ends, ``n`` elements on from where ``p`` starts."""
++        base, start = self._iterator(it.left, node, end)
++        moved = self.value(it.right)
++        return base, moved if start == "0" else f"{start} + {moved}"
++
++    def _element_pointer(self, target: Expr, node: Expr) -> tuple[str, str]:
+         """``&v[i]`` and ``&v.front()`` as the range end they are: the vector, and the offset.
+ 
+         C++ hands an algorithm the pointer into the vector's own buffer, and the
+         algorithm writes back through it, so the range names the vector and an
+         index rather than a copy of the elements from there on.
+         """
+-        if not isinstance(it, Unary) or it.op != "&":
+-            return None
+-        target = it.operand
+         if isinstance(target, Index):
+             return self.value(target.obj), self.value(target.index)
+         if isinstance(target, Call) and isinstance(target.func, Member):
+-            return self._element_call_end(target)
+-        return None
++            return self._element_call_end(target, node)
++        raise self.refuse("the address of something that is not an element of a container", node)
+ 
+-    def _element_call_end(self, call: Call) -> tuple[str, str] | None:
+-        """``&v.front()`` as ``(v, 0)`` and ``&v.at(i)`` as ``(v, i)``."""
++    def _element_call_end(self, call: Call, node: Expr) -> tuple[str, str]:
++        """``&v.front()`` as ``(v, 0)``, ``&v.back()`` as the last, ``&v.at(i)`` as ``(v, i)``."""
+         assert isinstance(call.func, Member)
+         first = self.value(call.func.obj)
+-        if call.func.name == "front" and not call.args:
+-            return first, "0"
+-        if call.func.name == "at" and len(call.args) == 1:
++        name = call.func.name
++        if not call.args and name in ("front", "back"):
++            return first, "0" if name == "front" else f"len({first}) - 1"
++        if name == "at" and len(call.args) == 1:
+             return first, self.value(call.args[0])
+-        return None
++        raise self.refuse(f"the address of {name}()'s result as a range end", node)
+ 
+     def _container_end(self, it: Expr) -> tuple[str, str] | None:
+         """``v.begin()`` as ``(v, 0)`` and ``v.end()`` as ``(v, None)``: where a range starts."""
+@@ -416,6 +439,9 @@ class CallEmitter(ExprEmitter):
+         "stable_sort": _sort,
+         "reverse": _sort,
+         "accumulate": _accumulate,
++        "generate": _generate,
++        "for_each": _generate,
++        "equal": _equal,
+         "sprintf": _unsupported,
+         "snprintf": _unsupported,
+         "strcpy": _unsupported,
+diff --git a/src/xrdroot/pycxx/runtime/objects.py b/src/xrdroot/pycxx/runtime/objects.py
+index e91d9fe2..65eb824f 100644
+--- a/src/xrdroot/pycxx/runtime/objects.py
++++ b/src/xrdroot/pycxx/runtime/objects.py
+@@ -32,7 +32,10 @@ from ...cppstd.objects import _walked as _walked
+ from ...cppstd.objects import array as array
+ from ...cppstd.objects import convertible as convertible
+ from ...cppstd.objects import dynamic_cast as dynamic_cast
++from ...cppstd.objects import equal_range as equal_range
++from ...cppstd.objects import for_each_range as for_each_range
+ from ...cppstd.objects import function_template as function_template
++from ...cppstd.objects import generate_range as generate_range
+ from ...cppstd.objects import iterate as iterate
+ from ...cppstd.objects import pointee as pointee
+ from ...cppstd.objects import postinc as postinc
+@@ -62,6 +65,9 @@ __all__ = [
+     "iterate",
+     "sort_range",
+     "reverse_range",
++    "generate_range",
++    "for_each_range",
++    "equal_range",
+     "CppException",
+     "throw",
+     "deref",
+diff --git a/tests/cppstd/test_cppstd_pure_values.py b/tests/cppstd/test_cppstd_pure_values.py
+index 4f815d58..80c2b78b 100644
+--- a/tests/cppstd/test_cppstd_pure_values.py
++++ b/tests/cppstd/test_cppstd_pure_values.py
+@@ -47,6 +47,7 @@ def test_cell_item_and_attribute_references_write_the_storage_they_capture() ->
+ def test_a_taken_element_address_is_a_pointer_over_the_containers_own_elements() -> None:
+     values = [1.5, 2.5, 3.5]
+     pointer = cells.ItemRef(values, 1)
++    assert repr(pointer) == "ItemRef([1.5, 2.5, 3.5], 1)"
+     assert len(pointer) == 2 and list(pointer) == [2.5, 3.5]
+     assert pointer[1:2] == [3.5] and pointer[:] == [2.5, 3.5]
+     pointer[0:1] = [7.0]
+diff --git a/tests/test_cint_calls.py b/tests/test_cint_calls.py
+index 4e2285e4..fad1c006 100644
+--- a/tests/test_cint_calls.py
++++ b/tests/test_cint_calls.py
+@@ -86,11 +86,29 @@ def body(source: str) -> str:
+             'int *p = &v[0]; std::reverse(p, p + 3); printf("%d %d %d\\n", v[0], v[1], v[2]);',
+             "2 1 3\n",
+         ),
++        (
++            "std::vector<int> v; v.push_back(3); v.push_back(1); v.push_back(2);"
++            'std::sort(&v.back(), &v.back() + 1); printf("%d %d %d\\n", v[0], v[1], v[2]);',
++            "3 1 2\n",
++        ),
+         (
+             'double a[3] = {1, 2, 3}; double b[3] = {0, 0, 0};'
+             'std::copy(&a[0], &a[3], &b[0]); printf("%g %g %g\\n", b[0], b[1], b[2]);',
+             "1 2 3\n",
+         ),
++        (
++            "std::vector<int> v; v.push_back(9); v.push_back(8); v.push_back(7);"
++            "auto six = []() { return 6; }; std::generate(&v[0], &v[0] + 2, six);"
++            'printf("%d %d %d\\n", v[0], v[1], v[2]);',
++            "6 6 7\n",
++        ),
++        (
++            "std::vector<int> v; v.push_back(1); v.push_back(2);"
++            "std::vector<int> w; w.push_back(1); w.push_back(2);"
++            'printf("%d %d\\n", std::equal(v.begin(), v.end(), &w[0]),'
++            " std::equal(&v[0], &v[0] + 2, w.begin() + 1));",
++            "1 0\n",
++        ),
+         ('printf("%d %d %d\\n", abs(-3), std::max(2, 5), std::min(1.5, 0.5) < 1);', "3 5 1\n"),
+         ('long big = 5; unsigned char c = 260; printf("%ld %d\\n", big, c);', "5 4\n"),
+         ('int x; x = {3}; printf("%d\\n", x);', "3\n"),
+@@ -127,6 +145,14 @@ def test_calls_are_written_as_their_python(source: str, fragment: str) -> None:
+         ("auto s = std::accumulate(v.begin(), v.end());", "std::accumulate with an operation"),
+         ("std::sort(v.begin(), w.end());", "a range whose two ends are in different containers"),
+         ("std::sort(it, other);", "an iterator this translator cannot follow back"),
++        ("std::sort(&count, &count + 1);", "not an element of a container"),
++        ("std::sort(&v.data(), &v.data() + 1);",
++         "the address of data\\(\\)'s result as a range end"),
++        ("std::generate(it, other, f);", "an iterator this translator cannot follow back"),
++        ("bool s = std::equal(v.begin(), v.end(), w.begin(), f);",
++         "std::equal with a comparison"),
++        ("bool s = std::equal(a, a, b, c, d);", "std::equal over ranges of two lengths"),
++        ("std::generate(v.begin());", "std::generate without a range"),
+         ("std::unique_ptr<TH1F> p; long n = p.use_count();", r"the smart pointer's use_count\(\)"),
+     ],
+ )
+diff --git a/tests/test_cint_expressions.py b/tests/test_cint_expressions.py
+index e26a928e..9124dd02 100644
+--- a/tests/test_cint_expressions.py
++++ b/tests/test_cint_expressions.py
+@@ -43,6 +43,8 @@ def method(source: str) -> str:
+         ("int *e = &v[0];", "e = ItemRef(ROOT.v, 0)"),
+         ("int *f = &v.front();", "f = ItemRef(ROOT.v, 0)"),
+         ("int *g = &v.at(2);", "g = ItemRef(ROOT.v, 2)"),
++        # A member function's result has no storage an address could name, so it stays a value.
++        ("double *q = &h.GetBinContent(1);", "q = ROOT.h.GetBinContent(1)"),
+         (
+             "int i = 0; int x = a[i]++; int y = o.n++; int *p = nullptr; int z = (*p)++;",
+             "z = postinc(ItemRef(p, 0), 1)",
+diff --git a/tests/test_cppstd_objects.py b/tests/test_cppstd_objects.py
+index afba0f7a..45e5e5a6 100644
+--- a/tests/test_cppstd_objects.py
++++ b/tests/test_cppstd_objects.py
+@@ -91,6 +91,15 @@ objects.sort_range(values, 0, 3, lambda left, right: left > right)
+ assert values == [3, 2, 1, 9]
+ objects.reverse_range(values, 1, None)
+ assert values == [3, 9, 1, 2]
++objects.generate_range(values, 0, 2, lambda: 5)
++assert values == [5, 5, 1, 2]
++seen = []
++objects.for_each_range(values, 1, 3, lambda element: seen.append(element.value))
++assert seen == [5, 1]
++objects.for_each_range(values, 3, None, lambda element: element.__setitem__(0, 4))
++assert values == [5, 5, 1, 4]
++assert objects.equal_range(values, 0, 2, [5, 5, 1]) and not objects.equal_range(values, 0, 2, [5])
++assert objects.equal_range(values, 1, None, [5, 1, 4], 0)
+ assert list(objects.iterate({'key': 7})) == [objects.Pair('key', 7)]
+ assert objects.Pair(1, 2) < objects.Pair(2, 1)
+ held = SimpleNamespace(value=3)
+-- 
+2.54.0 (Apple Git-157)
+

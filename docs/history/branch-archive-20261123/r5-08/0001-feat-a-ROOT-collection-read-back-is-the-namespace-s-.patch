@@ -1,0 +1,279 @@
+From cee27a7e7ba5cea7f98f1fed9ce5010ae13410e8 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Thu, 19 Nov 2026 09:02:53 +0000
+Subject: [PATCH] feat: a ROOT collection read back is the namespace's
+ collection, not the list it read as
+
+ROOT streams TList and TObjArray themselves, so a file describes no layout of
+them and xrdroot's reader hands back the plain list of what they held. A
+declared class's member of one (ACache's 'TObjArray *persist' in
+roottest/root/io/datamodelevolution/00/test1) then reached the translated
+macro as a list, which has no Print() and no Add(). ROOT reads the collection
+into the object it is handed, so a TObjArray already there keeps the name the
+constructor gave it; a new one is made where the constructor left the member
+null. Each entry is made into an object of the class the stream named it as -
+a TNamed comes back with its name and title, not as a record - a TObjArray
+keeps a hole for a slot never filled, and a collection or entry this kit has
+no class for stays the record it was read as.
+---
+ src/xrdroot/pyroot/core/declared.py |  83 +++++++++++++++++-
+ tests/test_root_declared_objects.py | 126 ++++++++++++++++++++++++++++
+ 2 files changed, 205 insertions(+), 4 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/declared.py b/src/xrdroot/pyroot/core/declared.py
+index 96d3ca16..deaa4307 100644
+--- a/src/xrdroot/pyroot/core/declared.py
++++ b/src/xrdroot/pyroot/core/declared.py
+@@ -59,6 +59,12 @@ WIDTHS = {
+ }  # fmt: skip
+ #: The floating types: what a member of one is read back as.
+ FLOATS = ("float", "double", "Double32_t", "Float16_t", "long double")
++#: ROOT's collections that hand themselves to a reader as the plain list of what they held -
++#: they stream themselves, so no streamer information is what reads them - and that the
++#: namespace has a class of its own for, which is what a member of one reads back as.
++COLLECTIONS = ("TList", "THashList", "TSortedList", "TObjArray")
++#: The collections of those that keep a numbered slot per object, a slot never filled a hole.
++SLOTTED = ("TObjArray",)
+ 
+ 
+ def declared_class(cls: Any) -> bool:
+@@ -470,7 +476,7 @@ def converted(value: Any, found: Spelled, current: Any) -> Any:
+     if value is None:
+         return None
+     if found.stars and found.name not in TYPES:
+-        return _pointed(value, found)
++        return _pointed(value, found, current)
+     if found.name in STL_KINDS:
+         return _refilled(value, found, current)
+     return _held(value, found, current)
+@@ -486,11 +492,77 @@ def _held(value: Any, found: Spelled, current: Any) -> Any:
+     return _object(value, found, current)
+ 
+ 
+-def _pointed(value: Any, found: Spelled) -> Any:
++def _pointed(value: Any, found: Spelled, current: Any) -> Any:
+     """A pointer's object: of the class the stream named, which may be a derived one - a
+     ``BaseABC *fABC`` holding a ``Derived`` is a ``Derived``, as ROOT gives it back."""
+-    made = made_from(str(getattr(value, "classname", "") or found.name), value)
+-    return made if made is not None else value
++    named = str(getattr(value, "classname", "") or found.name)
++    made = made_from(named, value)
++    if made is not None:
++        return made
++    held = _collection(named, value, current)
++    return held if held is not None else value
++
++
++def _collection(named: str, value: Any, current: Any) -> Any:
++    """A ROOT collection read back - as the plain list of what it held - made into the
++    namespace's collection again, or ``None`` for one that is not such a collection.
++
++    ROOT reads a collection into the object it is handed, so one already there is refilled
++    where it stands and keeps the name it has: ``TObjArray::Streamer`` reads the name of the
++    array on file into that object, and a class's constructor has already given it the same
++    one. Where the collection is new, its name comes from the same place ROOT's does - the
++    bytes - which this reader hands back as the list alone.
++
++    A slot a ``TObjArray`` never filled stays a hole, so its entries go back by index; a
++    list is a run of what it held, which is what it is given.
++    """
++    if named not in COLLECTIONS or not isinstance(value, list):
++        return None
++    cls = _collection_class(named)
++    if cls is None:
++        return None
++    made: Any = current if isinstance(current, cls) else cls()
++    made.Clear()
++    for at, item in enumerate(value):
++        if item is not None:
++            _add_entry(made, _entry(item), at if named in SLOTTED else None)
++    return made
++
++
++def _collection_class(named: str) -> type | None:
++    """The namespace's class standing for one of ROOT's collections, if it has one yet."""
++    from .reflection import _class_named
++
++    return _class_named(named)
++
++
++def _add_entry(made: Any, item: Any, at: int | None) -> None:
++    """One entry into a collection: into its own slot if it numbers them, else on the end."""
++    if at is None:
++        made.Add(item)
++    else:
++        made.AddAt(item, at)
++
++
++def _entry(item: Any) -> Any:
++    """One object a collection held: made into an object of the class the stream named it
++    as, given the members read - or kept as the record it was read as, for a class this kit
++    has none of."""
++    named = str(getattr(item, "classname", ""))
++    made = made_from(named, item) if named else None
++    if made is not None or not named or not isinstance(item, Mapping):
++        return item if made is None else made
++    return _recorded_object(named, item)
++
++
++def _recorded_object(named: str, row: Mapping[str, Any]) -> Any:
++    """One of ROOT's own objects given the members a record of it holds."""
++    cls = _collection_class(named)
++    if cls is None:
++        return row
++    made = _new(cls)
++    fill_root(made, row)
++    return made
+ 
+ 
+ def _object(value: Any, found: Spelled, current: Any) -> Any:
+@@ -499,6 +571,9 @@ def _object(value: Any, found: Spelled, current: Any) -> Any:
+         one, two = _pair_of(value)
+         made = std.pair[first.text(), second.text()]
+         return made(converted(one, first, None), converted(two, second, None))
++    held = _collection(found.name, value, current)
++    if held is not None:
++        return held
+     cls = find_class(found.name)
+     if not isinstance(value, Mapping):
+         return value
+diff --git a/tests/test_root_declared_objects.py b/tests/test_root_declared_objects.py
+index 26f38a5d..6a5ff993 100644
+--- a/tests/test_root_declared_objects.py
++++ b/tests/test_root_declared_objects.py
+@@ -324,6 +324,132 @@ def test_roots_members_without_a_setter_are_left_as_they_are():
+     assert (named.GetName(), named.GetTitle(), named.GetUniqueID()) == ("n", "u", 4)
+ 
+ 
++ARRAYED = r"""
++#include "TObjArray.h"
++class Holder {
++public:
++   int n = 0;
++   TObjArray *items = nullptr;
++};
++"""
++
++
++def _arrayed(*slots):
++    """The bytes of a ``Holder`` as ROOT writes one - its number, and then the
++    ``TObjArray::Streamer`` form of its array: the record's version, its ``TObject``, its
++    name, its size and lower bound, and one tagged object per slot, a hole as the zero of a
++    null pointer."""
++    out = WBuffer()
++    record = out.start(1)
++    out.i32(3)
++    tag = out.tag("TObjArray")
++    array = out.start(3)
++    out.tobject()
++    out.string("items")
++    out.i32(len(slots))
++    out.i32(0)
++    for slot in slots:
++        if slot is not None:
++            held = out.tag("TNamed")
++            out.named(slot, "for file")
++            out.end(held)
++        else:
++            out.u32(0)
++    out.end(array)
++    out.end(tag)
++    out.end(record)
++    return bytes(out.data)
++
++
++def _read_holder(payload):
++    """A ``Holder`` read back from ``payload`` as a buffer's object is: by the reader for its
++    class, its record converted to the class as the program declares it now."""
++    from xrdroot.buffer import Buffer
++    from xrdroot.pyroot.core.declared import catalogue_for, converted, new_value
++    from xrdroot.rdobjects import reader_for
++
++    run_source(ARRAYED, "arrayed.C", call=False)
++    row = reader_for("Holder", catalogue_for("Holder"))(Buffer(payload))
++    return converted(row, parse_type("Holder"), new_value("Holder"))
++
++
++def _root_named(name):
++    """One ``TNamed`` as a collection's reader hands it back: its members, and its class."""
++    from xrdroot.buffer import Named
++
++    return Named({"TObject": {"fUniqueID": 0, "fBits": 0}, "fName": name, "fTitle": "t"},
++                 "TNamed")  # fmt: skip
++
++
++def test_a_tobjarray_read_back_is_the_namespaces_array_not_the_list_it_read_as():
++    holder = _read_holder(_arrayed("objectone", "objecttwo"))
++    assert type(holder.items).__name__ == "TObjArray"
++    assert [item.GetName() for item in holder.items] == ["objectone", "objecttwo"]
++    assert [(item.GetTitle(), item.ClassName()) for item in holder.items] == [
++        ("for file", "TNamed"),
++        ("for file", "TNamed"),
++    ]
++
++
++def test_an_array_read_into_an_object_already_there_keeps_its_name_and_its_slots():
++    from xrdroot.pyroot.core.declared import converted
++
++    current = ROOT.TObjArray()
++    current.SetName("persist")
++    current.Add(ROOT.TNamed("stale", "before the read"))
++    made = converted([_root_named("one"), None, _root_named("two")], parse_type("TObjArray*"),
++                     current)  # fmt: skip
++    assert made is current and made.GetName() == "persist"
++    assert [item.GetName() for item in made if item is not None] == ["one", "two"]
++    assert (made.GetEntriesFast(), made.At(1)) == (3, None)  # a slot never filled stays a hole
++
++
++def test_a_list_read_back_is_the_namespaces_list_in_the_order_it_was_written():
++    from xrdroot.pyroot.core.declared import converted
++
++    made = converted([_root_named("one"), _root_named("two")], parse_type("TList"), None)
++    assert (type(made).__name__, [item.GetName() for item in made]) == (
++        "TList",
++        ["one", "two"],
++    )
++
++
++def test_a_collection_with_an_entry_of_a_declared_class_is_made_into_one():
++    from xrdroot.buffer import Named
++    from xrdroot.pyroot.core.declared import converted
++
++    run_source(ARRAYED, "arrayed.C", call=False)
++    made = converted([Named({"n": 3}, "Holder")], parse_type("TObjArray*"), None)
++    assert (type(made[0]).__name__, made[0].n) == ("Holder", 3)
++
++
++def test_a_collection_whose_class_this_kit_lacks_reads_as_the_list_it_was(monkeypatch):
++    from xrdroot.pyroot.core import declared
++
++    assert type(declared.converted([1], parse_type("TObjArray*"), None)).__name__ == "TObjArray"
++    monkeypatch.setattr(declared, "_collection_class", lambda named: None)
++    assert declared.converted([1], parse_type("TObjArray*"), None) == [1]
++
++
++def test_an_entry_of_no_class_and_one_of_no_name_are_kept_as_they_were_read():
++    from xrdroot.buffer import Named
++    from xrdroot.pyroot.core.declared import converted
++
++    kept = converted(["TNamed"], parse_type("TList"), None)  # a name stepped over, not an object
++    assert (type(kept).__name__, list(kept)) == ("TList", ["TNamed"])
++    record = converted([{"fName": "x"}], parse_type("TList"), None)  # a record naming no class
++    assert list(record) == [{"fName": "x"}]
++    unknown = converted([Named({"fName": "x"}, "TNoSuchClass")], parse_type("TList"), None)
++    assert list(unknown) == [{"fName": "x"}]
++
++
++def test_a_collection_this_kit_has_no_class_for_reads_as_the_list_it_was():
++    from xrdroot.pyroot.core.declared import converted
++
++    assert converted([1, 2], parse_type("TBtree"), None) == [1, 2]
++    assert converted({"fName": "x"}, parse_type("TObjArray*"), None) == {"fName": "x"}
++
++
+ LINKED = r"""
+ class Node {
+ public:
+-- 
+2.54.0 (Apple Git-157)
+

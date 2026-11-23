@@ -1,0 +1,269 @@
+From 5335c2238df5439be52653d0a8ebe3f5d329cede Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 11:19:33 +0000
+Subject: [PATCH] feat: ROOT::Fit's Chi2FCN and ROOT::Math's GeneticMinimizer,
+ the start genetic-GAMinTutorial and -testGAMinimizer fit from
+
+---
+ src/xrdroot/pyroot/core/mathtools.py   |  12 +++
+ src/xrdroot/pyroot/core/rmath.py       |  98 ++++++++++++++++++++++++
+ tests/test_pyroot_genetic_minimizer.py | 101 +++++++++++++++++++++++++
+ 3 files changed, 211 insertions(+)
+ create mode 100644 tests/test_pyroot_genetic_minimizer.py
+
+diff --git a/src/xrdroot/pyroot/core/mathtools.py b/src/xrdroot/pyroot/core/mathtools.py
+index 676ae3e6..935895ea 100644
+--- a/src/xrdroot/pyroot/core/mathtools.py
++++ b/src/xrdroot/pyroot/core/mathtools.py
+@@ -418,6 +418,17 @@ def _minimised(fcn: Any, settings: list[ParameterSettings]) -> Any:
+     return core._result(made, names, False, int(made.nfcn))
+ 
+ 
++class Chi2FCN(fitdata.Chi2Function):
++    """``ROOT::Fit::Chi2FCN<Function>``: the chi-square of a function over binned data.
++
++    The macro names it with the function type it is a chi-square of, which is the one type
++    of function a ``Fitter`` fits with, so the subscript keeps the class it is written on.
++    """
++
++    def __class_getitem__(cls, function: Any) -> type[Chi2FCN]:
++        return cls
++
++
+ class _FitNamespace:
+     """``ROOT.Fit``: the ``ROOT::Fit`` namespace."""
+ 
+@@ -426,6 +437,7 @@ class _FitNamespace:
+     ParameterSettings = ParameterSettings
+     BinData = fitdata.BinData
+     Chi2Function = fitdata.Chi2Function
++    Chi2FCN = Chi2FCN
+     DataOptions = fitdata.DataOptions
+     DataRange = fitdata.DataRange
+     FillData = staticmethod(fitdata.FillData)
+diff --git a/src/xrdroot/pyroot/core/rmath.py b/src/xrdroot/pyroot/core/rmath.py
+index db1c64a8..7cc12412 100644
+--- a/src/xrdroot/pyroot/core/rmath.py
++++ b/src/xrdroot/pyroot/core/rmath.py
+@@ -656,6 +656,87 @@ class MinimizerOptions:
+         return minimizer_algo()
+ 
+ 
++class GeneticMinimizerParameters:
++    """``ROOT::Math::GeneticMinimizerParameters``: the population the genetic minimiser breeds
++    - how many points, for how many generations - and the seed that makes its start
++    reproducible."""
++
++    def __init__(self) -> None:
++        self.fPopSize = 40
++        self.fNsteps = 40
++        self.fSeed = 0
++
++
++class GeneticMinimizer(Minimizer):
++    """``ROOT::Math::GeneticMinimizer``: the minimum found by breeding a population of points.
++
++    A gradient search started far from the minimum can settle in the wrong place, which is
++    why ROOT offers this one to find roughly where the minimum is first: a population drawn
++    inside the variables' limits is ranked by the function, the better half crossed and
++    jittered, and the best point it reaches is then where MIGRAD starts. The breeding here
++    is our own - uniform crossover and a Gaussian jitter - not ROOT's, so a fixed seed gives
++    this same start every run but not ROOT's; the fit that follows does reach the minimum.
++    """
++
++    #: How far from where it starts a variable without limits is bred, in its own steps: a
++    #: genetic algorithm needs a range, and a step is the only scale a caller has given.
++    SPAN = 10
++
++    def __init__(self, dim: int = 1) -> None:
++        """``GeneticMinimizer(dim)``: ROOT's dimension, which the ``SetVariable`` calls that
++        follow describe - the variables are what a minimiser is told about here."""
++        super().__init__("Genetic")
++        self._params = GeneticMinimizerParameters()
++
++    def SetParameters(self, params: GeneticMinimizerParameters) -> None:
++        """``SetParameters``: the population to breed, in place of the defaults."""
++        self._params = params
++
++    def SetRandomSeed(self, seed: int) -> None:
++        """``SetRandomSeed(seed)``: the seed to breed from - ``fSeed``'s own way of saying
++        it, so that a test of the algorithm starts from the same population every run."""
++        self._params.fSeed = int(seed)
++
++    def Minimize(self) -> bool:
++        """``Minimize``: breed the population, then MIGRAD from the best point it reaches."""
++        best = self._bred()
++        for place, at in enumerate(sorted(self._variables)):
++            self._variables[at][1] = float(best[place])
++        return super().Minimize()
++
++    def _spans(self) -> tuple[Any, Any, Any]:
++        """The limits each variable is bred inside, and where it starts.
++
++        A variable without limits has none to respect, so it is bred within :data:`SPAN`
++        steps either side of its starting value.
++        """
++        order = sorted(self._variables)
++        start = np.array([self._variables[at][1] for at in order], dtype=np.float64)
++        span = np.array([self._variables[at][2] * self.SPAN for at in order], dtype=np.float64)
++        low = np.array([_bound(self._variables[at], 0) for at in order], dtype=np.float64)
++        high = np.array([_bound(self._variables[at], 1) for at in order], dtype=np.float64)
++        return (
++            np.where(np.isfinite(low), low, start - span),
++            np.where(np.isfinite(high), high, start + span),
++            start,
++        )
++
++    def _bred(self) -> Any:
++        """The best point the population reaches, its values one per variable in index order."""
++        low, high, start = self._spans()
++        rng = np.random.default_rng(int(self._params.fSeed))
++        size = max(2, int(self._params.fPopSize))
++        best, best_value = np.clip(start, low, high), np.inf
++        population = rng.uniform(low, high, size=(size, len(start)))
++        for _ in range(max(1, int(self._params.fNsteps))):
++            values = np.array([float(self._fcn(point)) for point in population])
++            if float(values.min()) < best_value:
++                best, best_value = population[int(np.argmin(values))].copy(), float(values.min())
++            population = _bred(rng, population[np.argsort(values)[: max(2, size // 2)]], size,
++                               low, high)  # fmt: skip
++        return best
++
++
+ class MathMoreLibrary:
+     """``ROOT::Math::MathMoreLibrary``: what loads MathMore, whose functions - the quantiles,
+     the special functions - are here already."""
+@@ -665,6 +746,23 @@ class MathMoreLibrary:
+         """``Load()``: nothing to load."""
+ 
+ 
++def _bound(variable: list[Any], side: int) -> float:
++    """One variable's lower (``side`` 0) or upper (``side`` 1) limit, infinite where it has
++    none."""
++    bounds = variable[3]
++    if bounds is None:
++        return -float("inf") if side == 0 else float("inf")
++    return float(bounds[side])
++
++
++def _bred(rng: Any, keep: Any, size: int, low: Any, high: Any) -> Any:
++    """One generation from ``keep``: pairs crossed uniformly, then jittered by a tenth of
++    the range, and kept inside the limits."""
++    pairs = rng.integers(0, len(keep), size=(size, 2))
++    children = np.where(rng.random((size, len(low))) < 0.5, keep[pairs[:, 1]], keep[pairs[:, 0]])
++    return np.clip(children + rng.normal(0.0, 0.1, children.shape) * (high - low), low, high)
++
++
+ def _default_accessors(key: str) -> None:
+     setattr(MinimizerOptions, f"SetDefault{key}",
+             classmethod(lambda cls, value: cls._defaults.__setitem__(key, value)))  # fmt: skip
+diff --git a/tests/test_pyroot_genetic_minimizer.py b/tests/test_pyroot_genetic_minimizer.py
+new file mode 100644
+index 00000000..330e4f8f
+--- /dev/null
++++ b/tests/test_pyroot_genetic_minimizer.py
+@@ -0,0 +1,101 @@
++"""``ROOT::Math::GeneticMinimizer`` and ``ROOT::Fit::Chi2FCN``, as a macro names them.
++
++GAMinTutorial breeds a population inside the variables' limits to find roughly
++where a two-peak chi-square's minimum is, then fits from there with Minuit2 -
++so what is pinned here is that the population is bred inside the limits, that a
++seed makes it reproducible, and that the chi-square a chi-square fit minimises
++is the same whichever of ROOT's two names the macro writes.
++"""
++
++from __future__ import annotations
++
++from typing import Any
++
++import pytest
++
++import xrdroot.pyroot as ROOT
++from pyrootsupport import expect, fresh
++
++
++@pytest.fixture(autouse=True)
++def _fresh(tmp_path: Any) -> Any:
++    yield from fresh(tmp_path)
++
++
++def _bowl(v: Any) -> float:
++    """A quadratic whose minimum is at ``(3, -1)``."""
++    return (v[0] - 3.0) ** 2 + (v[1] + 1.0) ** 2
++
++
++def _minimizer(population: int = 12, steps: int = 8, seed: int = 7) -> Any:
++    params = ROOT.Math.GeneticMinimizerParameters()
++    params.fPopSize, params.fNsteps, params.fSeed = population, steps, seed
++    minimizer = ROOT.Math.GeneticMinimizer()
++    minimizer.SetParameters(params)
++    minimizer.SetFunction(ROOT.Math.Functor(_bowl, 2))
++    return minimizer
++
++
++def _bred_with(seed: int) -> Any:
++    """The point one seeded run of the population reaches, both variables limited."""
++    minimizer = _minimizer(seed=seed)
++    minimizer.SetLimitedVariable(0, "x", 0.0, 0.5, -6.0, 6.0)
++    minimizer.SetLimitedVariable(1, "y", 0.0, 0.5, -6.0, 6.0)
++    return minimizer._bred()
++
++
++def test_the_parameters_are_a_population_a_macro_fills_in() -> None:
++    params = ROOT.Math.GeneticMinimizerParameters()
++    expect((params.fPopSize, 40), (params.fNsteps, 40), (params.fSeed, 0))
++
++
++def test_the_genetic_minimizer_breeds_inside_the_limits_then_fits_from_there() -> None:
++    minimizer = _minimizer()
++    minimizer.SetLimitedVariable(0, "x", -5.0, 0.5, -6.0, 6.0)
++    minimizer.SetVariable(1, "y", 5.0, 0.5)
++    assert minimizer.Minimize() is True
++    expect(
++        (minimizer.X()[0], pytest.approx(3.0, abs=1e-3)),
++        (minimizer.X()[1], pytest.approx(-1.0, abs=1e-3)),
++        (bool(minimizer.MinValue() < 1e-6), True),
++    )
++
++
++def test_a_seed_set_on_the_minimizer_is_the_populations_own_seed() -> None:
++    minimizer = ROOT.Math.GeneticMinimizer(2)
++    minimizer.SetRandomSeed(11)
++    expect((minimizer._params.fSeed, 11), (type(minimizer).__name__, "GeneticMinimizer"))
++
++
++def test_the_same_seed_breeds_the_same_population() -> None:
++    expect(
++        (list(_bred_with(11)), list(_bred_with(11))),
++        (bool((_bred_with(11) != _bred_with(12)).any()), True),
++    )
++
++
++def test_a_population_that_never_improves_keeps_its_first_best_point() -> None:
++    params = ROOT.Math.GeneticMinimizerParameters()
++    params.fPopSize, params.fNsteps, params.fSeed = 1, 3, 0
++    minimizer = ROOT.Math.GeneticMinimizer()
++    minimizer.SetParameters(params)
++    minimizer.SetFunction(ROOT.Math.Functor(lambda v: 1.0, 1))
++    minimizer.SetLimitedVariable(0, "x", 0.0, 0.1, -1.0, 1.0)
++    point = minimizer._bred()
++    assert -1.0 <= point[0] <= 1.0
++
++
++def test_chi2fcn_is_the_chi_square_of_the_function_its_name_declares() -> None:
++    histogram = ROOT.TH1D("h", "", 4, 0.0, 4.0)
++    for found in range(1, 5):
++        histogram.SetBinContent(found, float(found * found))
++    data = ROOT.Fit.BinData()
++    ROOT.Fit.FillData(data, histogram)
++    wrapped = ROOT.Math.WrappedMultiTF1(ROOT.TF1("f", "[0]", 0.0, 4.0), 1)
++    named = ROOT.Fit.Chi2FCN[ROOT.Math.IMultiGenFunction](data, wrapped)
++    plain = ROOT.Fit.Chi2Function(data, wrapped)
++    expect(
++        (data.Size(), 4),
++        (named.NDim(), plain.NDim()),
++        (named([2.0]), plain([2.0])),
++    )
+-- 
+2.54.0 (Apple Git-157)
+

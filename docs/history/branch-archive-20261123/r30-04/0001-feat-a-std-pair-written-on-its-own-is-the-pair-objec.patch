@@ -1,0 +1,105 @@
+From 8e797bcbc04b8289e5906c955d21ac88ebd96dc8 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 06:20:39 +0000
+Subject: [PATCH 1/2] feat: a std::pair written on its own is the $pair object
+ a map's entry is
+
+A std::multimap keeps std::pair values rather than the (key, value) entries a
+std::map iterates, so the writer was handed a pair itself and refused the whole
+object ('does not yet write the JSON of a pair<int,double>'). ROOT writes one
+exactly as it writes a map's entry - STL.ref's fMultimapIntDouble is one
+{"$pair": "pair<int,double>", "first": ..., "second": ...} per entry - so the
+pair goes through the same _pair_entry, its type name from the pair's own
+cpp_name.
+---
+ src/xrdroot/pyroot/core/jsonbuffer.py | 17 +++++++++++++----
+ tests/test_pyroot_jsonbuffer.py       | 24 ++++++++++++++++++++++++
+ 2 files changed, 37 insertions(+), 4 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/jsonbuffer.py b/src/xrdroot/pyroot/core/jsonbuffer.py
+index d771b06e..f3ba5940 100644
+--- a/src/xrdroot/pyroot/core/jsonbuffer.py
++++ b/src/xrdroot/pyroot/core/jsonbuffer.py
+@@ -45,7 +45,7 @@ from typing import Any
+ 
+ import numpy as np
+ 
+-from ...cppstd.containers import _Map, cpp_name, std, string
++from ...cppstd.containers import _Map, _Pair, cpp_name, std, string
+ from ...errors import UnsupportedFeatureError
+ from ..vectors import TArrayC, TArrayD, TArrayF, TArrayI, TArrayL, TArrayS
+ from .collections import TList, TSeqCollection
+@@ -990,9 +990,10 @@ class _Writer:
+         pairs = [self._pair_entry(name, entry, depth) for entry in entries]
+         return "[" + self._layout.item_comma.join(pairs) + "]"
+ 
+-    def _pair_entry(self, name: str, entry: tuple[Any, Any], depth: int) -> str:
+-        """One ``std::pair`` of a map, as ROOT writes it: the types it holds - or, at a
+-        level that skips them, their number - and its two values."""
++    def _pair_entry(self, name: str, entry: tuple[Any, Any] | _Pair, depth: int) -> str:
++        """One ``std::pair``, as ROOT writes it: the types it holds - or, at a level that
++        skips them, their number - and its two values. A map's entry arrives as the two
++        things a pair unpacks to, and a ``std::multimap``'s value as the pair itself."""
+         colon = self._layout.colon
+         pairs = ['"$pair"' + colon + ("1" if self._skip_typename else _quoted(name)),
+                  '"first"' + colon + self._value(entry[0], depth + 1),
+@@ -1016,6 +1017,13 @@ def _numpy_array(self: _Writer, obj: np.ndarray[Any, Any], depth: int) -> str:
+     return self._array(obj, NUMPY_NAMES[obj.dtype], depth)
+ 
+ 
++def _std_pair(self: _Writer, obj: _Pair, depth: int) -> str:
++    """A ``std::pair`` written on its own: a ``std::multimap``'s values are pairs rather than
++    a map's entries, and ROOT writes each one the way it writes a map's - a ``$pair`` object
++    naming the types it holds."""
++    return self._pair_entry(str(obj.__cpp_name__), obj, depth)
++
++
+ #: Which writer takes which Python type, in the order they are tried: ``bool`` before the
+ #: ``int`` it is a kind of, the strings ROOT and C++ both have, and the arrays before the
+ #: maps. A class is written by :data:`MEMBERS` once none of these takes it.
+@@ -1032,6 +1040,7 @@ WRITERS: tuple[tuple[Any, Callable[[_Writer, Any, int], str]], ...] = (
+     ((TArrayD, TArrayF, TArrayI, TArrayL, TArrayS), _number_array),
+     (np.ndarray, _numpy_array),
+     (_Map, _Writer._map),
++    (_Pair, _std_pair),
+ )
+ 
+ 
+diff --git a/tests/test_pyroot_jsonbuffer.py b/tests/test_pyroot_jsonbuffer.py
+index f7a786f1..ab314a7f 100644
+--- a/tests/test_pyroot_jsonbuffer.py
++++ b/tests/test_pyroot_jsonbuffer.py
+@@ -650,6 +650,30 @@ def test_an_empty_container_is_written_as_the_empty_json_root_writes_for_it():
+     )
+ 
+ 
++def test_a_multimap_is_written_as_one_pair_object_per_entry():
++    """``std::multimap``'s values are ``std::pair``s rather than the entries a map holds, and
++    ``STL.ref`` writes each the way it writes a map's: a ``$pair`` naming the types it
++    holds, in key order and with a key repeated as often as it was inserted."""
++    kinds = _declared_class("TMulti", (("fMultimap", "std::multimap<int, double>", "", ()),))()
++    kinds.fMultimap = std.multimap("int", "double")()
++    kinds.fMultimap.insert((0, 0.0))
++    kinds.fMultimap.insert((0, 1000.0))
++    assert _json(kinds) == (
++        '{\n  "_typename" : "TMulti",\n  "fMultimap" : ['
++        '{"$pair" : "pair<int,double>", "first" : 0, "second" : 0}, '
++        '{"$pair" : "pair<int,double>", "first" : 0, "second" : 1000}]\n}'
++    )
++
++
++def test_a_pair_written_on_its_own_is_the_pair_object_a_map_holds():
++    """A ``std::pair`` reaches the writer as itself when it is a container's element rather
++    than a map's entry, so it is written as the one JSON object ``_map`` writes one as."""
++    made = std.pair("int", "double")(7, 2.5)
++    assert str(ROOT.TBufferJSON.ToJSON(made)) == (
++        '{"$pair" : "pair<int,double>", "first" : 7, "second" : 2.5}'
++    )
++
++
+ def test_a_container_is_written_as_the_values_it_holds():
+     """A sequence is one JSON array of its values and a map a ``$pair`` per entry, as
+     ``STL.ref`` has them for every container ``TJsonEx7`` fills."""
+-- 
+2.54.0 (Apple Git-157)
+

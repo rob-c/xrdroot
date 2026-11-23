@@ -1,0 +1,3017 @@
+From aeb2a34326834d6a4777ac813c464ea7937b225c Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sun, 22 Nov 2026 01:45:10 +0000
+Subject: [PATCH] archive: the diffs rescued from abandoned worktrees, as
+ patches
+
+Six uncommitted diffs that existed only inside worktrees scheduled for
+removal, kept here as patches rather than as commits so that none of
+them is mistaken for reviewed work:
+
+  a4impl_w01  reflection cluster        LANDED as 938d8c81 + a8e6d18d
+  g7_w01      container iterator decls  LANDED, narrowed, as 9c388382
+  g3a_w01     enumeration draft         dropped: stale copy of 01b59d97
+  g2_w01      an unused Buffer helper   dropped: unreachable, fails coverage
+  impl8_w01   refusal wording           dropped: landed differently
+  r3_c01      TClass::EState states     UNJUDGED - needs its own harness run
+
+r3_c01 is the one piece here nobody has measured; everything else is
+recorded so the reasoning survives the worktrees.
+---
+ salvage/a4impl_w01.patch | 1221 ++++++++++++++++++++++++++++++++++++++
+ salvage/g2_w01.patch     |   21 +
+ salvage/g3a_w01.patch    |  963 ++++++++++++++++++++++++++++++
+ salvage/g7_w01.patch     |  288 +++++++++
+ salvage/impl8_w01.patch  |   48 ++
+ salvage/r3_c01.patch     |  314 ++++++++++
+ salvage/tref-min.patch   |   81 +++
+ 7 files changed, 2936 insertions(+)
+ create mode 100644 salvage/a4impl_w01.patch
+ create mode 100644 salvage/g2_w01.patch
+ create mode 100644 salvage/g3a_w01.patch
+ create mode 100644 salvage/g7_w01.patch
+ create mode 100644 salvage/impl8_w01.patch
+ create mode 100644 salvage/r3_c01.patch
+ create mode 100644 salvage/tref-min.patch
+
+diff --git a/salvage/a4impl_w01.patch b/salvage/a4impl_w01.patch
+new file mode 100644
+index 00000000..52110505
+--- /dev/null
++++ b/salvage/a4impl_w01.patch
+@@ -0,0 +1,1221 @@
++diff --git a/docs/root.md b/docs/root.md
++index 2ff5ec7b..4c110c68 100644
++--- a/docs/root.md
+++++ b/docs/root.md
++@@ -2938,6 +2938,23 @@ it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
++ lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
++ file opened since describes the class with.
++ 
+++Its functions are described too, as a dictionary describes them:
+++`GetListOfMethods` lists a `TMethod` per overload - a const function of the
+++same parameters is an overload of the non-const one - and
+++`GetMethod(name, params)` and `GetMethodWithPrototype` find one by its
+++parameters' types, preferring the non-const overload for a non-const object
+++and taking a `char*` for a `const char*` unless `ROOT::kExactMatch` is asked
+++for. A `TMethod` answers `GetReturnTypeName` (`int&`), `GetPrototype`
+++(`int& Holder::data()`), `GetClass` and `ExtraProperty`, whose bits are
+++ROOT's `kIsInlined`, `kIsConstructor`, `kIsDestructor`, `kIsConversion` and
+++`kIsOperator`; `GetFunctionTemplate` gives a member function template.
+++`GetMissingDictionaries(ht, recurse)` fills a `THashTable` with the `TClass`
+++of each class no dictionary describes - the class itself where nothing does,
+++the class of each data member, a standard container's elements, and, with
+++`recurse`, what those hold in turn. `TObject::SetObjectStat` and
+++`GetObjectStat` are ROOT's switch for its object table, which no table here
+++keeps, so a threaded program sets it and reads it back.
+++
++ `f->WriteObject(&obj, "name")`, `obj.Write()` and `TBufferFile` write such an
++ object byte for byte as ROOT does - numbers, `Double32_t` and `Float16_t`
++ packed by their comment, fixed and counted arrays, `std::string` and
++diff --git a/src/xrdroot/pycint/library/build.py b/src/xrdroot/pycint/library/build.py
++index 00e3d93a..f9cc7c74 100644
++--- a/src/xrdroot/pycint/library/build.py
+++++ b/src/xrdroot/pycint/library/build.py
++@@ -25,7 +25,7 @@ from ...pycxx.errors import CxxError
++ from ..dialect import LIBRARY as DIALECT
++ from . import checks
++ from .manifest import SUFFIX, Library, read, write
++-from .selection import requested
+++from .selection import requested, selected
++ from .translate import Declared, digest, translated_unit
++ 
++ __all__ = [
++@@ -147,6 +147,7 @@ def build_dictionary(
++     warnings = _unused(requested(linkdef, selection), found)
++     _warned(warnings + checks.io_targets(parsed, found.members), strict.fail_on_warnings)
++     library.kind, library.rootmap = "dictionary", rootmap
+++    library.selected = selected(linkdef, selection)
++     library.libraries = _joined(existing, libraries)
++     return write(library, place)
++ 
++diff --git a/src/xrdroot/pycint/library/loading.py b/src/xrdroot/pycint/library/loading.py
++index 0592c64a..77f8e150 100644
++--- a/src/xrdroot/pycint/library/loading.py
+++++ b/src/xrdroot/pycint/library/loading.py
++@@ -285,13 +285,19 @@ def _dictionaried(loaded: Loaded) -> None:
++     """Tell ROOT's class table which classes this library's dictionary describes.
++ 
++     A program asks ``TClassTable::GetDict("Event")`` to decide whether it must load the
++-    library first, which under ROOT is answered by the dictionary the library carries.
+++    library first, which under ROOT is answered by the dictionary the library carries. A
+++    dictionary describes the classes it was asked to select, and no other class of a header
+++    it read: the table holds those, under both the qualified name a LinkDef writes and the
+++    plain one the class is declared by here.
++     """
++-    classes = [
+++    declared = [
++         name
++         for name, value in loaded.module.items()
++         if isinstance(value, type) and getattr(value, "__module__", None) == MODULE
++     ]
+++    selected = loaded.library.selected
+++    wanted = {each.split("::")[-1].split("<")[0].strip() for each in selected}
+++    classes = [*selected, *(name for name in declared if not wanted or name in wanted)]
++     if not classes:
++         return
++     from ...pyroot.core.reflection import note_generated_dictionary
++diff --git a/src/xrdroot/pycint/library/manifest.py b/src/xrdroot/pycint/library/manifest.py
++index 0efe0472..404dfedf 100644
++--- a/src/xrdroot/pycint/library/manifest.py
+++++ b/src/xrdroot/pycint/library/manifest.py
++@@ -64,6 +64,12 @@ class Library:
++     #: The enumerations it declares, as ROOT's interpreter knows them once it is loaded: each
++     #: by its qualified name, with its constants' values (:class:`.translate.EnumNote`).
++     enums: list[dict[str, Any]] = field(default_factory=list)
+++    #: What a dictionary was asked to select - a LinkDef's ``#pragma link`` lines, a genreflex
+++    #: selection file's classes - which are the classes it gives a dictionary to. A header's
+++    #: other classes are translated with it but have none, as ROOT's dictionary has none of
+++    #: them. Empty when the selection names classes by pattern, and so selects whatever of the
+++    #: header matches: then every class the dictionary was built from has one.
+++    selected: list[str] = field(default_factory=list)
++     #: Whether autoloading finds it by the names it provides, as ROOT's rootmap file does.
++     rootmap: bool = True
++     #: The libraries to load before it.
++diff --git a/src/xrdroot/pycint/library/selection.py b/src/xrdroot/pycint/library/selection.py
++index 50788628..8a3f99eb 100644
++--- a/src/xrdroot/pycint/library/selection.py
+++++ b/src/xrdroot/pycint/library/selection.py
++@@ -14,7 +14,7 @@ from __future__ import annotations
++ import re
++ from pathlib import Path
++ 
++-__all__ = ["requested", "linkdef_rules", "xml_rules"]
+++__all__ = ["requested", "patterned", "selected", "linkdef_rules", "xml_rules"]
++ 
++ #: ``#pragma link C++ class Foo+;``: the kind of thing selected and its name.
++ LINK = re.compile(
++@@ -56,6 +56,36 @@ def xml_rules(text: str) -> list[str]:
++     return names
++ 
++ 
+++#: A genreflex element's ``pattern`` attribute, ``pattern="myTyped*"``, which selects whatever
+++#: of the headers matches it rather than the one name the attribute a list can be read from is.
+++PATTERN = re.compile(r"""\bpattern\s*=\s*["']""")
+++
+++
+++def patterned(linkdef: Path | None, selection: Path | None) -> bool:
+++    """Does the selection name classes by pattern, so that what it selects is not its list?
+++
+++    A LinkDef's ``#pragma link C++ class geo::*;`` and a genreflex element's
+++    ``pattern="secondOrderType*"`` select every class the headers declare that matches, so a
+++    dictionary built from one describes more than the names such a file can be read for.
+++    """
+++    if linkdef is not None and any("*" in rule for rule in linkdef_rules(
+++            linkdef.read_text(encoding="utf-8", errors="replace"))):  # fmt: skip
+++        return True
+++    if selection is not None:
+++        text = selection.read_text(encoding="utf-8", errors="replace")
+++        return PATTERN.search(IGNORED.sub("", text)) is not None
+++    return False
+++
+++
+++def selected(linkdef: Path | None, selection: Path | None) -> list[str]:
+++    """The classes a selection gives a dictionary to, by name.
+++
+++    None where it names them by pattern, because then it selects whatever of the headers
+++    matches and every class the dictionary was built from has one.
+++    """
+++    return [] if patterned(linkdef, selection) else requested(linkdef, selection)
+++
+++
++ def requested(linkdef: Path | None, selection: Path | None) -> list[str]:
++     """Every type the LinkDef and the selection file ask for, in their order."""
++     rules: list[str] = []
++diff --git a/src/xrdroot/pycxx/emit_classes.py b/src/xrdroot/pycxx/emit_classes.py
++index 3f7e83f6..7880a419 100644
++--- a/src/xrdroot/pycxx/emit_classes.py
+++++ b/src/xrdroot/pycxx/emit_classes.py
++@@ -162,6 +162,7 @@ class ClassEmitter(FunctionEmitter):
++         spellings = self.program.templates.spellings
++         values = _enumerators(self._lineage(info))
++         self.out.line(f"_cxx_layout_ = {_layout(info, spellings, values)!r}", info.decl.where)
+++        self.out.line(f"_cxx_methods_ = {_methods_layout(info, spellings)!r}", info.decl.where)
++         self.out.line("_cxx_destroyed = False", info.decl.where)
++         self.out.line("_cxx_released = False", info.decl.where)
++         for name, var in info.statics.items():
++@@ -417,6 +418,44 @@ def _constant(value: Expr) -> int | None:
++ Layout = tuple[str, tuple[str, ...], tuple[tuple[str, str, str, tuple[int | None, ...]], ...]]
++ 
++ 
+++#: One function a class declares, as a reflection dictionary describes it: its C++ name, its
+++#: return type as written, each parameter's type, and whether it is const, static, inline and
+++#: virtual, a template, and its kind - ``function``, ``constructor``, ``destructor``, ``operator``.
+++Method = tuple[str, str, tuple[str, ...], bool, bool, bool, bool, bool, str]
+++
+++
+++def _methods_layout(info: ClassInfo, spellings: dict[str, str]) -> tuple[Method, ...]:
+++    """A class's functions as a reflection dictionary describes them, so that the ``TMethod``
+++    made from one knows its signature - what a program searching the class by prototype and
+++    reading a method's return type asks about. A constructor returns the class it makes and a
+++    destructor nothing, as ROOT's ``TMethod`` says of them."""
+++    found: list[Method] = []
+++    for func in info.overloads.values():
+++        found.append((
+++            func.name, _function_return(info, func, spellings),
+++            tuple(_declared_type(param.ctype, spellings) for param in func.params),
+++            bool(func.const), bool(func.static), bool(func.inlined),
+++            bool(func.virtual), func.template is not None, func.kind,
+++        ))
+++    return tuple(found)
+++
+++
+++def _function_return(info: ClassInfo, func: Function, spellings: dict[str, str]) -> str:
+++    """What a function returns, as a signature writes it: the class a constructor builds."""
+++    if func.kind == "constructor":
+++        return spellings.get(info.name, info.name)
+++    if func.kind == "destructor":
+++        return "void"
+++    return _declared_type(func.returns, spellings)
+++
+++
+++def _declared_type(ctype: CType, spellings: dict[str, str]) -> str:
+++    """A type as a function's signature spells it: the typedef it was written as, a ``&`` and a
+++    leading ``const`` kept - which is what a ``TMethod`` reports its return type as."""
+++    text = _spelled(ctype, spellings) + "&" * int(ctype.reference)
+++    return f"const {text}" if ctype.const and not text.startswith("const ") else text
+++
+++
++ def _layout(info: ClassInfo, spellings: dict[str, str], values: dict[str, int]) -> Layout:
++     """A class's data members as a reflection dictionary would describe them, for a library
++     that writes objects member by member - an instance of a template by its C++ name."""
++diff --git a/src/xrdroot/pycxx/nodes.py b/src/xrdroot/pycxx/nodes.py
++index 117cb94a..b8214695 100644
++--- a/src/xrdroot/pycxx/nodes.py
+++++ b/src/xrdroot/pycxx/nodes.py
++@@ -420,6 +420,8 @@ class Function(Stmt):
++     const: bool = False
++     static: bool = False
++     virtual: bool = False
+++    #: Defined where it is declared - in its class's body - and so inline, as C++ makes it.
+++    inlined: bool = False
++     variadic: bool = False
++     inits: list[tuple[str, list[Expr]]] = field(default_factory=list)
++     template: list[str] | None = None
++diff --git a/src/xrdroot/pycxx/parse_decl.py b/src/xrdroot/pycxx/parse_decl.py
++index 00466876..3b007cd8 100644
++--- a/src/xrdroot/pycxx/parse_decl.py
+++++ b/src/xrdroot/pycxx/parse_decl.py
++@@ -504,6 +504,7 @@ class Parser(StmtParser):
++             func.static, func.variadic = spec.static, variadic
++             func.virtual = "virtual" in spec.words
++             func.constant_evaluation = bool(spec.words & {"constexpr", "consteval"})
+++            func.inlined = bool(spec.words & {"inline"})
++             self._qualifiers(func)
++             if self.accept("="):
++                 func.special = self.take().text
++@@ -515,6 +516,7 @@ class Parser(StmtParser):
++                 raise self.refuse("a function-try-block, a try around a whole function body")
++             if not self.accept(";"):
++                 func.body = self.block()
+++                func.inlined = func.inlined or not scope
++         finally:
++             self.pop()
++         return func
++diff --git a/src/xrdroot/pycxx/parse_types.py b/src/xrdroot/pycxx/parse_types.py
++index 2a4c49b8..c61194bf 100644
++--- a/src/xrdroot/pycxx/parse_types.py
+++++ b/src/xrdroot/pycxx/parse_types.py
++@@ -27,7 +27,7 @@ QUALIFIERS = frozenset(
++ 
++ #: The words among those that say something the translation keeps.
++ KEPT = frozenset({"const", "constexpr", "consteval", "static", "thread_local",
++-                  "virtual", "friend", "explicit", "extern"})
+++                  "virtual", "friend", "explicit", "extern", "inline"})
++ 
++ 
++ @dataclass
++diff --git a/src/xrdroot/pycxx/program.py b/src/xrdroot/pycxx/program.py
++index d246e3f8..212101cf 100644
++--- a/src/xrdroot/pycxx/program.py
+++++ b/src/xrdroot/pycxx/program.py
++@@ -78,6 +78,10 @@ class ClassInfo:
++     fields: dict[str, VarDecl] = field(default_factory=dict)
++     statics: dict[str, VarDecl] = field(default_factory=dict)
++     methods: dict[str, list[Function]] = field(default_factory=dict)
+++    #: Every function the class declares, one an overload - which a const function of the same
+++    #: parameters is - of another: what a reflection dictionary lists, and what the translation
+++    #: of a method's name alone cannot tell apart.
+++    overloads: dict[tuple[Any, ...], Function] = field(default_factory=dict)
++     constants: dict[str, str] = field(default_factory=dict)
++     types: list[Stmt] = field(default_factory=list)
++     #: The class template this class is an instance of, if it is one.
++@@ -88,6 +92,7 @@ class ClassInfo:
++         return self.decl.name
++ 
++     def add_method(self, func: Function) -> None:
+++        self._overload(func)
++         found = self.methods.setdefault(func.name, [])
++         for index, other in enumerate(found):
++             if _same_signature(other, func):
++@@ -96,6 +101,28 @@ class ClassInfo:
++                 return
++         found.append(func)
++ 
+++    def _overload(self, func: Function) -> None:
+++        """Note ``func`` as one of the class's overloads, or - the same one declared and then
+++        defined outside the class - add what its definition says to what was declared."""
+++        key = _overload_key(func)
+++        known = self.overloads.get(key)
+++        if known is None:
+++            self.overloads[key] = func
+++            return
+++        known.inlined = known.inlined or func.inlined
+++        known.static = known.static or func.static
+++        known.virtual = known.virtual or func.virtual
+++
+++
+++def _overload_key(func: Function) -> tuple[Any, ...]:
+++    """What tells one overload of a name from another: its parameters, its constness, its kind."""
+++    return (func.name, tuple(_same_type_key(param.ctype) for param in func.params),
+++            func.const, func.kind)  # fmt: skip
+++
+++
+++def _same_type_key(ctype: CType) -> tuple[str, int, bool]:
+++    return (ctype.name, ctype.pointer, ctype.reference)
+++
++ 
++ def _same_signature(one: Function, other: Function) -> bool:
++     if len(one.params) != len(other.params):
++@@ -104,7 +131,7 @@ def _same_signature(one: Function, other: Function) -> bool:
++ 
++ 
++ def _same_type(one: CType, other: CType) -> bool:
++-    return (one.name, one.pointer, one.reference) == (other.name, other.pointer, other.reference)
+++    return _same_type_key(one) == _same_type_key(other)
++ 
++ 
++ def _merged(declared: Function, defined: Function) -> Function:
++@@ -116,6 +143,7 @@ def _merged(declared: Function, defined: Function) -> Function:
++             mine.name = theirs.name
++     defined.static = defined.static or declared.static
++     defined.virtual = defined.virtual or declared.virtual
+++    defined.inlined = defined.inlined or declared.inlined
++     defined.constant_evaluation |= declared.constant_evaluation
++     return defined
++ 
++diff --git a/src/xrdroot/pyroot/core/collections.py b/src/xrdroot/pyroot/core/collections.py
++index 6bdf6e0e..97248a7c 100644
++--- a/src/xrdroot/pyroot/core/collections.py
+++++ b/src/xrdroot/pyroot/core/collections.py
++@@ -62,10 +62,14 @@ def _looked_up(name: Any) -> str | None:
++     A ``std::string`` is taken as the name it holds, which a C++ program writes as
++     ``s.c_str()``: the translator emits that call as the string itself, since a ``std::string``
++     is Python's ``str`` here - and roottest's ``execEnumsTest`` looks a constant up with one.
+++    An object with a name is looked up by that name too, as ROOT's ``TCollection::FindObject``
+++    hands a ``TObject`` argument to the lookup by its name.
++     """
++     if isinstance(name, str):
++         return name
++-    return str(name) if isinstance(name, StdString) else None
+++    if isinstance(name, StdString):
+++        return str(name)
+++    return name.GetName() if hasattr(name, "GetName") else None
++ 
++ 
++ def _named_by(obj: Any, option: str) -> None:
++@@ -652,6 +656,10 @@ class THashTable(TCollection):
++ 
++     CLASS_TITLE = "A hash table"
++ 
+++    def Empty(self) -> bool:
+++        """``Empty``: does the table hold nothing? - ROOT's name for it, beside ``IsEmpty``."""
+++        return self.IsEmpty()
+++
++ 
++ def _text(other: Any) -> str | None:
++     """What a ``TObjString`` is compared with as a string - a string, a ``TString`` or
++diff --git a/src/xrdroot/pyroot/core/objects.py b/src/xrdroot/pyroot/core/objects.py
++index 75c06c00..fa1e0401 100644
++--- a/src/xrdroot/pyroot/core/objects.py
+++++ b/src/xrdroot/pyroot/core/objects.py
++@@ -291,6 +291,25 @@ class TObject:
++     def SetUniqueID(self, uid: int) -> None:
++         self._unique_id = int(uid)
++ 
+++    #: ``TObject::fgObjectStat``: whether ROOT enters every object made in its object table.
+++    #: No table is kept here, so the flag is only ROOT's to set and read back: a threaded
+++    #: program turns it off before it starts so that the table is not a shared bottleneck.
+++    _object_stat = False
+++
+++    @staticmethod
+++    def GetObjectStat() -> bool:
+++        """``GetObjectStat``: whether ROOT enters each object made in its object table."""
+++        return TObject._object_stat
+++
+++    @staticmethod
+++    def SetObjectStat(stat: Any) -> None:
+++        """``SetObjectStat``: have ROOT keep every object in its table, or stop keeping them.
+++
+++        A program that makes objects on several threads sets this false, as ROOT's table
+++        is one shared list that every construction would otherwise lock.
+++        """
+++        TObject._object_stat = bool(stat)
+++
++     # -- copies -----------------------------------------------------------------
++ 
++     def Copy(self, obj: Any) -> None:
++diff --git a/src/xrdroot/pyroot/core/reflection.py b/src/xrdroot/pyroot/core/reflection.py
++index 32874c7f..367526f9 100644
++--- a/src/xrdroot/pyroot/core/reflection.py
+++++ b/src/xrdroot/pyroot/core/reflection.py
++@@ -18,6 +18,7 @@ from __future__ import annotations
++ import re
++ import sys
++ from typing import Any, ClassVar
+++from weakref import WeakKeyDictionary
++ 
++ from ...wdeclared import ROOT_TYPEDEFS as TYPEDEFS
++ from ...winfo import INFOS, Element
++@@ -52,8 +53,97 @@ __all__ = [
++     "TStreamerLoop",
++     "TDataMember",
++     "TBaseClass",
+++    "TMethod",
+++    "TFunctionTemplate",
+++    "kIsClass",
+++    "kIsStruct",
+++    "kIsUnion",
+++    "kIsEnum",
+++    "kIsTypedef",
+++    "kIsFundamental",
+++    "kIsAbstract",
+++    "kIsVirtual",
+++    "kIsPureVirtual",
+++    "kIsUnionMember",
+++    "kIsPublic",
+++    "kIsProtected",
+++    "kIsPrivate",
+++    "kIsPointer",
+++    "kIsArray",
+++    "kIsStatic",
+++    "kIsDefault",
+++    "kIsReference",
+++    "kIsDirectInherit",
+++    "kIsCCompiled",
+++    "kIsCPPCompiled",
+++    "kIsCompiled",
+++    "kIsNotReacheable",
+++    "kIsConstant",
+++    "kIsVirtualBase",
+++    "kIsConstPointer",
+++    "kIsScopedEnum",
+++    "kIsConstexpr",
+++    "kIsExplicit",
+++    "kIsNamespace",
+++    "kIsConstMethod",
+++    "kIsUsing",
+++    "kIsDefinedInStd",
+++    "kIsConstructor",
+++    "kIsConversion",
+++    "kIsDestructor",
+++    "kIsOperator",
+++    "kIsInlined",
+++    "kIsTemplateSpec",
+++    "kExactMatch",
+++    "kConversionMatch",
++ ]
++ 
+++#: ``TDictionary::EProperty`` and ``EFunctionProperty``, and ``ROOT::EFunctionMatchMode``: the
+++#: bits and modes ``TMethod::ExtraProperty`` and ``TClass::GetMethodWithPrototype`` answer
+++#: with. C++ declares them twice - the two enums overlap on purpose - so the ones both name
+++#: have one value here, and each is a name of the namespace, as ``ROOT::kIsInlined`` is.
+++kIsClass = 0x00000001
+++kIsStruct = 0x00000002
+++kIsUnion = 0x00000004
+++kIsEnum = 0x00000008
+++kIsTypedef = 0x00000010
+++kIsFundamental = 0x00000020
+++kIsAbstract = 0x00000040
+++kIsVirtual = 0x00000080
+++kIsPureVirtual = 0x00000100
+++kIsUnionMember = 0x00000100
+++kIsPublic = 0x00000200
+++kIsProtected = 0x00000400
+++kIsPrivate = 0x00000800
+++kIsPointer = 0x00001000
+++kIsArray = 0x00002000
+++kIsStatic = 0x00004000
+++kIsDefault = 0x00008000
+++kIsReference = 0x00010000
+++kIsDirectInherit = 0x00020000
+++kIsCCompiled = 0x00040000
+++kIsCPPCompiled = 0x00040000
+++kIsCompiled = 0x00040000
+++kIsNotReacheable = 0x00080000
+++kIsConstant = 0x00100000
+++kIsVirtualBase = 0x00200000
+++kIsConstPointer = 0x00400000
+++kIsScopedEnum = 0x00800000
+++kIsConstexpr = 0x02000000
+++kIsExplicit = 0x04000000
+++kIsNamespace = 0x08000000
+++kIsConstMethod = 0x10000000
+++kIsUsing = 0x20000000
+++kIsDefinedInStd = 0x40000000
+++kIsConstructor = 0x00000001
+++kIsConversion = 0x00000002
+++kIsDestructor = 0x00000004
+++kIsOperator = 0x00000008
+++kIsInlined = 0x00000010
+++kIsTemplateSpec = 0x00000020
+++kExactMatch = 0
+++kConversionMatch = 1
+++
++ #: One layout of one class: its checksum, version and elements.
++ Layout = tuple[int, int, tuple[Element, ...]]
++ #: The layouts files read so far describe each class with, in the order they were met.
++@@ -75,11 +165,24 @@ NUMBERS = frozenset({
++ #: names: their classes have a ``TClass`` bootstrap from then on, as a loaded library's would.
++ GENERATED: set[str] = set()
++ 
+++#: The ``TMethod`` objects made for each class of a program's, by the class, and its member
+++#: function templates: made once, so the one a search answers with is still the one its list
+++#: holds after a ``GenerateDictionary`` replaces what the interpreter described of it.
+++METHODS: WeakKeyDictionary[type, list[Any]] = WeakKeyDictionary()
+++TEMPLATES: WeakKeyDictionary[type, list[Any]] = WeakKeyDictionary()
+++
++ #: The functions looked up in a class only the interpreter describes, by class: ROOT asks the
++ #: interpreter for the one a program names and keeps the ``TMethod`` it made, which is what lets
++ #: a program hold that method across the dictionary that replaces the interpreter's description.
++ INTERPRETED_METHODS: dict[str, list[TNamed]] = {}
++ 
+++#: What a class's translation says of each of its functions, by position - which is what
+++#: ``TMethod`` is made of: the name, the return type as written, each parameter's type, whether
+++#: it is const, static, inline, virtual and a template, and its kind (``function``,
+++#: ``constructor``, ``destructor`` or ``operator``). A kit class that knows nothing of its C++
+++#: signatures keeps none, and its methods are found only where no prototype is asked for.
+++Signature = tuple[str, str, tuple[str, ...], bool, bool, bool, bool, bool, str]
+++
++ #: The standard containers, whose classes ROOT knows without a dictionary of their own.
++ CONTAINERS = ("vector", "list", "deque", "map", "multimap", "set", "multiset",
++               "unordered_map", "unordered_set", "pair", "array", "forward_list",
++@@ -878,49 +981,177 @@ class TClass(TNamed):
++         return next((m for m in self.GetListOfAllPublicDataMembers() if m.GetName() == wanted),
++                     None)
++ 
+++    def GetMissingDictionaries(self, result: Any, recurse: bool = False) -> None:
+++        """``GetMissingDictionaries``: fill ``result`` - a ``THashTable`` - with the ``TClass``es
+++        of the classes no dictionary describes.
+++
+++        The class itself where nothing describes it, and the class of each of its data
+++        members - a member of ``std::vector<Elem>`` adds ``vector<Elem>`` and, a standard
+++        container's elements being what the interpreter describes of it, ``Elem``. With
+++        ``recurse`` those classes' own members are walked too; without it a class it found is
+++        listed and not walked, as ROOT lists what a class refers to and leaves the descent to
+++        the walk into it. A class a dictionary here describes - ROOT's own, or one a built
+++        dictionary was loaded for - is not among them.
+++        """
+++        self._missing_into(result, bool(recurse), set(), members=True)
+++
+++    def _missing_into(self, result: Any, recurse: bool, seen: set[str], members: bool) -> None:
+++        """Add the classes ``self`` refers to that no dictionary describes, walking their
+++        members when ``members`` - or a recursion, or a description - says to."""
+++        if self._name in seen:
+++            return
+++        seen.add(self._name)
+++        described = not self._dictless()
+++        if not described:
+++            result.Add(self)  # ``seen`` has each class once, however many members are of it
+++            for base in self._base_names():
+++                TClass(base)._missing_into(result, recurse, seen, members=False)
+++        if recurse or members or described:
+++            for klass in self._referenced(recurse):
+++                klass._missing_into(result, recurse, seen, members=recurse)
+++
+++    def _referenced(self, recurse: bool) -> list[TClass]:
+++        """The classes the class's data members are, as ``GetMissingDictionaries`` walks them:
+++        each member's own class, a standard container's elements', and with ``recurse`` the
+++        arguments of any template instance.
+++
+++        An instance of a standard container or of a wrapper has no data members to read here -
+++        the interpreter describes ``vector<Elem>`` from its element - so what it refers to is
+++        what it holds.
+++        """
+++        if _template(self._name) or _wrapper(self._name):
+++            return _classes_of(_arguments(self._name))
+++        found = self._member_classes(recurse)
+++        if recurse:
+++            found.extend(_classes_of(_arguments(self._name)))
+++        return found
+++
+++    def _member_classes(self, recurse: bool) -> list[TClass]:
+++        """Each data member's class, and - a standard container's or a wrapper's, whose
+++        elements the interpreter describes as its members - the classes it holds."""
+++        found: list[TClass] = []
+++        for _, spelled, _, _ in self._fields():
+++            name = _class_spelling(str(spelled))
+++            if name is None:
+++                continue
+++            found.append(TClass(name))
+++            if recurse or _template(name) or _wrapper(name):
+++                found.extend(_classes_of(_arguments(name)))
+++        return found
+++
+++    def _dictless(self) -> bool:
+++        """Is this a class no dictionary describes?
+++
+++        ROOT's own classes are described by the kit's layouts, and one a loaded dictionary
+++        selected is described by it - a dictionary's other classes, translated with it, have
+++        no dictionary of their own. A standard container is described where ROOT's own
+++        dictionaries instantiate it, for the built-in types, and otherwise only where one was
+++        generated for it: a member of ``std::vector<Elem>`` is ``vector<Elem>`` even when
+++        ``Elem`` itself has a dictionary. A wrapper that streams what it holds -
+++        ``std::unique_ptr<T>``, ``std::array<T, N>``, ``std::tuple<...>`` - is described by
+++        what it holds, and is never itself a class a dictionary is missing for.
+++        """
+++        name = self._name
+++        if name in INFOS or name in GENERATED or _last(name) in GENERATED:
+++            return False
+++        if _instance(name):
+++            if _wrapper(name):
+++                return False
+++            if _template(name):
+++                return not all(_built_in(each) for each in _arguments(name))
+++            return True
+++        return _declared(name) is not None or _class_named(name) is None
+++
++     def GetListOfMethods(self, load: bool = True) -> Any:
++         """``GetListOfMethods``: the class's own functions, by name.
++ 
++-        A class only the interpreter describes lists the functions a search has made so far,
++-        as ROOT's list of them holds what the interpreter has been asked for.
+++        A class C++ declared lists the functions its translation describes, and after them the
+++        ones only the namespace's class carries - ``Class``, ``IsA``, the ``ClassDef`` helpers.
+++        A class only the interpreter describes lists the functions a search has made so far, as
+++        ROOT's list of them holds what the interpreter has been asked for.
++         """
++         from .collections import TList
++ 
++         made = TList()
+++        for method in self._methods():
+++            made.Add(method)
+++        return made
+++
+++    def _methods(self) -> list[Any]:
+++        """The class's functions as :meth:`GetListOfMethods` lists them.
+++
+++        A class's are made once and kept, so the ``TMethod`` a search answers with is still the
+++        list's after - and whatever a dictionary does to the class later.
+++        """
++         cls = self._class()
++-        for found in sorted(vars(cls) if cls is not None else ()):
++-            if callable(getattr(cls, found)) and not found.startswith("_"):
++-                made.Add(TNamed(found, ""))
++         if cls is None:
++-            for looked_up in INTERPRETED_METHODS.get(self._name, ()):
++-                made.Add(looked_up)
++-        return made
+++            return INTERPRETED_METHODS.get(self._name, [])
+++        kept = METHODS.get(cls)
+++        if kept is None:
+++            kept = METHODS[cls] = self._made_methods(cls)
+++        return kept
+++
+++    def _made_methods(self, cls: type) -> list[Any]:
+++        """The ``TMethod`` of each function ``cls`` describes, then one a Python name alone made."""
+++        found: list[Any] = []
+++        spelled: set[str] = set()
+++        for signature in cls.__dict__.get("_cxx_methods_", ()):
+++            found.append(TMethod(signature[0], self, tuple(signature)))
+++            spelled.add(_python_name(signature[0]))
+++        for name in sorted(vars(cls)):
+++            if name in spelled or name.startswith("_") or not callable(getattr(cls, name)):
+++                continue
+++            found.append(TMethod(name, self))
+++        return found
++ 
++     def GetMethodAny(self, name: Any) -> Any:
++         return next((m for m in self.GetListOfMethods() if m.GetName() == str(name)), None)
++ 
++     GetMethodAllAny = GetMethodAny
++ 
+++    def GetMethod(self, method: Any, params: Any = "", isconst: bool = False) -> Any:
+++        """``GetMethod``: the function called ``method`` that ``params`` - its parameters'
+++        types, comma separated - can be given, as ``GetMethodWithPrototype`` finds it."""
+++        return self.GetMethodWithPrototype(method, params, isconst, kConversionMatch)
+++
++     def GetMethodWithPrototype(self, name: Any, proto: Any = "", isconst: bool = False,
++-                               mode: int = 0) -> Any:  # fmt: skip
++-        """``GetMethodWithPrototype``: the function called ``name`` with the prototype
++-        ``proto``, or ``nullptr`` when the class has none.
++-
++-        A function looked up in a class only the interpreter describes is made here and stays
++-        in its list, as ROOT asks the interpreter for it and keeps the ``TMethod`` it made: that
++-        is what lets a program hold the method across the dictionary a later
++-        ``GenerateDictionary`` gives the class (roottest's ``ReuseMethod``), where the
++-        dictionary would otherwise have replaced the interpreter's description.
+++                               mode: int = kConversionMatch) -> Any:  # fmt: skip
+++        """``GetMethodWithPrototype``: the function called ``name`` that ``proto`` - its
+++        parameters' types - can be given, or ``nullptr`` when the class has none.
+++
+++        ``isconst`` asks for one a const object can call: a const member or a static one. A
+++        non-const object prefers the non-const overload, as C++ overload resolution does. A
+++        function looked up in a class only the interpreter describes is made here and stays in
+++        its list, as ROOT asks the interpreter for it and keeps the ``TMethod`` it made: that is
+++        what lets a program hold the method across the dictionary a later
+++        ``GenerateDictionary`` gives the class (roottest's ``ReuseMethod``).
++         """
++-        for found in self.GetListOfMethods(False):
++-            if found.GetName() == str(name) and found.GetTitle() == str(proto):
++-                return found
+++        wanted = _parameters(proto)
+++        candidates = [
+++            found for found in self._methods()
+++            if found.GetName() == str(name) and found._given(wanted, int(mode), bool(isconst))
+++        ]  # fmt: skip
+++        if candidates:
+++            return _preferred(candidates, bool(isconst))
++         if not self._made_here(str(name), str(proto)):
++             return None
++-        made = TNamed(str(name), str(proto))
+++        made = TMethod(str(name), self)
++         INTERPRETED_METHODS.setdefault(self._name, []).append(made)
++         return made
++ 
+++    def GetFunctionTemplate(self, name: Any) -> Any:
+++        """``GetFunctionTemplate``: the member function template called ``name``, or ``nullptr``."""
+++        cls = self._class()
+++        if cls is None:
+++            return None
+++        kept = TEMPLATES.get(cls)
+++        if kept is None:
+++            kept = TEMPLATES[cls] = [
+++                TFunctionTemplate(each[0], self, tuple(each))
+++                for each in cls.__dict__.get("_cxx_methods_", ()) if each[7]
+++            ]
+++        return next((each for each in kept if each.GetName() == str(name)), None)
+++
++     def _made_here(self, name: str, proto: str) -> bool:
++         """Is the function one this kit makes for a class only the interpreter describes - a
++         member every container declares with no argument, and nothing else?"""
++@@ -1315,3 +1546,212 @@ def element_of(element: Element) -> TStreamerElement:
++     if element[0] in ("TStreamerSTL", "TStreamerSTLstring") and element[3] == 500:
++         element = (*element[:3], 300, *element[4:])
++     return ELEMENT_CLASSES.get(element[0], TStreamerElement)(element)
+++
+++
+++#: The ``EFunctionProperty`` bit each kind of C++ function is, as ``TDictionary`` numbers them.
+++FUNCTION_KINDS = {"constructor": kIsConstructor, "destructor": kIsDestructor,
+++                  "operator": kIsOperator}  # fmt: skip
+++
+++
+++def _parameters(proto: Any) -> tuple[str, ...]:
+++    """``GetMethod``'s parameter list as the types it is made of: ``"int, char*"`` is two.
+++
+++    ``""`` is a function taking none, and a ``void`` written out is taken as none, as C++
+++    takes it. A type is compared with its spaces and its ``std::`` out - the spellings a
+++    caller may differ in - and a default it wrote out is not part of the type.
+++    """
+++    text = str(proto).strip()
+++    if not text:
+++        return ()
+++    found = tuple(_squashed(part) for part in _split_parameters(text))
+++    return () if found == ("void",) else found
+++
+++
+++def _split_parameters(text: str) -> list[str]:
+++    """``text`` split at the commas outside brackets, so ``map<int, char>, bool`` is two."""
+++    parts: list[str] = []
+++    depth, start = 0, 0
+++    for at, letter in enumerate(text):
+++        if letter in "<([":
+++            depth += 1
+++        elif letter in ">)]":
+++            depth -= 1
+++        elif letter == "," and not depth:
+++            parts.append(text[start:at])
+++            start = at + 1
+++    parts.append(text[start:])
+++    return parts
+++
+++
+++def _squashed(one: str) -> str:
+++    """A type as two spellings of it are compared: no spaces, no ``std::``, no default."""
+++    text = one.split("=", 1)[0]
+++    return text.replace(" ", "").replace("std::", "")
+++
+++
+++def _matches(wanted: str, declared: str, mode: int) -> bool:
+++    """Can an argument of type ``wanted`` be passed to a parameter declared ``declared``?
+++
+++    An exact match takes the type as declared; a conversion match also takes the ones C++
+++    would - a ``char*`` for a ``const char*``, which is a pointer to more than it promises.
+++    """
+++    if wanted == declared:
+++        return True
+++    return mode == kConversionMatch and wanted == declared.replace("const", "")
+++
+++
+++def _preferred(candidates: list[Any], isconst: bool) -> Any:
+++    """The overload of ``candidates`` a search answers with.
+++
+++    A const object's is a const - or a static - function; a non-const object's is the non-const
+++    overload, as C++ prefers it, and a const one where that is all the class declares.
+++    """
+++    def rank(found: Any) -> int:
+++        signature = found._signature
+++        const = signature is not None and signature[3]
+++        static = signature is not None and signature[4]
+++        if isconst:
+++            return 0 if const else (2 if static else 1)
+++        return 2 if const else (3 if static else 0)
+++
+++    return min(candidates, key=rank)
+++
+++
+++def _python_name(name: str) -> str:
+++    """The Python attribute a C++ function's name is written as in a class of the kit's."""
+++    from ...pycxx.symbols import member_name
+++
+++    return member_name(name)
+++
+++
+++def _instance(name: str) -> bool:
+++    """Is ``name`` a template made a class by its arguments - ``vector<Elem>``, ``Tmplt<int>``?"""
+++    return "<" in name and name.endswith(">")
+++
+++
+++def _wrapper(name: str) -> bool:
+++    """Is ``name`` an instance of one of the standard ways of holding one thing?"""
+++    return name.split("<", 1)[0] in WRAPPERS
+++
+++
+++def _arguments(name: str) -> list[str]:
+++    """The template arguments ``name`` is an instance with: ``map<int,char>`` gives two."""
+++    if "<" not in name or not name.endswith(">"):
+++        return []
+++    inside = name[name.index("<") + 1 : -1]
+++    return [part.strip() for part in _split_parameters(inside)]
+++
+++
+++def _class_spelling(spelled: str) -> str | None:
+++    """The class a member's type as written names - ``TNamed*`` is ``TNamed`` - or none for a
+++    type that is no class: a number, a pointer to nothing, the ``void`` of a member that is
+++    not there."""
+++    text = re.sub(r"\[[^\]]*\]", "", spelled).strip()
+++    while text.endswith(("*", "&")):
+++        text = text[:-1].strip()
+++    text = text.removeprefix("const ").strip()
+++    if not text or text in FUNDAMENTAL or text in NUMBERS or text == "void":
+++        return None
+++    if text[0].isdigit() or text[0] == "-":  # ``std::array<Elem, 4>``'s length
+++        return None
+++    return _known_as(text)
+++
+++
+++#: The standard ways of holding one thing that ROOT streams by what they hold - no dictionary
+++#: of their own describes them, and one is never a class a dictionary is missing for.
+++WRAPPERS = frozenset({"unique_ptr", "shared_ptr", "array", "tuple", "optional", "variant",
+++                      "atomic", "weak_ptr"})  # fmt: skip
+++
+++
+++def _classes_of(spellings: list[str]) -> list[TClass]:
+++    """The classes the template arguments ``spellings`` name, the ones that name a class."""
+++    return [TClass(name) for name in map(_class_spelling, spellings) if name is not None]
+++
+++
+++def _built_in(spelled: str) -> bool:
+++    """Is a template argument one ROOT's own container dictionaries instantiate - a built-in
+++    number or a string - rather than a class of a program's own that needs one of its own?"""
+++    text = _squashed(spelled)
+++    while text.endswith("*"):
+++        text = text[:-1]
+++    return text in NUMBERS or text in ("string", "bool", "char")
+++
+++
+++
+++class TMethod(TNamed):
+++    """``TMethod``: one function of a class, as ``GetListOfMethods`` lists it.
+++
+++    A class C++ declared describes its functions in its translation, so a method made for it
+++    knows its signature - what ``GetReturnTypeName``, ``GetPrototype`` and ``ExtraProperty``
+++    answer with. One made from a Python name alone knows none of that, and is found only where
+++    no prototype is asked for.
+++    """
+++
+++    CLASS_TITLE = "Method or function descriptor"
+++
+++    def __init__(self, name: Any, owner: TClass | None = None,
+++                 signature: Signature | None = None) -> None:  # fmt: skip
+++        TNamed.__init__(self, str(name), "")
+++        self._owner = owner
+++        self._signature = signature
+++
+++    def GetClass(self) -> TClass | None:
+++        """``GetClass``: the class the function is a member of."""
+++        return self._owner
+++
+++    def GetReturnTypeName(self) -> str:
+++        """``GetReturnTypeName``: the type it returns, as it was declared - ``int&``, ``void``."""
+++        return "" if self._signature is None else self._signature[1]
+++
+++    def GetPrototype(self) -> str:
+++        """``GetPrototype``: the declaration ROOT prints it as, ``int Holder::data() const``."""
+++        if self._signature is None:
+++            return f"{self.GetName()}(...)"
+++        returns, params, const = self._signature[1], self._signature[2], self._signature[3]
+++        owner = self._owner.GetName() if self._owner is not None else ""
+++        spelled = ", ".join(params)
+++        return f"{returns} {owner}::{self.GetName()}({spelled})" + (" const" if const else "")
+++
+++    def ExtraProperty(self) -> int:
+++        """``ExtraProperty``: the ``EFunctionProperty`` bits the function is - an inlined one,
+++        a constructor, a destructor, an operator, a conversion."""
+++        if self._signature is None:
+++            return 0
+++        inlined, template, kind = self._signature[5], self._signature[7], self._signature[8]
+++        bits = FUNCTION_KINDS.get(kind, 0)
+++        if kind == "operator" and self._converts():
+++            bits = kIsConversion  # a conversion is no operator to ROOT, but a cast
+++        if inlined:
+++            bits |= kIsInlined
+++        if template:
+++            bits |= kIsCompiled
+++        return bits
+++
+++    def _converts(self) -> bool:
+++        """Is it a conversion operator - ``operator int``, and not ``operator+``?"""
+++        spelled = self.GetName()[len("operator") :].strip()
+++        return bool(spelled) and (spelled[0].isalpha() or spelled[0] == "_")
+++
+++    def _given(self, wanted: tuple[str, ...], mode: int, isconst: bool) -> bool:
+++        """Can it be called with arguments of ``wanted`` on a const object, or not?"""
+++        if self._signature is None:
+++            return not wanted
+++        const, static = self._signature[3], self._signature[4]
+++        declared = tuple(_squashed(each) for each in self._signature[2])
+++        kind = self._signature[8]
+++        if isconst and not (const or static) and kind not in ("constructor", "destructor"):
+++            return False
+++        if len(declared) != len(wanted):
+++            return False
+++        return all(_matches(one, other, mode)
+++                   for one, other in zip(wanted, declared, strict=True))  # fmt: skip
+++
+++
+++class TFunctionTemplate(TMethod):
+++    """``TFunctionTemplate``: a member function template, as ``GetFunctionTemplate`` finds it.
+++
+++    No instance of it is made here, so what it says of its parameters is what the template
+++    declared them as; that it is inline and a template is what a search of it asks.
+++    """
+++
+++    CLASS_TITLE = "Template function descriptor"
++diff --git a/tests/test_cint_layouts.py b/tests/test_cint_layouts.py
++index 3e2d5e78..0224922f 100644
++--- a/tests/test_cint_layouts.py
+++++ b/tests/test_cint_layouts.py
++@@ -91,3 +91,50 @@ def test_a_template_argument_written_as_a_number_is_the_number_in_the_layout():
++     text = translate("struct S { std::array<int,4> a; std::array<float,2*3> b; };", "t.C")
++     assert "('a', 'std::array<int, 4>', '', ())" in text
++     assert "('b', 'std::array<float, ?>', '', ())" in text
+++
+++
+++#: A class with the functions a reflection dictionary describes: two overloads of one name
+++#: that differ only in constness, a constructor, a destructor, a conversion, a member
+++#: function template, and functions declared inline in the class and out of it.
+++FUNCTIONS = r"""
+++class Holder {
+++   int fValue;
+++public:
+++   Holder(int &n) { fValue = n; }
+++   ~Holder() {}
+++   int data() const { return fValue; }
+++   int& data() { return fValue; }
+++   operator int() const { return 0; }
+++   template <typename T> int templated() { return fValue; }
+++   inline int declared();
+++   int outOfLine();
+++};
+++inline int Holder::declared() { return 1; }
+++int Holder::outOfLine() { return 2; }
+++"""
+++
+++
+++def test_a_class_carries_its_functions_as_a_dictionary_describes_them():
+++    """A ``TMethod`` made from a class's translation says its return type, each parameter's
+++    type and whether it is const, static, inline and a template - which is what a program
+++    searching the class by prototype, and reading what an overload returns, asks about."""
+++    text = translate(FUNCTIONS, "t.C")
+++    assert (
+++        "_cxx_methods_ = (('Holder', 'Holder', ('int&',), False, False, True, False, "
+++        "False, 'constructor'), ('~Holder', 'void', (), False, False, True, False, False, "
+++        "'destructor'), ('data', 'int', (), True, False, True, False, False, 'function'), "
+++        "('data', 'int&', (), False, False, True, False, False, 'function'), "
+++        "('operator int', 'auto', (), True, False, True, False, False, 'operator'), "
+++        "('templated', 'int', (), False, False, True, False, True, 'function'), "
+++        "('declared', 'int', (), False, False, True, False, False, 'function'), "
+++        "('outOfLine', 'int', (), False, False, False, False, False, 'function'))"
+++    ) in text
+++
+++
+++def test_a_class_with_no_functions_says_so_where_its_bases_say_otherwise():
+++    """``_cxx_methods_`` is on every class, so that a class of no functions is not answered
+++    with the ones its base declares."""
+++    text = translate("struct Base { void f() {} };\nstruct Empty : Base {};", "t.C")
+++    assert "class Empty(Base):" in text
+++    assert "_cxx_layout_ = ('Empty', ('Base',), ())" in text
+++    assert "_cxx_methods_ = ()" in text
++diff --git a/tests/test_pycint_library.py b/tests/test_pycint_library.py
++index 3c614318..354d2f08 100644
++--- a/tests/test_pycint_library.py
+++++ b/tests/test_pycint_library.py
++@@ -713,3 +713,26 @@ def test_a_library_is_autoloaded_by_the_name_of_an_enumeration_it_declares() ->
++     assert loading.autoload_enum("myns::Kind")
++     assert ours() == ["libEnums"]
++     assert troot.find_enum("myns::Kind") is not None
+++
+++
+++def test_a_dictionary_describes_only_the_classes_it_selects() -> None:
+++    """A header's classes are translated with the dictionary it is built from, but only the
+++    ones a LinkDef selects have a dictionary - which is what ``GetMissingDictionaries``
+++    reports of a class of such a header."""
+++    write("Two.h", "class First { public: int a; };\nclass Second { public: int b; };\n")
+++    write("TwoLinkDef.h", "#pragma link C++ class First+;\n")
+++    build_dictionary("Two", [Path("Two.h")], linkdef=Path("TwoLinkDef.h"))
+++    assert load("libTwo") == 0
+++    assert ROOT.TClassTable.GetDict("First") is not None
+++    assert ROOT.TClassTable.GetDict("Second") is None
+++
+++
+++def test_a_selection_of_patterns_describes_every_class_the_header_declares() -> None:
+++    """``pattern="Fir*"`` selects whatever of the header matches, so a dictionary built from
+++    a selection of patterns describes every class its headers declare, not a list of names."""
+++    write("Pat.h", "class First { public: int a; };\nclass Second { public: int b; };\n")
+++    write("pat.xml", '<lcgdict>\n  <class pattern="Fir*"/>\n</lcgdict>\n')
+++    build_dictionary("Pat", [Path("Pat.h")], selection=Path("pat.xml"))
+++    assert load("libPat") == 0
+++    assert ROOT.TClassTable.GetDict("First") is not None
+++    assert ROOT.TClassTable.GetDict("Second") is not None
++diff --git a/tests/test_pyroot_reflection.py b/tests/test_pyroot_reflection.py
++index ee6a4db2..4011d896 100644
++--- a/tests/test_pyroot_reflection.py
+++++ b/tests/test_pyroot_reflection.py
++@@ -849,3 +849,208 @@ def test_an_emulated_classs_second_layout_takes_the_next_number():
++     _evo("int", "one.root")
++     ROOT.TFile("one.root")
++     assert _free_version("Evo", 1, {1}) == 2
+++
+++
+++#: A class with what a program searching it by prototype has to tell apart: two overloads of
+++#: one name that differ only in constness, a constructor, a destructor, a conversion, a
+++#: member function template, and functions declared inline in the class and out of it.
+++OVERLOADED = r"""
+++class Holder {
+++   int fValue;
+++   static const int fConfig;
+++public:
+++   Holder(const char *name) { fValue = 0; }
+++   Holder() { fValue = 0; }
+++   ~Holder() {}
+++   int data() const { return fValue; }
+++   int& data() { return fValue; }
+++   int value() { return fValue; }
+++   static const int& config() { return fConfig; }
+++   operator int() const { return 0; }
+++   template <typename T> int templated() { return fValue; }
+++   inline int declared() const;
+++   int outOfLine();
+++   int two(int a, const char *b) const { return fValue + a; }
+++   int mapped(std::map<int, double> m) const { return fValue; }
+++};
+++const int Holder::fConfig = 3;
+++inline int Holder::declared() const { return fValue; }
+++int Holder::outOfLine() { return fValue; }
+++"""
+++
+++
+++def _holder():
+++    run_source(OVERLOADED, "holder.C", call=False)
+++    return ROOT.TClass.GetClass("Holder")
+++
+++
+++def test_a_declared_class_lists_each_overload_its_translation_describes():
+++    """A const function and a non-const one of the same parameters are two overloads, and a
+++    function declared in the class and defined outside it is one - listed once."""
+++    holder = _holder()
+++    names = [method.GetName() for method in holder.GetListOfMethods()]
+++    assert names == ["Holder", "Holder", "~Holder", "data", "data", "value", "config",
+++                     "operator int", "templated", "declared", "outOfLine", "two",
+++                     "mapped"]  # fmt: skip
+++    assert holder.GetListOfMethods().At(0) is holder.GetListOfMethods().At(0)
+++
+++
+++def test_a_method_is_found_by_name_and_prototype_and_says_what_it_returns():
+++    holder = _holder()
+++    nonconst = holder.GetMethodWithPrototype("data", "")
+++    assert (nonconst.GetName(), nonconst.GetReturnTypeName()) == ("data", "int&")
+++    assert (nonconst.GetPrototype(), nonconst.GetClass()) == (
+++        "int& Holder::data()", holder
+++    )
+++    const = holder.GetMethodWithPrototype("data", "", True)
+++    assert const.GetReturnTypeName() == "int"
+++    assert holder.GetMethodWithPrototype("data", "int&") is None  # a parameter, not a return
+++    assert holder.GetMethod("value", "", True) is None  # no const overload to find
+++    assert holder.GetMethod("nothing", "") is None
+++
+++
+++def test_an_exact_search_wants_the_type_as_it_is_declared_and_a_conversion_does_not():
+++    holder = _holder()
+++    assert holder.GetMethodWithPrototype("Holder", "char*", False) is not None
+++    assert holder.GetMethodWithPrototype("Holder", "char*", False, ROOT.kExactMatch) is None
+++    exact = holder.GetMethodWithPrototype("Holder", "const char*", False, ROOT.kExactMatch)
+++    assert exact is not None
+++
+++
+++def test_a_constructor_a_destructor_and_a_conversion_say_what_they_are():
+++    holder = _holder()
+++    constructor = holder.GetMethod("Holder", "", True)
+++    assert constructor.ExtraProperty() & ROOT.kIsConstructor
+++    assert constructor.GetReturnTypeName() == "Holder"
+++    destructor = holder.GetMethodWithPrototype("~Holder", "", True)
+++    assert destructor.ExtraProperty() & ROOT.kIsDestructor
+++    conversion = holder.GetMethodWithPrototype("operator int", "", True)
+++    assert conversion.ExtraProperty() == ROOT.kIsConversion | ROOT.kIsInlined
+++    assert holder.GetMethod("data", "") is not None
+++
+++
+++def test_a_function_defined_in_its_class_is_inline_and_one_defined_out_of_it_is_not():
+++    holder = _holder()
+++    assert holder.GetMethod("declared", "").ExtraProperty() & ROOT.kIsInlined
+++    assert not holder.GetMethod("outOfLine", "").ExtraProperty() & ROOT.kIsInlined
+++
+++
+++def test_a_parameter_list_is_split_at_the_commas_no_bracket_holds():
+++    """``GetMethod``'s prototype is a list of types, and a type of its own may hold commas -
+++    ``map<int, double>`` - which do not start the next parameter."""
+++    holder = _holder()
+++    assert holder.GetMethodWithPrototype("two", "int, char*") is not None
+++    assert holder.GetMethodWithPrototype("mapped", "map<int, double>") is not None
+++    assert holder.GetMethodWithPrototype("mapped", "map<int, double>, int") is None
+++
+++
+++def test_a_member_function_template_is_found_as_one():
+++    holder = _holder()
+++    found = holder.GetFunctionTemplate("templated")
+++    assert found is not None and found.GetName() == "templated"
+++    assert found.ExtraProperty() & ROOT.kIsInlined
+++    assert found.ExtraProperty() & ROOT.kIsCompiled  # ROOT's bit for a template's function
+++    assert holder.GetFunctionTemplate("data") is None
+++    # a class of no templates has none, and a class only the interpreter describes neither
+++    assert ROOT.TClass.GetClass("Base").GetFunctionTemplate("templated") is None
+++    assert ROOT.TClass("vector<int>").GetFunctionTemplate("templated") is None
+++
+++
+++def test_a_function_only_a_python_name_gives_says_nothing_of_its_prototype():
+++    """ROOT's own classes have no signatures here, so one is found where no prototype is
+++    asked for and it answers no bits - which is where ``TObject::Print`` is."""
+++    printed = ROOT.TObject.Class().GetMethodAny("Print")
+++    assert printed.GetName() == "Print"
+++    assert (printed.ExtraProperty(), printed.GetReturnTypeName()) == (0, "")
+++    assert printed.GetPrototype() == "Print(...)"
+++    assert ROOT.TObject.Class().GetMethod("Print", "int") is None
+++
+++
+++#: A class of one member of a class, one of a container of it, and a number.
+++HOLDING = r"""
+++#include <vector>
+++class Element { public: int x; };
+++class Container { public: std::vector<Element> items; Element one; int n; };
+++"""
+++
+++
+++def test_the_classes_no_dictionary_describes_are_a_class_and_what_its_members_are():
+++    run_source(HOLDING, "holding.C", call=False)
+++    found = ROOT.THashTable()
+++    ROOT.TClass.GetClass("Container").GetMissingDictionaries(found)
+++    assert sorted(item.GetName() for item in found) == ["Container", "Element", "vector<Element>"]
+++
+++
+++def test_a_class_a_dictionary_describes_is_not_missing_and_its_members_still_are():
+++    run_source(HOLDING, "holding.C", call=False)
+++    reflection.GENERATED.add("Container")
+++    found = ROOT.THashTable()
+++    ROOT.TClass.GetClass("Container").GetMissingDictionaries(found)
+++    assert sorted(item.GetName() for item in found) == ["Element", "vector<Element>"]
+++    assert not ROOT.TClass("TList")._dictless()  # one of ROOT's own is described
+++
+++
+++def test_a_recursion_walks_into_the_classes_it_found_and_a_wrapper_holds_what_it_is_of():
+++    run_source(HOLDING, "holding.C", call=False)
+++    held = ROOT.THashTable()
+++    ROOT.TClass.GetClass("std::unique_ptr<Element>").GetMissingDictionaries(held, True)
+++    assert [item.GetName() for item in held] == ["Element"]
+++    assert ROOT.TClass("array<long, 4>")._dictless() is False
+++    assert ROOT.TClass("vector<int>")._dictless() is False  # a dictionary instantiates it
+++    assert ROOT.TClass("vector<Element>")._dictless() is True
+++
+++
+++#: A class deriving from one no dictionary describes, holding one made by a program's own
+++#: template, a pointer to a class - two of them - and members that name no class at all.
+++DERIVED_HOLDING = r"""
+++#include <array>
+++#include <map>
+++template <typename T> class Box { T held; };
+++class Base { public: int b; };
+++class Element { public: int x; };
+++class Derived : public Base {
+++public:
+++   Box<Element> box;
+++   Element *ptr;
+++   Element *other;
+++   std::array<Element, 4> arr;
+++   std::vector<char*> words;
+++   int counts[3];
+++   double d;
+++};
+++"""
+++
+++
+++def test_a_base_and_a_pointer_to_a_class_are_missing_and_a_number_is_no_class():
+++    """A class no dictionary describes is reported with its base, the class a pointer member
+++    is of - once, however many members are of it - and the class a program's own template
+++    makes; a number, an array of them and what a wrapper holds where it is no class are not."""
+++    run_source(DERIVED_HOLDING, "derived.C", call=False)
+++    found = ROOT.THashTable()
+++    ROOT.TClass.GetClass("Derived").GetMissingDictionaries(found)
+++    assert sorted(item.GetName() for item in found) == [
+++        "Base", "Box<Element>", "Derived", "Element"]
+++
+++
+++def test_a_hash_table_finds_its_object_by_the_name_an_object_argument_has():
+++    """ROOT's ``TCollection::FindObject(TObject*)`` looks the object up by its name, which is
+++    what lets a program holding a ``TClass`` of a missing class find it in the table."""
+++    first, second = ROOT.TClass("Container"), ROOT.TClass("Container")
+++    held = ROOT.THashTable()
+++    held.Add(first)
+++    assert (held.FindObject(second), held.Empty()) == (first, False)
+++    held.Clear()
+++    assert held.Empty()
+++
+++
+++def test_object_stat_is_a_flag_the_namespace_sets_and_reads_back():
+++    """``TObject::SetObjectStat`` is ROOT's switch for entering each made object in its object
+++    table; a threaded program turns it off, and every class of the namespace answers it."""
+++    was = ROOT.TObject.GetObjectStat()
+++    try:
+++        ROOT.TObject.SetObjectStat(False)
+++        assert ROOT.TObject.GetObjectStat() is False
+++        ROOT.TObject.SetObjectStat(True)
+++        assert ROOT.TH1F("h", "h", 1, 0, 1).GetObjectStat() is True
+++    finally:
+++        ROOT.TObject.SetObjectStat(was)
+diff --git a/salvage/g2_w01.patch b/salvage/g2_w01.patch
+new file mode 100644
+index 00000000..26a82e12
+--- /dev/null
++++ b/salvage/g2_w01.patch
+@@ -0,0 +1,21 @@
++diff --git a/src/xrdroot/buffer.py b/src/xrdroot/buffer.py
++index 188c95a2..f61aacba 100644
++--- a/src/xrdroot/buffer.py
+++++ b/src/xrdroot/buffer.py
++@@ -255,6 +255,16 @@ class Buffer:
++     def bool(self) -> bool:
++         return self.u8() != 0
++ 
+++    def number(self, form: struct.Struct) -> Any:
+++        """One number whose layout is known, read where the record stands.
+++
+++        A whole object's members are read one at a time, millions of them in a
+++        tree that holds a collection of objects per entry, and NumPy's price
+++        for one number - a buffer, a cast and an item - is ten times what
+++        :mod:`struct` charges for the same bytes.
+++        """
+++        return self._take(form)
+++
++     def take(self, count: int) -> bytes:
++         """``count`` raw bytes."""
++         index = self.pos - self.offset
+diff --git a/salvage/g3a_w01.patch b/salvage/g3a_w01.patch
+new file mode 100644
+index 00000000..7e763dfc
+--- /dev/null
++++ b/salvage/g3a_w01.patch
+@@ -0,0 +1,963 @@
++diff --git a/src/xrdroot/pycint/dialect.py b/src/xrdroot/pycint/dialect.py
++index 2ab093c7..8e4bb3b4 100644
++--- a/src/xrdroot/pycint/dialect.py
+++++ b/src/xrdroot/pycint/dialect.py
++@@ -262,6 +262,35 @@ def _loaded(module: dict[str, Any], made: Any) -> None:
++     rebind(module, made)
++ 
++ 
+++def _parsed(unit: Any) -> list[dict[str, Any]]:
+++    """The enumerations a program declares, as the interpreter knows them once it has parsed
+++    it.
+++
+++    ROOT's interpreter declares an enumeration as it reads the declaration, so a line
+++    looking one up - ``TEnum::GetEnum("a::b::en")`` - finds it whether or not the line that
+++    declares it has run yet. The notes are kept with the translation, so that a run from the
+++    cache - which parses nothing - tells the interpreter the same as the run that did.
+++    """
+++    from .library.translate import enums_of
+++
+++    return [note.as_stored() for note in enums_of(unit)]
+++
+++
+++def _noted(notes: Any) -> None:
+++    """Give ROOT's table of enumerations the ones a translation declared.
+++
+++    A dictionary's entries are noted by the loading of it, and carry the name of the class
+++    or namespace that declares them as their title; one a line or a macro declares has none,
+++    as ROOT answers for the enums ``execQualifiedNames`` declares with a ``ProcessLine``.
+++    """
+++    from ..pyroot.core.troot import note_enum
+++    from .library.translate import EnumNote
+++
+++    for stored in notes or ():
+++        note = EnumNote.of_stored(stored)
+++        note_enum(note.qualified, note.items, "", note.underlying, note.scoped)
+++
+++
++ def _data(obj: str, args: list[str]) -> str:
++     """``s.Data()`` of a string: the string, which is what a ``TString``'s holds."""
++     return obj
++@@ -321,6 +350,8 @@ ROOT = Dialect(
++     status=returned.status,
++     session=_session,
++     loaded=_loaded,
+++    parsed=_parsed,
+++    noted=_noted,
++     sources=(Path(__file__).parent,),
++ )
++ 
++diff --git a/src/xrdroot/pycint/execute.py b/src/xrdroot/pycint/execute.py
++index 877445ec..63ef0ba3 100644
++--- a/src/xrdroot/pycint/execute.py
+++++ b/src/xrdroot/pycint/execute.py
++@@ -144,9 +144,9 @@ VARIABLE = re.compile(
++     r"(?:=[^;]*|\{[^;]*\}|\([^;]*\))?;$"
++ )
++ 
++-#: A line that declares - a namespace, a class, a template - which cling keeps at the top,
++-#: rather than statements run in a block of their own.
++-DECLARATION = re.compile(r"^(?:namespace|class|struct|union|template\s*<)\b")
+++#: A line that declares - a namespace, a class, an enumeration, a template - which cling
+++#: keeps at the top, rather than statements run in a block of their own.
+++DECLARATION = re.compile(r"^(?:namespace|class|struct|union|enum|template\s*<)\b")
++ 
++ DEFINITION = re.compile(r"^[ \t]*#[ \t]*(?:define|undef)\b.*$", re.M)
++ 
++diff --git a/src/xrdroot/pycint/library/build.py b/src/xrdroot/pycint/library/build.py
++index 9802ff3c..e429374c 100644
++--- a/src/xrdroot/pycint/library/build.py
+++++ b/src/xrdroot/pycint/library/build.py
++@@ -83,7 +83,7 @@ def _unit(
++         name, "library", made.python, unity, dict(made.source_map), sources=inputs,
++         headers=headers, digest=digest(inputs + headers),
++         translator=translator_version(), names=found.top, namespaces=found.namespaces,
++-        classes=found.classes,
+++        classes=found.classes, enums=made.notes or [],
++     ), found  # fmt: skip
++ 
++ 
++@@ -246,6 +246,7 @@ def build_aclic(
++         made.returns, sources=inputs, headers=headers, digest=digest(inputs + headers),
++         translator=translator_version(),
++         names=found.top, namespaces=found.namespaces, classes=found.classes, rootmap=False,
+++        enums=made.notes or [],
++     )  # fmt: skip
++     write(library, out)
++     return library
++diff --git a/src/xrdroot/pycint/library/loading.py b/src/xrdroot/pycint/library/loading.py
++index acb26e73..10c9206f 100644
++--- a/src/xrdroot/pycint/library/loading.py
+++++ b/src/xrdroot/pycint/library/loading.py
++@@ -254,6 +254,40 @@ def _declare(loaded: Loaded) -> None:
++     for name, members in loaded.library.namespaces.items():
++         DECLARED[name] = _namespace(DECLARED.get(name), name, members, module)
++     _dictionaried(loaded)
+++    _enumerated(loaded)
+++
+++
+++def _enumerated(loaded: Loaded) -> None:
+++    """Tell ROOT's table of enumerations which ones this library declares.
+++
+++    A dictionary knows the enumerations of the headers it was built from, and ROOT's
+++    interpreter knows them as soon as the library is loaded - ``TEnum::GetEnum("myNamespace::A")``
+++    finds one before anything has read the header, and ``TClass::GetListOfEnums`` counts it.
+++    The title of one is the name of what declares it - a namespace's, which is what the
+++    6.40.04 oracle answers for roottest's ``qualifiedNames`` (``enpclass/myns``) - and none
+++    where the global namespace declares it, or a class does.
+++    """
+++    if not loaded.library.enums:
+++        return
+++    from ...pyroot.core.troot import note_enum
+++    from .translate import EnumNote
+++
+++    for stored in loaded.library.enums:
+++        note = EnumNote.of_stored(stored)
+++        owner = note.qualified.rpartition("::")[0]
+++        title = owner if _is_namespace(loaded.library, owner) else ""
+++        note_enum(note.qualified, note.items, title, note.underlying, note.scoped)
+++
+++
+++def _is_namespace(library: Library, qualified: str) -> bool:
+++    """Whether ``qualified`` names one of ``library``'s namespaces rather than one of its
+++    classes - which is what its enumeration's title is the name of."""
+++    found: Any = library.namespaces
+++    for part in qualified.split("::") if qualified else ():
+++        if not isinstance(found, dict) or not isinstance(found.get(part), dict):
+++            return False
+++        found = found[part]
+++    return bool(qualified)
++ 
++ 
++ def _dictionaried(loaded: Loaded) -> None:
++@@ -439,8 +473,11 @@ def _indexed(path: Path) -> Library | None:
++ 
++ 
++ def provides(library: Library, name: str) -> bool:
++-    """Whether ``library`` declares ``name`` at its top: a class, function or namespace."""
++-    return name in library.names or any(each.split("::")[0] == name for each in library.classes)
+++    """Whether ``library`` declares ``name`` at its top: a class, function, namespace or
+++    enumeration - what its rootmap makes it loadable for."""
+++    if name in library.names or any(each.get("qualified") == name for each in library.enums):
+++        return True
+++    return any(each.split("::")[0] == name for each in library.classes)
++ 
++ 
++ def _candidates() -> list[Path]:
++diff --git a/src/xrdroot/pycint/library/manifest.py b/src/xrdroot/pycint/library/manifest.py
++index 1932b31a..10b82b8d 100644
++--- a/src/xrdroot/pycint/library/manifest.py
+++++ b/src/xrdroot/pycint/library/manifest.py
++@@ -29,7 +29,7 @@ __all__ = ["FORMAT", "SUFFIX", "LIBRARY_SUFFIXES", "Library", "read", "write", "
++ #: What a library file says it is in its ``format`` field.
++ FORMAT = "xrdroot-library"
++ #: The version of the layout below; a different one is rebuilt, never misread.
++-VERSION = 1
+++VERSION = 2
++ #: The extension of a translated library, where a compiler would write ``.so``.
++ SUFFIX = ".xrdlib"
++ #: The extensions ROOT accepts after a library's name, every one meaning the same library.
++@@ -61,6 +61,9 @@ class Library:
++     namespaces: dict[str, Any] = field(default_factory=dict)
++     #: The classes it provides, qualified: what a rootmap lists, and autoloading looks up.
++     classes: list[str] = field(default_factory=list)
+++    #: The enumerations it declares, each as ROOT's interpreter knows it once the library is
+++    #: loaded - a :class:`.translate.EnumNote` as stored, by qualified name with its values.
+++    enums: list[dict[str, Any]] = field(default_factory=list)
++     #: Whether autoloading finds it by the names it provides, as ROOT's rootmap file does.
++     rootmap: bool = True
++     #: The libraries to load before it.
++diff --git a/src/xrdroot/pycint/library/translate.py b/src/xrdroot/pycint/library/translate.py
++index c052817b..6630c2a6 100644
++--- a/src/xrdroot/pycint/library/translate.py
+++++ b/src/xrdroot/pycint/library/translate.py
++@@ -18,13 +18,18 @@ from typing import Any
++ from ...pycxx.dialect import using
++ from ...pycxx.emit_module import Translator
++ from ...pycxx.nodes import (
+++    Binary,
++     ClassDecl,
++     DeclStmt,
++     EnumDecl,
+++    Expr,
++     Function,
+++    Literal,
+++    Name,
++     Namespace,
++     Stmt,
++     Typedef,
+++    Unary,
++     Unit,
++ )
++ from ...pycxx.parse_decl import parse
++@@ -33,7 +38,15 @@ from ...pycxx.program import Program
++ from ...pycxx.translation import Translation
++ from ..dialect import LIBRARY as DIALECT
++ 
++-__all__ = ["Declared", "translated_unit", "declared", "declared_in", "digest"]
+++__all__ = [
+++    "Declared",
+++    "EnumNote",
+++    "enums_of",
+++    "translated_unit",
+++    "declared",
+++    "declared_in",
+++    "digest",
+++]
++ 
++ 
++ @dataclass
++@@ -76,11 +89,12 @@ def translated_unit(
++         tokens, included = preprocess(source, file, directories)
++         unit = parse(tokens)
++         found = declared(unit)
+++        notes = DIALECT.parsed(unit)
++         translator = Translator(Program(unit), file, Path(file).stem)
++         out = translator.translate()
++     made = Translation(out.text(), file, out.source_map(), translator.entry,
++                        [str(path) for path in included], unit.unnamed is not None,
++-                       translator.entry_returns)  # fmt: skip
+++                       translator.entry_returns, notes)  # fmt: skip
++     return made, found
++ 
++ 
++@@ -133,6 +147,180 @@ def _nested(owner: ClassDecl, scope: list[str], found: Declared) -> None:
++             _nested(decl, [*scope, decl.name], found)
++ 
++ 
+++@dataclass(frozen=True)
+++class EnumNote:
+++    """One enumeration a translation declares, as ROOT's interpreter knows it once it has
+++    read the declaration: the name C++ writes it by, its enumerators with their values, and
+++    the type it is stored as.
+++
+++    It is what a :class:`~xrdroot.pycxx.translation.Translation` keeps as its notes, so the
+++    form it is kept in is plain JSON - a library's manifest holds it, and a cached
+++    translation too, which is why a run from the cache notes the same enumerations as the
+++    run that translated the program.
+++    """
+++
+++    qualified: str
+++    items: tuple[tuple[str, int], ...] = ()
+++    #: Whether it is an ``enum class``, whose constants need its name to be written.
+++    scoped: bool = False
+++    #: The integer type written after ``:``, as C++ spells it - ``short``, ``unsigned char``.
+++    underlying: str = ""
+++
+++    def as_stored(self) -> dict[str, Any]:
+++        """The note as plain JSON, which a manifest and a cached translation keep."""
+++        return {"qualified": self.qualified, "items": [list(each) for each in self.items],
+++                "scoped": self.scoped, "underlying": self.underlying}  # fmt: skip
+++
+++    @staticmethod
+++    def of_stored(stored: dict[str, Any]) -> EnumNote:
+++        """The note ``as_stored`` wrote."""
+++        return EnumNote(
+++            str(stored["qualified"]),
+++            tuple((str(name), int(value)) for name, value in stored.get("items", ())),
+++            bool(stored.get("scoped", False)),
+++            str(stored.get("underlying", "")),
+++        )
+++
+++
+++def enums_of(unit: Unit) -> list[EnumNote]:
+++    """The enumerations ``unit`` declares, each once by its qualified name, in the order met.
+++
+++    ROOT's interpreter knows an enumeration as soon as it has read the declaration - the line
+++    declaring it need not have run yet - so this is what a translation notes as it is
+++    parsed, and what a dictionary build keeps for the session that loads it.
+++    """
+++    found: list[EnumNote] = []
+++    _enums(unit.decls, [], found, {})
+++    return found
+++
+++
+++def _enums(decls: list[Stmt], scope: list[str], found: list[EnumNote],
+++           known: dict[str, int]) -> None:  # fmt: skip
+++    """Every enumeration ``decls`` declare, in ``scope``, noting each with ``known`` - the
+++    constants of the enumerations declared before it - and adding its own as it goes."""
+++    for decl in decls:
+++        if isinstance(decl, Namespace):
+++            _enums(decl.body, scope if decl.name is None else [*scope, decl.name], found, known)
+++        elif isinstance(decl, EnumDecl):
+++            _note_enum(found, scope, decl, known)
+++        elif isinstance(decl, ClassDecl) and decl.name:
+++            _enums(decl.members, [*scope, decl.name], found, known)
+++
+++
+++def _note_enum(found: list[EnumNote], scope: list[str], decl: EnumDecl,
+++               known: dict[str, int]) -> None:  # fmt: skip
+++    """Keep the enumeration ``decl``, declared in ``scope``, as the interpreter knows it.
+++
+++    An enumeration with no name of its own - ``enum {kA};`` - is one nothing looks up and so
+++    is not noted, and one already met - a header included again behind no guard - is kept
+++    once, as ROOT's table keeps one ``TEnum`` per enumeration. One whose first enumerator is
+++    a value only a compiler works out is not noted either: ROOT's table would hold the
+++    constants, and an enumeration noted without them is a name a lookup finds but nothing
+++    about which is true.
+++    """
+++    if not decl.name:
+++        return
+++    qualified = "::".join([*scope, decl.name])
+++    if any(note.qualified == qualified for note in found):
+++        return
+++    items = _valued(decl.items, known)
+++    if decl.items and not items:
+++        return
+++    underlying = decl.underlying.name if decl.underlying is not None else ""
+++    found.append(EnumNote(qualified, tuple(items), decl.scoped, underlying))
+++    known.update(dict(items))
+++    known.update({f"{qualified}::{name}": value for name, value in items})
+++
+++
+++def _valued(declared: list[tuple[str, Expr | None]],
+++            known: dict[str, int]) -> list[tuple[str, int]]:  # fmt: skip
+++    """Each enumerator and its value, counted on from the last as C++ counts, as far as the
+++    declarations say: an enumerator given something this cannot work out ends the list,
+++    since a wrong value in the table is worse than a value missing."""
+++    values: list[tuple[str, int]] = []
+++    last = -1
+++    for name, written in declared:
+++        counted = last + 1 if written is None else _number(written, known)
+++        if counted is None:
+++            break
+++        known[name] = last = counted
+++        values.append((name, counted))
+++    return values
+++
+++
+++def _quotient(a: int, b: int) -> int:
+++    """C++'s integer division: truncated towards zero, which Python's ``//`` does not."""
+++    return abs(a) // abs(b) * (1 if (a < 0) == (b < 0) else -1)
+++
+++
+++#: The arithmetic and bit operations an enumerator's value may be written with, as C++'s
+++#: integers do them.
+++INTEGER_OPERATIONS: dict[str, Any] = {
+++    "+": lambda a, b: a + b,
+++    "-": lambda a, b: a - b,
+++    "*": lambda a, b: a * b,
+++    "/": _quotient,
+++    "%": lambda a, b: a - b * _quotient(a, b),
+++    "<<": lambda a, b: a << b,
+++    ">>": lambda a, b: a >> b,
+++    "&": lambda a, b: a & b,
+++    "|": lambda a, b: a | b,
+++    "^": lambda a, b: a ^ b,
+++}
+++
+++#: The unary operations one may be written with: ``-1``, ``~mask``, and ``!value``, which C++
+++#: types as an ``int`` rather than as its operand's type.
+++UNARY_OPERATIONS: dict[str, Any] = {
+++    "-": lambda value: -value,
+++    "+": lambda value: value,
+++    "~": lambda value: -value - 1,
+++    "!": lambda value: int(not value),
+++}
+++
+++
+++def _number(value: Expr, known: dict[str, int]) -> int | None:
+++    """An enumerator's value when it is an integer this can work out: a number written out,
+++    ``true``, a constant an enumeration declared before this one, or arithmetic and bit
+++    operations on those. Anything else - a call, a float, a cast, ``sizeof`` - is ``None``.
+++    """
+++    if isinstance(value, Literal):
+++        return _literal_number(value)
+++    if isinstance(value, Unary):
+++        return _unary_number(value, known)
+++    if isinstance(value, Binary):
+++        return _binary_number(value, known)
+++    return known.get("::".join(value.parts)) if isinstance(value, Name) else None
+++
+++
+++def _literal_number(value: Literal) -> int | None:
+++    """``3``, ``'a'`` or ``true``; ``3.7`` and a string are no integer C++ counts on."""
+++    if value.kind == "bool":
+++        return int(bool(value.value))
+++    return int(value.value) if value.kind in ("int", "char") else None
+++
+++
+++def _unary_number(value: Unary, known: dict[str, int]) -> int | None:
+++    """``-kA``, ``+81``, ``~mask``: the operation, when its operand is a number here."""
+++    operation = UNARY_OPERATIONS.get(value.op)
+++    inner = _number(value.operand, known)
+++    return None if operation is None or inner is None else int(operation(inner))
+++
+++
+++def _binary_number(value: Binary, known: dict[str, int]) -> int | None:
+++    """``1 << 14``, ``kA | kB``: C++'s integer operation, when both sides are numbers here.
+++
+++    One C++ itself would refuse - ``1 / 0`` - is no value either, and must not raise.
+++    """
+++    operation = INTEGER_OPERATIONS.get(value.op)
+++    left, right = _number(value.left, known), _number(value.right, known)
+++    if operation is None or left is None or right is None:
+++        return None
+++    try:
+++        return int(operation(left, right))
+++    except (ArithmeticError, ValueError):
+++        return None
+++
+++
++ def _names(decl: Stmt) -> list[tuple[str, bool]]:
++     """The names one declaration declares, each with whether it names a type."""
++     if isinstance(decl, (ClassDecl, Typedef)):
++diff --git a/src/xrdroot/pycxx/cache.py b/src/xrdroot/pycxx/cache.py
++index 1bf7a986..9754de4e 100644
++--- a/src/xrdroot/pycxx/cache.py
+++++ b/src/xrdroot/pycxx/cache.py
++@@ -87,6 +87,7 @@ def load(source: str, file: str, dialect: Dialect | None = None) -> Translation
++         kept["included"],
++         kept["unnamed"],
++         kept["returns"],
+++        kept.get("notes"),
++     )
++ 
++ 
++@@ -101,6 +102,7 @@ def save(
++         "included": translation.included,
++         "unnamed": translation.unnamed,
++         "returns": translation.returns,
+++        "notes": translation.notes,
++         "included_hash": _included_hash(translation.included),
++     }
++     where = directory()
++diff --git a/src/xrdroot/pycxx/dialect.py b/src/xrdroot/pycxx/dialect.py
++index 8268443c..5fe9a582 100644
++--- a/src/xrdroot/pycxx/dialect.py
+++++ b/src/xrdroot/pycxx/dialect.py
++@@ -91,6 +91,14 @@ def _nothing_loaded(module: dict[str, Any], made: Any) -> None:
++     """A host with no libraries of its own leaves a program's names as it defined them."""
++ 
++ 
+++def _nothing_parsed(unit: Any) -> None:
+++    """Plain C++ has no host behind it, so a declaration parsed asks nothing of one."""
+++
+++
+++def _nothing_noted(notes: Any) -> None:
+++    """Plain C++ has no host keeping a table, so nothing a parse noted is given to one."""
+++
+++
++ @dataclass(frozen=True, eq=False)
++ class Dialect:
++     """A library's additions to C++, by name - empty for plain C++ (:data:`CXX`)."""
++@@ -225,6 +233,14 @@ class Dialect:
++     #: ``(module, translation)``: called once a program's Python has run and before anything
++     #: in it is called - where a host binds the names a library it loaded already defines.
++     loaded: Callable[[dict[str, Any], Any], None] = _nothing_loaded
+++    #: ``(unit)``: called with what a program declares, as it is parsed and before it runs -
+++    #: where a host that keeps a table of declarations, as an interpreter does, notes them.
+++    #: What it returns is kept with the translation, plain JSON, and given to :attr:`noted`.
+++    parsed: Callable[[Any], Any] = _nothing_parsed
+++    #: ``(notes)``: what :attr:`parsed` returned, given to the host whether the translation
+++    #: was just made or read back from the cache - a cached one is not parsed again, so
+++    #: without this a program run twice would declare its enumerations only the first time.
+++    noted: Callable[[Any], None] = _nothing_noted
++     #: Directories whose code shapes translations, hashed into a cached translation's key.
++     sources: tuple[Path, ...] = ()
++ 
++diff --git a/src/xrdroot/pycxx/execute.py b/src/xrdroot/pycxx/execute.py
++index 2456bbf4..c05feec1 100644
++--- a/src/xrdroot/pycxx/execute.py
+++++ b/src/xrdroot/pycxx/execute.py
++@@ -60,12 +60,12 @@ def _reset_streams() -> None:
++ def translated(source: str, file: str, dialect: Dialect, use_cache: bool) -> Translation:
++     """The translation of ``source`` in ``dialect``: from the cache if allowed and kept there."""
++     found = cache.load(source, file, dialect) if use_cache else None
++-    if found is not None:
++-        return found
++-    made = translation(source, file, [Path(file).parent], dialect)
++-    if use_cache:
++-        cache.save(source, file, made, dialect)
++-    return made
+++    if found is None:
+++        found = translation(source, file, [Path(file).parent], dialect)
+++        if use_cache:
+++            cache.save(source, file, found, dialect)
+++    dialect.noted(found.notes)
+++    return found
++ 
++ 
++ @contextmanager
++diff --git a/src/xrdroot/pycxx/translation.py b/src/xrdroot/pycxx/translation.py
++index 91f0f437..80492c6e 100644
++--- a/src/xrdroot/pycxx/translation.py
+++++ b/src/xrdroot/pycxx/translation.py
++@@ -11,6 +11,7 @@ from __future__ import annotations
++ 
++ from dataclasses import dataclass, field
++ from pathlib import Path
+++from typing import Any
++ 
++ from .dialect import Dialect, active, using
++ from .emit_module import Translator
++@@ -34,6 +35,9 @@ class Translation:
++     unnamed: bool = False
++     #: The entry's return type as the dialect spells it, or None when it prints none.
++     returns: str | None = None
+++    #: What the dialect's ``parsed`` hook made of the unit - plain JSON, kept with the
+++    #: translation so that a run from the cache tells the host what parsing it would have.
+++    notes: Any = None
++ 
++ 
++ def translation(
++@@ -47,6 +51,7 @@ def translation(
++     with using(dialect or active()):
++         tokens, included = preprocess(source, file, directories)
++         unit = parse(tokens)
+++        notes = active().parsed(unit)
++         program = Program(unit)
++         stem = Path(file).stem if file != "<macro>" else "macro"
++         translator = Translator(program, file, stem)
++@@ -59,4 +64,5 @@ def translation(
++         [str(path) for path in included],
++         unit.unnamed is not None,
++         translator.entry_returns,
+++        notes,
++     )
++diff --git a/src/xrdroot/pycxx/typeids.py b/src/xrdroot/pycxx/typeids.py
++index edc31a44..f56c0130 100644
++--- a/src/xrdroot/pycxx/typeids.py
+++++ b/src/xrdroot/pycxx/typeids.py
++@@ -14,14 +14,15 @@ from __future__ import annotations
++ from typing import Any
++ 
++ from .ctype import CType
++-from .nodes import ClassDecl, Namespace, Stmt
+++from .nodes import ClassDecl, EnumDecl, Namespace, Stmt
++ from .program import ClassInfo
++ 
++ __all__ = ["qualified_names", "spelled", "polymorphic"]
++ 
++ 
++ def qualified_names(decls: list[Stmt], prefix: str = "") -> dict[str, str]:
++-    """Each of the macro's classes, by its name, as its namespaces and outer classes qualify it."""
+++    """Each of the macro's classes and enumerations, by its name, as its namespaces and outer
+++    classes qualify it - which is the name ``typeid`` of one spells it with."""
++     found: dict[str, str] = {}
++     for decl in decls:
++         if isinstance(decl, Namespace):
++@@ -30,6 +31,8 @@ def qualified_names(decls: list[Stmt], prefix: str = "") -> dict[str, str]:
++         elif isinstance(decl, ClassDecl):
++             found[decl.name] = prefix + decl.name
++             found.update(qualified_names(decl.members, f"{prefix}{decl.name}::"))
+++        elif isinstance(decl, EnumDecl) and decl.name:
+++            found[decl.name] = prefix + decl.name
++     return found
++ 
++ 
++diff --git a/src/xrdroot/pyroot/core/collections.py b/src/xrdroot/pyroot/core/collections.py
++index bc54fae7..61f51968 100644
++--- a/src/xrdroot/pyroot/core/collections.py
+++++ b/src/xrdroot/pyroot/core/collections.py
++@@ -18,6 +18,7 @@ from collections.abc import Iterator
++ from typing import Any
++ 
++ from ...cppstd.containers import TEMPLATES as _TEMPLATES
+++from ...cppstd.containers import string as _StdString
++ from .objects import Indent, TNamed, TObject
++ from .strings import TString
++ 
++@@ -50,8 +51,15 @@ _PRIVATE = ["FunctionList"]
++ SINGLE_KEY = 1 << 0
++ 
++ 
++-def _named(item: Any, name: str) -> bool:
++-    """Is ``item`` called ``name``, as ``FindObject`` compares them?"""
+++def _named(item: Any, name: Any) -> bool:
+++    """Is ``item`` called ``name``, as ``FindObject`` compares them?
+++
+++    ``name`` is a string, a ``TString``, or a ``std::string`` - which C++ passes to
+++    ``FindObject`` by converting it to a ``const char*`` and which is a value of its own
+++    here, so it is compared as the text it holds.
+++    """
+++    if isinstance(name, (TString, _StdString)):
+++        name = str(name)
++     return hasattr(item, "GetName") and item.GetName() == name
++ 
++ 
++@@ -189,8 +197,9 @@ class TCollection(TObject):
++ 
++     def FindObject(self, name: Any) -> Any:
++         """The first object called ``name``, or the object itself if held; ``None`` if neither."""
++-        if isinstance(name, str):
++-            return next((item for item in self._items if _named(item, name)), None)
+++        called = _text(name)
+++        if called is not None:
+++            return next((item for item in self._items if _named(item, called)), None)
++         return next((item for item in self._items if item is name), None)
++ 
++     def IndexOf(self, obj: Any) -> int:
++@@ -640,9 +649,9 @@ class THashTable(TCollection):
++ 
++ 
++ def _text(other: Any) -> str | None:
++-    """What a ``TObjString`` is compared with as a string - a string, a ``TString`` or
++-    another ``TObjString`` - or ``None`` for anything else, which it is never equal to."""
++-    return str(other) if isinstance(other, (str, TObjString, TString)) else None
+++    """What an object is found by as a name - a string, a ``TString``, a ``std::string`` or a
+++    ``TObjString`` - or ``None`` for anything else, which is found by being itself."""
+++    return str(other) if isinstance(other, (str, TObjString, TString, _StdString)) else None
++ 
++ 
++ class TObjString(TNamed):
++diff --git a/src/xrdroot/pyroot/core/troot.py b/src/xrdroot/pyroot/core/troot.py
++index 296b8a20..22e4126b 100644
++--- a/src/xrdroot/pyroot/core/troot.py
+++++ b/src/xrdroot/pyroot/core/troot.py
++@@ -36,7 +36,7 @@ from .strings import TString
++ __all__ = ["TROOT", "gROOT", "gDebug", "gInterpreter", "gObjectTable", "TInterpreter",
++            "set_line_processor", "SetHeuristicMemoryPolicy", "TEnum", "TEnumConstant",
++            "TListOfEnums", "class_enums", "TListOfEnumsWithLock", "find_enum", "note_enum",
++-           "TGlobal"]
+++           "scope_declared", "TGlobal"]
++ 
++ #: ``gObjectTable``: ROOT's count of objects by class - which is not kept here, so it is null,
++ #: and a macro testing it skips it.
++@@ -287,14 +287,22 @@ class TEnum(TNamed):
++         ``kAutoload`` or ``kALoadAndInterpLookup``, the default, which is what ``GetEnum``
++         with no second argument does - loads the library a rootmap lists the enumeration in;
++         ``kNone`` and ``kInterpLookup`` ask the interpreter alone, which here is the table.
+++
+++        A lookup that may autoload reads a library only where the class or namespace the name
+++        puts the enumeration in is one the session has not: ROOT asks that scope for its
+++        enumerations and loads only what the scope needs, so an empty
+++        ``namespace myNamespace {}`` declared at the prompt is a scope holding no enum rather
+++        than a reason to read the library declaring ``myNamespace::A``.
++         """
++         spelled = name if isinstance(name, str) else str(name)
++         found = find_enum(spelled)
++         if found is not None:
++             return found
++-        if action in (TEnum.kAutoload, TEnum.kALoadAndInterpLookup) and autoload_enum(spelled):
++-            return find_enum(spelled)
++-        return None
+++        if action not in (TEnum.kAutoload, TEnum.kALoadAndInterpLookup):
+++            return None
+++        if scope_declared(spelled):
+++            return None
+++        return find_enum(spelled) if autoload_enum(spelled) else None
++ 
++ 
++ class TGlobal(TNamed):
++@@ -372,6 +380,22 @@ def find_enum(name: Any) -> TEnum | None:
++     return _ENUMS.get(str(name).strip())
++ 
++ 
+++def scope_declared(name: Any) -> bool:
+++    """Whether the class or namespace ``name`` puts an enumeration in - ``N::E``'s ``N`` - is
+++    one this session has, whose own list of enumerations already answers for it.
+++
+++    A namespace or class is had once a line, a macro or a loaded library declared it, which
+++    is what the interpreter keeps its names in; asking ``TClass::GetClass`` is no test, as
+++    it takes a class no dictionary describes to be there - and loads one to say so.
+++    """
+++    owner = str(name).rpartition("::")[0]
+++    if not owner:
+++        return False
+++    from ...pycxx.runtime.namespace import DECLARED
+++
+++    return owner in DECLARED
+++
+++
++ def autoload_enum(name: str) -> bool:
++     """Load the library whose rootmap lists the enumeration ``name``, as ``TEnum::GetEnum``
++     does before it gives up; whether a translator able to load one was there at all.
++diff --git a/tests/test_cint_typeid.py b/tests/test_cint_typeid.py
++index 6399efaf..57bc007b 100644
++--- a/tests/test_cint_typeid.py
+++++ b/tests/test_cint_typeid.py
++@@ -10,6 +10,7 @@ from xrdroot.pycint import Refusal, translate
++ from xrdroot.pycint.execute import run_source
++ from xrdroot.pycint.runtime import bad_typeid, type_info, typeid_dynamic, typeid_of
++ from xrdroot.pycxx.runtime.typeinfo import _base36, mangle
+++from xrdroot.pyroot.core import troot
++ 
++ CLASSES = """
++ #include <typeinfo>
++@@ -169,6 +170,25 @@ def test_typeid_spells_a_class_with_its_namespaces_and_the_class_it_is_in(
++     assert output(capsys, source) == names
++ 
++ 
+++def test_typeid_spells_an_enumeration_with_the_namespaces_it_is_declared_in(
+++    capsys: pytest.CaptureFixture[str],
+++) -> None:
+++    """``TEnum::GetEnum`` of a ``type_info`` is keyed by the name ``typeid`` spells, which for a
+++    namespaced enumeration is its namespaces' - the 6.40.04 oracle answers
+++    ``N5outer5inner4ModeE`` and ``outer::inner::Mode`` for this one."""
+++    source = """
+++    namespace outer { namespace inner { enum Mode { kOff }; } }
+++    void t() {
+++      cout << typeid(outer::inner::Mode).name() << " "
+++           << TEnum::GetEnum(typeid(outer::inner::Mode))->GetQualifiedName() << endl;
+++    }
+++    """
+++    try:
+++        assert output(capsys, source, root=ROOT) == "N5outer5inner4ModeE outer::inner::Mode\n"
+++    finally:  # the enumeration is the session's once the line has run
+++        troot._ENUMS.pop("outer::inner::Mode", None)
+++
+++
++ def test_typeid_finds_roots_class_of_an_object_for_tclass(
++     capsys: pytest.CaptureFixture[str],
++ ) -> None:
++diff --git a/tests/test_pycint_library.py b/tests/test_pycint_library.py
++index 6b081b03..1e92dc74 100644
++--- a/tests/test_pycint_library.py
+++++ b/tests/test_pycint_library.py
++@@ -33,9 +33,10 @@ from xrdroot.pycint.library import (
++     translate,
++ )
++ from xrdroot.pycint.library.build import translator_version
++-from xrdroot.pycxx import cache
+++from xrdroot.pycxx import cache, execute
++ from xrdroot.pycxx.errors import CxxError, Refusal
++ from xrdroot.pycxx.runtime.namespace import DECLARED
+++from xrdroot.pyroot.core import troot
++ 
++ #: A header with a class in a namespace, a static member and a function only declared.
++ SHAPES_H = """\
++@@ -90,11 +91,15 @@ def _isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
++     monkeypatch.setattr(ROOT.gSystem, "_dynamic_path", "")
++     monkeypatch.setattr(ROOT.gSystem, "_build_dir", "")
++     saved, names = dict(DECLARED), set(vars(ROOT))
+++    enums = dict(troot._ENUMS)
+++    troot._ENUMS.clear()
++     loading.forget_all()
++     try:
++         yield from fresh(tmp_path)
++     finally:
++         loading.forget_all()
+++        troot._ENUMS.clear()
+++        troot._ENUMS.update(enums)
++         DECLARED.clear()
++         DECLARED.update(saved)
++         for name in set(vars(ROOT)) - names:  # what gInterpreter.Declare made ROOT's
++@@ -419,6 +424,158 @@ def test_autoloading_reads_a_library_once_while_it_is_unchanged() -> None:
++     assert not loading.autoload("CountShapes")
++ 
++ 
+++#: A header whose enumerations a program asks ROOT's interpreter for by name - the shape
+++#: roottest's ``qualifiedNames`` and ``enumsTestClasses`` dictionaries have.
+++ENUMS_H = """\
+++#ifndef ENUMS_H
+++#define ENUMS_H
+++namespace myns { enum enpclass {kNoneNonConflicting}; }
+++enum enpclass {kNoneNonConflicting};
+++class Holder { public: enum class Mode : short {kOff, kOn}; };
+++#endif
+++"""
+++
+++
+++def enums_library() -> Path:
+++    """``libEnums.xrdlib``: a dictionary of :data:`ENUMS_H`, and nothing else in it."""
+++    write("Enums.h", ENUMS_H)
+++    return build_dictionary("Enums", [Path("Enums.h")], out=None)
+++
+++
+++def noted(source: str) -> list[translate.EnumNote]:
+++    """What the interpreter notes of the enumerations ``source`` declares, as it parses it."""
+++    from xrdroot.pycint.dialect import ROOT as CINT
+++    from xrdroot.pycxx.dialect import using
+++    from xrdroot.pycxx.parse_decl import parse
+++    from xrdroot.pycxx.preprocessor import preprocess
+++
+++    with using(CINT):
+++        tokens, _ = preprocess(source, "<enums>", [])
+++        return translate.enums_of(parse(tokens))
+++
+++
+++def test_the_enumerations_a_unit_declares_are_read_off_its_declarations() -> None:
+++    """Each is kept by the name C++ writes it by, with its constants' values counted on as C++
+++    counts them and the type it is stored as; one with no name of its own - ``enum {kA};`` -
+++    is one nothing looks up, so it is not kept, and one met again - a header read twice - is
+++    the enumeration already kept, as ROOT's table holds one ``TEnum`` per enumeration."""
+++    found = noted(
+++        "enum EFirst {kA, kB = 5, kC};\n"
+++        "namespace n { namespace inner { enum EIn {kOne}; } }\n"
+++        "class C { public: enum class Mode : short {kOff}; };\n"
+++        "enum EFirst {kA};\n"
+++        "enum {kAnonymous};\n"
+++        "namespace n { enum EIn2 {}; }\n"
+++    )
+++    assert [(note.qualified, note.items) for note in found] == [
+++        ("EFirst", (("kA", 0), ("kB", 5), ("kC", 6))),
+++        ("n::inner::EIn", (("kOne", 0),)),
+++        ("C::Mode", (("kOff", 0),)),
+++        ("n::EIn2", ()),
+++    ]
+++    assert found[2].scoped is True and found[2].underlying == "short"
+++    assert translate.EnumNote.of_stored(found[1].as_stored()) == found[1]
+++
+++
+++def test_an_enumerators_value_is_what_cpp_works_out_and_anything_else_ends_the_list() -> None:
+++    """ROOT's table holds every constant of an enumeration, so one whose values this cannot
+++    work out - a call, a float, a cast, a name no enumeration declares - is left out of the
+++    table rather than noted with a value that is not its own."""
+++    found = noted(
+++        "enum G {kG = 3};\n"
+++        "enum EArithmetic {kA = 1 << 4, kB, kC = -2, kD = 7 / 2, kE = -7 / 2, kF = kA | kB};\n"
+++        "enum ERef {kA = G::kG, kB = kA + 1, kC = true, kD = 'a'};\n"
+++        "enum EUnary {kA = ~0, kB = +81, kC = !5};\n"
+++        "enum EFloat {kA = 3.7, kB};\n"
+++        "enum ECast {kA = (int) 1, kB};\n"
+++        "enum EName {kA = someConst, kB};\n"
+++        "enum EPartial {kA = 2, kB = one(), kC};\n"
+++        "enum EDivZero {kA = 1 / 0, kB};\n"
+++        "enum EOperation {kA = 1 && 2, kB};\n"
+++    )
+++    assert [(note.qualified, note.items) for note in found] == [
+++        ("G", (("kG", 3),)),
+++        ("EArithmetic", (("kA", 16), ("kB", 17), ("kC", -2), ("kD", 3), ("kE", -3), ("kF", 17))),
+++        ("ERef", (("kA", 3), ("kB", 4), ("kC", 1), ("kD", 97))),
+++        ("EUnary", (("kA", -1), ("kB", 81), ("kC", 0))),
+++        ("EPartial", (("kA", 2),)),
+++    ]
+++
+++
+++def test_a_dictionary_carries_the_enumerations_of_the_headers_it_was_built_from() -> None:
+++    library = read(enums_library())
+++    assert library is not None
+++    assert library.enums == [
+++        {"qualified": "myns::enpclass", "items": [["kNoneNonConflicting", 0]],
+++         "scoped": False, "underlying": ""},
+++        {"qualified": "enpclass", "items": [["kNoneNonConflicting", 0]],
+++         "scoped": False, "underlying": ""},
+++        {"qualified": "Holder::Mode", "items": [["kOff", 0], ["kOn", 1]],
+++         "scoped": True, "underlying": "short"},
+++    ]  # fmt: skip
+++
+++
+++def test_loading_a_dictionary_declares_its_enumerations_to_the_interpreter() -> None:
+++    """A dictionary's enumerations are the interpreter's as soon as the library is loaded, and
+++    the title of one is the name of the namespace declaring it - which the 6.40.04 oracle
+++    answers for roottest's ``qualifiedNames`` (``enpclass/myns``) - and none where a class or
+++    the global namespace declares it, whose own name is not a scope."""
+++    enums_library()
+++    assert troot.find_enum("myns::enpclass") is None
+++    assert load("libEnums") == 0
+++    namespaced = troot.find_enum("myns::enpclass")
+++    assert namespaced is not None and namespaced.GetTitle() == "myns"
+++    global_enum = troot.find_enum("enpclass")
+++    assert global_enum is not None and global_enum.GetTitle() == ""
+++    mode = troot.find_enum("Holder::Mode")
+++    assert mode is not None and (mode.GetTitle(), mode.IsScoped()) == ("", True)
+++    assert mode.GetUnderlyingType() == 2  # kShort_t, as the oracle answers for ``: short``
+++    assert [one.GetName() for one in troot.class_enums("Holder")] == ["Mode"]
+++
+++
+++def test_an_enumeration_a_dictionary_declares_is_autoloaded_by_its_name() -> None:
+++    """``TEnum::GetEnum`` reads the library its rootmap says declares the enumeration, so a
+++    program asking for one no header has read yet finds it - roottest's ``qualifiedNames``
+++    never loads its dictionary itself, and ``kNone`` says not to."""
+++    enums_library()
+++    assert troot.TEnum.GetEnum("myns::enpclass", troot.TEnum.kNone) is None
+++    assert ours() == []
+++    found = troot.TEnum.GetEnum("myns::enpclass")
+++    assert found is not None and found.GetQualifiedName() == "myns::enpclass"
+++    assert ours() == ["libEnums"]
+++    assert troot.TEnum.GetEnum("enpclass") is not None  # the one of the global namespace
+++    assert troot.TEnum.GetEnum("Nowhere::ENone") is None
+++
+++
+++def test_a_rootmap_that_lists_an_enumeration_provides_it_by_its_name() -> None:
+++    """``provides`` is what a rootmap entry means: the library declaring the name - a class by
+++    any of its qualified spellings, a namespace, a function, an enumeration."""
+++    library = read(enums_library())
+++    assert library is not None
+++    assert loading.provides(library, "myns::enpclass")  # an enumeration
+++    assert loading.provides(library, "Holder")
+++    assert not loading.provides(library, "Nowhere")
+++
+++
+++def test_a_translation_notes_its_enumerations_even_when_it_is_read_from_the_cache() -> None:
+++    """A cached translation is not parsed again, so what its parse noted is kept with it: a
+++    line declaring an enumeration twice tells the interpreter of it both times."""
+++    from xrdroot.pycint.dialect import ROOT as CINT
+++    from xrdroot.pycxx.translation import translation
+++
+++    source = "namespace cached { enum E {kA, kB}; }\n"
+++    made = translation(source, "<line>", dialect=CINT)
+++    assert made.notes == [{"qualified": "cached::E", "items": [["kA", 0], ["kB", 1]],
+++                           "scoped": False, "underlying": ""}]  # fmt: skip
+++    for _ in range(2):
+++        execute.translated(source, "<line>", CINT, True)
+++        found = troot.find_enum("cached::E")
+++        assert found is not None
+++        assert [(one.GetName(), one.GetValue()) for one in found.GetConstants()] == [
+++            ("kA", 0), ("kB", 1),
+++        ]  # fmt: skip
+++
+++
++ def test_a_name_no_library_provides_is_still_not_found() -> None:
++     with pytest.raises(AttributeError, match="ROOT has Nowhere"):
++         _ = ROOT.Nowhere
++diff --git a/tests/test_pyroot_collections.py b/tests/test_pyroot_collections.py
++index fecff67a..a1c625a7 100644
++--- a/tests/test_pyroot_collections.py
+++++ b/tests/test_pyroot_collections.py
++@@ -47,6 +47,19 @@ def test_a_list_adds_finds_and_removes_as_roots_does():
++     assert held.IsEmpty()
++ 
++ 
+++def test_finding_by_a_text_cpp_passes_as_a_c_string_compares_its_text():
+++    """``list->FindObject(n.c_str())`` where ``n`` is a ``std::string`` is ``ROOT.std.string``'s
+++    object here, not a ``str``: C++ hands ``FindObject`` a ``const char*`` and reads the text
+++    of it, which roottest's ``execEnumsTest`` looks its globals up with."""
+++    held = ROOT.TList()
+++    for name in ("kLow", "kHigh"):
+++        held.Add(ROOT.TNamed(name, name))
+++    std = ROOT.std.string("kLow")
+++    assert held.FindObject(std) is held[0]
+++    assert held.FindObject(ROOT.TString("kHigh")) is held[1]
+++    assert held.FindObject(ROOT.TObjString("none")) is None
+++
+++
++ def test_a_sequence_is_indexed_and_walked_both_ways():
++     a, b, c = named("b", "a", "c")
++     held = ROOT.TList()
++diff --git a/tests/test_troot_enums.py b/tests/test_troot_enums.py
++index c368209f..1702403f 100644
++--- a/tests/test_troot_enums.py
+++++ b/tests/test_troot_enums.py
++@@ -15,6 +15,7 @@ from collections.abc import Iterator
++ import pytest
++ 
++ import xrdroot.pyroot as ROOT
+++from xrdroot.pycxx.runtime.namespace import DECLARED
++ from xrdroot.pyroot.core import troot
++ 
++ 
++@@ -141,6 +142,32 @@ def test_without_a_translator_a_lookup_that_may_autoload_only_asks_the_table(
++     assert troot.TEnum.GetEnum("myns::EIn") is troot.find_enum("myns::EIn")
++ 
++ 
+++def test_a_lookup_that_may_autoload_reads_no_library_for_a_scope_the_session_has(
+++    monkeypatch: pytest.MonkeyPatch,
+++) -> None:
+++    """ROOT asks the class or namespace the name puts the enumeration in and reads a library
+++    only where that scope is one it has not - the oracle finds ``myNamespace::A`` null while
+++    an empty ``namespace myNamespace {}`` is declared, which is what roottest's
+++    ``execenumsInNamespaces`` prints before it loads the library."""
+++    asked: list[str] = []
+++
+++    def loader(name: str) -> bool:
+++        asked.append(name)
+++        troot.note_enum(name, [("kOne", 1)])
+++        return True
+++
+++    monkeypatch.setitem(troot._PROVIDED, "autoload", lambda: loader)
+++    monkeypatch.setitem(DECLARED, "myNamespace", object())
+++    assert troot.TEnum.GetEnum("myNamespace::A") is None
+++    assert asked == []
+++    # A name no scope qualifies is asked for as it stands, and one whose scope this session
+++    # does not have is looked for in the library a rootmap lists it in.
+++    assert troot.TEnum.GetEnum("Nowhere::A") is troot.find_enum("Nowhere::A")
+++    assert asked == ["Nowhere::A"]
+++    assert troot.scope_declared("ENoScope") is False
+++    assert troot.scope_declared("myNamespace::A") is True
+++
+++
++ def _no_translator() -> None:
++     """The provider of a ``gInterpreter->AutoLoad`` that this session cannot reach."""
++     raise AttributeError("interpreter.autoload")
+diff --git a/salvage/g7_w01.patch b/salvage/g7_w01.patch
+new file mode 100644
+index 00000000..b6fddda6
+--- /dev/null
++++ b/salvage/g7_w01.patch
+@@ -0,0 +1,288 @@
++diff --git a/docs/root.md b/docs/root.md
++index 2ff5ec7b..b2ce9897 100644
++--- a/docs/root.md
+++++ b/docs/root.md
++@@ -2931,8 +2931,12 @@ A class a macro, a library or ACLiC declares is a ROOT class here. One derived
++ from `TObject`, `TNamed` or `TAttLine` has its base's members and calls them
++ unqualified (`GetName()`, `TNamed::Print(opt)`), an override called through a
++ base pointer takes the base's default arguments, and `ClassDef` gives it a
++-version, `Class()` and `Class_Name()`. `TClass::GetClass("MyClass")` describes
++-it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
+++version, `Class()` and `Class_Name()`. A `TNamed`'s name and title are the
+++`TString` members `fName` and `fTitle`, which a derived class writes in place -
+++`fName.Form("%s_%d", name, GetID())` renames the object, as roottest's
+++`tref_test_pid` does - and `TObjString::String()` is the `TString` it holds.
+++`TClass::GetClass("MyClass")` describes it as ROOT's dictionary would: `GetClassVersion`
+++(-1 without a `ClassDef`),
++ `GetCheckSum`, `GetListOfDataMembers` (`//!` transient, `//[n]` counted),
++ `GetListOfBases`, `GetBaseClass`, `New`, and `GetStreamerInfo()`, whose `ls()`
++ lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
++diff --git a/src/xrdroot/pycxx/emit_vars.py b/src/xrdroot/pycxx/emit_vars.py
++index 2d726a4f..9832e5d9 100644
++--- a/src/xrdroot/pycxx/emit_vars.py
+++++ b/src/xrdroot/pycxx/emit_vars.py
++@@ -251,6 +251,8 @@ class VariableEmitter(StmtEmitter):
++             raise self.refuse(f"a variable of the template parameter type {ctype.name}", decl)
++         if ctype.callable:
++             return "None"
+++        if _is_iterator(ctype):
+++            return "None"  # unset, as C++ leaves it: it means an element once a container is
++         return f"{self.class_expr(ctype)}()"
++ 
++     def constructed(self, ctype: CType, args: list[Expr], decl: VarDecl) -> str:
++@@ -417,6 +419,18 @@ class VariableEmitter(StmtEmitter):
++     module_statics: list[tuple[str, Any]]
++ 
++ 
+++def _is_iterator(ctype: CType) -> bool:
+++    """Is this a library container's iterator type - ``std::list<T>::iterator``?
+++
+++    Such an iterator is no object a library makes here: a container's ``begin`` hands out one
+++    that stands for a place in it, so a variable of the type declared with nothing to start
+++    from holds no place at all until one is assigned - as C++'s default-constructed iterator
+++    names no element either.
+++    """
+++    owner, _, last = ctype.name.rpartition("::")
+++    return bool(owner) and last in ("iterator", "const_iterator")
+++
+++
++ def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
++     """Is a static local's first value a constant, which C++ sets before anything runs?"""
++     if ctype is None or not (ctype.pointer or ctype.arithmetic or ctype.is_string):
++diff --git a/src/xrdroot/pyroot/core/collections.py b/src/xrdroot/pyroot/core/collections.py
++index 6bdf6e0e..f980001b 100644
++--- a/src/xrdroot/pyroot/core/collections.py
+++++ b/src/xrdroot/pyroot/core/collections.py
++@@ -19,7 +19,7 @@ from typing import Any
++ 
++ from ...cppstd.containers import TEMPLATES as _TEMPLATES
++ from ...cppstd.containers import string as StdString
++-from .objects import Indent, TNamed, TObject
+++from .objects import Indent, TNamed, TObject, member_string
++ from .strings import TString
++ 
++ #: The ``std::`` templates cppyy gives by a bare C++ name too - a macro's ``list<Track>`` is
++@@ -671,8 +671,10 @@ class TObjString(TNamed):
++     def GetString(self) -> str:
++         return self.GetName()
++ 
++-    def String(self) -> str:
++-        return self.GetName()
+++    def String(self) -> TString:
+++        """``String``: the ``TString`` the object holds, which a macro writes through -
+++        ``obj.String() + "*"`` is a ``TString``, as ROOT's ``const TString&`` makes it."""
+++        return member_string(self, "fString")
++ 
++     def SetString(self, text: Any) -> None:
++         self.SetName(text)
++diff --git a/src/xrdroot/pyroot/core/objects.py b/src/xrdroot/pyroot/core/objects.py
++index 75c06c00..5992a2df 100644
++--- a/src/xrdroot/pyroot/core/objects.py
+++++ b/src/xrdroot/pyroot/core/objects.py
++@@ -21,6 +21,7 @@ from typing import Any
++ 
++ from . import hooks
++ from .colors import BITS
+++from .strings import TString
++ 
++ __all__ = [
++     "TObject",
++@@ -415,6 +416,28 @@ class TNamed(TObject):
++     def GetTitle(self) -> str:
++         return self._title
++ 
+++    @property
+++    def fName(self) -> Any:
+++        """``fName``: the ``TString`` member a derived class may write in place.
+++
+++        ``fName.Form("%s_%d", ...)`` renames the object, and C++ reads the member where
+++        Python reads what ``GetName`` gives back, so the two are the same text here.
+++        """
+++        return member_string(self, "fName")
+++
+++    @fName.setter
+++    def fName(self, value: Any) -> None:
+++        self.SetName(str(value))
+++
+++    @property
+++    def fTitle(self) -> Any:
+++        """``fTitle``: the ``TString`` member for the title, as ``fName`` is for the name."""
+++        return member_string(self, "fTitle")
+++
+++    @fTitle.setter
+++    def fTitle(self, value: Any) -> None:
+++        self.SetTitle(str(value))
+++
++     def SetName(self, name: Any) -> None:
++         self._name = str(name)
++ 
++@@ -434,6 +457,18 @@ class TNamed(TObject):
++         return len(self.GetName()) + len(self.GetTitle())
++ 
++ 
+++def member_string(obj: Any, member: str) -> TString:
+++    """``obj``'s ``member`` as a ``TString`` that changes the object where it stands.
+++
+++    ROOT keeps a ``TNamed``'s name and title in the ``TString`` members ``fName`` and
+++    ``fTitle``; the getter and setter are looked up on the object each time so that a class
+++    of the macro's that writes its name its own way - a histogram's, which carries its axes'
+++    titles too - is asked, rather than this class's.
+++    """
+++    return TString(view=(lambda: getattr(obj, "Get" + member[1:])(),
+++                       lambda text: getattr(obj, "Set" + member[1:])(text)))  # fmt: skip
+++
+++
++ # -- the attribute mixins ---------------------------------------------------------------------
++ 
++ #: Each attribute group's members and the value each starts at, as ROOT's
++diff --git a/src/xrdroot/pyroot/core/strings.py b/src/xrdroot/pyroot/core/strings.py
++index 94c9f70f..2d851258 100644
++--- a/src/xrdroot/pyroot/core/strings.py
+++++ b/src/xrdroot/pyroot/core/strings.py
++@@ -44,10 +44,30 @@ class TString:
++     kBoth = 3
++     kNPOS = kNPOS
++ 
++-    def __init__(self, text: Any = "", length: Any = None) -> None:
+++    def __init__(self, text: Any = "", length: Any = None, view: Any = None) -> None:
+++        if view is not None:
+++            #: A ``TString`` member of an object - ``TNamed::fName`` - is not this string's
+++            #: own: ``Form`` and the rest write back through ``view``, which is how a macro
+++            #: naming an object by its ``fName`` renames the object.
+++            self._view = view
+++            return
++         held = "" if text is None else _text(text)
++         self._s = held[: int(length)] if length is not None else held
++ 
+++    @property
+++    def _s(self) -> str:
+++        """The characters: this string's, or the object's it is a view of."""
+++        view = self.__dict__.get("_view")
+++        return self.__dict__.get("_own", "") if view is None else str(view[0]())
+++
+++    @_s.setter
+++    def _s(self, text: str) -> None:
+++        view = self.__dict__.get("_view")
+++        if view is None:
+++            self.__dict__["_own"] = text
+++        else:
+++            view[1](text)
+++
++     # -- as Python's string ------------------------------------------------------
++ 
++     def __str__(self) -> str:
++diff --git a/tests/pycxx/test_pycxx_conversions.py b/tests/pycxx/test_pycxx_conversions.py
++index d80a4bc3..63561269 100644
++--- a/tests/pycxx/test_pycxx_conversions.py
+++++ b/tests/pycxx/test_pycxx_conversions.py
++@@ -346,3 +346,25 @@ def test_a_reference_bound_to_the_object_it_names_builds_nothing(capsys) -> None
++         }
++         """, "t.C")  # fmt: skip
++     assert capsys.readouterr().out == "4 4\n3 1.5\n"
+++
+++
+++def test_a_container_iterator_declared_with_nothing_to_point_at_holds_no_place(capsys) -> None:
+++    """``std::vector<int>::iterator it;`` names no element until a container gives it one, and
+++    a translation has no container to give it: the variable starts as nothing, and the loop
+++    that assigns it its ``begin()`` works - what roottest's ``io/tree/run.C`` does.
+++    """
+++    source = r"""
+++    #include <cstdio>
+++    #include <vector>
+++    void it() {
+++       std::vector<int> v;
+++       v.push_back(7);
+++       v.push_back(8);
+++       std::vector<int>::iterator at;
+++       for (at = v.begin(); at != v.end(); at += 1)
+++          printf("%d\n", v[at - v.begin()]);
+++    }
+++    """
+++    assert "at = None" in translate(source, "it.C")
+++    run_source(source, "it.C")
+++    assert capsys.readouterr().out == "7\n8\n"
++diff --git a/tests/test_cint_declared_classes.py b/tests/test_cint_declared_classes.py
++index affebe22..3ed1d9e1 100644
++--- a/tests/test_cint_declared_classes.py
+++++ b/tests/test_cint_declared_classes.py
++@@ -71,6 +71,39 @@ def test_a_class_derived_from_roots_has_its_bases_members_and_classdefs_reflecti
++     assert "Warning in <Lined::Warn>: colour 4" in err
++ 
++ 
+++def test_a_class_derived_from_roots_names_itself_through_the_tstring_member(capfd):
+++    """``TNamed``'s name and title are the ``TString`` members ``fName`` and ``fTitle``, which
+++    a derived class of a macro's writes in place - roottest's ``tref_test_pid`` names its
+++    objects with ``fName.Form`` - so the two are the object's name and title."""
+++    run_source(RENAMED, "renamed.C")
+++    out = capfd.readouterr().out
+++    assert out.splitlines() == ["PID_0 a title", "PID_1 a title", "PID_2 a title"]
+++
+++
+++RENAMED = r"""
+++#include "TNamed.h"
+++class Pid : public TNamed {
+++public:
+++   static Int_t GetID() {
+++      static Int_t max = 0;
+++      return max++;
+++   }
+++   void Name() {
+++      fName.Form("PID_%d", GetID());
+++      fTitle = "a title";
+++      printf("%s %s\n", fName.Data(), GetTitle());
+++   }
+++   ClassDefOverride(Pid, 1);
+++};
+++void renamed() {
+++   Pid a, b, c;
+++   a.Name();
+++   b.Name();
+++   c.Name();
+++}
+++"""
+++
+++
++ def test_a_base_member_is_found_on_the_object_and_else_in_the_library():
++     class Base:
++         def f(self):
++diff --git a/tests/test_pyroot_objects.py b/tests/test_pyroot_objects.py
++index 50d90882..efd68ca9 100644
++--- a/tests/test_pyroot_objects.py
+++++ b/tests/test_pyroot_objects.py
++@@ -205,6 +205,36 @@ def test_attributes_are_kept_on_an_object_without_members_of_its_own():
++     assert thing.GetLineColor() == 1
++ 
++ 
+++def test_a_named_object_is_renamed_by_writing_the_tstring_member_its_name_is():
+++    """``fName`` and ``fTitle`` are the ``TString`` members a derived C++ class writes - ROOT's
+++    ``TNamed`` keeps its name there - so ``fName.Form(...)`` renames the object it belongs to,
+++    and a ``TString`` read off one is the object's text rather than a copy of it."""
+++    thing = ROOT.TNamed("a", "first")
+++    thing.fName.Form("%s_%d", "b", 3)
+++    expect(
+++        (thing.GetName(), "b_3"),
+++        (thing.fName.Data(), "b_3"),
+++        (thing.fName.Length(), 3),
+++    )
+++    thing.fTitle.Form("second %d", 2)
+++    assert thing.GetTitle() == "second 2"
+++    thing.fName = ROOT.TString("c")  # ``operator=`` of the member, as PyROOT takes it
+++    assert thing.GetName() == "c"
+++    thing.fName += "d"  # in place, through the same member
+++    assert thing.GetName() == "cd"
+++
+++
+++def test_a_histogram_renamed_through_fname_is_renamed_by_its_own_set_name():
+++    """A histogram's name is its ``TNamed`` member as a plain object's is, but writing it goes
+++    through ``TH1::SetName``, which a class that keeps more than the name needs."""
+++    h = ROOT.TH1F("h", "", 1, 0, 1)
+++    h.fName.Form("%s%d", "hh", 2)
+++    expect(
+++        (h.GetName(), "hh2"),
+++        (h._xrd._core["TNamed"]["fName"], "hh2"),
+++    )
+++
+++
++ def test_attributes_of_a_histogram_are_its_members():
++     h = ROOT.TH1F("h", "", 1, 0, 1)
++     h.SetFillColor(ROOT.kYellow)
+diff --git a/salvage/impl8_w01.patch b/salvage/impl8_w01.patch
+new file mode 100644
+index 00000000..c95f6ebc
+--- /dev/null
++++ b/salvage/impl8_w01.patch
+@@ -0,0 +1,48 @@
++diff --git a/src/xrdroot/tmva/weightfile.py b/src/xrdroot/tmva/weightfile.py
++index b8e21069..8a171241 100644
++--- a/src/xrdroot/tmva/weightfile.py
+++++ b/src/xrdroot/tmva/weightfile.py
++@@ -76,7 +76,9 @@ def read_method_node(
++     root: Any, type_name: str, name: str, info: DataSetInfo, job: str, path: str = ""
++ ) -> Method:
++     """A method from the element holding its state: a weight file's root, or a ``SubMethod``."""
++-    method = method_class(type_name)(job, name, info, options_text(root), "", _analysis(root))
+++    method = method_class(type_name, booking=False)(
+++        job, name, info, options_text(root), "", _analysis(root)
+++    )
++     transformations = root.find("Transformations")
++     if transformations is not None:
++         read_transformations(transformations, method.handler)
++@@ -88,16 +90,25 @@ def read_method_node(
++     return method
++ 
++ 
++-def method_class(type_name: str) -> type[Method]:
++-    """The class of the method a weight file is of, or the refusal of one there is not."""
+++def method_class(type_name: str, booking: bool = True) -> type[Method]:
+++    """The class of the method one is booked or read from a weight file as, or its refusal.
+++
+++    A method xrdroot does not have is refused by name, and the sentence says which way in it
+++    came: a booking can be pointed at another method, a weight file only read by ROOT.
+++    """
++     from .methods import REGISTRY
++ 
++     found = REGISTRY.get(type_name)
++-    if found is None:
++-        raise Logger("Reader").refuse(
++-            f"The weight file is of a {type_name} method, which xrdroot's TMVA does not have"
++-        )
++-    return found
+++    if found is not None:
+++        return found
+++    said = (
+++        f"xrdroot's TMVA has no {type_name} method to book: book another method, or train and "
+++        "apply that one with ROOT"
+++        if booking
+++        else f"The weight file is of a {type_name} method, which xrdroot's TMVA does not have: "
+++        "apply it with ROOT, which reads its weights"
+++    )
+++    raise Logger("Factory" if booking else "Reader").refuse(said)
++ 
++ 
++ def _analysis(root: Any) -> int:
+diff --git a/salvage/r3_c01.patch b/salvage/r3_c01.patch
+new file mode 100644
+index 00000000..dc3e9347
+--- /dev/null
++++ b/salvage/r3_c01.patch
+@@ -0,0 +1,314 @@
++diff --git a/src/xrdroot/pyroot/core/reflection.py b/src/xrdroot/pyroot/core/reflection.py
++index 985b3682..e6bf9e1d 100644
++--- a/src/xrdroot/pyroot/core/reflection.py
+++++ b/src/xrdroot/pyroot/core/reflection.py
++@@ -98,10 +98,51 @@ FUNDAMENTAL = frozenset({
++ 
++ #: ``kIsTObject`` and the other bits ``TClass::Property`` and ``GetState`` answer with.
++ K_IS_TOBJECT = 0x00008000
++-#: ``TClass::EState``: ``kInterpreted``, a class the interpreter describes and no dictionary
++-#: does, and ``kHasTClassInit`` - ROOT's ``kLoaded`` too - one a dictionary describes.
+++#: ``TClass::EState``, in ROOT's order: nothing known of the class yet, a forward declaration
+++#: only, a class an emulated ``TStreamerInfo`` describes, one the interpreter describes and
+++#: no dictionary does, and one a dictionary describes - ``kLoaded`` is the same state, and
+++#: ``kNamespaceForMeta`` the transient one ROOT gives a namespace entry.
+++K_NO_INFO = 0
+++K_FORWARD_DECLARED = 1
+++K_EMULATED = 2
++ K_INTERPRETED = 3
++ K_HAS_TCLASS_INIT = 4
+++K_LOADED = K_HAS_TCLASS_INIT
+++K_NAMESPACE_FOR_META = 5
+++
+++#: The ROOT classes whose dictionary this kit carries that declare a ``Streamer`` of their own,
+++#: which is what ``TClass::HasCustomStreamerMember`` answers with: a class of ROOT's streams
+++#: itself by hand where its dictionary lists a ``Streamer(TBuffer &)`` member, and every other
+++#: class of its - and every class declared here - streams member by member. This is ROOT
+++#: 6.40.04's own answer for each class the ``pyroot`` namespace has a class of; a class not
+++#: here is one nothing describes a custom streamer for.
+++CUSTOM_STREAMERS = frozenset({
+++    "RooAbsArg", "RooAbsBinning", "RooAbsData", "RooBinning", "RooCategory", "RooDataHist",
+++    "RooDataSet", "RooFitResult", "RooHistFunc", "RooHistPdf", "RooLinkedList", "RooPlot",
+++    "RooRealVar", "RooWorkspace", "TASImage", "TArrayC", "TArrayD", "TArrayF", "TArrayI",
+++    "TArrayL", "TArrayS", "TAttAxis", "TAxis", "TBaseClass", "TBox", "TBranch", "TBranchElement",
+++    "TBranchObject", "TBuffer", "TBufferFile", "TBufferJSON", "TCTUB", "TCandle", "TCanvas",
+++    "TChain", "TClass", "TClassTable", "TClonesArray", "TCollection", "TCutG", "TDataMember",
+++    "TDatime", "TDirectory", "TDirectoryFile", "TEllipse", "TEntryList", "TF1", "TF2", "TF3",
+++    "TFile", "TFormula", "TGaxis", "TGeoArb8", "TGeoIterator", "TGeoIteratorPlugin",
+++    "TGeoManager", "TGeoPcon", "TGeoTessellated", "TGeoVolume", "TGeometry", "TGraph",
+++    "TGraph2D", "TGraph2DErrors", "TGraphAsymmErrors", "TGraphErrors", "TH1", "TH2", "TH2C",
+++    "TH2D", "TH2F", "TH2S", "TH3", "TH3C", "TH3D", "TH3F", "TH3S", "THashList", "THashTable",
+++    "TImage", "TImagePalette", "TInterpreter", "TIter", "TKey", "TLeaf", "TLine", "TList",
+++    "TLorentzVector", "TMarker", "TMaterial", "TMatrixD", "TMatrixDColumn",
+++    "TMatrixDColumn_const", "TMatrixDDiag", "TMatrixDDiag_const", "TMatrixDRow",
+++    "TMatrixDRow_const", "TMatrixDSym", "TMatrixF", "TMatrixFColumn", "TMatrixFDiag",
+++    "TMatrixFRow", "TMatrixFSym", "TMemFile", "TMixture", "TNode", "TNtuple", "TNtupleD",
+++    "TObjArray", "TObject", "TOrdCollection", "TPCON", "TPad", "TPave", "TPaveStats",
+++    "TPaveText", "TPolyLine", "TPolyLine3D", "TPolyMarker", "TPolyMarker3D", "TProfile",
+++    "TProfile2D", "TROOT", "TRandom3", "TRef", "TRefArray", "TRotMatrix", "TSPHE",
+++    "TSeqCollection", "TShape", "TStreamerBase", "TStreamerBasicPointer", "TStreamerBasicType",
+++    "TStreamerElement", "TStreamerInfo", "TStreamerLoop", "TStreamerObject",
+++    "TStreamerObjectAny", "TStreamerObjectAnyPointer", "TStreamerObjectPointer", "TStreamerSTL",
+++    "TStreamerSTLstring", "TStreamerString", "TString", "TTUBE", "TText", "TThread", "TTimer",
+++    "TTree", "TUrl", "TVector2", "TVector3", "TVectorD", "TView3D", "TVirtualPS",
+++    "TVirtualStreamerInfo", "TXMLEngine",
+++})  # fmt: skip
++ 
++ 
++ def note_generated_dictionary(classes: Any) -> None:
++@@ -211,6 +252,34 @@ def _spelled(typename: str) -> str:
++     return TYPEDEFS.get(base, base) + typename[len(base):]
++ 
++ 
+++def _held_classes(typename: str) -> list[str]:
+++    """The classes a member's type holds or points at, as ROOT reports them missing: the type
+++    itself with the ``const``, the pointers, references and array lengths off it, and then
+++    each class its template arguments name - ``vector<Elem>``, then ``Elem``."""
+++    text = typename.strip()
+++    for mark in ("const", "volatile"):
+++        text = text.removeprefix(mark).strip().removesuffix(mark).strip()
+++    text = text.rstrip("*& ").split("[")[0].strip()
+++    if not text or text in FUNDAMENTAL or text.endswith("*"):
+++        return []
+++    found = [_known_as(text)]
+++    if "<" in text:
+++        inner = text[text.index("<") + 1 : text.rindex(">")]
+++        found += [each for part in inner.split(",") for each in _held_classes(part)]
+++    return found
+++
+++
+++def _dictionaried(name: str) -> bool:
+++    """Does the process have a dictionary that describes the class ``name``?
+++
+++    A class a dictionary describes is one of ROOT's own the kit carries, or one a library or
+++    ``GenerateDictionary`` provided. A standard container is not: the kit can make one of
+++    any element type, but ROOT has a dictionary of ``vector<Elem>`` only once something
+++    generated one, which is why a class holding such a vector reports it missing.
+++    """
+++    return _known_as(name) in _with_dictionary()
+++
+++
++ def _disagreement_with(name: str, on_file: Layout, met: bool) -> Layout | None:
++     """The layout the class has in memory, when the one a file describes disagrees with it in
++     the way ROOT reports as the file is opened - a version the class versions, a checksum of
++@@ -457,11 +526,27 @@ class TClass(TNamed):
++     #: What ``ClassDef`` says of the class.
++     CLASS_TITLE = "Dictionary of a class"
++     kIsTObject = K_IS_TOBJECT
++-    kHasTClassInit = K_HAS_TCLASS_INIT
+++    #: ``TClass::EState``, which ``GetState`` answers with and a program compares against.
+++    kNoInfo = K_NO_INFO
+++    kForwardDeclared = K_FORWARD_DECLARED
+++    kEmulated = K_EMULATED
++     kInterpreted = K_INTERPRETED
++-    kEmulated = 2
++-    kNoInfo = 0
++-    kLoaded = K_HAS_TCLASS_INIT
+++    kHasTClassInit = K_HAS_TCLASS_INIT
+++    kLoaded = K_LOADED
+++    kNamespaceForMeta = K_NAMESPACE_FOR_META
+++    #: ``TClass::ECheckSum``: which of ROOT's checksum algorithms a checksum was made with.
+++    #: The layouts here come from files ROOT wrote with the newest of them, so the ones that
+++    #: differ by what a streamer records and not by its arithmetic answer alike; the numbers
+++    #: are ROOT's, since a program compares what it asked for with them.
+++    kCurrentCheckSum = 0
+++    kNoEnum = 1
+++    kReflexNoComment = 2
+++    kNoRange = 3
+++    kWithTypeDef = 4
+++    kReflex = 5
+++    kNoRangeCheck = 6
+++    kNoBaseCheckSum = 7
+++    kLatestCheckSum = 8
++ 
++     #: What ``TClass::GetClass`` is handed back for a class nobody knows: nothing.
++     _MISSING: ClassVar[None] = None
++@@ -501,6 +586,27 @@ class TClass(TNamed):
++         text = _known_as(str(spelled if spelled is not None else name))
++         return None if text in FUNDAMENTAL else TClass(text)
++ 
+++    @staticmethod
+++    def GetDict(name: Any) -> TClass | None:
+++        """``TClass::GetDict(name)``: the class where a *dictionary* describes it, else
+++        ``nullptr`` - which ``GetClass`` does not answer, since ROOT makes a ``TClass`` for a
+++        class only a forward declaration or a file describes too.
+++
+++        ROOT hands back the dictionary's factory function here, which nothing compiles: what
+++        answers is the class that dictionary describes, which is what a program asks this for
+++        - ``if (!TClass::GetDict("Event")) gSystem->Load("libEvent")`` - and what it compares
+++        with ``nullptr``.
+++        """
+++        if not isinstance(name, str):  # a ``std::type_info``: the class it names
+++            name = getattr(name, "_spelled", None) or getattr(name, "__name__", name)
+++        return TClassTable.GetDict(name)
+++
+++    def HasCustomStreamerMember(self) -> bool:
+++        """``HasCustomStreamerMember``: does the class's dictionary list a ``Streamer`` of
+++        its own - ``TObject::Streamer``, which ``TTree`` and ``TString`` have too - or is it
+++        streamed member by member, as ``TNamed`` and every class declared here is?"""
+++        return self._name in CUSTOM_STREAMERS
+++
++     def HasDictionary(self) -> bool:
++         """``HasDictionary``: does anything here describe the class's members?"""
++         return self._class() is not None or self._name in INFOS or _template(self._name)
++@@ -793,6 +899,39 @@ class TClass(TNamed):
++         return next((m for m in self.GetListOfAllPublicDataMembers() if m.GetName() == wanted),
++                     None)
++ 
+++    def GetMissingDictionaries(self, result: Any, recurse: bool = False) -> None:
+++        """``GetMissingDictionaries``: note in ``result`` - a ``THashTable`` ROOT fills in -
+++        every class this class derives from or declares a member of that no dictionary of the
+++        process describes.
+++
+++        ``ECont`` holds a ``vector<Elem>``: the vector is not emulated from a dictionary, so
+++        ROOT reports it missing however well it can lay one out (roottest's
+++        ``CheckMissingDictionaries``), and with ``recurse`` the classes those classes name are
+++        looked into as well. A class of plain numbers and strings reports nothing, which is
+++        what ``execNamingMatches`` asserts of one.
+++        """
+++        self._missing_dictionaries(result, set(), recurse)
+++
+++    def _missing_dictionaries(self, result: Any, visited: set[str], recurse: bool) -> None:
+++        """The walk ``GetMissingDictionaries`` makes: each class this one holds, added once,
+++        and - with ``recurse`` - what that class holds in turn. A member of the class's own
+++        type is met again by the walk and is not walked into twice."""
+++        if self._name in visited:
+++            return
+++        visited.add(self._name)
+++        for name in self._held_names(recurse):
+++            if not _dictionaried(name):
+++                result.Add(TClass(name))
+++            if recurse:
+++                TClass(name)._missing_dictionaries(result, visited, recurse)
+++
+++    def _held_names(self, recurse: bool) -> list[str]:
+++        """The classes this class's bases and members are of, in the dictionary's spelling -
+++        with the classes inside their template arguments too when the walk recurses."""
+++        spelled = [*self._base_names(), *(field[1] for field in self._fields())]
+++        held = [_held_classes(name) for name in spelled]
+++        return [each for classes in held for each in (classes if recurse else classes[:1])]
+++
++     def GetListOfMethods(self, load: bool = True) -> Any:
++         """``GetListOfMethods``: the class's own functions, by name.
++ 
++@@ -816,6 +955,15 @@ class TClass(TNamed):
++ 
++     GetMethodAllAny = GetMethodAny
++ 
+++    def GetListOfAllPublicMethods(self, load: bool = True) -> Any:
+++        """``GetListOfAllPublicMethods``: the class's own functions and each base's, which
+++        is how ROOT answers a name that only a base declares - ``std::shared_ptr``'s ``get``."""
+++        made = self.GetListOfMethods(load)
+++        for base in self._base_classes():
+++            for method in base.GetListOfAllPublicMethods(load):
+++                made.Add(method)
+++        return made
+++
++     def GetMethodWithPrototype(self, name: Any, proto: Any = "", isconst: bool = False,
++                                mode: int = 0) -> Any:  # fmt: skip
++         """``GetMethodWithPrototype``: the function called ``name`` with the prototype
++diff --git a/tests/test_pyroot_reflection.py b/tests/test_pyroot_reflection.py
++index 08f863a2..494e7d10 100644
++--- a/tests/test_pyroot_reflection.py
+++++ b/tests/test_pyroot_reflection.py
++@@ -815,3 +815,100 @@ def test_an_emulated_classs_second_layout_takes_the_next_number():
++     _evo("int", "one.root")
++     ROOT.TFile("one.root")
++     assert _free_version("Evo", 1, {1}) == 2
+++
+++
+++def test_the_state_and_checksum_codes_are_the_numbers_root_gives_them():
+++    """``TClass::EState`` and ``TClass::ECheckSum``, as ROOT 6.40 numbers them: a program
+++    compares what ``GetState`` answers with ``kForwardDeclared``, ``kEmulated`` and
+++    ``kHasTClassInit`` (roottest's ``execState``, ``datamemberload``), and asks
+++    ``GetCheckSum`` for the newest algorithm's checksum by ``kLatestCheckSum``."""
+++    states = ("kNoInfo", "kForwardDeclared", "kEmulated", "kInterpreted", "kHasTClassInit",
+++              "kLoaded", "kNamespaceForMeta")  # fmt: skip
+++    checksums = ("kCurrentCheckSum", "kNoEnum", "kReflexNoComment", "kNoRange", "kWithTypeDef",
+++                 "kReflex", "kNoRangeCheck", "kNoBaseCheckSum", "kLatestCheckSum")  # fmt: skip
+++    th1f = ROOT.TClass.GetClass("TH1F")
+++    expect(
+++        ([getattr(ROOT.TClass, name) for name in states], [0, 1, 2, 3, 4, 4, 5]),
+++        ([getattr(ROOT.TClass, name) for name in checksums], [0, 1, 2, 3, 4, 5, 6, 7, 8]),
+++        (th1f.GetCheckSum(ROOT.TClass.kLatestCheckSum), th1f.GetCheckSum()),
+++    )
+++
+++
+++def test_the_dictionary_lookup_answers_only_for_a_class_a_dictionary_describes():
+++    """``TClass::GetDict`` hands back nothing where no dictionary describes the class, which is
+++    what a program tests before it loads the library that would - and what ``GetClass`` cannot
+++    answer, since it makes a ``TClass`` for a class a macro declared too (roottest's
+++    ``execfwdDeclarations`` and ``ROOT-5709``)."""
+++    _declared()
+++    expect(
+++        (ROOT.TClass.GetDict("TH1F").GetName(), "TH1F"),
+++        (ROOT.TClass.GetClass("Named").GetName(), "Named"),
+++        (ROOT.TClass.GetDict("Named"), None),
+++        (ROOT.TClass.GetDict("TNoSuch"), None),
+++        (ROOT.TClass.GetDict(ROOT.TNamed).GetName(), "TNamed"),
+++    )  # fmt: skip
+++
+++
+++def test_a_class_says_whether_its_dictionary_streams_it_by_hand():
+++    """``HasCustomStreamerMember``, as roottest's ``execProperties`` asks it: ROOT's ``TObject``,
+++    ``TTree``, ``TEntryList`` and ``TString`` declare a ``Streamer`` of their own and ``TNamed``
+++    does not - ``TH1`` does and ``TH1F``, which declares none of its own, does not - and
+++    neither does any class a macro declares here."""
+++    _declared()
+++    asked = (ROOT.TObject.Class(), ROOT.TNamed.Class(), ROOT.TTree.Class(),
+++             ROOT.TClass.GetClass("TString"), ROOT.TEntryList.Class())  # fmt: skip
+++    expect(
+++        ([each.HasCustomStreamerMember() for each in asked], [True, False, True, True, True]),
+++        (ROOT.TClass.GetClass("Named").HasCustomStreamerMember(), False),
+++        ([ROOT.TClass.GetClass(name).HasCustomStreamerMember()
+++          for name in ("TH1", "TH1F", "TProfile", "TLegend", "TEfficiency")],
+++         [True, False, True, False, False]),
+++    )
+++
+++
+++def test_the_methods_of_a_class_and_of_its_bases_are_listed_together():
+++    """``GetListOfMethods`` is the class's own functions - ROOT 6.40's ``TNamed`` lists
+++    ``GetName`` and no ``InheritsFrom`` - and ``GetListOfAllPublicMethods`` adds each base's,
+++    which is how a name only ``TObject`` declares is found on a ``TNamed``."""
+++    named = ROOT.TClass.GetClass("TNamed")
+++    own = {method.GetName() for method in named.GetListOfMethods()}
+++    every = {method.GetName() for method in named.GetListOfAllPublicMethods()}
+++    assert "GetName" in own and "InheritsFrom" not in own
+++    assert {"GetName", "InheritsFrom", "Print", "IsA", "ClassName"} <= every
+++
+++
+++MISSING = r"""
+++#include <vector>
+++struct Elem { int i = 5; };
+++struct ECont { std::vector<Elem> elems; };
+++struct Plain { int a; double b; };
+++struct Chain { Chain *next; TObject arg; std::vector<Elem> *elems; };
+++"""
+++
+++
+++def test_a_class_reports_the_classes_it_holds_that_no_dictionary_describes():
+++    """``GetMissingDictionaries``, as roottest's ``CheckMissingDictionaries`` asks it of
+++    ``ECont``: ``Elem``'s dictionary does not make one for the ``vector<Elem>`` the class holds,
+++    so the vector is what ROOT reports - a class of plain numbers reports nothing - and once a
+++    dictionary is generated for the vector there is nothing left to report."""
+++    run_source(MISSING, "missing_dictionaries.C", call=False)
+++    container = ROOT.THashTable()
+++    ROOT.TClass.GetClass("ECont").GetMissingDictionaries(container)
+++    plain = ROOT.THashTable()
+++    ROOT.TClass.GetClass("Plain").GetMissingDictionaries(plain)
+++    walked = ROOT.THashTable()
+++    ROOT.TClass.GetClass("Chain").GetMissingDictionaries(walked, True)
+++    # The chain's own class is missing and walked into once - ROOT's ``Chain* next`` - its
+++    # ``TObject`` member has a dictionary of its own, and a container's element class is
+++    # reported too, as ROOT reports ``vector<A>`` and ``A`` of a missing ``A``.
+++    recursive = sorted(held.GetName() for held in walked)
+++    assert ROOT.gInterpreter.GenerateDictionary("vector<Elem>") == 0
+++    after = ROOT.THashTable()
+++    ROOT.TClass.GetClass("ECont").GetMissingDictionaries(after)
+++    expect(
+++        ([held.GetName() for held in container], ["vector<Elem>"]),
+++        (list(plain), []),
+++        (recursive, ["Chain", "Elem", "vector<Elem>"]),
+++        (list(after), []),
+++        (container.FindObject("vector<Elem>").GetName(), "vector<Elem>"),
+++    )
+diff --git a/salvage/tref-min.patch b/salvage/tref-min.patch
+new file mode 100644
+index 00000000..20a484db
+--- /dev/null
++++ b/salvage/tref-min.patch
+@@ -0,0 +1,81 @@
++diff --git a/docs/root.md b/docs/root.md
++index fb4473e6..cde4044a 100644
++--- a/docs/root.md
+++++ b/docs/root.md
++@@ -3032,8 +3032,12 @@ A class a macro, a library or ACLiC declares is a ROOT class here. One derived
++ from `TObject`, `TNamed` or `TAttLine` has its base's members and calls them
++ unqualified (`GetName()`, `TNamed::Print(opt)`), an override called through a
++ base pointer takes the base's default arguments, and `ClassDef` gives it a
++-version, `Class()` and `Class_Name()`. `TClass::GetClass("MyClass")` describes
++-it as ROOT's dictionary would: `GetClassVersion` (-1 without a `ClassDef`),
+++version, `Class()` and `Class_Name()`. A `TNamed`'s name and title are the
+++`TString` members `fName` and `fTitle`, which a derived class writes in place -
+++`fName.Form("%s_%d", name, GetID())` renames the object, as roottest's
+++`tref_test_pid` does - and `TObjString::String()` is the `TString` it holds.
+++`TClass::GetClass("MyClass")` describes it as ROOT's dictionary would: `GetClassVersion`
+++(-1 without a `ClassDef`),
++ `GetCheckSum`, `GetListOfDataMembers` (`//!` transient, `//[n]` counted),
++ `GetListOfBases`, `GetBaseClass`, `New`, and `GetStreamerInfo()`, whose `ls()`
++ lists the layout as ROOT 6.40 does. `GetStreamerInfos()` adds each layout a
++diff --git a/src/xrdroot/pycxx/emit_vars.py b/src/xrdroot/pycxx/emit_vars.py
++index 2d726a4f..9832e5d9 100644
++--- a/src/xrdroot/pycxx/emit_vars.py
+++++ b/src/xrdroot/pycxx/emit_vars.py
++@@ -251,6 +251,8 @@ class VariableEmitter(StmtEmitter):
++             raise self.refuse(f"a variable of the template parameter type {ctype.name}", decl)
++         if ctype.callable:
++             return "None"
+++        if _is_iterator(ctype):
+++            return "None"  # unset, as C++ leaves it: it means an element once a container is
++         return f"{self.class_expr(ctype)}()"
++ 
++     def constructed(self, ctype: CType, args: list[Expr], decl: VarDecl) -> str:
++@@ -417,6 +419,18 @@ class VariableEmitter(StmtEmitter):
++     module_statics: list[tuple[str, Any]]
++ 
++ 
+++def _is_iterator(ctype: CType) -> bool:
+++    """Is this a library container's iterator type - ``std::list<T>::iterator``?
+++
+++    Such an iterator is no object a library makes here: a container's ``begin`` hands out one
+++    that stands for a place in it, so a variable of the type declared with nothing to start
+++    from holds no place at all until one is assigned - as C++'s default-constructed iterator
+++    names no element either.
+++    """
+++    owner, _, last = ctype.name.rpartition("::")
+++    return bool(owner) and last in ("iterator", "const_iterator")
+++
+++
++ def _constant_static(decl: VarDecl, ctype: CType | None) -> bool:
++     """Is a static local's first value a constant, which C++ sets before anything runs?"""
++     if ctype is None or not (ctype.pointer or ctype.arithmetic or ctype.is_string):
++diff --git a/tests/pycxx/test_pycxx_conversions.py b/tests/pycxx/test_pycxx_conversions.py
++index d80a4bc3..63561269 100644
++--- a/tests/pycxx/test_pycxx_conversions.py
+++++ b/tests/pycxx/test_pycxx_conversions.py
++@@ -346,3 +346,25 @@ def test_a_reference_bound_to_the_object_it_names_builds_nothing(capsys) -> None
++         }
++         """, "t.C")  # fmt: skip
++     assert capsys.readouterr().out == "4 4\n3 1.5\n"
+++
+++
+++def test_a_container_iterator_declared_with_nothing_to_point_at_holds_no_place(capsys) -> None:
+++    """``std::vector<int>::iterator it;`` names no element until a container gives it one, and
+++    a translation has no container to give it: the variable starts as nothing, and the loop
+++    that assigns it its ``begin()`` works - what roottest's ``io/tree/run.C`` does.
+++    """
+++    source = r"""
+++    #include <cstdio>
+++    #include <vector>
+++    void it() {
+++       std::vector<int> v;
+++       v.push_back(7);
+++       v.push_back(8);
+++       std::vector<int>::iterator at;
+++       for (at = v.begin(); at != v.end(); at += 1)
+++          printf("%d\n", v[at - v.begin()]);
+++    }
+++    """
+++    assert "at = None" in translate(source, "it.C")
+++    run_source(source, "it.C")
+++    assert capsys.readouterr().out == "7\n8\n"
+-- 
+2.54.0 (Apple Git-157)
+

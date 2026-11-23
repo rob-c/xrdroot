@@ -1,0 +1,31 @@
+From 705a645f51f22206f693340b3176c3aa27c7c877 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 21:07:11 +0000
+Subject: [PATCH 2/2] test: a session starts with no include path for the next
+ test to inherit
+
+The prompt's ``.I`` adds to the session's include path and nothing took it
+back, so a test asking what the path holds saw the one an earlier test in the
+same xdist worker had added, when the two landed in that order.  Every test's
+fresh session now begins with none, as ROOT's own would on a new process.
+---
+ tests/pyrootsupport.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/pyrootsupport.py b/tests/pyrootsupport.py
+index 4eb9c3f8..dc9b2791 100644
+--- a/tests/pyrootsupport.py
++++ b/tests/pyrootsupport.py
+@@ -56,6 +56,9 @@ def _reset() -> None:
+     ROOT.TH1.AddDirectory(True)
+     ROOT.TH1.SetDefaultSumw2(False)
+     ROOT.gRandom.SetSeed(4357)
++    # ``.I`` adds to the include path and the compiler that reads it is a session's,
++    # so a test that adds one hands it back: the next test asks what it holds.
++    ROOT.gSystem.SetIncludePath("")
+     ROOT.__dict__.pop("gErrorIgnoreLevel", None)
+     ROOT.gErrorIgnoreLevel = ROOT.kUnset
+     fitters.LATEST["result"] = None
+-- 
+2.54.0 (Apple Git-157)
+

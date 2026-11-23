@@ -1,0 +1,83 @@
+From 8edd042c72172ab4bf58e3b0ec455c8e4ef6f1c9 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 18:02:27 +0000
+Subject: [PATCH] feat: a member of a class that is one of ROOT's collections
+
+TJsonEx14 holds a TObjArray, a TList, a TClonesArray and a TMap by value, and ROOT
+streams each one where the member is: the name the collection holds its objects under
+and the objects themselves. The writer refused all four, since a class was only
+writable whole when its members were in the table or its declaration gave them. A
+collection is written whole by the collection's own writer, so the name of one is
+enough - checked against the 6.40.04 oracle, TObjArray member and all.
+---
+ src/xrdroot/pyroot/core/jsonbuffer.py | 10 +++++----
+ tests/test_pyroot_jsonbuffer.py       | 31 +++++++++++++++++++++++++++
+ 2 files changed, 37 insertions(+), 4 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/core/jsonbuffer.py b/src/xrdroot/pyroot/core/jsonbuffer.py
+index 880b7e06..bffa0a51 100644
+--- a/src/xrdroot/pyroot/core/jsonbuffer.py
++++ b/src/xrdroot/pyroot/core/jsonbuffer.py
+@@ -492,14 +492,16 @@ def _object_style(kind: str, dims: tuple[int | None, ...]) -> str | None:
+ 
+ 
+ def _writes_object(name: str) -> bool:
+-    """Can the whole of a ``name`` be written: is it one of the classes in :data:`MEMBERS`, or
+-    one the translation declared? A member of such a class is written as the object it is,
+-    which is how ``TJsonEx5``'s ``TJsonEx1 fObj1`` gets the JSON of its own members."""
++    """Can the whole of a ``name`` be written: is it one of the classes in :data:`MEMBERS`, one
++    the translation declared, or a collection ROOT writes as the objects it holds? A member
++    of such a class is written as the object it is, which is how ``TJsonEx5``'s
++    ``TJsonEx1 fObj1`` gets the JSON of its own members and ``TJsonEx14``'s ``TObjArray
++    fObjArray`` the name and the objects a ``TObjArray`` is written as."""
+     if name in MEMBERS:
+         return True
+     from .declared import find_class
+ 
+-    return find_class(name) is not None
++    return find_class(name) is not None or _namespace_class(name) is not None
+ 
+ 
+ def _held(obj: Any, member: _Member) -> Any:
+diff --git a/tests/test_pyroot_jsonbuffer.py b/tests/test_pyroot_jsonbuffer.py
+index 0b5d9c46..4ab656e9 100644
+--- a/tests/test_pyroot_jsonbuffer.py
++++ b/tests/test_pyroot_jsonbuffer.py
+@@ -1485,3 +1485,34 @@ def test_a_map_named_nothing_with_no_pairs_is_read_back_empty():
+     read = ROOT.TBufferJSON.ConvertFromJSONAny('{"_typename":"TMap"}')
+     assert isinstance(read, ROOT.TMap)
+     assert (read.GetName(), len(list(read))) == ("TMap", 0)
++
++
++#: What ROOT's oracle prints for a class holding one ``TObjArray`` of one ``TNamed``: a
++#: member of a collection type is streamed where it is, so it is the collection's own JSON.
++COLLECTION_MEMBER_JSON = (
++    '{\n  "_typename" : "THolder",\n  "fArr" : {\n    "_typename" : "TObjArray",\n'
++    '    "name" : "TObjArray",\n    "arr" : [{\n      "_typename" : "TNamed",\n'
++    '      "fUniqueID" : 0,\n      "fBits" : 0,\n      "fName" : "A0",\n'
++    '      "fTitle" : "T0"\n    }]\n  }\n}'
++)
++
++
++def test_a_member_that_is_a_collection_is_written_as_the_objects_it_holds(monkeypatch):
++    """``TJsonEx14``'s ``TObjArray fObjArray``: ROOT writes a member of a collection type by
++    streaming the collection, so the member is the name it holds its objects under and the
++    objects themselves - which is the JSON a ``TObjArray`` is written as on its own."""
++    _reading_class(monkeypatch, "THolder", (("fArr", "TObjArray", "", ()),))
++    made = DECLARED["THolder"]()
++    made.fArr = ROOT.TObjArray()
++    made.fArr.Add(ROOT.TNamed("A0", "T0"))
++    assert _json(made) == COLLECTION_MEMBER_JSON
++
++
++def test_a_member_that_is_a_collection_reads_back_as_the_objects_it_holds(monkeypatch):
++    """The other way: the collection a member is declared as is made again from the JSON, with
++    the objects its ``arr`` holds, so what is written from it is what it was read from."""
++    _reading_class(monkeypatch, "THolder", (("fArr", "TObjArray", "", ()),))
++    read = ROOT.TBufferJSON.ConvertFromJSONAny(COLLECTION_MEMBER_JSON)
++    assert isinstance(read.fArr, ROOT.TObjArray)
++    assert [each.GetName() for each in read.fArr] == ["A0"]
++    assert _json(read) == COLLECTION_MEMBER_JSON
+-- 
+2.54.0 (Apple Git-157)
+

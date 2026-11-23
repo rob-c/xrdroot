@@ -1,0 +1,132 @@
+From 6d956cbbbeea265f3441c76e98dd40cc56fe5c28 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 18:26:21 +0000
+Subject: [PATCH] fix: a symmetric SMatrix's sum, difference and scale keep
+ their cells
+
+---
+ src/xrdroot/pyroot/linalg/smatrix.py | 38 +++++++++++++++++++++-------
+ tests/test_pyroot_linalg_smatrix.py  | 19 +++++++++++++-
+ 2 files changed, 47 insertions(+), 10 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/linalg/smatrix.py b/src/xrdroot/pyroot/linalg/smatrix.py
+index 6391c9fe..ceb0a901 100644
+--- a/src/xrdroot/pyroot/linalg/smatrix.py
++++ b/src/xrdroot/pyroot/linalg/smatrix.py
+@@ -465,6 +465,20 @@ class SMatrix:
+                 self[row, col] = given[at]
+                 at += 1
+ 
++    @classmethod
++    def _assembled(cls, values: list[Any]) -> Any:
++        """A matrix of this shape holding ``values`` in row order, every element of it.
++
++        A constructor cannot do this: ``SMatrix<T,N>(v.begin(), v.end())`` reads the upper
++        triangle of a symmetric matrix, column by column, which is the order ``MatRepSym``
++        stores - while a sum, a difference or a scaled matrix arrives in row order and
++        already symmetric. Going through the constructor would therefore put the elements
++        where the triangle's order says, not where the arithmetic put them."""
++        made = cls()
++        for index, value in enumerate(values):
++            made._values[index] = cls._element(value)
++        return made
++
+     @property
+     def _symmetric(self) -> bool:
+         return bool(self._dims[2])
+@@ -522,31 +536,35 @@ class SMatrix:
+     def __add__(self, other: Any) -> Any:
+         if isinstance(other, SMatrix):
+             self._same_shape(other)
+-            return type(self)([a + b for a, b in zip(self._values, other._values, strict=False)])
+-        return type(self)([a + other for a in self._values])
++            return type(self)._assembled(
++                [a + b for a, b in zip(self._values, other._values, strict=False)]
++            )
++        return type(self)._assembled([a + other for a in self._values])
+ 
+     def __sub__(self, other: Any) -> Any:
+         if isinstance(other, SMatrix):
+             self._same_shape(other)
+-            return type(self)([a - b for a, b in zip(self._values, other._values, strict=False)])
+-        return type(self)([a - other for a in self._values])
++            return type(self)._assembled(
++                [a - b for a, b in zip(self._values, other._values, strict=False)]
++            )
++        return type(self)._assembled([a - other for a in self._values])
+ 
+     def __mul__(self, other: Any) -> Any:
+         if isinstance(other, SVector):
+             return self._times_vector(other)
+         if isinstance(other, SMatrix):
+             return self._times_matrix(other)
+-        made = type(self)([a * other for a in self._values])
++        made = type(self)._assembled([a * other for a in self._values])
+         return made
+ 
+     def __rmul__(self, other: Any) -> Any:
+         return self * other
+ 
+     def __truediv__(self, other: Any) -> Any:
+-        return type(self)([a / other for a in self._values])
++        return type(self)._assembled([a / other for a in self._values])
+ 
+     def __neg__(self) -> Any:
+-        return type(self)([-a for a in self._values])
++        return type(self)._assembled([-a for a in self._values])
+ 
+     def _times_matrix(self, other: SMatrix) -> Any:
+         """The matrix product, which exists once the shapes meet: (n by m) by (m by p)."""
+@@ -698,8 +716,10 @@ class SMatrix:
+         not the matrix product ``a * b`` is."""
+         if isinstance(other, SMatrix):
+             self._same_shape(other)
+-            return type(self)([a * b for a, b in zip(self._values, other._values, strict=True)])
+-        return type(self)([a * other for a in self._values])
++            return type(self)._assembled(
++                [a * b for a, b in zip(self._values, other._values, strict=True)]
++            )
++        return type(self)._assembled([a * other for a in self._values])
+ 
+     def __iter__(self) -> _typing.Iterator[Any]:
+         return iter(self._values)
+diff --git a/tests/test_pyroot_linalg_smatrix.py b/tests/test_pyroot_linalg_smatrix.py
+index 4c2ae352..aeaab8a7 100644
+--- a/tests/test_pyroot_linalg_smatrix.py
++++ b/tests/test_pyroot_linalg_smatrix.py
+@@ -3,7 +3,7 @@ prints for them."""
+ 
+ import pytest
+ 
+-from xrdroot.pyroot.linalg import Dot, MatRepStd, MatRepSym, SMatrix, SVector
++from xrdroot.pyroot.linalg import Dot, MatRepStd, MatRepSym, SMatrix, SVector, Times
+ 
+ 
+ def test_a_subscripted_vector_carries_its_size_and_element_type():
+@@ -254,6 +254,23 @@ def test_a_symmetric_matrix_hands_over_its_triangles():
+     assert list(square.LowerBlock()) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+ 
+ 
++def test_a_symmetric_matrix_keeps_a_sum_in_the_cells_its_elements_came_from():
++    # MatRepSym stores one triangle, column by column, and its constructor reads that
++    # triangle: a sum, a difference or a scaled matrix arrives in row order and already
++    # symmetric, so handing it to that constructor shears the matrix. The 1.22961 of
++    # roottest/root/math/smatrix/testKalman.cxx's c2sum is what a sum like this must give.
++    one = SMatrix["double", 2]([1, 2, 3])
++    two = SMatrix["double", 2]([10, 20, 30])
++    cells = lambda m: [m(i, j) for i in range(2) for j in range(2)]  # noqa: E731
++    assert cells(one + two) == [11.0, 22.0, 22.0, 33.0]
++    assert cells(two - one) == [9.0, 18.0, 18.0, 27.0]
++    assert cells(one * 2) == [2.0, 4.0, 4.0, 6.0]
++    assert cells(one / 2) == [0.5, 1.0, 1.0, 1.5]
++    assert cells(-one) == [-1.0, -2.0, -2.0, -3.0]
++    assert cells(one + 1) == [2.0, 3.0, 3.0, 4.0]
++    assert cells(Times(one, two)) == [10.0, 40.0, 40.0, 90.0]
++
++
+ def test_a_range_over_a_symmetric_matrix_is_its_upper_triangle():
+     square = SMatrix["double", 3]([1, 2, 3, 4, 5, 6])
+     assert list(square.begin()) == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+-- 
+2.54.0 (Apple Git-157)
+

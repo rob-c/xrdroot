@@ -1,0 +1,94 @@
+From c3045a11e0e7103d3755d0a9d618c172f93693da Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Sat, 21 Nov 2026 06:21:35 +0000
+Subject: [PATCH 2/2] docs: the io/json TypeErrors are the translated
+ char[N][M] constructor
+
+Records why BasicTypes, Objects, STL and STL1 die outside jsonbuffer: the
+emitted self.fChar[i][j] = with_char(...) on array('char*', 2, []), how to see
+the real traceback in the harness's working copy, and that patching that one
+generated line makes BasicTypes and Objects byte-identical to their .refs.
+---
+ docs/README.md                                | 26 ++++++++++++++
+ ...e-the-translated-char-array-constructor.md | 36 +++++++++++++++++++
+ 2 files changed, 62 insertions(+)
+ create mode 100644 docs/README.md
+ create mode 100644 docs/gotchas/io-json-failures-are-the-translated-char-array-constructor.md
+
+diff --git a/docs/README.md b/docs/README.md
+new file mode 100644
+index 00000000..f9aa72fe
+--- /dev/null
++++ b/docs/README.md
+@@ -0,0 +1,26 @@
++# docs
++
++What this project has learned, written down so nobody has to rediscover it.
++
++Each file here answers one question a new contributor (or a new agent on a new
++machine) would otherwise answer wrongly:
++
++- `rules/` — hard constraints. Do not break these.
++- `instructions/` — how work should be done in this project.
++- `gotchas/` — things that break in non-obvious ways.
++- `discoveries/` — how something actually behaves, where that is surprising.
++- `decisions/` — a choice that was made and the reason.
++- `architecture/` — how the pieces fit together.
++
++Every file starts with YAML front matter (`title`, `kind`, `summary`, `tags`,
++`updated`) so it can be indexed cheaply. Read the front matter first; it is
++usually enough.
++
++**Only files with a front-matter `kind:` are indexed.** A file without one is
++reported as "not indexed" rather than silently ignored, because this folder is
++sometimes already a documentation site or an ADR collection that this extension
++does not own. To add a hand-written page to the index, give it the front matter
++above; `docs_record` writes it for you.
++
++This file is maintained by the `pi-docs-first` extension, but it is ordinary
++Markdown — edit it by hand whenever it is wrong.
+diff --git a/docs/gotchas/io-json-failures-are-the-translated-char-array-constructor.md b/docs/gotchas/io-json-failures-are-the-translated-char-array-constructor.md
+new file mode 100644
+index 00000000..93c6bda0
+--- /dev/null
++++ b/docs/gotchas/io-json-failures-are-the-translated-char-array-constructor.md
+@@ -0,0 +1,36 @@
++---
++title: "roottest io/json failures die in the translated constructor, not in jsonbuffer"
++kind: "gotcha"
++summary: "When an io/json test fails with TypeError 'NoneType' object is not subscriptable, look at the emitted constructor for a multi-dim char[N][M] member before reading jsonbuffer."
++tags: [json, tbufferjson, pycxx, translator, roottest, char-array]
++created: "2026-11-21T06:21:31.358Z"
++updated: "2026-11-21T06:21:31.358Z"
++---
++`roottest/root/io/json` reports `TypeError: 'NoneType' object is not subscriptable` for `BasicTypes`, `Objects`, `STL` and `STL1`, but the failure is in translated C++, not in `pyroot/core/jsonbuffer.py`. Every one of them constructs `TJsonEx2` (from `roottest/root/io/json/test_classes.h`), which declares `char fChar[2][3][4]`; `src/xrdroot/pycxx/emit_vars.py`'s `_char_array` emits `self.fChar = array('char*', 2, [])` for a char array of more than one dimension, and the next statement, `self.fChar[i][j] = with_char(self.fChar[i][j], k, 0, True)`, then subscripts a `None` cell. The `run.log`'s position (`runBasicTypes.C:8`) is the declaration of `TJsonEx2`, so read the whole traceback, not just the last frame.
++
++```mermaid
++flowchart TD
++    A["test_classes.h: char fChar[2][3][4]"] --> B["pycxx/emit_vars.py:_char_array"]
++    B --> C["self.fChar = array('char*', 2, [])"]
++    C --> D["two None cells"]
++    D --> E["self.fChar[i][j] = with_char(...)"]
++    E --> F["TypeError: NoneType is not subscriptable"]
++    F --> G["run.log says runBasicTypes.C:8"]
++    G --> H["jsonbuffer is never reached"]
++```
++
++## How to see it without the harness
++
++Run the macro directly in the harness's working copy, which has the `libJsonTestClasses` dictionary built:
++
++```
++cd /tmp/r30/run-w04/work/roottest/root/io/json
++export PYTHONPATH=$PWD/src
++$PY -c "from xrdroot.pycint.execute import run_and_quit; run_and_quit('runBasicTypes.C')"
++```
++
++That prints the Python traceback into the generated library (`<translation of .../libJsonTestClasses>`, `line 105, in __init__`), which the `xrdroot run` CLI hides behind one `MacroError` line. The emitted source is the `python` key of the `.xrdlib` JSON next to it (`jq -r .python libJsonTestClasses.xrdlib`).
++
++## The repair, and what it should turn green
++
++A `char[N][M]` is N rows of C strings, each `M-1` characters and a NUL — the object's own nesting is what `jsonbuffer`'s `_char_rows`/`_char_strings` walk — so `_char_array` must emit nested rows of `''` rather than one `array('char*', N, [])`. Patching only that generated line in a scratch work dir (`self.fChar = [['', '', ''], ['', '', '']]`) makes `runBasicTypes` and `runObjects` exit 0 with stdout byte-identical to `BasicTypes.ref` and `Objects.ref` under `tools/rootsuite/refdiff.custom_diff`; no jsonbuffer change is needed for either. `STL`/`STL1` need more even then: `jsonbuffer._restore` still refuses a container member holding values, and `TJsonEx12` holds `std::vector<TJsonEx9>`, whose `TString** fStr6[3]` is the same refusal that leaves `StreamerLoop` UNSUPPORTED.
+-- 
+2.54.0 (Apple Git-157)
+

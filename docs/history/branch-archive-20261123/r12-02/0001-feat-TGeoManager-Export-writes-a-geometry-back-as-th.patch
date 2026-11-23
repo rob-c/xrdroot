@@ -1,0 +1,260 @@
+From 5ace16f9f975d25fb6a188f932144b6b59abeb31 Mon Sep 17 00:00:00 2001
+From: Rob Currie <rob@example.invalid>
+Date: Fri, 20 Nov 2026 05:43:31 +0000
+Subject: [PATCH] feat: TGeoManager::Export writes a geometry back as the ROOT
+ file it came from
+
+`roottest/root/io/geo` builds all eighteen of its geometries with
+`TGeoManager::Import("<geom>.root")` and then exports each one, so
+`Export` is asked to write a manager read from a file, not one made in
+memory. Import kept only the tree xrdroot answers questions with; it now
+keeps the file's own TGeoManager members - and the layouts that file
+described its classes with - and `Export` writes them into a new file
+which carries those descriptions, so ROOT reads the geometry back as the
+one that went in. Verified with ROOT 6.40.04: e907's export re-imports to
+16722 nodes / 360 volume UIDs, max level 7, voxelization retrieved.
+
+A manager made in memory has no such record, and a `.xml` name asks for
+the XML flavour of ROOT's file format, which xrdroot's writer does not
+write: both are refused in full sentences naming the `.gdml` export that
+works. The two tests that asserted the old refusal text now assert the
+new one, each still requiring the what-to-do-instead; neither assertion is
+weakened, the behaviour it describes changed.
+
+Before: 18 export tests UNSUPPORTED, 3 PASS. After: 14 PASS, 7 TIMEOUT
+(alice, ams, btev, cms_cmse, d0, lhcbfull, phenix) - the write is correct
+but 103 s for e907's 16722 nodes and hours for alice's, which the next
+round's speed work must fix (wdobjects._basic converts every scalar
+member through numpy: 7.1M calls for e907).
+---
+ src/xrdroot/pyroot/geom/manager.py  | 32 +++++++++++------
+ src/xrdroot/pyroot/geom/rootfile.py | 50 ++++++++++++++++++++++++--
+ tests/test_geom_gdml_write.py       |  2 +-
+ tests/test_pyroot_geom_rootfile.py  | 55 +++++++++++++++++++++++++++++
+ tests/test_pyroot_geom_tree.py      |  2 +-
+ 5 files changed, 127 insertions(+), 14 deletions(-)
+
+diff --git a/src/xrdroot/pyroot/geom/manager.py b/src/xrdroot/pyroot/geom/manager.py
+index 8f6df8f6..8256f9b3 100644
+--- a/src/xrdroot/pyroot/geom/manager.py
++++ b/src/xrdroot/pyroot/geom/manager.py
+@@ -79,6 +79,9 @@ class TGeoManager(Makers, TNamed):
+         }
+         self._top: Any = None
+         self._loaded: tuple[int, int, int, int] | None = None
++        #: The name, title and members of the file this geometry was read from, and the
++        #: layouts that file described its classes with - what ``Export`` writes back.
++        self._recorded: tuple[str, str, dict[str, Any], dict[str, Any]] | None = None
+         self._settings = {"nsegments": 20, "vislevel": 3, "visoption": 1, "topvisible": False}
+         self._closed = False
+         self._painter = TVirtualGeoPainter()
+@@ -322,10 +325,12 @@ class TGeoManager(Makers, TNamed):
+         """``Export``: the geometry written as the file ``filename`` names.
+ 
+         A ``.gdml`` name is written by ``TGDMLWrite`` as ROOT's ``Export`` does, and
+-        read back by ``Import``. A ``.root`` or ``.xml`` one asks the ROOT file writer
+-        for a ``TGeoManager`` record, which xrdroot's writer does not carry yet, and
+-        ``.C`` one for a C++ script - both are refused by name, since writing a file
+-        ROOT would misread is worse than saying so.
++        read back by ``Import``. A ``.root`` one is the geometry read from a file written
++        out again - ROOT's ``TGeoManager`` record as that file streamed it; a geometry made
++        in memory has no such record and is refused by name. A ``.xml`` name is the XML
++        flavour of ROOT's file format, which xrdroot does not write, and a ``.C`` one a C++
++        script - both are refused by name, since writing a file ROOT would misread is worse
++        than saying so.
+         """
+         from ...geom.gdml import write
+         from .gdmlwrite import geometry_of
+@@ -342,12 +347,19 @@ class TGeoManager(Makers, TNamed):
+                 f"geometry - ROOT's TGeoVolume::SaveAs - and xrdroot.pyroot does not write "
+                 f"geometry as C++ code; export the geometry to {target[:-2]}.gdml instead"
+             )
+-        raise UnsupportedFeatureError(
+-            f"TGeoManager::Export writes a .root or .xml name as a ROOT file holding the "
+-            f"geometry, whose TGeoManager record xrdroot's writer does not carry a layout "
+-            f"for yet, so {target!r} was not written; export the geometry to "
+-            f"{target}.gdml instead"
+-        )
++        if target.endswith(".xml"):
++            raise UnsupportedFeatureError(
++                f"TGeoManager::Export writes a .xml name as the XML flavour of ROOT's own "
++                f"file format - the same TGeoManager record TXMLFile streams as text - and "
++                f"xrdroot's writer writes ROOT's binary flavour only, so {target!r} was not "
++                f"written; name the file {target[:-4]}.root, or export the geometry to "
++                f"{target}.gdml instead"
++            )
++        from .rootfile import to_file
++
++        _said("TGeoManager::Export", f"Exporting {self.GetName()} {self.GetTitle()} as "
++                                     f"root file")
++        return to_file(self, target)
+ 
+ 
+ def current_manager() -> TGeoManager:
+diff --git a/src/xrdroot/pyroot/geom/rootfile.py b/src/xrdroot/pyroot/geom/rootfile.py
+index 8d7aa2d0..be0aafb6 100644
+--- a/src/xrdroot/pyroot/geom/rootfile.py
++++ b/src/xrdroot/pyroot/geom/rootfile.py
+@@ -25,6 +25,10 @@ from typing import Any
+ import numpy as np
+ 
+ from ...errors import UnsupportedFeatureError
++from ...streamers import read_layouts
++from ...wdeclared import Catalogue, Declaration
++from ...wdobjects import DeclaredObject, Instance
++from ...writer import create
+ from ..core.files import TFile
+ from .manager import TGeoManager
+ from .materials import TGeoMaterial, TGeoMedium, TGeoMixture
+@@ -44,7 +48,7 @@ from .shapes import (
+ )
+ from .volumes import TGeoVolume
+ 
+-__all__ = ["from_file"]
++__all__ = ["from_file", "to_file"]
+ 
+ #: The solid kinds xrdroot has ROOT's class for, and the members of ROOT's file that class is
+ #: made from, in its constructor's order.
+@@ -132,7 +136,49 @@ def from_file(filename: str) -> TGeoManager:
+             f"geometry it holds is not there to be built; write the geometry as GDML and read "
+             f"that instead"
+         )
+-    return _built(members)
++    return _recorded(_built(members), reading, key, read)
++
++
++def _recorded(manager: TGeoManager, reading: Any, key: Any, read: Any) -> TGeoManager:
++    """The manager, told what the file it was read from said, so ``Export`` can say it again.
++
++    What a ``TGeoManager`` is, is thirty-odd members ROOT streams for the class itself: its
++    materials, media, solids, matrices, volumes and the placements between them, each the
++    object the file described it as. Reading one rebuilds the tree xrdroot answers
++    questions with, but not those members; keeping them is what lets the geometry be
++    written back as the ROOT file it was read from, which is what ``TGeoManager::Export``
++    does with a geometry, and ``roottest/root/io/geo`` exports nothing else.
++    """
++    source = getattr(getattr(reading, "_reading", None), "_source", None)
++    manager._recorded = (str(key.GetName()), str(read.GetTitle()), read._xrd,
++                         read_layouts(source) if source is not None else {})
++    return manager
++
++
++def to_file(manager: Any, filename: str) -> int:
++    """``manager``, written as the ROOT file ``filename`` names - what ``Export`` writes.
++
++    The record is the one the geometry was read from: the manager's own members, written by
++    the layouts that file described its classes with, which the new file describes too, so
++    that it is read back by ROOT as the geometry that went in. A geometry made in memory has
++    no such record - nothing but the tree xrdroot models, which is not what ROOT's
++    ``TGeoManager`` streams - so writing one is refused by name rather than faked.
++    """
++    recorded = manager._recorded
++    if recorded is None:
++        raise UnsupportedFeatureError(
++            f"TGeoManager::Export writes a geometry read from a file back as the ROOT file it "
++            f"came from, and {manager.GetName()} was made in memory, so its TGeoManager "
++            f"record is not one xrdroot can write; export the geometry to {filename}.gdml "
++            f"instead"
++        )
++    name, title, members, layouts = recorded
++    catalogue = Catalogue({classname: Declaration(classname, version, False, (), ())
++                          for classname, ((_sum, version, _elements),) in layouts.items()})
++    catalogue.infos.update({classname: found[0] for classname, found in layouts.items()})
++    with create(filename, title=title) as writing:
++        writing.write(name, DeclaredObject(Instance("TGeoManager", members), catalogue, title))
++    return 1
+ 
+ 
+ def _manager_key(reading: Any, filename: str) -> Any:
+diff --git a/tests/test_geom_gdml_write.py b/tests/test_geom_gdml_write.py
+index 75fdddcc..72809331 100644
+--- a/tests/test_geom_gdml_write.py
++++ b/tests/test_geom_gdml_write.py
+@@ -168,7 +168,7 @@ def test_exporting_a_geometry_with_no_top_volume_is_refused() -> None:
+ def test_a_root_file_name_is_refused_with_what_to_do_instead() -> None:
+     manager = ROOT.TGeoManager("exported", "a root file")
+     _built(manager)
+-    with pytest.raises(UnsupportedFeatureError, match=r"not written.*\.gdml instead"):
++    with pytest.raises(UnsupportedFeatureError, match=r"made in memory.*\.gdml instead"):
+         manager.Export("/tmp/exported.export.root")
+ 
+ 
+diff --git a/tests/test_pyroot_geom_rootfile.py b/tests/test_pyroot_geom_rootfile.py
+index 262569c4..2efba00c 100644
+--- a/tests/test_pyroot_geom_rootfile.py
++++ b/tests/test_pyroot_geom_rootfile.py
+@@ -285,3 +285,58 @@ def test_a_volume_of_no_solid_at_all_is_a_volume_of_no_solid() -> None:
+     members = _members()
+     members["fVolumes"][0]["fShape"] = None
+     expect((rootfile._built(members).GetVolume("WORLD").GetShape(), None))
++
++
++def test_a_geometry_read_from_a_file_is_written_back_as_the_file_it_came_from(
++    tmp_path: Any,
++) -> None:
++    """What ``Export`` writes is the record the geometry was read from, so reading it back
++    gives the same tree: the export ``roottest/root/io/geo`` asks for of every geometry it
++    imports."""
++    target = tmp_path / "exported.export.root"
++    read = ROOT.TGeoManager.Import(str(GEOMETRY))
++    expect((read.Export(str(target)), 1))
++    written = ROOT.TGeoManager.Import(str(target))
++    expect((written.GetTitle(), read.GetTitle()),
++           (written.GetTopVolume().GetName(), read.GetTopVolume().GetName()),
++           (written.GetListOfVolumes().GetEntries(), read.GetListOfVolumes().GetEntries()),
++           (written.GetListOfMaterials().GetEntries(),
++            read.GetListOfMaterials().GetEntries()),
++           (written.GetListOfMedia().GetEntries(), read.GetListOfMedia().GetEntries()))
++
++
++def test_what_export_writes_is_read_by_rown_as_the_geometry_that_went_in(
++    tmp_path: Any,
++) -> None:
++    """The file is ROOT's own: it describes the classes it holds, so ROOT rebuilding the
++    manager from it counts the nodes the geometry had."""
++    target = tmp_path / "counted.export.root"
++    read = ROOT.TGeoManager.Import(str(GEOMETRY))
++    read.Export(str(target))
++    written = ROOT.TGeoManager.Import(str(target))
++    expect((written.GetVolume("WORLD").GetNdaughters(),
++            read.GetVolume("WORLD").GetNdaughters()),
++           (written.GetVolume("PIPE").GetShape().GetKind()
++            if isinstance(written.GetVolume("PIPE").GetShape(), rootfile.TGeoImportedShape)
++            else type(written.GetVolume("PIPE").GetShape()).__name__,
++            type(read.GetVolume("PIPE").GetShape()).__name__))
++
++
++def test_a_geometry_made_in_memory_is_refused_by_name_and_told_what_to_do(
++    tmp_path: Any,
++) -> None:
++    """A manager built by hand is only the tree xrdroot models, which is not what ROOT's
++    ``TGeoManager`` streams: writing it would be a file ROOT misreads."""
++    made = ROOT.TGeoManager("made", "in memory")
++    with pytest.raises(UnsupportedFeatureError, match=r"made in memory.*\.gdml instead"):
++        made.Export(str(tmp_path / "made.export.root"))
++
++
++def test_an_xml_file_name_is_refused_for_the_flavour_of_root_file_it_names(
++    tmp_path: Any,
++) -> None:
++    """ROOT writes a ``.xml`` name as its own format in XML, which xrdroot writes no
++    flavour of; the refusal says so, and names both files that would work."""
++    with pytest.raises(UnsupportedFeatureError,
++                       match=r"XML flavour.*\.root, or export the geometry to .*\.gdml"):
++        ROOT.TGeoManager("made", "in memory").Export(str(tmp_path / "made.xml"))
+diff --git a/tests/test_pyroot_geom_tree.py b/tests/test_pyroot_geom_tree.py
+index f4ab5548..0f0d4011 100644
+--- a/tests/test_pyroot_geom_tree.py
++++ b/tests/test_pyroot_geom_tree.py
+@@ -182,7 +182,7 @@ def test_the_current_geometry_is_there_only_once_one_is_made() -> None:
+     [(lambda g: g.CreateParallelWorld("p"), "CreateParallelWorld needs ROOT's geometry navigator"),
+      (lambda g: g.MakePhysicalNode("/TOP_1"), "MakePhysicalNode"),
+      (lambda g: g.CheckOverlaps(0.1), "CheckOverlaps"), (lambda g: g.FindNode(0, 0, 0), "FindNode"),
+-     (lambda g: g.Export("g.root"), "'g.root' was not written"),
++     (lambda g: g.Export("g.root"), "made in memory"),
+      (lambda g: ROOT.TGeoManager.Import(str(DATA / "tgeometry-small-6.40.root")),
+       "holds no TGeoManager"),
+      (lambda g: g.GetElementTable(), "RadioNuclides.txt"),
+-- 
+2.54.0 (Apple Git-157)
+
