@@ -333,12 +333,39 @@ class TAxis(TNamed, TAttAxis):
     # -- labels and time ---------------------------------------------------------------------
 
     def _labels(self) -> dict[str, str]:
-        """The labels by bin, the bin numbers as text: the members are walked by name."""
-        labels: dict[str, str] = self._row.setdefault("_labels", {})
+        r"""The labels by bin, the bin numbers as text: ROOT's ``fLabels``, read back as such.
+
+        A file keeps a labelled axis' names in ``fLabels`` - the ``TObjString``\ s that have
+        one, each with its bin number as its ``fUniqueID`` - so an axis read from a file has
+        its labels where ROOT put them and an axis a program labels has them here.
+        """
+        row = self._row
+        if "_labels" not in row:
+            row["_labels"] = {
+                str(item.get("TObject", {}).get("fUniqueID", at + 1)): str(item.get("fString", ""))
+                for at, item in enumerate(row.get("fLabels") or ())
+            }
+        labels: dict[str, str] = row["_labels"]
         return labels
 
     def SetBinLabel(self, bin: int, label: Any) -> None:
+        """``SetBinLabel``: ``bin``'s name, kept in the axis' ``fLabels`` as ROOT keeps it."""
         self._labels()[str(int(bin))] = str(label)
+        self._store_labels()
+
+    def _store_labels(self) -> None:
+        """``fLabels`` written as ROOT writes it: the named bins, each a ``TObjString`` whose
+        ``fUniqueID`` is its bin number - the layout measured off ROOT 6.40's own file."""
+        from ...writer import Record
+
+        held = self._labels()
+        self._row["fLabels"] = [
+            Record(
+                "TObjString",
+                {"TObject": {"fUniqueID": int(bin), "fBits": 0}, "fString": str(label)},
+            )
+            for bin, label in sorted(held.items(), key=lambda pair: int(pair[0]))
+        ]
 
     def GetBinLabel(self, bin: int) -> str:
         return self._labels().get(str(int(bin)), "")

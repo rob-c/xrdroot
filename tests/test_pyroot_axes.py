@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import array
+import pathlib
 
 import numpy as np
 import pytest
@@ -10,6 +11,8 @@ import pytest
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect, fresh
 from xrdroot.pyroot.core import axes as core_axes
+
+DATA = pathlib.Path(__file__).parent / "data"
 
 
 @pytest.fixture(autouse=True)
@@ -379,3 +382,63 @@ def test_an_axis_roots_own_constructor_checks_its_limits_and_reports_them(
         )
     assert ROOT.TAxis(1, 0.0, 1.0).GetNbins() == 1
     assert ROOT.TH1D("h", "", 2, array.array("d", [0, 1, 3])).GetXaxis().GetNbins() == 2
+
+
+def test_a_labelled_axis_keeps_its_labels_through_a_file() -> None:
+    """ROOT streams an axis' names as ``fLabels``: the named bins as ``TObjString``\\ s, each
+    with its bin number as its ``fUniqueID`` - so a histogram read back names its bins."""
+    made = ROOT.TH1D("lab", "", 3, 0.0, 3.0)
+    made.GetXaxis().SetBinLabel(1, "A")
+    made.GetXaxis().SetBinLabel(3, "C")
+    holder = ROOT.TFile("labelled.root", "RECREATE")
+    made.Write()
+    holder.Close()
+
+    back = ROOT.TFile("labelled.root").Get("lab")
+    labels = back.GetXaxis().GetLabels()
+    expect(
+        (labels.GetEntries(), 2),
+        ([labels.At(at).GetName() for at in range(2)], ["A", "C"]),
+        ([labels.At(at).GetUniqueID() for at in range(2)], [1, 3]),
+        (back.GetXaxis().GetBinLabel(2), ""),
+    )  # fmt: skip
+
+
+def test_the_labels_a_file_holds_are_the_ones_root_writes_for_them() -> None:
+    """The layout is ROOT 6.40's own: measured off a file the oracle wrote, and compared here
+    with what this kit writes for the same two labels."""
+    import xrdroot
+
+    made = ROOT.TH1D("lab", "", 3, 0.0, 3.0)
+    made.GetXaxis().SetBinLabel(1, "A")
+    made.GetXaxis().SetBinLabel(3, "C")
+    holder = ROOT.TFile("ours.root", "RECREATE")
+    made.Write()
+    holder.Close()
+    theirs_path = str(DATA / "labels-6.40.root")
+    with xrdroot.open_root("ours.root") as ours, xrdroot.open_root(theirs_path) as theirs:
+        expect(
+            (ours["lab"].members["TH1"]["fXaxis"]["fLabels"],
+             theirs["lab"].members["TH1"]["fXaxis"]["fLabels"]),
+        )  # fmt: skip
+
+
+def test_a_root_written_histogram_comes_back_with_the_bin_names_it_was_given() -> None:
+    back = ROOT.TFile(str(DATA / "labels-6.40.root")).Get("lab")
+    labels = back.GetXaxis().GetLabels()
+    expect(
+        ([labels.At(at).GetName() for at in range(labels.GetEntries())], ["A", "C"]),
+        (back.GetXaxis().GetBinLabel(3), "C"),
+    )  # fmt: skip
+
+
+def test_an_axis_no_one_labelled_writes_no_list_at_all() -> None:
+    import xrdroot
+
+    made = ROOT.TH1D("plain", "", 2, 0.0, 2.0)
+    holder = ROOT.TFile("plain.root", "RECREATE")
+    made.Write()
+    holder.Close()
+    with xrdroot.open_root("plain.root") as f:
+        expect((f["plain"].members["TH1"]["fXaxis"]["fLabels"], None))  # fmt: skip
+    expect((ROOT.TFile("plain.root").Get("plain").GetXaxis().GetLabels(), None))  # fmt: skip
