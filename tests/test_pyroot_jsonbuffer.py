@@ -1485,3 +1485,34 @@ def test_a_map_named_nothing_with_no_pairs_is_read_back_empty():
     read = ROOT.TBufferJSON.ConvertFromJSONAny('{"_typename":"TMap"}')
     assert isinstance(read, ROOT.TMap)
     assert (read.GetName(), len(list(read))) == ("TMap", 0)
+
+
+#: What ROOT's oracle prints for a class holding one ``TObjArray`` of one ``TNamed``: a
+#: member of a collection type is streamed where it is, so it is the collection's own JSON.
+COLLECTION_MEMBER_JSON = (
+    '{\n  "_typename" : "THolder",\n  "fArr" : {\n    "_typename" : "TObjArray",\n'
+    '    "name" : "TObjArray",\n    "arr" : [{\n      "_typename" : "TNamed",\n'
+    '      "fUniqueID" : 0,\n      "fBits" : 0,\n      "fName" : "A0",\n'
+    '      "fTitle" : "T0"\n    }]\n  }\n}'
+)
+
+
+def test_a_member_that_is_a_collection_is_written_as_the_objects_it_holds(monkeypatch):
+    """``TJsonEx14``'s ``TObjArray fObjArray``: ROOT writes a member of a collection type by
+    streaming the collection, so the member is the name it holds its objects under and the
+    objects themselves - which is the JSON a ``TObjArray`` is written as on its own."""
+    _reading_class(monkeypatch, "THolder", (("fArr", "TObjArray", "", ()),))
+    made = DECLARED["THolder"]()
+    made.fArr = ROOT.TObjArray()
+    made.fArr.Add(ROOT.TNamed("A0", "T0"))
+    assert _json(made) == COLLECTION_MEMBER_JSON
+
+
+def test_a_member_that_is_a_collection_reads_back_as_the_objects_it_holds(monkeypatch):
+    """The other way: the collection a member is declared as is made again from the JSON, with
+    the objects its ``arr`` holds, so what is written from it is what it was read from."""
+    _reading_class(monkeypatch, "THolder", (("fArr", "TObjArray", "", ()),))
+    read = ROOT.TBufferJSON.ConvertFromJSONAny(COLLECTION_MEMBER_JSON)
+    assert isinstance(read.fArr, ROOT.TObjArray)
+    assert [each.GetName() for each in read.fArr] == ["A0"]
+    assert _json(read) == COLLECTION_MEMBER_JSON

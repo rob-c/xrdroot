@@ -492,14 +492,16 @@ def _object_style(kind: str, dims: tuple[int | None, ...]) -> str | None:
 
 
 def _writes_object(name: str) -> bool:
-    """Can the whole of a ``name`` be written: is it one of the classes in :data:`MEMBERS`, or
-    one the translation declared? A member of such a class is written as the object it is,
-    which is how ``TJsonEx5``'s ``TJsonEx1 fObj1`` gets the JSON of its own members."""
+    """Can the whole of a ``name`` be written: is it one of the classes in :data:`MEMBERS`, one
+    the translation declared, or a collection ROOT writes as the objects it holds? A member
+    of such a class is written as the object it is, which is how ``TJsonEx5``'s
+    ``TJsonEx1 fObj1`` gets the JSON of its own members and ``TJsonEx14``'s ``TObjArray
+    fObjArray`` the name and the objects a ``TObjArray`` is written as."""
     if name in MEMBERS:
         return True
     from .declared import find_class
 
-    return find_class(name) is not None
+    return find_class(name) is not None or _namespace_class(name) is not None
 
 
 def _held(obj: Any, member: _Member) -> Any:
