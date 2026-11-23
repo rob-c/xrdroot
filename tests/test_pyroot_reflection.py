@@ -23,6 +23,12 @@ from xrdroot.pyroot.core import reflection, troot
 DATA = pathlib.Path(__file__).parent / "data"
 SOURCE = (DATA / "declared_objects.C").read_text()
 
+def _reflection():  # the module these tests reach into
+    from xrdroot.pyroot.core import reflection
+
+    return reflection
+
+
 
 @pytest.fixture(autouse=True)
 def _fresh(tmp_path):
@@ -1370,3 +1376,47 @@ def test_a_files_classes_are_warned_of_in_the_order_root_wrote_them(capfd):
     reflection.note_file_infos(described)
     printed = capfd.readouterr().err
     assert printed.index("class TEmcl") < printed.index("class TPhysObj")
+
+
+def test_a_class_the_namespace_holds_is_found_once_and_kept_by_name() -> None:
+    """``_class_named`` answers from a cache of what it found, so a hot loop that asks for
+    the same handful of names does not walk ``sys.modules`` every time - 152 million
+    ``getattr``s in ``execmanydirs`` before this - while a name it did *not* find is asked
+    again, because a dictionary loaded since can declare one."""
+    reflection = _reflection()
+
+    found = reflection._class_named("TNamed")
+    assert found is ROOT.TNamed
+    assert reflection._FOUND_CLASSES["TNamed"] is found
+    assert reflection._class_named("TNamed") is found  # the cached answer
+
+    assert reflection._class_named("NoSuchClassAnywhere") is None
+    assert "NoSuchClassAnywhere" not in reflection._FOUND_CLASSES  # a miss is never kept
+
+
+def test_forgetting_the_dictionaries_forgets_the_classes_found_by_name() -> None:
+    reflection = _reflection()
+
+    assert reflection._class_named("TNamed") is ROOT.TNamed
+    reflection.forget_dictionaries()
+    assert reflection._FOUND_CLASSES == {}
+
+
+def test_the_namespace_index_names_the_classes_the_kit_defines() -> None:
+    """``_implemented`` asks the index rather than walking the modules: a name the kit
+    defines is there, and a name nothing defines is not."""
+    reflection = _reflection()
+
+    index = reflection._namespace_classes()
+    assert index["TNamed"] is ROOT.TNamed
+    assert reflection._implemented("TNamed") is True
+    assert reflection._implemented("NoSuchClassAnywhere") is False
+
+
+def test_a_pair_base_and_a_pair_instance_are_recognised_by_their_spelling() -> None:
+    reflection = _reflection()
+
+    assert reflection._pair_base("__pair_base<int,int>") is True
+    assert reflection._pair_base("pair<int,int>") is False
+    assert reflection._synthetic_pair("std::pair<int,int>") is True
+    assert reflection._synthetic_pair("std::vector<int>") is False

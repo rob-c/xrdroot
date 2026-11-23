@@ -332,6 +332,7 @@ def _known_as(name: str) -> str:
 def forget_dictionaries() -> None:
     """A fresh session's state: the dictionaries a library gave are not there any more."""
     GENERATED.clear()
+    _FOUND_CLASSES.clear()
 
 
 def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None:
@@ -726,11 +727,30 @@ def _namespace_classes() -> dict[str, type]:
     return _NAMESPACE_CLASSES[1]
 
 
+#: The classes ``_class_named`` has found, by name. Only hits are kept: a name with no class
+#: now can have one after a dictionary is loaded, and a cached miss would hide it - which is
+#: what ``roottest``'s ``CheckMissingDictionaries`` caught when this answered from an index of
+#: every module's namespace instead. A hit cannot go stale the same way: a class declared
+#: again replaces the module attribute, and ``forget_dictionaries`` empties this.
+_FOUND_CLASSES: dict[str, type] = {}
+
+
 def _class_named(name: str) -> type | None:
-    """The namespace's class called ``name``, wherever it was defined in the kit."""
-    found = _namespace_classes().get(name)
-    if found is not None and issubclass(found, TObject):
-        return found
+    """The namespace's class called ``name``, wherever it was defined in the kit.
+
+    What it found is kept by name - a fill asks for the same handful of classes ten million
+    times over - but a name it did *not* find is asked again, because a dictionary loaded
+    since can declare one.
+    """
+    known = _FOUND_CLASSES.get(name)
+    if known is not None:
+        return known
+    for module in list(sys.modules.values()):
+        if getattr(module, "__name__", "").startswith("xrdroot.pyroot"):
+            found = getattr(module, name, None)
+            if isinstance(found, type) and issubclass(found, TObject):
+                _FOUND_CLASSES[name] = found
+                return found
     return None
 
 
