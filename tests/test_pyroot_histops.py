@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import array
 import math
+from typing import Any
 
 import numpy as np
 import pytest
@@ -445,3 +446,20 @@ def test_the_static_smooth_array_leaves_a_smooth_array_as_it_was_and_writes_in_p
     ROOT.TH1.SmoothArray(3, untouched, 0)
     assert untouched.tolist() == [0.0, 5.0, 0.0]
     assert ROOT.TH1D("s", "", 5, 0, 5).Smooth(1) is None  # the in-place twin still there
+
+
+def test_a_projection_keeps_the_bin_labels_of_the_axes_it_keeps() -> None:
+    """ROOT's ``DoProjection`` copies a kept axis whole, ``fLabels`` with it - so a histogram
+    of named bins keeps the names through a projection and through a profile."""
+    found = ROOT.TH2F("labelled", "t;x;y", 2, 0.0, 2.0, 2, 0.0, 2.0)
+    found.GetXaxis().SetBinLabel(1, "A")
+    found.GetXaxis().SetBinLabel(2, "B")
+
+    def names(histogram: Any) -> list[str]:
+        labels = histogram.GetXaxis().GetLabels()
+        return [labels.At(at).GetName() for at in range(labels.GetEntries())]
+
+    assert names(found) == ["A", "B"]
+    assert names(found.ProjectionX("px")) == ["A", "B"]
+    assert names(found.ProfileX("pfx")) == ["A", "B"]
+    assert found.ProjectionX("px").GetXaxis().GetNbins() == 2

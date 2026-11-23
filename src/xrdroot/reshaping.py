@@ -343,9 +343,25 @@ def _projected(histogram: Histogram, kept: list[int], axes: str, name: str | Non
     suffix = f"_p{axes}" if len(histogram.axes) == 2 else f"_{axes}"
     specs = [_spec(histogram.axes[axis]) for axis in kept]
     labels = [histogram.axes[axis].title for axis in kept]
-    return Histogram.book(
+    made = Histogram.book(
         name or histogram.name + suffix, *specs, title=histogram.title, labels=labels
     )
+    _keep_labels(made, histogram, kept)
+    return made
+
+
+def _keep_labels(made: Histogram, source: Histogram, kept: list[int]) -> None:
+    """The kept axes' bin labels, which ROOT's ``DoProjection`` copies with the axis.
+
+    A label is a name for a bin rather than a number in it, so a projection that dropped the
+    labels would rename every bin of the histogram it makes; ROOT keeps them, and so does this.
+    """
+    core = made._core
+    for position, axis in enumerate(kept):
+        labels = source.axes[axis].labels
+        if labels:
+            kept_axis = core[f"f{'XYZ'[position]}axis"]
+            kept_axis["_labels"] = {str(bin): label for bin, label in labels.items()}
 
 
 def _spec(axis: Axis) -> Any:
@@ -403,6 +419,7 @@ def profiled(histogram: Histogram, along: int, name: str | None, bounds: Any) ->
     made = Profile.book(
         name or histogram.name + suffix, _spec(out), title=histogram.title, labels=[out.title]
     )
+    _keep_labels(made, histogram, [along])
     grid = histogram.values(flow=True).astype(np.float64)
     if along == 1:
         grid = grid.T

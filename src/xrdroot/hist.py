@@ -53,7 +53,7 @@ class Axis:
     share, so any of them takes a :class:`Histogram` read here as it is.
     """
 
-    __slots__ = ("name", "title", "nbins", "low", "high", "_edges")
+    __slots__ = ("name", "title", "nbins", "low", "high", "_row", "_edges")
     #: Neither circular nor discrete, whatever the histogram holds.
     traits = Traits()
 
@@ -69,6 +69,16 @@ class Axis:
         self.low: float = row["fXmin"]
         self.high: float = row["fXmax"]
         self._edges = row["fXbins"]
+        self._row = row
+
+    @property
+    def labels(self) -> dict[int, str]:
+        """The bin labels the axis was given, by bin number from 1 - ROOT's ``fLabels``.
+
+        Read from the axis itself each time, because a program labels its bins after the
+        histogram is booked and a projection of this axis keeps them (``DoProjection``).
+        """
+        return {int(bin): str(label) for bin, label in (self._row.get("_labels") or {}).items()}
 
     def __len__(self) -> int:
         return self.nbins

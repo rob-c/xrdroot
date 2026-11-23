@@ -249,3 +249,4 @@ def test_two_axes_rebin_to_uneven_edges_on_both_when_either_was_uneven():
     h = Histogram.book("h", [0, 1, 3, 4], (4, 0, 2))
     made = h.rebin(3, 2)
     assert not made.axes[1].even and made.axes[1].edges().tolist() == [0, 1, 2]
+
