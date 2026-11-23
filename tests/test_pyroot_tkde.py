@@ -410,3 +410,52 @@ def test_a_tkde_carries_the_streamer_info_root_writes_for_it():
     stl = {element[1]: element[9] for element in elements if element[0] == "TStreamerSTL"}
     assert stl["fData"] == (1, 8) and stl["fSettedOptions"] == (1, 18)
     assert len(stl) == 7
+
+
+def test_a_tkde_says_the_row_of_members_a_file_holds():
+    """The members a ``TKDE`` streams: the sample, its weights and every option word.
+
+    ``INFOS["TKDE"]`` names 32 elements, and the row must answer every one of them by its
+    C++ name or the writer lays out a member nobody filled. The estimated kernel is not
+    among them - ROOT marks it transient and recomputes it from the data.
+    """
+    import numpy as np
+
+    from xrdroot.pyroot.core.tkde import TKDE
+    from xrdroot.winfo import INFOS
+
+    made = TKDE(4, np.array([1.0, 2.0, 2.5, 5.0]), 0.0, 20.0)
+    made.SetName("kde")
+    row = made.members
+    for element in INFOS["TKDE"][2]:
+        assert element[1] in row, element[1]
+    assert row["TNamed"]["fName"] == "kde"
+    assert list(np.asarray(row["fEvents"])) == [1.0, 2.0, 2.5, 5.0]
+    assert row["fNEvents"] == 4 and len(row["fSettedOptions"]) == 4
+
+
+def test_the_one_member_a_tkde_has_no_writer_for_is_a_vector_of_bools():
+    """What stands between a ``TKDE`` and a file, named so the next round starts here (``W0-188``).
+
+    ``fSettedOptions`` is a ``vector<bool>``, and :data:`~xrdroot.writer.STL_WRITERS` has no
+    writer for one - the four ``_io`` cases of ``gtest/hist/hist/testTKDE`` are waiting for
+    exactly that, and for nothing else: the layout, the row and the option words are all here.
+    """
+    from xrdroot.writer import STL_WRITERS
+
+    assert "vector<bool>" not in STL_WRITERS
+    assert "vector<double>" in STL_WRITERS
+
+
+def test_a_container_written_by_roots_newer_spelling_is_the_same_container():
+    """ROOT 6.40 writes ``kSTL`` as 300 (``ROOT::kSTLany``); an older file says 500.
+
+    A layout may carry either - ``TKDE``'s streamer info says 300, every table here written
+    before it says 500 - and one ``std::`` container is written the same way whichever it says.
+    """
+    from xrdroot.winfo import INFOS
+
+    stl = [e[3] for e in INFOS["TKDE"][2] if e[0] == "TStreamerSTL"]
+    assert stl and set(stl) == {300}
+    older = [e[3] for e in INFOS["TF1"][2] if e[0] == "TStreamerSTL"]
+    assert older and set(older) == {500}

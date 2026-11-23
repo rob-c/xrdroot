@@ -564,7 +564,11 @@ OBJECT_STYPES = frozenset({61, 62, 63, 64, 68, 69})
 NUMBER_STYPES = frozenset(
     set(FORMS) | {OFFSET_L + kind for kind in FORMS} | {OFFSET_P + kind for kind in FORMS}
 )
+#: ROOT's ``kSTL``: 300 in 6.40's own streamer infos (``ROOT::kSTLany``), 500 in the older
+#: spelling an older file carries. Both are one ``std::`` container, written the same way, so a
+#: layout may say either - and what this writer emits keeps whichever its table says.
 STL_STYPE = 500
+STL_STYPES = frozenset({STL_STYPE, 300})
 
 def layout_of(name: str) -> tuple[int, int, tuple[Element, ...]] | None:
     """How one class is laid out: ROOT's own description (:data:`~.winfo.INFOS`), or one of
@@ -613,7 +617,7 @@ def _kind_of(element: Element) -> str:
 
 def _an_stl_member(stype: int, typename: str) -> bool:
     """Is this element an STL member of a kind this writer lays out?"""
-    if stype != STL_STYPE:
+    if stype not in STL_STYPES:
         return False
     return typename == PAIRS or typename in STL_WRITERS
 
@@ -905,7 +909,7 @@ def _held(kind: str, name: str, stype: int, typename: str) -> str | None:
         return typename.rstrip("*")
     if stype == 65:
         return "TString"
-    if stype == STL_STYPE:
+    if stype in STL_STYPES:
         return _container_element_class(typename)
     return None
 
@@ -930,7 +934,7 @@ def _described(owner: str, name: str, stype: int) -> bool:
     already is. A ``TH1F``'s ``TArrayF`` base is neither, which is where the arrays stay out
     of a histogram's file, as they do of ROOT's.
     """
-    if stype == STL_STYPE:
+    if stype in STL_STYPES:
         return name in ARRAY_LAYOUTS
     if name in INFOS:
         return True

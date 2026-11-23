@@ -123,6 +123,50 @@ class TKDE(TNamed):
         numbers = rest[1:] if len(rest) >= 5 else rest
         self._instantiate(int(events), data, weights, numbers)
 
+    @property
+    def members(self) -> dict[str, Any]:
+        """The row a file writes for a ``TKDE``: the ``TNamed`` base and every member of it.
+
+        Read off :data:`~.winfo.INFOS`' layout of the class (ROOT 6.40's own, 32 elements), by
+        the C++ name each has there. The estimated kernel is not among them - ROOT marks it
+        transient and works it out again from the data on the way back in - so a file holds the
+        sample, its weights and the option words the estimate was made with.
+        """
+        return {
+            "TNamed": {"fName": str(self.GetName()), "fTitle": str(self.GetTitle())},
+            "fData": np.asarray(self._data, dtype=np.float64),
+            "fEvents": np.asarray(self._events, dtype=np.float64),
+            "fEventWeights": np.asarray(self._weights, dtype=np.float64),
+            "fKernelType": int(self._kernel_type),
+            "fIteration": int(self._iteration),
+            "fMirror": int(self._mirror),
+            "fBinning": int(self._binning),
+            "fUseMirroring": bool(self._use_mirroring),
+            "fMirrorLeft": bool(self._mirror_left),
+            "fMirrorRight": bool(self._mirror_right),
+            "fAsymLeft": bool(self._asym_left),
+            "fAsymRight": bool(self._asym_right),
+            "fUseBins": bool(self._use_bins),
+            "fNewData": bool(self._new_data),
+            "fUseMinMaxFromData": bool(self._from_data),
+            "fNBins": int(self._n_bins),
+            "fNEvents": int(self._n_events),
+            "fSumOfCounts": float(self._sum_of_counts),
+            "fUseBinsNEvents": int(self._use_bins_events),
+            "fMean": float(self._mean),
+            "fSigma": float(self._sigma),
+            "fSigmaRob": float(self._sigma_rob),
+            "fXMin": float(self._x_min),
+            "fXMax": float(self._x_max),
+            "fRho": float(self._rho),
+            "fAdaptiveBandwidthFactor": float(self._adaptive_factor),
+            "fWeightSize": float(self._weight_size),
+            "fCanonicalBandwidths": np.asarray(CANONICAL_BANDWIDTHS, dtype=np.float64),
+            "fKernelSigmas2": np.asarray(KERNEL_SIGMAS2, dtype=np.float64),
+            "fBinCount": np.asarray(self._bin_count, dtype=np.float64),
+            "fSettedOptions": [bool(value) for value in self._setted],
+        }
+
     # -- construction ------------------------------------------------------------------------
 
     def _instantiate(self, events: int, data: Any, weights: Any, numbers: Any) -> None:
