@@ -313,6 +313,23 @@ class SplitArray(Kind):
         return columns
 
 
+class Elements(SplitArray):
+    """A ``std::vector`` of objects of a class, split as ROOT splits a collection: the count of
+    the objects each entry holds, and then one row per member of every one of them.
+
+    It is a :class:`SplitArray` of the same rows, over the different class a vector is, so the
+    branch is laid out as a collection (:class:`~xrdroot.wbranch.Collection`) rather than as the
+    ``TClonesArray`` a split array is. ``own`` says the class is a program's, described in the
+    file as it was declared rather than as ROOT's donors describe it.
+    """
+
+    def __init__(self, element: Layout, own: bool) -> None:
+        super().__init__(element)
+        self.layout, self.own = element, own
+
+    def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
+        return Collection(self.layout, own=self.own, split=max(split, 1), basket_size=bufsize)
+
 def _objects(member: Any, rows: list[Any]) -> bytes:
     """One entry's whole objects of a member, each as the record its class streams.
 
@@ -482,6 +499,9 @@ def _held_kind(obj: Any) -> Kind | None:
     nested = _nested(obj)
     if nested is not None:
         return Nested(nested)
+    elements = _elements(obj)
+    if elements is not None:
+        return elements
     layout = _root_layout(obj)
     return None if layout is None else Root(layout)
 
@@ -546,6 +566,37 @@ def _nested(obj: Any) -> str | None:
     """
     kind = str(getattr(obj, "value_type", ""))
     return vector_of(kind) if hasattr(obj, "push_back") and kind.startswith("vector<") else None
+
+
+def _elements(obj: Any) -> Elements | None:
+    """A ``std::vector`` of objects of one class, if this writer can lay each member of them out.
+
+    ROOT splits such a vector into a count and a row per member of every object, so the class
+    has to be one whose members are numbers this writer packs one at a time - a class a
+    program declared, or one ROOT's donors describe. Everything else is left to the refusal a
+    branch of a collection of objects gives, which says what to do instead: a class with a
+    base, a string, a container or an array among its members is no such class here.
+    """
+    kind = str(getattr(obj, "value_type", "") or "")
+    if not hasattr(obj, "push_back") or not kind:
+        return None
+    from ..core.declared import find_class
+
+    found = find_class(kind)
+    if found is not None:
+        try:
+            layout = declared(found)
+        except UnsupportedFeatureError:
+            return None
+        return _plain_layout(layout, own=True)
+    described = harvested(kind)
+    return None if described is None else _plain_layout(described, own=False)
+
+
+def _plain_layout(layout: Layout, own: bool) -> Elements | None:
+    """The kind for this class, if its members stand alone: the ``fID`` a base's members are
+    numbered from is not the place a collection's member takes in the class here."""
+    return None if layout.bases else Elements(layout, own)
 
 
 class Nested(_Whole):
