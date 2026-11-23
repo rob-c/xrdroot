@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import itertools
 import math
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
+from ...errors import UnsupportedFeatureError
 from .directories import current_directory
 from .messages import message
 from .randoms import current_generator
@@ -460,6 +461,34 @@ class Operations:
 
     def KolmogorovTest(self, h2: Any, option: str = "") -> float:
         return float(self._xrd.kolmogorov_test(unwrap(h2), str(option), rng=current_generator()))
+
+    def Chisquare(self, func: Any, option: str = "") -> float:
+        """``Chisquare(func)``: Neyman's chi-square between the bins and ``func`` at their
+        centres, over the in-range bins whose error is positive.
+
+        ROOT's default is Neyman's - the observed error, ``GetBinError`` of the bin, in the
+        denominator - which is what ``ROOT::Fit::Chisquare`` computes for a ``TF1``; a bin
+        holding nothing has no error to divide by and is left out, so the value is ROOT's
+        over the bins that hold something. The other weightings ROOT offers (``P`` Pearson,
+        ``L`` the likelihood ratio, ``I`` the integral over a bin) are not computed here.
+        """
+        if str(option).upper():
+            raise UnsupportedFeatureError(
+                f"TH1::Chisquare with the option {option!r} is not implemented: only ROOT's "
+                "default Neyman chi-square is. Call Chisquare(func) without an option, or "
+                "Chi2Test(other, \"UU\") to compare two histograms"
+            )
+        histogram = cast("Any", self)  # ROOT's own getters, which keep ROOT's answer for a bin
+        bins = range(1, histogram.GetNbinsX() + 1)
+        contents = np.asarray([histogram.GetBinContent(at) for at in bins], dtype=np.float64)
+        errors = np.asarray([histogram.GetBinError(at) for at in bins], dtype=np.float64)
+        axis = histogram.GetXaxis()
+        centres = np.asarray([axis.GetBinCenter(at) for at in bins], dtype=np.float64)
+        expected = np.asarray(
+            func.Eval(centres) if hasattr(func, "Eval") else func(centres), dtype=np.float64
+        )
+        kept = errors > 0.0
+        return float(np.sum(((contents[kept] - expected[kept]) / errors[kept]) ** 2))
 
     def Chi2Test(self, h2: Any, option: str = "UU", res: Any = None) -> float:
         """``Chi2Test``: the p-value - or with ``CHI2`` the chi-square - residuals into ``res``."""
