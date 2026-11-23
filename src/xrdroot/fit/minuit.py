@@ -15,8 +15,11 @@ else asks for it by name.
 
 from __future__ import annotations
 
+import contextlib
+import io
+import re
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
 import numpy as np
@@ -24,7 +27,7 @@ import numpy as np
 from ..errors import UnsupportedFeatureError
 from .result import FitResult
 
-__all__ = ["contour", "core", "iminuit", "minimize"]
+__all__ = ["contour", "core", "iminuit", "minimize", "minuit_messages"]
 
 #: ``MinimizerOptions::DefaultTolerance``.
 TOLERANCE = 0.01
@@ -32,6 +35,8 @@ TOLERANCE = 0.01
 STRATEGY = 1
 #: ``FitConfig``'s first step for a parameter: 30% of its value, or 0.3 for a value of zero.
 STEP_FRACTION = 0.3
+#: A line of Minuit2's own output as iminuit writes it: ``W DavidonErrorUpdator delgam < 0``.
+MNPRINT = re.compile(r"^W (\S+) (.*)$")
 
 
 def iminuit() -> Any:
@@ -93,13 +98,45 @@ def _configured(
     minuit.errordef = options["errordef"]
     minuit.tol = options["tolerance"]
     minuit.strategy = options["strategy"]
-    minuit.print_level = 0
+    # No print level is set here: Minuit2 is quiet at the level a session starts in, and
+    # :func:`minuit_messages` is what raises it and puts it back around a fit that wants
+    # Minuit2's own warnings.
     npar = len(names)
     errors = options["errors"]
     minuit.errors = default_steps(x0) if errors is None else np.asarray(errors, dtype=np.float64)
     minuit.limits = _limits(options["limits"], npar)
     minuit.fixed = [bool(flag) for flag in (options["fixed"] or [False] * npar)]
     return minuit
+
+
+@contextlib.contextmanager
+def minuit_messages() -> Iterator[None]:
+    """Minuit2's own diagnostics, as the lines ROOT prints them, while the fit inside runs.
+
+    Minuit2 says what it thinks of a minimisation - that the covariance it built was
+    not positive definite, that the line search got nowhere - through ``MnPrint``,
+    and ROOT hands those to its message system: ``Warning in <Minuit2>: <text>`` on
+    standard error, which ROOT's own tests check for. iminuit prints them on
+    standard output as ``W <where> <text>`` instead, so they are collected here and
+    written as ROOT writes them, ``where`` and all: ROOT's message is Minuit2's, which
+    names the class that made it. Minuit2's warnings are level 1, its trace of the
+    minimisation level 2, which is not asked for.
+    """
+    printer = core().MnPrint
+    level = printer.global_level
+    collected = io.StringIO()
+    printer.global_level = max(int(level), 1)
+    try:
+        with contextlib.redirect_stdout(collected):
+            yield
+    finally:
+        printer.global_level = level
+    for line in collected.getvalue().splitlines():
+        found = MNPRINT.match(line)
+        if found is None:  # not one of Minuit2's own, which the level above does not print
+            sys.stdout.write(line + "\n")
+        else:
+            sys.stderr.write(f"Warning in <Minuit2>: {found[1]} {found[2]}\n")
 
 
 def minimize(

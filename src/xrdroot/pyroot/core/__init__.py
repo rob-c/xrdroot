@@ -58,6 +58,7 @@ FAMILIES = (
     "funcs",
     "fits",
     "fitters",
+    "fractionfit",
     "graphs",
     "graphs2d",
     "graphsmooth",
