@@ -862,3 +862,19 @@ def test_a_curves_average_over_an_interval_is_the_trapezoids_of_its_points() -> 
     assert curve.average(-1.0, 1.0) == pytest.approx(0.204268437974, rel=1e-9)
     assert curve.average(0.0, 3.0) == pytest.approx(0.218640352779, rel=1e-9)
     assert curve.average(1.0, 1.0) == pytest.approx(float(curve.interpolate(1.0)), rel=REL)
+
+
+def test_a_curves_point_is_read_out_into_the_two_variables_a_plotter_hands_over() -> None:
+    """``TGraph::GetPoint(i, x, y)``: ROOT's own component plots - HistFactory's
+    `testHistFactoryPlotting` - read a curve point by point this way, and a point the curve does
+    not have answers -1 rather than raising."""
+    from xrdroot.cppstd.cells import Cell
+
+    m = Model()
+    frame = m.x.frame()
+    m.g1.plotOn(frame)
+    curve = frame.getObject(0)
+    x, y = Cell(0.0), Cell(0.0)
+    assert curve.GetPoint(1, x, y) == 1
+    assert (x.value, y.value) == (float(curve.x[1]), float(curve.y[1]))
+    assert curve.GetPoint(curve.GetN(), x, y) == -1

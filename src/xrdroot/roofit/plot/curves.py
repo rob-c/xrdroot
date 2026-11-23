@@ -97,8 +97,8 @@ def _indirect(pdf: Any, branches: list[Any], direct: list[Any]) -> list[Any]:
     for branch in branches:
         if branch.GetName() in names or branch is pdf:
             continue
-        below = any(d.dependsOn(branch) for d in direct)
-        above = branch.dependsOn(direct)
+        below = any(d.dependsOn(branch, None, True) for d in direct)
+        above = branch.dependsOn(direct, None, True)
         if below or above:
             found.append(branch)
     return found

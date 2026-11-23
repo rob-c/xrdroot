@@ -18,6 +18,7 @@ from typing import Any
 
 import numpy as np
 
+from ...cppstd.cells import store
 from ...graph import Graph
 from .points import GraphAccess
 
@@ -133,6 +134,15 @@ class RooCurve(GraphAccess, Graph):
     def Eval(self, x: float) -> float:
         """``TGraph::Eval``: the height at ``x``, linearly between the points."""
         return float(self.interpolate(x))
+
+    def GetPoint(self, i: int, x: Any = None, y: Any = None) -> int:
+        """``TGraph::GetPoint(i, x, y)``: the ``i``-th point into the two variables the caller
+        hands over by reference, and ``i`` - or -1 when there is no such point."""
+        if not 0 <= i < len(self.x):
+            return -1
+        store(x, float(self.x[i]))
+        store(y, float(self.y[i]))
+        return int(i)
 
     def average(self, low: float, high: float) -> float:
         """``RooCurve::average``: the mean height over ``[low, high]``, by the trapezoids from

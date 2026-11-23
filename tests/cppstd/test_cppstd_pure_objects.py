@@ -148,3 +148,18 @@ def test_the_last_permutation_rewinds_to_the_first_and_one_element_is_the_last()
     assert objects.next_permutation_range(single, 0, 3) is False
     assert single == [5]
     assert objects.next_permutation_range([3, 2, 1], 0, 3) is False
+
+
+def test_a_value_is_stored_where_a_c_pointer_would_put_it() -> None:
+    """``store``/``load``: the two shapes an out-parameter has here - a cell's ``.value`` and an
+    array's first element - and the refusal for something that is neither. A null pointer is
+    nowhere, and writing through one does nothing."""
+    cell = cells.Cell(0.0)
+    cells.store(cell, 2.5)
+    assert cells.load(cell) == 2.5
+    array = np.zeros(2)
+    cells.store(array, 3.5)
+    assert array[0] == 3.5 and cells.load(array) == 3.5
+    cells.store(None, 1)
+    with pytest.raises(TypeError, match="not somewhere to put a number"):
+        cells.store(object(), 1)

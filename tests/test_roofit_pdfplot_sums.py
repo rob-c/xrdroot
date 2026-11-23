@@ -578,3 +578,18 @@ def test_a_simultaneous_density_in_a_product_is_its_current_channel() -> None:
     both = RooProdPdf("both", "both", [sim, gy])
     assert both.getVal() == pytest.approx(c.e.getVal() * gy.getVal(), rel=REL)
     assert sim.selfNormalized() is True
+
+
+def test_a_sum_adds_only_the_terms_a_component_selection_leaves_on() -> None:
+    """``RooRealSumPdf::evaluate`` adds a term only where ``isSelectedComp`` is true, which is what
+    makes a component's curve its own term rather than the whole model - and the selection lasts
+    only as long as the plot that set it."""
+    from xrdroot.roofit import selection
+    from xrdroot.roofit.pdfs.realsum import RooRealSumPdf
+
+    s = Sum()
+    both = RooRealSumPdf("both", "both", [s.g1, s.g2], [])
+    whole = float(both.getVal())
+    with selection.selecting({"g1"}):
+        assert float(both.getVal()) == pytest.approx(float(s.g1.getVal()), rel=1e-12)
+    assert float(both.getVal()) == pytest.approx(whole, rel=1e-12)
