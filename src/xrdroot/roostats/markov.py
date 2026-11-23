@@ -81,6 +81,8 @@ class SequentialProposal(ProposalFunction):
 
 #: ``MarkovChain``'s names for its weight, its likelihood and its dataset.
 WEIGHT, NLL = "weight_MarkovChain_local_", "nll_MarkovChain_local_"
+#: ... and for the dataset those points are kept in.
+DATASET = "dataset_MarkovChain_local_"
 
 
 class MarkovChain(Named):
@@ -120,6 +122,34 @@ class MarkovChain(Named):
         for par, value in zip(self._params, self._rows[index], strict=False):
             par.setVal(value)
         return self._params
+
+    def GetAsDataSet(self, whichVars: Any = None) -> Any:
+        """``MarkovChain::GetAsDataSet``: the chain's points as a ``RooDataSet``.
+
+        ROOT keeps the chain's own dataset of its points - each parameter, the likelihood it
+        stood at and the number of steps it stayed - and hands a *clone* of it over here, the
+        parameters asked for and nothing else when ``whichVars`` names some. The likelihood is
+        a variable of its own, ``nll_MarkovChain_local_``, which is the cut ``rs101`` draws its
+        chain against, and the steps are the dataset's weight variable.
+        """
+        from ..roofit.cmdargs import RooCmdArg
+        from ..roofit.data.dataset import RooDataSet
+        from ..roofit.variables import RooRealVar
+
+        params = as_list(self._params) if whichVars is None else as_list(whichVars)
+        nll = RooRealVar(NLL, "-log Likelihood", 0.0)
+        data = RooDataSet(
+            DATASET, "Markov Chain", [*params, nll], RooCmdArg("WeightVar", WEIGHT)
+        )
+        wanted = [one.GetName() for one in params]
+        order = [one.GetName() for one in self._params]
+        entry = RooArgSet([*params, nll])
+        for row, value, weight in zip(self._rows, self._nlls, self._weights, strict=False):
+            for name in wanted:
+                entry.find(name).setVal(row[order.index(name)])
+            entry.find(NLL).setVal(value)
+            data.add(entry, weight)
+        return data
 
     def Weight(self, i: Any = None) -> float:
         return self._weights[self._current if i is None else int(i)]

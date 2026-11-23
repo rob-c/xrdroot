@@ -99,6 +99,10 @@ class MCMCInterval(ConfInterval):
     def GetChain(self) -> Any:
         return self._chain
 
+    def GetChainAsDataSet(self, whichVars: Any = None) -> Any:
+        """``MCMCInterval::GetChainAsDataSet``: the chain's points, as a ``RooDataSet``."""
+        return self._chain.GetAsDataSet(whichVars)
+
     def GetParameters(self) -> Any:
         return RooArgSet(list(self._params))
 

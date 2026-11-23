@@ -76,11 +76,12 @@ def _at_limit(par: Any, value: float) -> float:
     minimiser's, not the variable's: a value genuinely outside still raises, which is what
     catches a caller's mistake.
     """
-    low, high = par.getMin(), par.getMax()
+    low, high = float(par.getMin()), float(par.getMax())
     if low < value < high:
         return value
-    if abs(min(max(value, low), high) - value) <= sys.float_info.epsilon:
-        return min(max(value, low), high)
+    clipped = min(max(value, low), high)
+    if abs(clipped - value) <= sys.float_info.epsilon:
+        return clipped
     return value
 
 

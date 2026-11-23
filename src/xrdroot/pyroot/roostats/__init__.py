@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...roostats.registry import members
-from . import inspector, inverterplot, mcmcplot, plots, readback, sdplot  # noqa: F401
+from . import asdata, inspector, inverterplot, mcmcplot, plots, readback, sdplot  # noqa: F401
 
 __all__ = ["RooStats"]
 
@@ -50,7 +50,7 @@ RooStats = _Namespace(
     {
         **members(),
         **{name: getattr(module, name) for module in (plots, sdplot, mcmcplot, inspector,
-                                                      inverterplot)
+                                                      inverterplot, asdata)
            for name in module.__all__ if name != "posterior_hist"},
         "HistFactory": _Namespace("RooStats::HistFactory", _histfactory()),
     },
