@@ -137,6 +137,7 @@ def test_std_ios_names_the_open_modes_a_stream_is_given(tmp_path: Path) -> None:
     """``std::ios::in`` is the word a stream reads its mode from, and ``in`` is not a Python
     attribute - so the modes are answered by name, and one C++ has no mode for is refused."""
     assert (rt.ios.app, rt.ios.binary, getattr(rt.ios, "in")) == ("app", "binary", "in")
+    assert repr(rt.ios) == "<class std::ios>"
     path = (tmp_path / "modes.txt").as_posix()
     first = rt.ofstream(path, rt.ios.out)
     first << "kept" << rt.endl
