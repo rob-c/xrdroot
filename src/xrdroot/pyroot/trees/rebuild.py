@@ -25,8 +25,6 @@ def rebuilt(classname: str, value: Any, current: Any, clones: str = "") -> Any:
     ``clones`` is the class a ``TClonesArray`` branch says its objects are."""
     if classname.startswith("vector<") and "PxPyPzE4D" in classname:
         return _four_vectors(value, current)
-    if classname.startswith("vector<") and _described(_element_of(classname)) is not None:
-        return _elements(value, current, classname)
     if classname == "TLorentzVector":
         return _lorentz(value, current)
     if classname == "TClonesArray":
@@ -38,29 +36,6 @@ def rebuilt(classname: str, value: Any, current: Any, clones: str = "") -> Any:
     from ..core.wrapping import wrap
 
     return wrap(dress(classname, value))
-
-
-def _element_of(classname: str) -> str:
-    """The class a ``std::vector``'s elements are, from the collection's own name."""
-    return classname.removeprefix("vector<").removesuffix(">").strip()
-
-
-def _elements(value: dict[str, Any], current: Any, classname: str) -> Any:
-    """A ``std::vector`` of objects of a class this session declared, one per row of the
-    members' columns - as ROOT reads a split collection written for a class of its own.
-
-    The elements are made from the members the file lays out, by the class the branch names:
-    a read rule that names other members is the dictionary's, and is applied where it is
-    carried (``#pragma read`` in a ``LinkDef``), not here.
-    """
-    from ..stl import std
-
-    element = _element_of(classname)
-    made = current if hasattr(current, "push_back") else std.vector[element]()
-    made.clear()
-    for members in _objects(value):
-        made.push_back(_member(element, members))
-    return made
 
 
 def _declared(classname: str, value: Any, current: Any) -> Any:
