@@ -25,6 +25,48 @@
     "draw": "'Table (tagCat x b0flav) : pData' where the other run has 'Table (b0flav x tagCat) : pData'",
     "runs": 5
    }
+  ],
+  "roofit/roostats/FourBinInstructional.C": [
+   {
+    "path": "roofit/roostats/FourBinInstructional.C",
+    "draw": "a different file",
+    "runs": 4
+   }
+  ],
+  "roofit/roostats/FourBinInstructional.py": [
+   {
+    "path": "roofit/roostats/FourBinInstructional.py",
+    "draw": "a different file",
+    "runs": 4
+   }
+  ],
+  "roofit/roostats/StandardBayesianNumericalDemo.py": [
+   {
+    "path": "roofit/roostats/StandardBayesianNumericalDemo.py",
+    "draw": "a different file",
+    "runs": 4
+   }
+  ],
+  "roofit/roostats/StandardHistFactoryPlotsWithCategories.py": [
+   {
+    "path": "roofit/roostats/StandardHistFactoryPlotsWithCategories.py",
+    "draw": "a different file",
+    "runs": 4
+   }
+  ],
+  "roofit/roostats/StandardProfileLikelihoodDemo.py": [
+   {
+    "path": "roofit/roostats/StandardProfileLikelihoodDemo.py",
+    "draw": "a different file",
+    "runs": 4
+   }
+  ],
+  "roofit/roostats/StandardTestStatDistributionDemo.py": [
+   {
+    "path": "roofit/roostats/StandardTestStatDistributionDemo.py",
+    "draw": "a different file",
+    "runs": 4
+   }
   ]
  }
 }
