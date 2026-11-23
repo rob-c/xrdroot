@@ -1,7 +1,7 @@
 ---
 title: "What the eighteen components look like from outside, and which of them could be a dist"
 kind: "architecture"
-summary: "Eighteen enforced components in one dist, but core/hist/io are flat modules, pyroot imports all 14 engines (684 modules, 536 ms), and tests are flat — so split only cppstd and pycxx, and make the facade lazy first."
+summary: "The internal split is finished and enforced, but the physical layout does not match it, and two numbers show what a distribution split would have to fix first."
 tags: [components, packaging, split, imports, review]
 created: "2026-11-22T15:04:16.962Z"
 updated: "2026-11-22T15:04:16.962Z"

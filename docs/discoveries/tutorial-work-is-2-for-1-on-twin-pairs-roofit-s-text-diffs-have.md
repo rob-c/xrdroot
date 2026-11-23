@@ -1,7 +1,7 @@
 ---
 title: "Tutorial work is 2-for-1 on twin pairs; roofit's text DIFFs have three causes, one unreachable"
 kind: "discovery"
-summary: "310 non-passing tutorials are ~240 problems because 56 twin pairs fail on both sides; size tutorial work by problem, and expect roofit's 57 text DIFFs to split into integral caching, missing classes, and unreachable Minuit2 output."
+summary: "The tutorial suite's 310 non-passing files are **only ~240 distinct problems**: 56 problems fail on *both* sides of a `.C`/`.py` twin pair, so one fix moves 112 tutorials (214 twin pairs exist among the 1189)."
 tags: [tutorials, roofit, measurement, planning, twin-pairs]
 created: "2026-11-22T13:43:29.533Z"
 updated: "2026-11-22T13:43:29.533Z"

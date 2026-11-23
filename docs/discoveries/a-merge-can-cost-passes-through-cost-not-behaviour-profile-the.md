@@ -1,7 +1,7 @@
 ---
 title: "A merge can cost PASSes through cost, not behaviour — profile the TIMEOUT at small n"
 kind: "discovery"
-summary: "Two lost PASSes after the merge were one lost name check and two quadratics (checkpoint-per-directory replaying every patch, and a sys.modules scan per class lookup); profiling at small n found both."
+summary: "Merging a long-lived branch cost two harness PASSes, and both were found only by re-running the lost tests alone rather than by reading the merge: one was a lost name-based check, the other was quadratic code that a new…"
 tags: [performance, merge, profile, writer, reflection, timeout]
 created: "2026-11-22T23:11:13.562Z"
 updated: "2026-11-22T23:11:13.562Z"

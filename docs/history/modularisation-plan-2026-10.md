@@ -1,3 +1,11 @@
+---
+title: "modularisation plan 2026 10"
+kind: "decision"
+summary: "> **Historical.** This plan was carried out and merged into main by 2026-11-13: the > fifteen components and their import contract are live (`tools/components.py`)."
+tags: [decision, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 > **Historical.** This plan was carried out and merged into main by 2026-11-13: the
 > fifteen components and their import contract are live (`tools/components.py`).
 > The current description is under `docs/components/`. Kept as the record of

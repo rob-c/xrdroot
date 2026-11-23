@@ -1,3 +1,11 @@
+---
+title: "state assessment 2026 11"
+kind: "decision"
+summary: "macOS ARM64 (18 cores), CPython 3.14.10, NumPy 2.5.4, against ROOT 6.40.04.*."
+tags: [decision, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # xrdroot: state assessment and the route to whole-suite parity
 
 *14 November 2026. Measured on the commit `10e0e58` of `feat/root-testsuite`,

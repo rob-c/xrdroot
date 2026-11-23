@@ -1,7 +1,7 @@
 ---
 title: "Unlimited ralph iterations: maxIterations 0, and which place wins"
 kind: "instruction"
-summary: "maxIterations: 0 means no limit (the plugin stops only when it is > 0); the /ralph start flag sets it and overwrites the state file, while resume keeps whatever the state file says."
+summary: "`maxIterations: 0` is how this loop asks for **no limit**: the plugin's stop checks are `state.maxIterations > 0 && iteration >= maxIterations`, so `0` (or any non-positive number) never stops, and the status line shows the…"
 tags: [ralph, loop, iterations, maxiterations, unlimited]
 created: "2026-11-22T19:13:13.550Z"
 updated: "2026-11-22T19:13:13.550Z"

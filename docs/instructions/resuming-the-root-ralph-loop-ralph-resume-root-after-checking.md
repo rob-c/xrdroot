@@ -1,7 +1,7 @@
 ---
 title: "Resuming the ROOT ralph loop: /ralph resume ROOT, after checking who owns it"
 kind: "instruction"
-summary: "Resume with /ralph resume ROOT (state .ralph/ROOT.state.json, task file .ralph/ROOT.md); check ownerSessionId first, because resume takes ownership and a live owner means two drivers."
+summary: "The ralph loop in this repository is called **`ROOT`**: its state is `.ralph/ROOT.state.json` (`taskFile: .ralph/ROOT.md`) and the task file is both the procedure and the record of every round."
 tags: [ralph, loop, resume, state, workflow]
 created: "2026-11-22T19:11:43.091Z"
 updated: "2026-11-22T19:11:43.091Z"

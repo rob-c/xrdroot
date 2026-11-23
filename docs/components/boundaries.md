@@ -1,3 +1,11 @@
+---
+title: "boundaries"
+kind: "architecture"
+summary: "The prepared tool is `tools/components.py`."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # Checking component boundaries
 
 The prepared tool is `tools/components.py`. Its policy lives under

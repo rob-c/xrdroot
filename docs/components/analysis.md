@@ -1,3 +1,11 @@
+---
+title: "analysis"
+kind: "architecture"
+summary: "The engines return plain Python/NumPy-backed analysis objects."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # Analysis engines
 
 The engines return plain Python/NumPy-backed analysis objects. ROOT spelling,

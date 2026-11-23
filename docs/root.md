@@ -1,3 +1,11 @@
+---
+title: "root"
+kind: "architecture"
+summary: "`xrdroot` opens a ROOT file and reads its trees in Python — over `root://`, `https://`, WebDAV, `s3://` or a local path, with no ROOT and no C++ anywhere in the way."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # ROOT files
 
 `xrdroot` opens a ROOT file and reads its trees in Python — over `root://`,

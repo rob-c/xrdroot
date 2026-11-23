@@ -1,3 +1,11 @@
+---
+title: "io"
+kind: "architecture"
+summary: "I/O owns ROOT file reading and writing, directories and keys, streamers, tree branches and baskets, RNTuple, merging, remote access and file-backed drawing."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # Files and data frames
 
 ## io

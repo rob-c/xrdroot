@@ -1,3 +1,11 @@
+---
+title: "cppstd"
+kind: "architecture"
+summary: "`xrdroot.cppstd` holds generic C++ behavior used by engines and translated programs."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # C++ standard-library facilities
 
 `xrdroot.cppstd` holds generic C++ behavior used by engines and translated

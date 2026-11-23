@@ -1,3 +1,11 @@
+---
+title: "applications"
+kind: "architecture"
+summary: "PyROOT owns `xrdroot.pyroot` and `session`."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # ROOT adapters and the application
 
 ## pyroot

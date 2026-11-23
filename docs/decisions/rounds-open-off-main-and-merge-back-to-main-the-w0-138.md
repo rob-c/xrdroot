@@ -1,7 +1,7 @@
 ---
 title: "Rounds open off main and merge back to main: the W0-138 objection is spent"
 kind: "decision"
-summary: "main and feat/root-testsuite are the same commit as of round 65, so the loop's rounds now open every worktree off origin/main and merge back to main, verifying the push, before tearing down."
+summary: "The ralph loop's rounds used to have to guess where to start: `main` was 238 commits behind the working line, so round 55 based itself on `feat/root-testsuite` and did not push (`W0-138`), while the task file's step 0 said to…"
 tags: [ralph, worktree, main, rounds, procedure]
 created: "2026-11-22T19:07:33.798Z"
 updated: "2026-11-22T19:07:33.798Z"

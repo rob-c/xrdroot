@@ -1,3 +1,11 @@
+---
+title: "providers"
+kind: "architecture"
+summary: "Prefer plain engine results, downward imports or an explicit callable before adding an extension point."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # Built-in providers and adapters
 
 Prefer plain engine results, downward imports or an explicit callable before

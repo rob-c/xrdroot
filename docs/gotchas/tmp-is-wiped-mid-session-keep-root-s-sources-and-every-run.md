@@ -1,7 +1,7 @@
 ---
 title: "/tmp is wiped mid-session: keep ROOT's sources and every run under ~/.cache"
 kind: "gotcha"
-summary: "ROOT's source tree and every results.json under /tmp vanish without warning; the sources live at ~/src/.xrdroot-scratch/rootsrc and runs belong in ~/.cache/xrdroot-runs."
+summary: "A long session that keeps ROOT's sources and its harness output under `/tmp` will lose both: `/tmp` is cleaned out while the session is running, and `/private/tmp` copies go with it."
 tags: [tmp, harness, rootsrc, cache, lost-work]
 created: "2026-11-22T13:42:23.464Z"
 updated: "2026-11-22T13:42:23.464Z"

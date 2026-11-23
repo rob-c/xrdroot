@@ -1,7 +1,7 @@
 ---
 title: "TPrincipal is implemented, but principal's pca.C needs ROOT's LAPACK eigen-basis"
 kind: "discovery"
-summary: "TPrincipal matches ROOT's table and prologue, but math/principal's pca.C cannot: ROOT's LAPACK picks a different (arbitrary) eigenvector basis for the rank-deficient directions than numpy or scipy do."
+summary: "`TPrincipal` is implemented (`src/xrdroot/pyroot/core/principal.py`), and both `math/principal` tutorials moved from UNSUPPORTED/FAIL to **DIFF** — but they cannot become PASS, because the tutorial writes `pca.C` through…"
 tags: [tutorials, tprincipal, eigen, lapack, pairs]
 created: "2026-11-22T14:05:24.275Z"
 updated: "2026-11-22T14:05:24.275Z"

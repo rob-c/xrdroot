@@ -1,7 +1,7 @@
 ---
 title: "Triage merge conflicts mechanically before delegating, and never trust a delegated gate report"
 kind: "instruction"
-summary: "Triage merge conflicts yourself with `git checkout --ours` and `git merge-file --union` before delegating, and re-run the gates yourself because delegated verification can come back empty."
+summary: "Triage a big merge before you delegate it: the conflicts whose answer is fixed by rule take minutes with `git checkout --ours` and `git merge-file --union`, and only the ones needing judgement should reach an agent."
 tags: [merge, git, conflict, union, gates, verify]
 created: "2026-11-22T18:16:04.728Z"
 updated: "2026-11-22T18:16:04.728Z"

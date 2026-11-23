@@ -1,3 +1,11 @@
+---
+title: "primitives"
+kind: "architecture"
+summary: "Core owns the small representations and algorithms shared by engines: `errors`, buffers and codecs, numeric helpers, ROOT random generators, `stats`, C++ type descriptions, drawing specifications and array-library conversion."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # Shared primitives
 
 ## core

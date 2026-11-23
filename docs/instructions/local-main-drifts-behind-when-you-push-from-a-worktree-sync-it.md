@@ -1,7 +1,7 @@
 ---
 title: "Local main drifts behind when you push from a worktree; sync it before reporting"
 kind: "instruction"
-summary: "A push from a worktree leaves local main behind, and git push then proves nothing: fast-forward it with git fetch origin main:main and check both hashes before reporting anything landed."
+summary: "Pushing `HEAD:main` from a worktree updates the remote and leaves the repository's own `main` ref behind, where it drifts quietly — five commits behind after two pushes was typical."
 tags: [git, main, worktree, sync, commit]
 created: "2026-11-22T14:15:46.853Z"
 updated: "2026-11-22T14:15:46.853Z"

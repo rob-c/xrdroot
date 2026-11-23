@@ -1,3 +1,11 @@
+---
+title: "agent status 2026 10"
+kind: "decision"
+summary: "This is the 'Status' section of AGENTS.md as it stood on 2026-11-13, moved here unchanged when AGENTS.md was reset."
+tags: [decision, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # Agent status log, September–October 2026
 
 This is the "Status" section of AGENTS.md as it stood on 2026-11-13, moved here

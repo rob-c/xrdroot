@@ -1,7 +1,7 @@
 ---
 title: "Do not refresh the suite baseline while the loop's own gate is loading the machine"
 kind: "gotcha"
-summary: "A full-suite baseline measured while the ROOT loop's own gate saturates the machine records contention TIMEOUTs as lost PASSes; check process count first and re-run timeouts alone."
+summary: "A full-suite baseline cannot be measured while the ROOT loop is running its own round: 16 processes on this machine took the run to 614 of 2820 tests in 50 minutes with six TIMEOUTs, against roughly 40 minutes for the whole…"
 tags: [harness, baseline, timeouts, load, measurement]
 created: "2026-11-23T11:53:27.990Z"
 updated: "2026-11-23T11:53:27.990Z"

@@ -1,7 +1,7 @@
 ---
 title: "ROOT::Math::Delaunay2D takes no zout argument, and its diagonal comes from CDT"
 kind: "gotcha"
-summary: "Read Delaunay2D.cxx:46 first: the gtest's 170. is xmin, not the outer value. Then expect the cocircular-rectangle diagonal to come from CDT's exact predicates, not from your own tie-break."
+summary: "`gtest/math/mathcore/testDelaunay2D` was not failing for a numerics reason: `ROOT.Math.Delaunay2D` did not exist at all (`AttributeError: module 'xrdroot.pyroot.core.rmath' has no attribute 'Delaunay2D'`), and the engine it…"
 tags: [delaunay, mathcore, gtest, root-source, oracle, triangulation]
 created: "2026-11-23T12:05:00.000Z"
 updated: "2026-11-23T12:05:00.000Z"

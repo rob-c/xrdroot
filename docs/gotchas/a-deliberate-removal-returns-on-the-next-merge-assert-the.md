@@ -1,7 +1,7 @@
 ---
 title: "A deliberate removal returns on the next merge — assert the absence in a test, not a note"
 kind: "gotcha"
-summary: "A removal recorded only as a commit comes back on the next merge from a long-lived branch; grep the merged tree for it and add a test asserting the absence so the gate catches it."
+summary: "A decision that only exists as a commit ('we no longer compare ROOT's timings with xrdroot's') is undone by the next merge from a long-lived branch, because that branch's side of the conflict still contains the removed code…"
 tags: [merge, removal, test, guard, timing]
 created: "2026-11-22T18:37:39.651Z"
 updated: "2026-11-22T18:37:39.651Z"

@@ -1,3 +1,11 @@
+---
+title: "README"
+kind: "decision"
+summary: "Records moved out of the working instructions when they stopped describing current practice."
+tags: [decision, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # Project history
 
 Records moved out of the working instructions when they stopped describing

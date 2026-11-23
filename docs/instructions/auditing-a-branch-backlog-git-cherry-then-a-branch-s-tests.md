@@ -1,7 +1,7 @@
 ---
 title: "Auditing a branch backlog: git cherry, then a branch's tests against main, then archive as one ref"
 kind: "instruction"
-summary: "Audit branches with git cherry, then apply only their test files onto main to see if the behaviour exists; archive patches as one pushed branch before deleting any refs."
+summary: "Auditing a few hundred branches needs a discriminator that survives a moved `main`: `git cherry` (patch-ids) splits real work from landed work, but `git diff main...branch` and `git apply --reverse --check` both stop being…"
 tags: [branches, audit, git, archive, cleanup, cherry]
 created: "2026-11-23T01:17:36.436Z"
 updated: "2026-11-23T01:17:36.436Z"

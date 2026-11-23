@@ -1,7 +1,7 @@
 ---
 title: "Landing work on main here: a worktree off origin/main, pushed at once, CI read without gh"
 kind: "instruction"
-summary: "Concurrent sessions keep the primary checkout on another branch and reset main to origin/main: do work in a worktree off origin/main, push immediately, and read CI through the anonymous API because gh has no token here."
+summary: "More than one session commits in `/Users/rcurrie/src/xrdroot` at the same time, and they do not share a branch: the primary checkout is usually on `feat/root-testsuite` (someone else's line), `main` is what CI runs, and…"
 tags: [worktree, main, concurrent-sessions, ci, gh]
 created: "2026-11-22T13:44:31.541Z"
 updated: "2026-11-22T13:44:31.541Z"

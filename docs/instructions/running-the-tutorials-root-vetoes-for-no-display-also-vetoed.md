@@ -1,7 +1,7 @@
 ---
 title: "Running the tutorials ROOT vetoes for \"no display\": --also-vetoed, worth 23 PASSes"
 kind: "instruction"
-summary: "`--also-vetoed \"needs a display (GUI)\"` runs ROOT's headless drawing tutorials and yields 23 real PASSes of 135; the records are marked beyond_ctest and the baseline refuses them."
+summary: "`tools/tutorials` counts a tutorial as SKIP when ROOT's own `tutorials/CMakeLists.txt` vetoes it — `gui_veto` above all, with 135 entries."
 tags: [tutorials, harness, gui-veto, baseline, measurement]
 created: "2026-11-22T13:43:03.229Z"
 updated: "2026-11-22T13:43:03.229Z"

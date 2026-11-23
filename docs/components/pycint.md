@@ -1,3 +1,11 @@
+---
+title: "pycint"
+kind: "architecture"
+summary: "`xrdroot.pycint` is the CINT-compatible face of xrdroot: ROOT's macros, read in ROOT's dialect of C++ by [pycxx](pycxx.md) and run against the ROOT namespace of [pyroot](applications.md#pyroot)."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # ROOT's interpreter: pycint
 
 `xrdroot.pycint` is the CINT-compatible face of xrdroot: ROOT's macros, read in

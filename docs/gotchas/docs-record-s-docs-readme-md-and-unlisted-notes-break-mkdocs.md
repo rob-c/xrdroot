@@ -1,7 +1,7 @@
 ---
 title: "docs_record's docs/README.md and unlisted notes break mkdocs build --strict"
 kind: "gotcha"
-summary: "docs_record leaves a docs/README.md that conflicts with index.md and notes missing from mkdocs.yml's nav both fail mkdocs build --strict; delete the README and add a nav line per note."
+summary: "`docs_record` writes `docs/README.md` alongside the note it was asked for."
 tags: [docs, mkdocs, gates, docs_record]
 created: "2026-11-22T13:47:01.809Z"
 updated: "2026-11-22T13:47:01.809Z"

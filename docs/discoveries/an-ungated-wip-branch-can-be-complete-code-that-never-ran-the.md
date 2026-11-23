@@ -1,7 +1,7 @@
 ---
 title: "An \"ungated\" WIP branch can be complete code that never ran the gates"
 kind: "discovery"
-summary: "The held RooWorkspace::writeToFile branch passed the full suite once merged onto today's main; the only work needed was an architecture provider, two dependency declarations and four type annotations, not new functionality."
+summary: "A branch can be 'unfinished' only in the sense that nobody ran the gates on it, not that its code is incomplete."
 tags: [wip, roofit, workspace, components, mypy, merge]
 created: "2026-11-23T06:24:55.021Z"
 updated: "2026-11-23T06:24:55.021Z"

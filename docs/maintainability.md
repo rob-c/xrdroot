@@ -1,3 +1,11 @@
+---
+title: "maintainability"
+kind: "architecture"
+summary: "The maintainability test turns five complementary views of function complexity into one report and one absolute gate."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # Maintainability metrics
 
 The maintainability test turns five complementary views of function complexity

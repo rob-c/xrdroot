@@ -1,3 +1,11 @@
+---
+title: "index"
+kind: "architecture"
+summary: "The ROOT file format in pure Python, read and written over any URL [xrdclient](https://github.com/rob-c/xrdclient) can open."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # xrdroot
 
 The ROOT file format in pure Python, read and written over any URL

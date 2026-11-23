@@ -1,3 +1,11 @@
+---
+title: "pycxx"
+kind: "architecture"
+summary: "`xrdroot.pycxx` translates C++ into Python that reads like it, and runs it."
+tags: [architecture, docs]
+created: "2026-11-23T14:08:15.000Z"
+updated: "2026-11-23T14:08:15.000Z"
+---
 # The C++ translator: pycxx
 
 `xrdroot.pycxx` translates C++ into Python that reads like it, and runs it.
