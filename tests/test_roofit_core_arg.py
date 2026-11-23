@@ -283,7 +283,7 @@ def test_a_value_only_walk_leaves_out_a_shape_input() -> None:
     HistFactory channel - from making its neighbours look selected."""
     shape = RooRealVar("width", "width", 1)
     kept = RooRealVar("kept", "kept", 2)
-    node = Summed("node", kept, RooArgList())
+    node = Summed("node", kept, RooArgList(kept))  # the same input twice: named once
     node._proxy("shape", shape, True)
     assert node.dependsOn(kept) and node.dependsOn(shape)
     assert node.dependsOn(kept, None, True) and not node.dependsOn(shape, None, True)

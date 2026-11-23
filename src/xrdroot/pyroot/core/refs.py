@@ -19,11 +19,6 @@ from ...cppstd.cells import store as _store
 __all__ = ["store", "load", "store_many"]
 
 
-def _indexed(target: Any) -> bool:
-    """Is ``target`` filled by index - an array, rather than something with ``.value``?"""
-    return not hasattr(target, "value") and hasattr(target, "__setitem__")
-
-
 def store(target: Any, value: Any) -> None:
     """Put ``value`` where ``target`` says, as ``*target = value`` would - and a translated
     macro's ``Float_t`` rounded as C++ would have rounded it."""
