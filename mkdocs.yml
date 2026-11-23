@@ -60,6 +60,7 @@ nav:
       - TPrincipal and ROOT's LAPACK basis: discoveries/tprincipal-is-implemented-but-principal-s-pca-c-needs-root-s.md
       - Rounds open off main: decisions/rounds-open-off-main-and-merge-back-to-main-the-w0-138.md
   - Maintainability metrics: maintainability.md
+  - Bank the run, not the wish: decisions/bank-the-run-not-the-wish-a-hand-kept-pass-fails-the-ratchet.md
   - Cache hits, never misses: discoveries/cache-hits-never-misses-when-a-dictionary-can-supply-the-answer.md
   - Dictionary classes live in DECLARED: architecture/a-loaded-dictionary-s-classes-are-in-declared-not-in-sys.md
   - A harness bisect lies without its fixture: gotchas/a-bisect-over-harness-tests-lies-unless-each-commit-builds-its.md
