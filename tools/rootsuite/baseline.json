@@ -8,7 +8,7 @@
  "gtest/core/base/CoreSystemTests": "PASS",
  "gtest/core/base/IncludePathTest": "PASS",
  "gtest/core/base/UUIDTest": "PASS",
- "gtest/core/clingutils/coreclingutilstestUnit": "FAIL",
+ "gtest/core/clingutils/coreclingutilstestUnit": "PASS",
  "gtest/core/cont/TSeqTests": "PASS",
  "gtest/core/cont/coreconttestUnit": "PASS",
  "gtest/core/cont/testIter": "PASS",
