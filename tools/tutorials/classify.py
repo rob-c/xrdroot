@@ -45,7 +45,7 @@ __all__ = [
 ]
 
 #: Every status, in the order reports list them.
-STATUSES = ("PASS", "DIFF", "FAIL", "UNSUPPORTED", "SKIP", "ORACLE-FAIL")
+STATUSES = ("PASS", "DIFF", "FAIL", "UNSUPPORTED", "SKIP", "ORACLE-FAIL", "FLAKY")
 
 #: The reason given when the xrdroot under test has no ``run`` subcommand.
 NO_RUN = "not runnable: xrdroot has no `run`"

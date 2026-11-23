@@ -25,6 +25,8 @@ def regressions(baseline: Mapping[str, str], doc: Mapping[str, Any]) -> list[dic
         if status != "PASS":
             continue
         record = records.get(path, {"path": path, "status": "MISSING", "reason": "not in results"})
+        if record["status"] == "FLAKY":
+            continue  # ROOT's own run of it is not the same twice: no promise was possible
         if record["status"] != "PASS":
             failed.append(dict(record))
     return failed
@@ -42,7 +44,9 @@ def write_baseline(doc: Mapping[str, Any], destination: Path) -> None:
             f"A baseline is ROOT's own test set, and {len(beyond)} of these ran beyond it "
             f"(the first is {beyond[0]!r}): record a run without --also-vetoed."
         )
-    statuses = {record["path"]: record["status"] for record in records}
+    statuses = {
+        record["path"]: record["status"] for record in records if record["status"] != "FLAKY"
+    }
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(statuses, indent=1, sort_keys=True) + "\n")
 

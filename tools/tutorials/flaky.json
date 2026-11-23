@@ -1,0 +1,30 @@
+{
+ "varying": {
+  "roofit/roofit/rf102_dataimport.py": [
+   {
+    "path": "roofit/roofit/rf102_dataimport.py",
+    "draw": "'1) x = 0.0174204 L(-10 - 10) \"x\"' where the other run has '1) x = 9.46654 L(-10 - 10) \"x\"'",
+    "runs": 5
+   }
+  ],
+  "roofit/roofit/rf403_weightedevts.py": [
+   {
+    "path": "roofit/roofit/rf403_weightedevts.py",
+    "draw": "a different file",
+    "runs": 5
+   }
+  ],
+  "roofit/roofit/rf404_categories.py": [
+   {
+    "path": "roofit/roofit/rf404_categories.py",
+    "draw": "'Roo1DTable::b0flav = (B0=5040,B0bar=4960)' where the other run has 'Roo1DTable::b0flav = (B0=5058,B0bar=4942)'",
+    "runs": 5
+   },
+   {
+    "path": "roofit/roofit/rf404_categories.py",
+    "draw": "'Table (tagCat x b0flav) : pData' where the other run has 'Table (b0flav x tagCat) : pData'",
+    "runs": 5
+   }
+  ]
+ }
+}

@@ -49,6 +49,9 @@ ORACLE_SCHEMA = "oracle/1"
 #: directory holds the others ROOT itself was observed to produce.
 KNOWN_ORDERS = Path(__file__).resolve().parent / "known_orders" / "index.json"
 
+#: The tutorials whose own ROOT run is not the same twice, each with the draw that says so.
+FLAKY = Path(__file__).resolve().parent / "flaky.json"
+
 #: The reason given for every tutorial ROOT ran when xrdroot was not asked to.
 ORACLE_ONLY = "xrdroot not run (--oracle-only)"
 
@@ -489,9 +492,28 @@ class Harness:
             return "FAIL", f"printed {classify._masked(line)!r}"
         return None
 
+    def _flaky(self, tutorial: Tutorial) -> str | None:
+        """Why this tutorial's verdict cannot be a promise, if its own ROOT run varies."""
+        try:
+            rows = json.loads(FLAKY.read_text()).get("varying", {})
+        except (OSError, ValueError):
+            return None
+        found = rows.get(tutorial.path)
+        if not found:
+            return None
+        return (
+            "ROOT's own run of this tutorial is not the same twice, so neither side's output is a "
+            f"property of the code: {found[0]['draw']}"
+        )
+
     def _compared(
         self, tutorial: Tutorial, oracle: Outcome, mine: Outcome, record: dict[str, Any]
     ) -> tuple[str, str]:
+        varying = self._flaky(tutorial)
+        if varying is not None:
+            record["details"].append(varying)
+            record["images"] = []
+            return "FLAKY", varying
         found, images, extra = self._one_comparison(tutorial, oracle.result, oracle.files, mine)
         if found:
             for result, files in known_orders(tutorial.path):

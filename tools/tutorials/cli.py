@@ -6,6 +6,7 @@ python -m tools.tutorials report [--results DIR/results.json]
 python -m tools.tutorials list --tutorials DIR [--only ...]
 python -m tools.tutorials ratchet RESULTS.json [--rerun-timeouts]
 python -m tools.tutorials baseline RESULTS.json
+python -m tools.tutorials record-flaky PATH... [--runs N] [--index tools/tutorials/flaky.json]
 python -m tools.tutorials api-coverage [--oracle-prefix PREFIX | --inventory JSON]
 """
 
@@ -24,7 +25,7 @@ from . import api_coverage, ratchet, report
 from .catalog import catalog
 from .compare import Tolerance
 from .environment import cmake_variables, find_oracle, root_config, targets
-from .harness import DEFAULT_CACHE, Harness, Settings, selected
+from .harness import DEFAULT_CACHE, FLAKY, Harness, Settings, selected
 
 __all__ = ["main", "parser"]
 
@@ -74,6 +75,15 @@ def parser() -> argparse.ArgumentParser:
     baseline = commands.add_parser("baseline", help="record statuses from a full run")
     baseline.add_argument("results", type=Path)
     baseline.add_argument("--output", type=Path, default=ratchet.BASELINE)
+    flaky = commands.add_parser(
+        "record-flaky", help="record a tutorial whose own ROOT run is not the same twice"
+    )
+    _common(flaky)
+    flaky.add_argument(
+        "tutorials_to_record", nargs="+", metavar="TUTORIAL", help="a path, or an end of one"
+    )
+    flaky.add_argument("--runs", "-n", type=int, default=5, help="ROOT runs to draw from (5)")
+    flaky.add_argument("--index", type=Path, default=FLAKY, help="the record of varying tutorials")
     api = commands.add_parser("api-coverage", help="compare ROOT's public API by library")
     api.add_argument("--oracle-prefix", type=Path)
     api.add_argument("--root-python")
@@ -225,10 +235,27 @@ def _baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def _record_flaky(args: argparse.Namespace) -> int:
+    """Repeat ROOT's own runs and record the tutorials whose output is not the same twice."""
+    from . import variance
+
+    found, oracle = _catalogue(args)
+    if oracle is None:
+        raise ValueError("no ROOT oracle to compare runs of: pass --oracle-prefix")
+    settings = Settings(tutorials=args.tutorials.resolve(), cache=args.cache.expanduser())
+    rows: list[dict[str, Any]] = []
+    for tutorial in variance.paths(found, args.tutorials_to_record):
+        rows.extend(variance.varying(tutorial, settings, oracle, args.runs, args.cache / "varying"))
+    added = variance.keep(rows, args.index)
+    print(f"{added} draw(s) recorded across {len({row['path'] for row in rows})} tutorial(s)")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    commands = {"run": _run, "list": _list, "report": _report,
-                "ratchet": _ratchet, "baseline": _baseline, "api-coverage": api_coverage.run}
+    commands = {"run": _run, "list": _list, "report": _report, "ratchet": _ratchet,
+                "baseline": _baseline, "record-flaky": _record_flaky,
+                "api-coverage": api_coverage.run}  # fmt: skip
     try:
         return commands[args.command](args)
     except (OSError, ValueError) as why:

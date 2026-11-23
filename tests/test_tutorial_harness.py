@@ -12,6 +12,7 @@ import pytest
 from tools.tutorials import catalog as cat
 from tools.tutorials import classify, cli, compare, ratchet, report, runner
 from tools.tutorials import harness as harnessing
+from tools.tutorials import variance as variances
 from tools.tutorials.cmake import Interpreter, Token, commands, glob_regex, tokens
 from tools.tutorials.environment import Oracle, cmake_variables, targets
 from tools.tutorials.harness import Harness, Settings, oracle_key, selected
@@ -878,6 +879,82 @@ def test_the_recorded_root_orders_load_with_their_files(tmp_path):
         ["rf102_dataimport.png", "rf102_testData.txt"],
     ]
     assert harnessing.known_orders("hist/nothing.C") == []
+
+
+# --- a tutorial whose own ROOT run is not the same twice --------------------
+
+
+def test_two_runs_are_the_same_draw_whatever_order_their_lines_came_in():
+    """A ``.py`` tutorial's two streams interleave differently; what a draw *is* is its lines."""
+    one = result(stdout="Reading data\n1) x = 1\n2) y = 2\n")
+    same = result(stdout="1) x = 1\nReading data\n2) y = 2\n")
+    other = result(stdout="Reading data\n1) y = 2\n2) x = 1\n")
+    assert variances.same_output(one, same)
+    assert not variances.same_output(one, other)
+
+
+def test_a_run_that_drew_a_different_picture_is_never_the_same_draw():
+    one = result(stdout="x\n", files={"a.png": "aa"})
+    other = result(stdout="x\n", files={"a.png": "bb"})
+    assert not variances.same_output(one, other)
+    assert not variances.same_output(one, result(stdout="x\n", exit_code=1))
+
+
+def test_the_sentence_quotes_what_one_draw_has_and_the_other_does_not():
+    one = result(stdout="1) x = 9.46654 L(-10 - 10)\n2) y = 0.0174204\n")
+    other = result(stdout="1) x = 0.0174204 L(-10 - 10)\n2) y = 9.46654\n")
+    said = variances.distinctive_line(one, other)
+    assert said.startswith("'1) x = 9.46654 L(-10 - 10)'")
+    assert "where the other run has '1) x = 0.0174204 L(-10 - 10)'" in said
+
+
+def test_a_draw_of_the_same_lines_and_a_clean_one_say_so():
+    one = result(stdout="a\n", files={"f.root": "aa"})
+    assert variances.distinctive_line(one, result(stdout="a\n", files={"f.root": "bb"})) == (
+        "a different file"
+    )
+    assert "no line of its own" in variances.distinctive_line(
+        result(stdout=""), result(stdout="extra\n")
+    )
+
+
+def test_a_tutorial_whose_root_runs_agree_is_not_recorded(tmp_path, monkeypatch):
+    """``varying`` asks ROOT ``runs`` times and says nothing when every run is the same."""
+    tutorial = cat.Tutorial("roofit/roofit/rf102_dataimport.py", test="t", labels=("tutorial",))
+    steady = result(stdout="1) x = 1\n")
+    monkeypatch.setattr(variances, "_one", lambda *args: steady)
+    assert variances.varying(tutorial, Settings(tutorials=tmp_path), None, 3, tmp_path) == []
+
+
+def test_a_tutorial_whose_root_runs_differ_is_recorded_once_per_other_draw(tmp_path, monkeypatch):
+    tutorial = cat.Tutorial("roofit/roofit/rf102_dataimport.py", test="t", labels=("tutorial",))
+    draws = [result(stdout="1) x = 1\n"), result(stdout="1) x = 2\n"), result(stdout="1) x = 1\n")]
+    monkeypatch.setattr(variances, "_one", lambda *args: draws.pop(0))
+    rows = variances.varying(tutorial, Settings(tutorials=tmp_path), None, 3, tmp_path)
+    assert [row["path"] for row in rows] == [tutorial.path]
+    assert rows[0]["draw"].startswith("'1) x = 2'")
+    index = tmp_path / "flaky.json"
+    assert variances.keep(rows, index) == 1
+    assert variances.keep(rows, index) == 0  # recorded twice is still recorded once
+    assert variances.recorded(index) == {tutorial.path: [rows[0]]}
+
+
+def test_a_recorded_varying_tutorial_is_flaky_and_the_ratchet_stops_promising_it(
+    harness, tmp_path, monkeypatch
+):
+    tutorial = cat.Tutorial("roofit/roofit/rf404_categories.py", test="t", labels=("tutorial",))
+    index = tmp_path / "flaky.json"
+    index.write_text(json.dumps({"varying": {tutorial.path: [{"path": tutorial.path, "draw": "1) x = 2"}]}}))
+    monkeypatch.setattr(harnessing, "FLAKY", index)
+    oracle = harnessing.Outcome(result(stdout="-1\n"), tmp_path / "oracle")
+    mine = harnessing.Outcome(result(stdout="1\n"), tmp_path / "mine")
+    record = {"details": [], "images": [], "extra_files": []}
+    status, reason = harness._compared(tutorial, oracle, mine, record)
+    assert status == "FLAKY"
+    assert "not the same twice" in reason and "1) x = 2" in reason
+    # and a FLAKY row is neither a promise nor a regression for the ratchet
+    assert ratchet.regressions({"x.py": "PASS"}, {"tutorials": [
+        {"path": "x.py", "status": "FLAKY", "reason": "ROOT's own run varies"}], "meta": {}}) == []
 
 
 def test_a_tutorial_whose_sets_iterate_the_other_way_passes_against_its_recorded_order(
