@@ -9,12 +9,14 @@ read from a file comes back as the class it was written as.
 
 from __future__ import annotations
 
+import re
 from functools import partial
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from ...colors import saved
 from ...graph import text_delimiter
 from ...stdio import unflushed
 from .._pythonization._uhi import UnifiedHistogram
@@ -23,7 +25,7 @@ from .histcore import Booked
 from .histops import Operations
 from .histstats import Stats
 from .messages import message
-from .objects import TAtt3D, TAttFill, TAttLine, TAttMarker, TNamed
+from .objects import TAtt3D, TAttFill, TAttLine, TAttMarker, TNamed, TObject
 from .wrapping import adopt, register
 
 __all__ = [
@@ -137,12 +139,12 @@ class TH1(
             self._print(option)
 
     def SaveAs(self, filename: str = "", option: str = "") -> None:
-        """``TH1::SaveAs``: the bins as text for a ``.csv``, ``.tsv`` or ``.txt`` name, and the
-        ROOT file every other name means, which is ``TObject::SaveAs``.
+        """``TH1::SaveAs``: the bins as text for a ``.csv``, ``.tsv`` or ``.txt`` name, the macro
+        that remakes the histogram for a ``.C`` or ``.cc`` one, and a ROOT file otherwise.
 
-        ROOT writes a line per **cell**, so the underflow and overflow cells are lines of
-        their own at the two ends: the cell's low and high edge, its content, and its error
-        only when the histogram keeps squared weights to answer one with. The ``title``
+        ROOT writes a line per **cell** of the text, so the underflow and overflow cells are
+        lines of their own at the two ends: the cell's low and high edge, its content, and its
+        error only when the histogram keeps squared weights to answer one with. The ``title``
         option puts a header line in front, written with the file's own delimiter and naming
         the y axis rather than "BinContent" where that axis has a title.
         """
@@ -153,6 +155,28 @@ class TH1(
         lines = self._text_table(str(option).lower(), delimiter)
         Path(filename).write_text("".join(line + "\n" for line in lines), encoding="utf-8")
         self.Info("SaveAs", "%s file: %s has been generated", str(filename)[-3:], filename)
+
+    def SavePrimitive(self, out: list[str], option: str = "") -> None:
+        """``TH1::SavePrimitive``: the statements a macro needs to remake this histogram.
+
+        ROOT's own order, measured from what the 6.40 oracle writes for ROOT's `test_TH1_SaveAs`
+        histogram: a blank line, the constructor, a ``SetBinContent`` per **non-empty** cell and
+        a ``SetBinError`` per cell that has one, the entries, then the look - direction, fill,
+        line, marker, the three axes' fonts and offsets - and a ``Draw``.
+        """
+        name = _save_name(self, str(option))
+        out.append("   ")
+        out.append(_constructor(self, name))
+        errors = self.GetSumw2N() > 0
+        for at in range(self.GetNcells()):
+            if self.GetBinContent(at):
+                out.append(f"   {name}->SetBinContent({at},{_number(self.GetBinContent(at))});")
+        if errors:
+            for at in range(self.GetNcells()):
+                if self.GetBinError(at):
+                    out.append(f"   {name}->SetBinError({at},{_number(self.GetBinError(at))});")
+        _appearance(self, out, name)
+        TObject.SavePrimitiveDraw(out, name, str(option))
 
     def _text_table(self, option: str, delimiter: str) -> list[str]:
         """Every line of the text file ROOT writes: the header when the option asks for one,
@@ -377,3 +401,119 @@ TH3D: Any = _kind(TH3, "D", f"3-Dim histograms ({_TITLES['D']})")
 for _cls in (TH1C, TH1S, TH1I, TH1L, TH1F, TH1D, TH2C, TH2S, TH2I, TH2L, TH2F, TH2D,
              TH3C, TH3S, TH3I, TH3L, TH3F, TH3D):  # fmt: skip
     register(_cls.__name__, factory=partial(adopt, _cls))
+
+
+# -- the macro a histogram is saved as -----------------------------------------------------------
+
+#: How many histograms this process has written into a macro. ROOT names each variable after the
+#: histogram and that count, so two histograms of one name do not collide: ``h__1``, ``h__2``.
+SAVED = [0]
+
+#: What a C++ identifier may not hold, which ROOT's ``TInterpreter::MapCppName`` turns into an
+#: underscore - the names ROOT's own `testMapCppName` writes are almost all punctuation.
+_NOT_IDENTIFIER = re.compile(r"[^0-9A-Za-z_]")
+
+
+def _identifier(name: str) -> str:
+    """``MapCppName``: the name as a C++ identifier a compiler takes, a leading digit prefixed."""
+    mapped = _NOT_IDENTIFIER.sub("_", str(name))
+    return f"_{mapped}" if mapped[:1].isdigit() else mapped
+
+
+def _save_name(histogram: Any, option: str) -> str:
+    """``TH1::ProvideSaveName``: the variable a macro gives this histogram - its own name and a
+    count, unless the name is one ROOT leaves alone or the option asks for a ``colz`` draw."""
+    held = str(histogram.GetName())
+    if "Graph" not in held and "_stack_" not in held and "colz" not in option.lower():
+        SAVED[0] += 1
+        held += f"__{SAVED[0]}"
+    return _identifier(held or "unnamed")
+
+
+def _number(value: Any) -> str:
+    """A value as a macro writes it: C++'s ``setprecision(digits10 + 1)`` in its default float
+    format - sixteen significant digits and no trailing zeros, so 5.2 is ``5.2``."""
+    return f"{float(value):.16g}"
+
+
+def _cpp_text(text: Any) -> str:
+    """``TString::ReplaceSpecialCppChars``: the escapes a C++ string literal needs."""
+    return str(text).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _constructor(histogram: Any, name: str) -> str:
+    """The line that makes the histogram: its class, its name and title as C++ strings, and the
+    binning of each axis it has - a bin count and two limits per axis."""
+    klass = histogram.ClassName()
+    args = [f'"{_cpp_text(histogram.GetName())}"', f'"{_cpp_text(histogram.GetTitle())}"']
+    axes = (histogram.GetXaxis(), histogram.GetYaxis(), histogram.GetZaxis())
+    for axis in axes[: histogram.GetDimension()]:
+        args.append(str(axis.GetNbins()))
+        args += [_number(axis.GetXmin()), _number(axis.GetXmax())]
+    return f"   {klass} *{name} = new {klass}({', '.join(args)});"
+
+
+def _att_numbers(out: list[str], name: str, histogram: Any) -> None:
+    """``TAttFill``/``TAttLine``/``TAttMarker``'s own save rules, whose defaults are ROOT's -1 for
+    a fill and 1 for a colour, a style or a width - so a member ROOT never changed is left out."""
+    for setter, value, default, colour in (
+        ("SetFillColor", histogram.GetFillColor(), -1, True),
+        ("SetFillStyle", histogram.GetFillStyle(), -1, False),
+        ("SetLineColor", histogram.GetLineColor(), 1, True),
+        ("SetLineStyle", histogram.GetLineStyle(), 1, False),
+        ("SetLineWidth", histogram.GetLineWidth(), 1, False),
+        ("SetMarkerColor", histogram.GetMarkerColor(), 1, True),
+        ("SetMarkerStyle", histogram.GetMarkerStyle(), 1, False),
+        ("SetMarkerSize", histogram.GetMarkerSize(), 1, False),
+    ):
+        if float(value) != float(default):
+            written = saved(value) if colour else _number(value)
+            out.append(f"   {name}->{setter}({written});")
+
+
+def _axis_number(
+    out: list[str], prefix: str, setter: str, value: Any, default: float, tolerance: float, *,
+    colour: bool = False,
+) -> None:
+    """One axis setting, written only when it differs from ROOT's own default for an axis - by
+    ``tolerance`` for a float, exactly for a font or a count."""
+    changed = abs(float(value) - default) > tolerance if tolerance else float(value) != default
+    if changed:
+        written = saved(value) if colour else _number(value)
+        out.append(f"{prefix}{setter}({written});")
+
+
+def _axis_attributes(out: list[str], prefix: str, axis: Any) -> None:
+    """``TAxis::SaveAttributes`` over ``TAttAxis::SaveAttributes``: the title the axis was given,
+    then every look that differs from ROOT's own default for an axis."""
+    if axis.GetTitle():
+        out.append(f'{prefix}SetTitle("{_cpp_text(axis.GetTitle())}");')
+    _axis_number(out, prefix, "SetNdivisions", axis.GetNdivisions(), 510, 0.0)
+    _axis_number(out, prefix, "SetAxisColor", axis.GetAxisColor(), 1, 0.0, colour=True)
+    _axis_number(out, prefix, "SetLabelColor", axis.GetLabelColor(), 1, 0.0, colour=True)
+    _axis_number(out, prefix, "SetLabelFont", axis.GetLabelFont(), 62, 0.0)
+    _axis_number(out, prefix, "SetLabelOffset", axis.GetLabelOffset(), 0.005, 0.0001)
+    _axis_number(out, prefix, "SetLabelSize", axis.GetLabelSize(), 0.035, 0.001)
+    _axis_number(out, prefix, "SetTitleSize", axis.GetTitleSize(), 0.035, 0.001)
+    _axis_number(out, prefix, "SetTickLength", axis.GetTickLength(), 0.03, 0.001)
+    _axis_number(out, prefix, "SetTitleOffset", axis.GetTitleOffset(), 0.0, 0.001)
+    _axis_number(out, prefix, "SetTitleColor", axis.GetTitleColor(), 1, 0.0, colour=True)
+    _axis_number(out, prefix, "SetTitleFont", axis.GetTitleFont(), 62, 0.0)
+
+
+def _appearance(histogram: Any, out: list[str], name: str) -> None:
+    """Everything after the cells: the entries, the directory, the statistics box, the option,
+    the fill/line/marker look and the three axes - in ROOT's own order."""
+    if histogram.GetEntries():
+        out.append(f"   {name}->SetEntries({_number(histogram.GetEntries())});")
+    if histogram.GetDirectory() is None:
+        out.append(f"   {name}->SetDirectory(nullptr);")
+    if histogram.TestBit(histogram.kNoStats):
+        out.append(f"   {name}->SetStats(0);")
+    if str(histogram.GetOption()):
+        out.append(f'   {name}->SetOption("{_cpp_text(histogram.GetOption())}");')
+    _att_numbers(out, name, histogram)
+    for spelling, axis in (
+        ("X", histogram.GetXaxis()), ("Y", histogram.GetYaxis()), ("Z", histogram.GetZaxis()),
+    ):
+        _axis_attributes(out, f"   {name}->Get{spelling}axis()->", axis)

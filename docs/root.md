@@ -140,13 +140,16 @@ A histogram writes its bins out as a text table, and every other name a ROOT fil
 ```python
 h.SaveAs("bins.csv")  # or .tsv, a tab between the columns, or .txt, a space
 h.SaveAs("bins.tsv", "title")  # a header line naming the four columns
+h.SaveAs("bins.C")  # the macro that remakes it, which running draws it again
 ```
 
 The lines are per **cell**, so a histogram of 100 bins writes 102 of them - the underflow and
 overflow cells at the two ends - each the cell's low and high edge, its content and, only when
 the histogram keeps squared weights to answer one with, its error. `title` writes the header
-with the file's own delimiter and names the y axis where that axis has a title, and a name that
-is no text format is the ROOT file every `TObject::SaveAs` writes.
+with the file's own delimiter and names the y axis where that axis has a title. A `.C` or `.cc`
+name is the macro `TH1::SavePrimitive` writes, which is ROOT's own text line for line - the
+constructor, a `SetBinContent` per non-empty cell, the entries, the look ROOT's defaults leave
+out, and a `Draw` - and any other name is the ROOT file every `TObject::SaveAs` writes.
 
 ### Profiles
 

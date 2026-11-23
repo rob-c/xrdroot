@@ -31,6 +31,7 @@ __all__ = [
     "color",
     "palette",
     "palette_color",
+    "saved",
 ]
 
 #: What ``TColor::InitializeColors`` and ``CreateColorWheel`` make, by index,
@@ -234,3 +235,22 @@ def _rgb(hexed: str) -> RGB:
 def rgb(index: Any) -> RGB:
     """An unsaved ROOT colour index as unit channels, with the same black fallback."""
     return _rgb(COLORS.get(int(index), UNKNOWN))
+
+
+#: The last colour index ROOT has a name for: everything above it is a colour of the palette,
+#: which a macro that remakes an object gives the channels of rather than the number.
+ROOT_NAMED_COUNT = 228
+
+
+def saved(index: Any) -> str:
+    """``TColor::SavePrimitiveColor``: how a macro names a colour.
+
+    One of ROOT's own named colours is its number, and a colour of the palette - which is
+    anything above :data:`ROOT_NAMED_COUNT` here, its channels being what the index means - is
+    ``TColor::GetColor("#rrggbb")``, which is what the 6.40 oracle writes for a histogram's
+    default line colour 602 (``#000099``).
+    """
+    number = int(index)
+    if number <= ROOT_NAMED_COUNT or number not in COLORS:
+        return str(number)
+    return f'TColor::GetColor("{COLORS[number]}")'

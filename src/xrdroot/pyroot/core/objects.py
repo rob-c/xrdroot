@@ -23,6 +23,11 @@ from . import hooks
 from .colors import BITS
 from .strings import MemberString, TString
 
+#: The names a ``SaveAs`` writes a macro for: ROOT's own sends ``.C`` and its ``.cc`` sibling to
+#: ``SavePrimitive``, and everything but a ROOT file to the same place (a gap this kit's
+#: ``SaveAs`` still fills with a ROOT file, `W0-193`).
+MACRO_SUFFIXES = (".C", ".cc")
+
 __all__ = [
     "TObject",
     "TNamed",
@@ -397,13 +402,50 @@ class TObject:
         buffer.StreamObject(self, self.IsA())
 
     def SaveAs(self, filename: str = "", option: str = "") -> None:
-        """``SaveAs``: a ``.root`` file holding this object alone."""
+        """``SaveAs``: a ``.root`` file holding this object alone - or, for a ``.C`` or ``.cc``
+        name, the macro that remakes it, which is what ROOT's own ``SaveAs`` writes there by
+        calling the object's ``SavePrimitive``."""
+        if str(filename).endswith(MACRO_SUFFIXES):
+            self._save_macro(str(filename), option)
+            return
         from .files import TFile
 
         target = TFile(filename or f"{self.GetName()}.root", "RECREATE")
         target.WriteTObject(self)
         target.Close()
         print(f"Info in <TObject::SaveAs>: ROOT file {target.GetName()} has been created")
+
+    def _save_macro(self, target: str, option: str) -> None:
+        """The macro ``TObject::SaveAs`` writes: the two comment lines naming the object and
+        ROOT's own version, then whatever ``SavePrimitive`` writes, all in braces."""
+        from pathlib import Path
+
+        from .troot import gROOT
+
+        named = f"{self.GetName()}/{self.GetTitle()}"
+        lines = ["{", f"//========= Macro generated from object: {named}"]
+        lines.append(f"//========= by ROOT version{gROOT.GetVersion()}")
+        self.SavePrimitive(lines, option)
+        lines.append("}")
+        Path(target).write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+        self.Info("SaveAs", "C++ Macro file: %s has been generated", target)
+
+    def SavePrimitive(self, out: list[str], option: str = "") -> None:
+        """``SavePrimitive``: the statements a macro needs to remake this object, appended to
+        ``out`` - each line with its three-space indent and its newline.
+
+        ROOT's own writes nothing at all: a class that keeps state in its own members overrides
+        this one, which is why a bare ``TObject``'s macro is two comment lines in braces.
+        """
+
+    @staticmethod
+    def SavePrimitiveDraw(out: list[str], name: str, option: str = "") -> None:
+        """``SavePrimitiveDraw``: the ``Draw`` a macro ends with, unless the option says
+        ``nodraw`` - which a histogram being saved as part of something larger asks for."""
+        if "nodraw" in str(option):
+            return
+        drawn = f'"{option}"' if option else ""
+        out.append(f"   {name}->Draw({drawn});")
 
     def Delete(self, option: str = "") -> None:
         """``Delete``: forget this object where it is listed, which is all Python lets go of."""
