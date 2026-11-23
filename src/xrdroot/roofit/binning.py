@@ -134,6 +134,9 @@ class RooRangeBinning(RooUniformBinning):
 class RooBinning(RooAbsBinning):
     """Boundaries of any spacing, added one at a time or a uniform run at a time."""
 
+    #: Ownership of the end boundaries in a native file, retained during file-to-file copies.
+    _streamed_bounds: tuple[bool, bool]
+
     def __init__(self, *args: Any) -> None:
         name = str(args[-1]) if args and isinstance(args[-1], str) else ""
         numbers = [a for a in args if not isinstance(a, str)]

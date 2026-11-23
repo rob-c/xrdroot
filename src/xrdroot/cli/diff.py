@@ -8,9 +8,10 @@
 
 The names in each directory, the class of each, and then what each holds:
 a histogram's edges, contents, errors and entries, a graph's points and
-bars, a tree's entries column by column, a function's parameters, and the
-members of anything else. Numbers are the same within ``--atol`` and
-``--rtol`` - exactly, unless told otherwise - with NaN the same as NaN.
+bars, a tree's entries column by column, a function's parameters, a
+workspace's model and data, and the members of anything else. Numbers are
+the same within ``--atol`` and ``--rtol`` - exactly, unless told otherwise -
+with NaN the same as NaN.
 
 The exit status is ``diff``'s: 0 for the same, 1 for different, 2 for
 trouble. An object neither side can read is said on standard error and
@@ -32,7 +33,10 @@ from ..file import Directory, open_root
 from ..function import Function
 from ..graph import Graph
 from ..hist import Histogram
+from ..roofit.io.compare import workspace as workspace_values
+from ..roofit.workspace import RooWorkspace
 from ..tree import Jagged
+from .processids import aliases, normalized
 from .target import CONTAINERS, location, resolve
 
 __all__ = ["add_parser", "run", "Tolerance", "compare"]
@@ -129,7 +133,10 @@ def _keys(one: Directory, two: Directory, name: str, path: str, tolerance: Toler
         values = one[name], two[name]
     except ROOTError as why:
         sys.stderr.write(f"xrdroot diff: {path} not compared: {why}\n")
+        yield f"{path}: not compared: {why}"
         return
+    if mine == "TProcessID":
+        values = normalized(values[0], aliases(one)), normalized(values[1], aliases(two))
     yield from _values(*values, path, tolerance)
 
 
@@ -279,6 +286,10 @@ def _arrays(one: Any, two: Any, path: str, tolerance: Tolerance) -> Found:
     return _numbers(one, two, path, tolerance)
 
 
+def _workspaces(one: Any, two: Any, path: str, tolerance: Tolerance) -> Found:
+    return _values(workspace_values(one), workspace_values(two), path, tolerance)
+
+
 def _is_table(value: Any) -> bool:
     return callable(getattr(value, "readable", None)) and hasattr(value, "iterate")
 
@@ -293,6 +304,7 @@ def _is_number(value: Any) -> bool:
 
 #: What two objects are compared as, the first test both pass winning.
 COMPARISONS: list[tuple[Callable[[Any], bool], Callable[[Any, Any, str, Tolerance], Found]]] = [
+    (_kind(RooWorkspace), _workspaces),
     (_is_table, _tables),
     (_kind(Histogram), _histograms),
     (_kind(Graph), _graphs),

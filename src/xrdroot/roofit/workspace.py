@@ -58,6 +58,38 @@ class RooWorkspace(RooPrintable):
     def SetTitle(self, title: str) -> None:
         self._title = str(title)
 
+    def writeToFile(self, fileName: str, recreate: bool = True) -> bool:
+        """Save native ROOT records without relying on a ROOT runtime installation."""
+        from ..errors import FormatError
+        from .io.wworkspace import output, workspace, write_workspace
+
+        workspace(self, 0)  # Refuse unsupported payloads before truncating an existing file.
+        try:
+            with output(fileName, recreate) as target:
+                write_workspace(target, self.GetName(), self)
+        except (OSError, FormatError):
+            return False
+        return True
+
+    def _write_into(self, directory: Any, name: str) -> int:
+        """The actual file key supplies both ROOT's return count and visible metadata."""
+        from .io.wworkspace import write_workspace, written_key
+
+        writer = directory._writable()
+        identity = write_workspace(writer, name, self)
+        key = directory._note_key(name, self.GetTitle(), self.ClassName())
+        key._key = written_key(writer, name, self.ClassName())
+        if identity is not None:
+            process = directory.GetFile()._note_key(*identity, "TProcessID")
+            process._key = written_key(writer._file, identity[0], "TProcessID")
+        return int(key.GetNbytes())
+
+    def Write(self, name: str = "", option: int = 0, bufsize: int = 0) -> int:
+        from ..pyroot.core.directories import current_directory
+
+        write = getattr(current_directory(), "WriteTObject", None)
+        return int(write(self, name or self.GetName())) if write is not None else 0
+
     # -- importing ----------------------------------------------------------------
 
     def Import(self, obj: Any, *args: Any, **kwargs: Any) -> bool:
@@ -88,6 +120,7 @@ class RooWorkspace(RooPrintable):
         for node in top._walk():
             if node.GetName() in self._nodes:
                 continue
+            node.setAttribute("SnapShot_ExtRefClone")
             self._nodes[node.GetName()] = node
             held = getattr(node, "dataHist", None)
             if callable(held) and held() is not None:  # a RooHistFunc's data: embedded here
@@ -131,9 +164,13 @@ class RooWorkspace(RooPrintable):
                 f"dataset from  {data.GetName()} to {new}",
             )
             data = _renamed(data, str(new))
+        data = _copied_data(data)
         self._data[data.GetName()] = data
         for var in data.get():
-            self._nodes.setdefault(var.GetName(), var)
+            if var.GetName() not in self._nodes:
+                owned = var.clone(var.GetName())
+                owned.setAttribute("SnapShot_ExtRefClone")
+                self._nodes[var.GetName()] = owned
         return False
 
     # -- the factory --------------------------------------------------------------
@@ -240,7 +277,7 @@ class RooWorkspace(RooPrintable):
         """
         given = {one.GetName(): one for one in self._resolve(params)}
         chosen = [one for key, one in self._nodes.items() if key in given]
-        copies = [one.clone(one.GetName()) for one in chosen]
+        copies = [_snapshot_clone(one) for one in chosen]
         for copy in copies if importValues else ():
             theirs = given[copy.GetName()]
             copy.copy_value_from(theirs)
@@ -322,6 +359,19 @@ def _renamed(data: Any, name: str) -> Any:
 
     made = copy.copy(data)
     made.SetName(name)
+    return made
+
+
+def _copied_data(data: Any) -> Any:
+    """Workspace imports own their rows and cloned observables, as RooAbsData::Clone does."""
+    import copy
+
+    return copy.deepcopy(data)
+
+
+def _snapshot_clone(node: Any) -> Any:
+    made = node.clone(node.GetName())
+    made.setAttribute("SnapShot_ExtRefClone")
     return made
 
 

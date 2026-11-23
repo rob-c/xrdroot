@@ -202,7 +202,7 @@ def test_a_later_batch_counts_its_entries_from_where_it_starts(capsys, pair, mon
     assert out == ["t.x: entries differ in 1 of 3 places, first at 5: 5.0 and -1.0"]
 
 
-def test_an_object_neither_side_reads_is_said_on_standard_error_and_not_counted(
+def test_an_object_neither_side_reads_fails_comparison_with_exact_diagnostics(
     capsys, monkeypatch
 ):
     real = Directory.__getitem__
@@ -214,7 +214,7 @@ def test_an_object_neither_side_reads_is_said_on_standard_error_and_not_counted(
 
     monkeypatch.setattr(Directory, "__getitem__", refusing)
     status, out, err = diffed(capsys, data("graphs.root"), data("graphs.root"))
-    assert (status, out) == (0, [])
+    assert (status, out) == (1, ["tg: not compared: tg is refused here"])
     assert err == "xrdroot diff: tg not compared: tg is refused here\n"
 
 

@@ -41,10 +41,11 @@ CUSTOM: dict[str, Callable[[Reader, Any], Any]] = {}
 class Streamed:
     """One object as the file holds it: its class, and its members by name."""
 
-    __slots__ = ("cls", "m")
+    __slots__ = ("cls", "m", "version")
 
     def __init__(self, cls: str) -> None:
         self.cls = cls
+        self.version: int | None = None
         self.m: dict[str, Any] = {}
 
     def get(self, name: str, default: Any = None) -> Any:
@@ -91,12 +92,19 @@ class Reader:
         return list(form.unpack_from(self.buf.data, self.buf._span(form.size)))
 
     def tobject(self) -> dict[str, int]:
-        unique, bits = self.buf.tobject()
-        return {"fUniqueID": unique, "fBits": bits}
+        self.buf.u16()
+        unique, bits = self.buf.u32(), self.buf.u32()
+        found = {"fUniqueID": unique, "fBits": bits}
+        if bits & (1 << 4):
+            found["pid"] = self.buf.u16()
+        return found
 
     def tnamed(self) -> dict[str, Any]:
-        name, title = self.buf.named()
-        return {"fName": name, "fTitle": title}
+        _version, end = self.buf.header()
+        identity = self.tobject()
+        name, title = self.buf.string(), self.buf.string()
+        self.buf.resume(end)
+        return {"fName": name, "fTitle": title, "TObject": identity}
 
     # -- objects ------------------------------------------------------------------
 
@@ -133,6 +141,7 @@ class Reader:
             custom(self, made)
             return made
         version, end = self.buf.header()
+        made.version = version
         if version == 0:
             self.buf.u32()  # a class with no version of its own writes a checksum instead
         self.members(made, cls)

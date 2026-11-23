@@ -2,9 +2,8 @@
 
 The import messages, the ``Print`` of a workspace and the objects the
 factory builds were printed by ROOT itself through PyROOT for the same
-calls. The engine's workspace holds the objects it is given rather than
-clones of them, so where ROOT's answer depends on the clone the test says so
-and pins only what the two share.
+calls. Fresh native clone probes also establish independent dataset rows,
+observable objects and workspace bindings, rather than relying on aliases.
 """
 
 from __future__ import annotations
@@ -88,11 +87,18 @@ def test_importing_a_dataset_and_renaming_it_is_said_as_root_says_it(capsys: Any
         "d2\n"
     )
     assert (w.data("d") is d, w.data("d2").GetName(), w.obj("d") is d) == (
-        True,
+        False,
         "d2",
-        True,
+        False,
     )
     assert ([one.GetName() for one in w.allData()], w.var("x").GetName()) == (["d", "d2"], "x")
+    # Fresh native clone receipt: independent rows and obj() returns the owned dataset.
+    assert w.obj("d") is w.data("d")
+    assert w.data("d").get().find("x") is not d.get().find("x")
+    x.setVal(3.)
+    d.add(RooArgSet(x))
+    assert (d.numEntries(), w.data("d").numEntries()) == (2, 1)
+    assert w.data("d").get(0).find("x").getVal() == 1.
 
 
 def test_a_collection_is_imported_one_member_at_a_time(capsys: Any) -> None:

@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from ...errors import UnsupportedFeatureError
+from ..shared import PROPERTIES, PROPERTIES_LOCK, SharedBinnings
 from .stream import Streamed
 
 __all__ = ["Builder", "MAKERS"]
@@ -38,9 +39,33 @@ class Builder:
 
     def __init__(self) -> None:
         self.made: dict[int, Any] = {}
+        self.validated_schema: set[int] = set()
+        self.shared_binnings: dict[tuple[Any, ...], SharedBinnings] = {}
+        self._building = False
 
     def node(self, record: Any) -> Any:
         """The engine's object for ``record``, made the first time it is asked for."""
+        if self._building:
+            return self._node(record)
+        with PROPERTIES_LOCK:
+            return self._transaction(record)
+
+    def _transaction(self, record: Any) -> Any:
+        saved = (self.made.copy(), self.validated_schema.copy(), self.shared_binnings.copy())
+        self._building = True
+        try:
+            made = self._node(record)
+            PROPERTIES.update(self.shared_binnings)
+            return made
+        except BaseException:
+            # Makers can register an unfinished workspace so its children can refer back.
+            # A refused graph must never leave those incomplete objects reusable.
+            self.made, self.validated_schema, self.shared_binnings = saved
+            raise
+        finally:
+            self._building = False
+
+    def _node(self, record: Any) -> Any:
         if record is None:
             return None
         found = self.made.get(id(record))
@@ -53,7 +78,9 @@ class Builder:
                 "engine does not have, so the model it is part of cannot be read"
             )
         from ..pdf import UNCHECKED
+        from .schema import validate
 
+        validate(record, self.validated_schema)
         UNCHECKED[0], was = True, UNCHECKED[0]
         try:
             made = make(self, record)
@@ -61,7 +88,13 @@ class Builder:
             UNCHECKED[0] = was
         self.made[id(record)] = made
         if hasattr(made, "_attributes"):
+            from .links import validate as proxy_links
+
+            made._persisted_proxy_order = proxy_links(record)
             dress(made, record)
+        config = record.get("_specIntegratorConfig")
+        if config is not None:
+            made.setIntegratorConfig(self.node(config))
         return made
 
     def nodes(self, records: Any) -> list[Any]:
@@ -98,6 +131,15 @@ def dress(node: Any, record: Streamed) -> None:
     if record.get("_forceNumInt"):
         node.setForceNumInt(True)
     _unit(node, record.get("_unit"))
+    _labels(node, record)
+
+
+def _labels(node: Any, record: Streamed) -> None:
+    label, norm_range = record.get("_label"), record.get("_normRange")
+    if label:
+        node.setPlotLabel(str(label))
+    if norm_range:
+        node.setNormRange(str(norm_range))
 
 
 def _unit(node: Any, unit: Any) -> None:
