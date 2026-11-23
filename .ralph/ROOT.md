@@ -2396,6 +2396,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 89 | `4b186d80` | **one target, measured before it was believed**: `W0-202`'s 20 rows, bucketed - `tools/tutorials record-order` records ROOT's *own* other draw of a tutorial where only the order of its lines differs, as one more `known_orders` entry, and `record-flaky` keeps the runs whose lines really differ | **14 of the 20 rows are gone**: the 19 listed tutorials measured again are **14 PASS / 5 DIFF** (`…/ralph-round-202611232108/after`) where they were 19 DIFF; `known_orders` grew from 3 tutorials to 22 (492 K), 21 draws recorded. The cause, measured: ROOT prints `rf110_normintegration.py`'s same lines in another order run to run (`affc425ea823` vs `e01d8b4750aa`, ours byte-identical to the second), so the harness's positional comparison failed an output ROOT itself produced | 3: `W0-203` (a degenerate-minimum fit), `W0-204` (Minuit2 `status = 3` where we say 0), `W0-205` (two message lines in the other order); `W0-202` closed, `W0-201` **corrected** (the `TCanvas::Print` word goes to stderr, which is not compared) |
 | 90 | `30b2045d` | **one target, priced before it was written**: `W0-204`/`W0-205` probed against the oracle with the tutorial's own data, model and options - and both turned out to be one class, so the round landed the piece that was genuinely missing (`RooRealVar::setVal`'s out-of-range warning) and recorded the rest as a machine class | **0 tutorials flip, and that is the result**: `rf612`'s recovery fit runs on **identical toy data** (mean `3.9831043004248508`, same first five events) to ROOT's `status 3`/`edm 15424.9`/`minNll 29774.18750976386` against our `status 0`/`edm 4.8e-09`/`29650.877364827433` - ours is the better minimum of the same landscape, and Minuit's path down a flat valley is chaotic; `IntervalExamples`' missing warning line is the same thing one ulp down. `84742600` makes `setVal` warn where ROOT warns, word for word, with `enableSilentClipping` as the switch. Gate `TOTAL 125429 0 31458 0 100%` (13 887 + 44) | 2: `W0-206` (ROOT *raises* `invalid_argument` where this kit clips, beyond one epsilon), `W0-207` (five roofit tutorials are pinned to ROOT's machine); `W0-204`/`W0-205` **re-classed** |
 | 91 | `c0e181b5` | **one target, then the round's own whole-group run**: `W0-206` - `RooAbsRealLValue.setVal` raises where ROOT raises (`160f81a4`), and the survey it asked for found exactly one internal caller that leaned on silent clipping | **the roofit tutorial group at the tip: PASS 136 / DIFF 57 / FAIL 21 / UNSUPPORTED 19 / SKIP 9 / ORACLE-FAIL 4 / FLAKY 9** (`…/ralph-round-202611232156/tut2`), against round 88's 124 / 69 - rounds 89-90's draws are the first +8, these four the rest. **And the run caught round 90's regression**: its out-of-range warning fired for a NaN and for the `-2.05502e-17` a limited parameter comes back as, so `rf601_intminuit.C`/`.py` and `rf606_nllerrorhandling.C`/`.py` had gone PASS -> DIFF unmeasured. `20460752` keeps a NaN silently and puts an epsilon-out minimiser value back on its limit; the four PASS again. 2 508 roofit/roostats tests pass; gate `TOTAL 125443 0 31464 0 100%` (13 889 + 44) | 1: `W0-208` (`rs101_limitexample` needs `MCMCInterval.GetChainAsDataSet`); `W0-206` closed, `W0-207` re-confirmed |
+| 92 | `c1026d40` | **one target, and its wall removed**: `W0-208` - `MarkovChain.GetAsDataSet`, `MCMCInterval.GetChainAsDataSet` and `RooStats::GetAsTTree` (`b3a4106b`), the two bridges `rs101_limitexample` stops at | **0 tutorials flip, and the wall is gone**: `rs101_limitexample.C`/`.py` go from **exit 1** (a missing `GetChainAsDataSet`, then a `RooStats::GetAsTTree` refusal) to **exit 0** printing `plotting the chain data - nentries = 9557` (`…/ralph-round-202611232254/rs101`), and both are DIFF on **one cause** - a `RooArgSet`'s order, which ROOT keeps differently in the minimiser's message and in the result (`W0-209`). Round 91's `_at_limit` returned `Any`, which no gate had asked (`W0-210`). Gate `TOTAL 125497 0 31484 0 100%` (13 894 + 44) | 2: `W0-209` (a `RooArgSet`'s order is not one order in ROOT), `W0-210` (round 91 ran ruff and not mypy); `W0-208` closed |
 
 ## Notes
 
@@ -3360,3 +3361,37 @@ suite prints, quoted a green unit gate, and did not run a single tutorial - so i
 that it had turned four PASSes into DIFFs. A round that touches anything RooFit prints must run the
 tutorial group it affects, even when no queue row asks for it. `rs101_limitexample`'s
 `MCMCInterval.GetChainAsDataSet` is the one new gap the run surfaced (`W0-208`).
+
+## Round 92's close
+
+Round 92 took `W0-208`, the row round 91's whole-group run had surfaced, and removed both walls
+the tutorial stands behind - so `rs101_limitexample` now runs to its end.
+
+**The two bridges, from ROOT's own source.** `MarkovChain::GetAsDataSet` hands the chain's points
+over as a `RooDataSet` of the parameters, the likelihood as a variable of its own
+(`nll_MarkovChain_local_`) and the steps it stayed as the dataset's weight
+(`roofit/roostats/src/MarkovChain.cxx:128`); `MCMCInterval::GetChainAsDataSet` is a delegation
+(`inc/RooStats/MCMCInterval.h:203`); and `RooStats::GetAsTTree`
+(`src/RooStatsUtils.cxx:311`) fills a `TTree` with one `"%s/D"` branch a column, in `std::map`'s
+alphabetical order, with `_errlo`/`_errhi` or `_err` beside a variable that carries an error and
+`-999` for a branch no entry fills. Both are here now: the dataset in
+`roostats/markov.py`/`mcmc.py`, the tree in `pyroot/roostats/asdata.py` (it returns a `TTree`, a
+`pyroot` object, so that is where it lives).
+
+**Measured.** Round 91's run of `rs101_limitexample.py` stopped at
+`'MCMCInterval' object has no attribute 'GetChainAsDataSet'`; then at a full-sentence
+`ROOT has RooStats::GetAsTTree`; now it prints `plotting the chain data - nentries = 9557` and
+exits 0 (`…/rs101`, both files exit 0).
+
+**What is left is one cause, and it is a `RooArgSet`'s order.** ROOT prints
+`... normalize constraints with respect to the parameters (ratioSigEff,ratioBkgEff)` from its
+minimiser and `Nuisance Parameters: RooArgSet:: = (ratioBkgEff,ratioSigEff)` from its result -
+**the same two parameters in two orders, alphabetical in the result** - where this kit uses one
+order for both. So each file differs in exactly one of the two lines, and `.py`'s `box` plot
+follows the nuisance order (similarity 0.7972). That is `W0-209`, and it is a real question about
+`RooFitResult`, not about this round's code.
+
+**The round's process finding.** Round 91 reported "ruff clean" and its `_at_limit` returned `Any`
+from a function declared `-> float` for a whole round; this round's `mypy` named it
+(`minimizer.py:83`, fixed in `b3a4106b`). The gate is seven commands and every one of them is the
+gate - `W0-210`.
