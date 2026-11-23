@@ -76,7 +76,7 @@
  "gtest/hist/hist/testTH3": "PASS",
  "gtest/hist/hist/testTHStack": "PASS",
  "gtest/hist/hist/testTHn": "UNSUPPORTED",
- "gtest/hist/hist/testTKDE": "FAIL",
+ "gtest/hist/hist/testTKDE": "PASS",
  "gtest/hist/hist/testTMultiGraphGetHistogram": "PASS",
  "gtest/hist/hist/testTProfile2Poly": "PASS",
  "gtest/hist/hist/test_TEfficiency": "FAIL",

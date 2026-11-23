@@ -434,19 +434,6 @@ def test_a_tkde_says_the_row_of_members_a_file_holds():
     assert row["fNEvents"] == 4 and len(row["fSettedOptions"]) == 4
 
 
-def test_the_one_member_a_tkde_has_no_writer_for_is_a_vector_of_bools():
-    """What stands between a ``TKDE`` and a file, named so the next round starts here (``W0-188``).
-
-    ``fSettedOptions`` is a ``vector<bool>``, and :data:`~xrdroot.writer.STL_WRITERS` has no
-    writer for one - the four ``_io`` cases of ``gtest/hist/hist/testTKDE`` are waiting for
-    exactly that, and for nothing else: the layout, the row and the option words are all here.
-    """
-    from xrdroot.writer import STL_WRITERS
-
-    assert "vector<bool>" not in STL_WRITERS
-    assert "vector<double>" in STL_WRITERS
-
-
 def test_a_container_written_by_roots_newer_spelling_is_the_same_container():
     """ROOT 6.40 writes ``kSTL`` as 300 (``ROOT::kSTLany``); an older file says 500.
 
@@ -459,3 +446,68 @@ def test_a_container_written_by_roots_newer_spelling_is_the_same_container():
     assert stl and set(stl) == {300}
     older = [e[3] for e in INFOS["TF1"][2] if e[0] == "TStreamerSTL"]
     assert older and set(older) == {500}
+
+
+def test_a_tkde_written_to_a_file_is_the_estimate_it_was(tmp_path):
+    """The round trip: the density the file gives back is the one that went in, to twelve digits.
+
+    A ``TKDE`` streams itself (``root_payload``) through the writer's ``record_payload``, and
+    ``register_members`` makes a ``TKDE`` of the record again - so a file this kit writes is the
+    estimate it wrote, not a second estimate of the same sample.
+    """
+    import numpy as np
+
+    import xrdroot.pyroot as ROOT
+
+    data = np.array([1.0, 2.0, 2.5, 5.0])
+    made = ROOT.TKDE(4, data, 0.0, 20.0)
+    made.SetName("kde")
+    made.SetTitle("a kde")
+    before = [float(made.GetValue(x)) for x in (1.0, 2.0, 3.0)]
+    path = tmp_path / "kde.root"
+    written = ROOT.TFile(str(path), "RECREATE")
+    assert written.WriteTObject(made) == 1
+    written.Close()
+    opened = ROOT.TFile(str(path))
+    back = opened.Get("kde")
+    assert isinstance(back, ROOT.TKDE)
+    assert back.GetName() == "kde" and back.GetTitle() == "a kde"
+    assert [float(back.GetValue(x)) for x in (1.0, 2.0, 3.0)] == before
+
+
+def test_a_vector_of_bools_has_a_writer_and_its_record_is_the_layout_s_own():
+    """``fSettedOptions`` is the one member of a ``TKDE`` a file holds as a ``vector<bool>``.
+
+    ``TStreamerSTL`` with ``fCtype = kBool`` writes how many and then a byte each, the way this
+    kit reads one back (``buffer.on_disk`` makes a ``bool`` a ``u1``), and the record built from
+    the layout is what a ``TKDE`` writes itself (``W0-188``). A four-byte bool would leave the
+    record four bytes short per flag, and the density read back with it would not be the one
+    written.
+    """
+    import numpy as np
+
+    from xrdroot.pyroot.core.tkde import TKDE
+    from xrdroot.winfo import INFOS
+    from xrdroot.writer import STL_WRITERS, record_payload
+
+    assert "vector<bool>" in STL_WRITERS
+    assert [e[9] for e in INFOS["TKDE"][2] if e[1] == "fSettedOptions"] == [(1, 18)]
+    made = TKDE(4, np.array([1.0, 2.0, 2.5, 5.0]), 0.0, 20.0)
+    payload, used = record_payload("TKDE", made.members)
+    assert "TKDE" in used and "TNamed" in used
+    assert len(payload) == len(made.root_payload(0)[0])
+
+
+def test_a_class_with_no_layout_is_refused_when_its_row_is_laid_out():
+    """``record_payload`` writes a class ``winfo`` describes, and refuses any other by name.
+
+    A row of members means nothing without the layout that says what each one is, so a name
+    with no layout in :data:`~.xrdroot.winfo.INFOS` is a refusal rather than a record of guesses.
+    """
+    import pytest
+
+    from xrdroot.errors import UnsupportedFeatureError
+    from xrdroot.writer import record_payload
+
+    with pytest.raises(UnsupportedFeatureError, match="NotAClass"):
+        record_payload("NotAClass", {})

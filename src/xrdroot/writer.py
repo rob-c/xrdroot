@@ -718,6 +718,17 @@ def _doubles(buf: WBuffer, name: str, value: Any) -> None:
     _numbers(buf, "d", values)
 
 
+def _bools(buf: WBuffer, name: str, value: Any) -> None:
+    """A ``vector<bool>``: how many, then each as the byte C++ keeps one in.
+
+    ``TStreamerSTL`` with ``fCtype = kBool`` is a count and a byte per element, which is how
+    this kit reads one back too (``buffer.on_disk``'s ``bool`` is a ``u1``).
+    """
+    values = np.asarray(value if value is not None else (), dtype=np.uint8).ravel()
+    buf.u32(len(values))
+    buf.raw(values.astype("u1").tobytes())
+
+
 def _strings(buf: WBuffer, name: str, value: Any) -> None:
     """A ``vector<string>``: how many, then each as a length and its bytes."""
     values = list(value or ())
@@ -801,6 +812,7 @@ MEMBER_WISE_TYPES = frozenset({"vector<TAttFill>", "vector<TAttLine>"})
 #: The STL members of the function classes, by the type the layout names.
 STL_WRITERS: dict[str, Callable[[WBuffer, str, Any], None]] = {
     "vector<double>": _doubles,
+    "vector<bool>": _bools,
     "vector<string>": _strings,
     "vector<TArrayD>": _arrays,
     "vector<TAttFill>": _att_fill,
@@ -1313,6 +1325,23 @@ def _object_payload(
 
 #: An object's bytes for whatever streams one inside its own record, as a measurement does.
 object_payload = _object_payload
+
+
+def record_payload(classname: str, row: dict[str, Any]) -> tuple[bytes, tuple[str, ...]]:
+    """A class's record bytes from a row of its members, and the layouts they needed.
+
+    The way in for a class the engine does not own - a ``TKDE`` is a ``pyroot`` object and this
+    module may not import one - so it streams itself through its own ``root_payload`` and this
+    lays the bytes out from :data:`~.winfo.INFOS`'s description of the class.
+    """
+    if classname not in INFOS:
+        raise UnsupportedFeatureError(
+            f"a {classname} is not a class this writer carries a layout for"
+        )
+    buf = WBuffer()
+    used: dict[str, None] = {}
+    _record(buf, classname, row, used)
+    return bytes(buf.data), tuple(used)
 
 
 def _keylen(classname: str, name: str, title: str, extra: int = 0) -> int:

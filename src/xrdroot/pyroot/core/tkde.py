@@ -167,6 +167,22 @@ class TKDE(TNamed):
             "fSettedOptions": [bool(value) for value in self._setted],
         }
 
+    #: The class ROOT streams this as, and the name a file's key carries.
+    classname = "TKDE"
+
+    def root_payload(self, keylen: int) -> tuple[bytes, tuple[str, ...], dict[Any, bytes]]:
+        """The record's bytes, ROOT's classes it reached and the descriptions it carries.
+
+        ``keylen`` is what the record knows of the key in front of it, and nothing here needs
+        one: every byte count inside the record is counted from the record's own start, so the
+        same estimate is the same bytes under any name. A ``TKDE`` is a ``pyroot`` object, so
+        the engine's writer cannot know its class - it asks for these bytes instead.
+        """
+        from xrdroot.writer import record_payload
+
+        payload, used = record_payload(self.classname, self.members)
+        return payload, used, {}
+
     # -- construction ------------------------------------------------------------------------
 
     def _instantiate(self, events: int, data: Any, weights: Any, numbers: Any) -> None:
@@ -642,3 +658,81 @@ class TKDE(TNamed):
             "Richardson's method, which this does not compute. Compare the estimate with the "
             "density it comes from instead, as ROOT's own test does"
         )
+
+
+# -- a TKDE read back out of a file -------------------------------------------------------------
+
+#: How a file's streamer spells each option, in the order ``EMirror`` numbers them, and the binning.
+_WORD_MIRRORS = (
+    "noMirror", "mirrorLeft", "mirrorRight", "mirrorBoth", "mirrorAsymLeft",
+    "mirrorRightAsymLeft", "mirrorAsymRight", "mirrorLeftAsymRight", "mirrorAsymBoth",
+)  # fmt: skip
+_WORD_BINNINGS = ("unbinned", "relaxedBinning", "forcedBinning")
+
+#: The words the kernel's ``EKernelType`` takes in a formula's option string.
+_WORD_KERNELS = ("Gaussian", "Epanechnikov", "Biweight", "CosineArch")
+
+
+def _option_words(members: dict[str, Any]) -> str:
+    """The constructor's option string from the four option words a file holds."""
+    kernel = _WORD_KERNELS[min(max(int(members.get("fKernelType", 0)), 0), 3)]
+    iteration = "Adaptive" if int(members.get("fIteration", ADAPTIVE)) == ADAPTIVE else "Fixed"
+    mirror = _WORD_MIRRORS[min(max(int(members.get("fMirror", 0)), 0), 8)]
+    binning = _WORD_BINNINGS[min(max(int(members.get("fBinning", RELAXED_BINNING)), 0), 2)]
+    return f"KernelType:{kernel};Iteration:{iteration};Mirror:{mirror};Binning:{binning}"
+
+
+def _held_numbers(held: dict[str, Any], name: str) -> np.ndarray[Any, Any]:
+    """A file's member as numbers - an array of none when it holds none."""
+    return np.asarray(held.get(name) if held.get(name) is not None else (), dtype=np.float64)
+
+
+def _arguments(held: dict[str, Any]) -> tuple[Any, ...]:
+    """``TKDE``'s constructor arguments, out of the members a file holds."""
+    events = _held_numbers(held, "fEvents")
+    weights = _held_numbers(held, "fEventWeights")
+    return (
+        int(held.get("fNEvents", events.size)),
+        events if events.size else None,
+        weights if weights.size else None,
+        float(held.get("fXMin", 0.0)),
+        float(held.get("fXMax", 0.0)),
+        _option_words(held),
+        float(held.get("fRho", 1.0)),
+    )
+
+
+def _restore(made: TKDE, held: dict[str, Any]) -> None:
+    """Put the numbers the file kept over the ones the constructor worked out."""
+    made._data = _held_numbers(held, "fData")
+    made._bin_count = _held_numbers(held, "fBinCount")
+    made._sum_of_counts = float(held.get("fSumOfCounts", 0.0))
+    made._use_bins_events = int(held.get("fUseBinsNEvents", 10000))
+    made._mean = float(held.get("fMean", 0.0))
+    made._sigma = float(held.get("fSigma", 0.0))
+    made._sigma_rob = float(held.get("fSigmaRob", 0.0))
+    made._adaptive_factor = float(held.get("fAdaptiveBandwidthFactor", 1.0))
+    made._weight_size = float(held.get("fWeightSize", 0.0))
+    made._setted = [bool(value) for value in _held_numbers(held, "fSettedOptions")]
+    made._kernel = None
+
+
+def tkde_from(members: Any) -> TKDE:
+    """A ``TKDE`` made from the members a file holds - what ``register_members`` calls."""
+    held = dict(members or {})
+    named = held.get("TNamed") or {}
+    made = TKDE(*_arguments(held))
+    made.SetName(str(named.get("fName", "")))
+    made.SetTitle(str(named.get("fTitle", "")))
+    _restore(made, held)
+    return made
+
+
+def _registered() -> None:
+    """Let the reader make a ``TKDE`` of a file's record of one."""
+    from xrdroot.pyroot.core.wrapping import register_members
+
+    register_members("TKDE", tkde_from)
+
+
+_registered()
