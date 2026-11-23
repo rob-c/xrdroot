@@ -84,6 +84,35 @@ def test_a_variable_made_with_no_numbers_is_zero_on_the_whole_line() -> None:
     assert (v.getVal(), v.hasMin(), v.hasMax(), v.isConstant()) == (0.0, False, False, False)
 
 
+def test_a_value_one_epsilon_outside_its_range_is_clipped_with_root_s_warning(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``RooRealVar::setVal``: one ulp past the boundary is ``printOutOfRangeWarning``.
+
+    ROOT measures the distance against ``std::numeric_limits<double>::epsilon()`` absolutely,
+    prints the numbers as a default ``stringstream`` prints them, and clips the value; a
+    value *further* out is the ``invalid_argument`` it raises (the queue's `W0-206`), and
+    ``enableSilentClipping`` turns the warning off again.
+    """
+    x = RooRealVar("mu", "mu", 0.0, -1, 1)
+    x.setVal(1.0000000000000002)
+    said = capsys.readouterr().out.splitlines()
+    assert said[0] == (
+        '[#0] WARNING:InputArguments -- Value 1 is slightly outside the default range [-1, 1] '
+        'of the variable "mu"!'
+    )
+    assert said[1].startswith("The value will be clipped. To restore the dangerous old behavior")
+    assert x.getVal() == 1.0
+
+    RooAbsRealLValue.enableSilentClipping()
+    try:
+        x.setVal(1.0000000000000002)
+        assert capsys.readouterr().out == ""
+    finally:
+        RooAbsRealLValue.enableSilentClipping(False)
+    assert not RooAbsRealLValue.isSilentClippingEnabled()
+
+
 def test_a_value_in_a_range_constructor_is_kept_inside_the_range() -> None:
     """``RooRealVar(x, x, 20, 0, 10)`` starts at the upper end, as ROOT clips it."""
     assert RooRealVar("x", "x", 20, 0, 10).getVal() == 10.0
