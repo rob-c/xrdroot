@@ -584,3 +584,30 @@ def test_a_draw_is_left_out_when_the_option_says_nodraw():
     written: list[str] = []
     ROOT.TH1D("h", "t", 2, 0, 2).SavePrimitive(written, "nodraw")
     expect((any("Draw(" in line for line in written), False), (len(written) > 2, True))
+
+
+def test_a_histogram_a_program_took_out_of_a_directory_and_marked_is_written_so():
+    """ROOT writes the three lines its own ``fDirectory``, ``kNoStats`` and ``fOption`` ask for, and
+    a histogram it holds in a directory or does not mark writes none of them."""
+    ROOT.TH1D.AddDirectory(False)
+    try:
+        histogram = ROOT.TH1D("h", "t", 2, 0, 2)
+        histogram.SetStats(False)
+        histogram.SetOption("HIST")
+    finally:
+        ROOT.TH1D.AddDirectory(True)
+    lines = _saved_macro(histogram, "look.C")
+    name = _variable(lines)
+    expect(
+        (f"   {name}->SetDirectory(nullptr);" in lines, True),
+        (f"   {name}->SetStats(0);" in lines, True),
+        (f'   {name}->SetOption("HIST");' in lines, True),
+    )
+
+
+def test_a_name_root_leaves_alone_gets_no_count_appended():
+    """``ProvideSaveName`` leaves a name holding ``Graph`` or ``_stack_`` as it is, and a ``colz``
+    option with it - those are the members of something larger ROOT has already named."""
+    histogram = ROOT.TH1D("_stack_0", "t", 2, 0, 2)
+    expect((_variable(_saved_macro(histogram, "stack.C")), "_stack_0"))
+
