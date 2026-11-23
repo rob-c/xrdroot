@@ -135,3 +135,16 @@ def test_next_permutation_rewinds_the_last_order_and_leaves_one_element_alone() 
     single = [5]
     assert objects.next_permutation_range(single, 0, None) is False
     assert single == [5]
+    assert objects.next_permutation_range([1, 2, 2], 0, 3) is True
+
+
+def test_the_last_permutation_rewinds_to_the_first_and_one_element_is_the_last() -> None:
+    from xrdroot.cppstd import objects
+
+    rewind = [3, 2, 1]
+    assert objects.next_permutation_range(rewind, 0, None) is False
+    assert rewind == [1, 2, 3]
+    single = [5]
+    assert objects.next_permutation_range(single, 0, 3) is False
+    assert single == [5]
+    assert objects.next_permutation_range([3, 2, 1], 0, 3) is False

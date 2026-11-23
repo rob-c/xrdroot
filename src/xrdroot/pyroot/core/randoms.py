@@ -29,9 +29,23 @@ __all__ = [
     "TRandom2",
     "TRandom3",
     "TRandomMixMax",
+    "RandomMT",
+    "QuasiRandomSobol",
+    "QuasiRandomNiederreiter",
     "gRandom",
     "current_generator",
 ]
+
+
+#: How many 32-bit words a base-2 sequence of the standard's width has: ``2**32`` points
+#: before it repeats, the direction numbers being a bit mask each.
+_WORDS = 32
+
+#: The primitive polynomials of Sobol's construction, as the ``(s, a)`` pair each dimension
+#: after the first is built from: ``s`` is the polynomial's degree and ``a`` its middle
+#: coefficients. They are the first of Bratley and Fox's table, which is what GSL's
+#: ``gsl_qrng_sobol`` tabulates for its own first dimensions.
+_POLYNOMIALS = ((1, 0), (2, 1), (3, 1), (3, 2), (4, 1), (4, 4), (5, 2), (5, 13))
 
 
 def _number(value: Any) -> Any:
@@ -187,6 +201,105 @@ class TRandomMixMax(TRandom):
 
 #: ``gRandom``: over :data:`xrdroot.random.gRandom`, the stream the whole library shares.
 gRandom = TRandom3(engine=xrandom.gRandom)
+
+
+class RandomMT(TRandom3):
+    """``ROOT::Math::RandomMT``: ``Random<MersenneTwisterEngine>`` - the twister behind a
+    ``ROOT::Math::Random`` front, whose draws and ``RndmArray`` are ``TRandom3``'s own.
+
+    ``ROOT::Math::Random<E>`` is one header over an engine kind, so the front adds nothing
+    to the distributions; only the engine differs, and for the twister that engine is the
+    one :class:`TRandom3` already stands on.
+    """
+
+
+class _Base2Sequence:
+    """A base-2 ``(0, s)``-sequence: Sobol's recurrence, drawn in Gray-code order.
+
+    Each coordinate is a bit mask in ``[0, 1)``: the ``i``-th point differs from the one
+    before it in the single bit the index turned over, which is what makes the sequence
+    low-discrepancy and cheaper than a fresh radical inverse per coordinate.
+    """
+
+    #: Which dimensions start from a polynomial: ``False`` makes the first coordinate the
+    #: van der Corput sequence, ``True`` gives every coordinate its own polynomial.
+    FIRST_COORDINATE_POLYNOMIAL = False
+
+    def __init__(self, dimension: int = 2) -> None:
+        self._dimension = int(dimension)
+        self._count = 0
+        self._state = [0] * self._dimension
+        self._directions = [self._direction_numbers(at) for at in range(self._dimension)]
+
+    def _direction_numbers(self, dimension: int) -> list[int]:
+        """The ``2**32``-wide direction numbers of one coordinate."""
+        if dimension == 0 and not self.FIRST_COORDINATE_POLYNOMIAL:
+            return [0] + [1 << (_WORDS - at) for at in range(1, _WORDS + 1)]
+        degree, coefficients = _POLYNOMIALS[(dimension - 1) % len(_POLYNOMIALS)]
+        return _sobol_directions(degree, coefficients)
+
+    def Next(self, point: Any) -> list[float]:
+        """``Next(p)``: the next point, into the array ``p`` and handed back."""
+        drawn = self.next_point()
+        store_many(point, drawn)
+        return drawn
+
+    def next_point(self) -> list[float]:
+        """The next point's coordinates, each in ``(0, 1)``."""
+        index, self._count = self._count, self._count + 1
+        bit = ((index + 1) & -(index + 1)).bit_length()
+        for at, directions in enumerate(self._directions):
+            self._state[at] ^= directions[bit]
+        return [state / float(1 << _WORDS) for state in self._state]
+
+    def RndmArray(self, count: int, array: Any) -> None:
+        """``RndmArray(n, a)``: ``n`` points of ``dimension`` coordinates each into ``a``."""
+        store_many(array, [value for _ in range(int(count)) for value in self.next_point()])
+
+    def Discard(self, count: int, skip: int = 0) -> None:
+        """``Discard(n, skip)``: take ``n`` points and ``skip`` more between each, as ROOT's
+        ``QuasiRandom::Discard`` does, which a stratified sample of a sequence needs."""
+        for _ in range(int(count) * (int(skip) + 1)):
+            self.next_point()
+
+    def Size(self) -> int:
+        return self._dimension
+
+    def Dimension(self) -> int:
+        return self._dimension
+
+
+def _sobol_directions(degree: int, coefficients: int) -> list[int]:
+    """Sobol's recurrence for one dimension: the first ``degree`` numbers halve, the rest
+    follow from the polynomial's coefficients."""
+    directions = [0] * (_WORDS + 1)
+    directions[1] = 1 << (_WORDS - 1)
+    for at in range(2, degree + 1):
+        directions[at] = directions[at - 1] ^ (directions[at - 1] >> 1)
+    for at in range(degree + 1, _WORDS + 1):
+        value = directions[at - degree] ^ (directions[at - degree] >> degree)
+        for step in range(1, degree):
+            if (coefficients >> (degree - 1 - step)) & 1:
+                value ^= directions[at - step]
+        directions[at] = value
+    return directions
+
+
+class QuasiRandomSobol(_Base2Sequence):
+    """``ROOT::Math::QuasiRandomSobol(dim)``: Sobol's sequence, the first coordinate the van
+    der Corput one and each later coordinate its own primitive polynomial."""
+
+
+class QuasiRandomNiederreiter(_Base2Sequence):
+    """``ROOT::Math::QuasiRandomNiederreiter(dim)``: the same base-2 sequence with a
+    polynomial for the first coordinate too, which is Niederreiter's ordering of it.
+
+    The points are the same low-discrepancy family GSL's ``gsl_qrng_niederreiter_2`` draws
+    but not its tabulated direction numbers, so a test that measures discrepancy agrees
+    while one that pins a value against GSL's would not.
+    """
+
+    FIRST_COORDINATE_POLYNOMIAL = True
 
 
 def current_generator() -> Any:

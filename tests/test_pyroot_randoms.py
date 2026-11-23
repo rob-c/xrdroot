@@ -184,3 +184,54 @@ def test_mixmax_is_a_generator_a_histogram_can_be_filled_from():
         return [h.GetBinContent(at) for at in range(0, 22)]
 
     expect((filled(), filled()), (sum(filled()), 1000.0))
+def test_sobols_first_coordinate_is_the_van_der_corput_sequence_and_the_second_its_own():
+    from xrdroot.pyroot.core.randoms import QuasiRandomSobol
+
+    sequence = QuasiRandomSobol(2)
+    assert [sequence.next_point() for _ in range(4)] == [
+        [0.5, 0.5], [0.75, 0.25], [0.25, 0.75], [0.375, 0.375],
+    ]  # fmt: skip
+    assert (sequence.Size(), sequence.Dimension()) == (2, 2)
+
+
+def test_the_niederreiter_order_gives_every_coordinate_a_polynomial_of_its_own():
+    from xrdroot.pyroot.core.randoms import QuasiRandomNiederreiter
+
+    sequence = QuasiRandomNiederreiter(3)
+    assert [sequence.next_point()[0] for _ in range(4)] == [0.5, 0.25, 0.75, 0.375]
+    assert all(0.0 < value < 1.0 for value in sequence.next_point())
+
+
+def test_a_point_and_a_column_of_points_go_into_the_array_the_call_gave():
+    from xrdroot.pyroot.core.randoms import QuasiRandomNiederreiter, QuasiRandomSobol
+
+    point = np.zeros(2)
+    assert QuasiRandomSobol(2).Next(point) == [0.5, 0.5]
+    assert point.tolist() == [0.5, 0.5]
+    column = np.zeros(4)
+    QuasiRandomNiederreiter(2).RndmArray(2, column)
+    assert column.tolist() == [0.5, 0.5, 0.25, 0.25]
+
+
+def test_discard_steps_over_points_with_and_without_a_stride():
+    from xrdroot.pyroot.core.randoms import QuasiRandomSobol
+
+    plain, strided = QuasiRandomSobol(2), QuasiRandomSobol(2)
+    plain.Discard(1)
+    strided.Discard(1, 2)  # one point, then two skipped
+    assert plain.next_point() == [0.75, 0.25]
+    assert strided.next_point() == [0.375, 0.375]
+
+
+def test_the_directions_of_later_coordinates_come_from_the_primitive_polynomials():
+    from xrdroot.pyroot.core.randoms import QuasiRandomSobol
+
+    sequence = QuasiRandomSobol(6)
+    points = [sequence.next_point() for _ in range(8)]
+    assert len({tuple(point) for point in points}) == 8  # eight distinct points of six axes
+    assert all(0.0 < value < 1.0 for point in points for value in point)
+
+
+def test_random_mt_is_the_twister_under_the_random_front():
+    assert ROOT.RandomMT(7).Rndm() == ROOT.TRandom3(7).Rndm()
+    assert ROOT.RandomMT().Rndm() == ROOT.TRandom3().Rndm()

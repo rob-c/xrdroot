@@ -46,6 +46,11 @@ from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools
     Roots,
 )
 from .mathtools import Integrator as _Integrator
+from .randoms import (  # noqa: F401 - ROOT::Math's generators, by name
+    QuasiRandomNiederreiter,
+    QuasiRandomSobol,
+    RandomMT,
+)
 
 #: The fraction of an interval a golden-section search keeps: ``(3 - sqrt 5) / 2``, as
 #: GSL's ``GSL_MIN_GOLDEN_RATIO`` and ROOT's ``GSLMinimizer1D`` use it.
@@ -551,6 +556,9 @@ __all__ = sorted(
         "GradFunctor1D",
         "IntegratorOneDim",
         "LFSR",
+        "QuasiRandomNiederreiter",
+        "QuasiRandomSobol",
+        "RandomMT",
         "WrappedMultiTF1",
         "RootFinder",
     ]
