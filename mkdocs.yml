@@ -59,6 +59,7 @@ nav:
       - TPrincipal and ROOT's LAPACK basis: discoveries/tprincipal-is-implemented-but-principal-s-pca-c-needs-root-s.md
       - Rounds open off main: decisions/rounds-open-off-main-and-merge-back-to-main-the-w0-138.md
   - Maintainability metrics: maintainability.md
+  - Do not refresh the baseline under load: gotchas/do-not-refresh-the-suite-baseline-while-the-loop-s-own-gate-is.md
   - An ungated WIP branch can be complete: discoveries/an-ungated-wip-branch-can-be-complete-code-that-never-ran-the.md
   - Auditing a branch backlog: instructions/auditing-a-branch-backlog-git-cherry-then-a-branch-s-tests.md
   - A merge can cost PASSes through cost: discoveries/a-merge-can-cost-passes-through-cost-not-behaviour-profile-the.md
