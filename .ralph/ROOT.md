@@ -2392,6 +2392,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 85 | `489b800e` | **no workers** - the hands took `W0-155`, priced against the 6.40 oracle first: `RooRealSumPdf.compute` honours ROOT's `isSelectedComp` (a component curve was the whole model), `dependsOn(valueOnly=True)` walks value inputs only as `RooAbsReal::plotOnCompSelect` does, `RooCurve.GetPoint`, and `cppstd.cells.store`/`load` shared with `pyroot.core.refs` | **0 gained, 0 lost**: `gtest/roofit/*` measured at the tip is **9 PASS / 22 FAIL / 16 UNSUPPORTED**, the same 9 as the baseline (`$HOME/.cache/xrdroot-runs/ralph-round-202611231724/roofit`), and `testHistFactoryPlotting` reaches its invariant and stops there (`y2+y3 = 958` against `y1 = 480`). Gate `TOTAL 125363 0 31436 0 100%` (13 863 + 44, `…/gate2.log`) | 2: `W0-196` (**the projection is the wall** - `plotOn`'s component list never reaches `createPlotProjection`, and ROOT's `selectNormalization(&fullNormSet)` is what makes components add up), `W0-197` (`testParamHistFunc` needs the `RooFit::Detail` batch API); `W0-155` **re-priced** with the oracle's 35 points and 2/478/480 |
 | 86 | `34c5bb8c` | **no workers** - the hands took `W0-196`/`W0-155`: `plotSamplingHint` (`RooCurve::plotSamplingHintForBinBoundaries`' `delta = (xhi-xlo)*1e-9` either side of every interior bin edge and of both limits) answered by `RooHistFunc`/`RooHistPdf` and merged by `RooProduct`, `RooRealSumPdf`, `RooProdPdf` and the simultaneous projection, the hint being the whole starting grid; and `RooBinWidthFunction`'s `HistFuncForBinWidth` a **shape** server as ROOT declares it | **gtest +1, 86 -> 87**: `testHistFactoryPlotting` FAIL -> PASS, `gtest/roofit/*` **10 PASS / 21 FAIL / 16 UNSUPPORTED**, no other row moved (`…/ralph-round-202611231820/roofit2`); our three curves are the oracle's 35 points, `diff` of the test's body as a macro empty (`…/probe/ours.txt` vs `oracle.txt`). Gate `TOTAL 125406 0 31452 0 100%` (13 877 + 44, `…/gate1.log`, `-n 2`) | 1: `W0-198` (the `-n 4` gate can read 99 % - `commands.py:463->453`, `LOADED` is per worker); `W0-155`/`W0-196` **closed** |
 | 87 | `8fb8e0ba` | **a measurement round, no code**: `W0-199` priced before it was believed - ten runs of ROOT's own `rf102_dataimport.py` and nine of ours | **0 gained, 0 lost** (nothing changed): the row was **wrong** - a tutorial that hands RooFit a Python `set` flips in ROOT too (7:3 over ten oracle runs, 4:2 and 2:1 over ours), so the 29 `PASS -> DIFF` rows the round-86 ratchet reported are phantoms. `W0-198` reproduced: the `-n 4` gate reads 99 % on one arc and `-n 2` 100 %, while the same file alone covers that arc - an xdist collection artefact, not a missing test | 1: `W0-200` (the tutorial harness must detect an oracle that varies - two samples find nothing at 1 in 3); `W0-199` closed **as a correction**, `W0-198` sharpened |
+| 88 | `aba72d8c` | **two targets, both measured first**: `W0-200` - a tutorial whose own ROOT run varies is `FLAKY`, recorded by `tools/tutorials record-flaky` from repeated oracle runs, and neither a gain nor a loss for the ratchet; and the line-buffering of `xrdroot run` (`cli/run.py::ordered_output`), found while bucketing the rows that stayed | **the roofit tutorial group measured whole**: PASS 124 / DIFF 69 / FAIL 21 / UNSUPPORTED 19 / SKIP 9 / ORACLE-FAIL 4 / FLAKY 9 (`…/ralph-round-202611232004/tut2`), the ratchet's spurious rows **29 -> 20**, and `rf613_global_observables.py` **byte-identical to ROOT's output** where it was the same 14 lines reordered. Nine tutorials recorded as ROOT-nondeterministic. Gate `TOTAL 125412 0 31454 0 100%` (13 885 + 44, `…/gate3.log`) | 2: `W0-201` (`TCanvas::Print`'s one word differs between ROOT's two front ends), `W0-202` (the remaining 20 stdout DIFFs, bucketed); `W0-200` closed |
 
 ## Notes
 
@@ -3192,3 +3193,47 @@ The round's own gate, since nothing in the tree changed: **`TOTAL 125406 0 31452
 disagree `FLAKY`, with `ratchet` treating `FLAKY` as neither a gain nor a loss. Until that exists,
 the roofit tutorial group's 29 stdout rows cannot be quoted either way - and everything else in that
 group (the 13 image diffs, the 21 failures, the 19 refusals) is unchanged from round 86.
+
+## Round 88's close
+
+Round 88 made the tutorial harness stop promising what ROOT cannot, and made `xrdroot run` write in
+the order a program writes.
+
+**The queued row, done.** `W0-200`: `python -m tools.tutorials record-flaky PATH… --runs N` repeats
+ROOT's own run of a tutorial, keeps each *distinct draw* and writes the sentence that tells two draws
+apart; a tutorial so recorded is judged `FLAKY`, quoted with its reason in the report, and **neither a
+gain nor a loss** for `ratchet`. A draw is compared as the *multiset* of its normalised lines, because
+a `.py` tutorial's `print` and RooFit's message stream are two streams into one file and two unchanged
+runs interleave them differently - the same lines in another order are the same draw.
+
+**Nine tutorials are recorded**, each measured over four or five oracle runs: `rf102_dataimport.py`
+(ROOT prints `1) x = 0.0174204` seven times in ten and `1) x = 9.46654` three), `rf403_weightedevts.py`
+(a different PNG every run), `rf404_categories.py` (the category table's order),
+`FourBinInstructional.C`/`.py`, `StandardBayesianNumericalDemo.py`,
+`StandardHistFactoryPlotsWithCategories.py`, `StandardProfileLikelihoodDemo.py` and
+`StandardTestStatDistributionDemo.py` - the last four draw a different picture every run, because they
+generate their own toy data from an unseeded `gRandom`. The roofit group's spurious
+`PASS -> DIFF` rows fall **29 -> 20**.
+
+**The fix the bucketing found.** Of the 20 that stayed, one was bucketed to its cause and it was not
+nondeterminism at all: `rf613_global_observables.py` has the *same lines* as ROOT's run in a different
+order, because a tutorial prints through Python's `print` and the kit prints through its own writer,
+and under a pipe - how a harness always runs one - Python buffers `print` until the process ends.
+`xrdroot run` now line-buffers its stdout (`cli/run.py::ordered_output`), as one `std::cout` does, and
+the tutorial is then **byte-identical to ROOT's** where it differed by 14 reordered lines
+(`…/probe/on.txt` against `…/probe/r.txt`). The same reordering is behind other rows of the group; a
+new test in `tests/test_cint_run_program.py` pins it.
+
+**The gate**, at `e4f1ff53` plus this close's docs commit: **`TOTAL 125412 0 31454 0 100%`** by the
+two-command decomposition (13 885 passed, then 44, `…/gate3.log`, `-n 2`). The round's own first
+gate run caught its own breakage, as usual: two of the harness's `known_orders` tests had read
+`rf404_categories.py`, which this round recorded as `FLAKY`, so they read a tutorial no recording
+calls flaky instead (`rf406_cattocatfuncs.py`) - the gate named it and the tests were repointed, not
+loosened.
+
+**What the next round should know.** `W0-201` is one word: `TCanvas::Print` says `png file x.png has
+been created` under `root -l -b -q` and `file x.png has been created` under the oracle's Python
+(measured both ways this round), and our single message writes the `.C` spelling, so every `.py`
+tutorial that prints a canvas differs by it. `W0-202` is the remaining 20 rows to bucket - the method
+is settled: run both sides, diff with the harness's own `normalise`, and the cause turns out to be one
+file, never twenty.
