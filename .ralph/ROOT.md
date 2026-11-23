@@ -2391,6 +2391,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 84 | `516e979c` | **one target, five names**: ROOT's own `core/clingutils` unit test - `ROOT::TMetaUtils::GetCppName` (the 31-entry encoding every character C++ would not take is spelled as), `GetRealPath`, `ROOT::FoundationUtils::GetCurrentDir`, `gCling` (null, there being no cling here) and POSIX's `symlink` in a new `cppstd/unistd.py` | **gtest +1, the kind 85 -> 86**: `gtest/core/clingutils/coreclingutilstestUnit` goes from two refused cases to both passing (`$HOME/.cache/xrdroot-runs/ralph-round-202611231620/mine`: `{"gtest": {"PASS": 1, "FAIL": 0, ...}}`), and `GetCppName`'s answer is **character for character** the one ROOT's own test pins. Gate `TOTAL 125330 0 31420 0 100%` (13 859 + 44, `…/gate2.log`) | 2: `W0-194` **advanced** (the `MapCppName` encoding `testMapCppName` needs is now here, and ROOT's own file for that canvas was measured: 6646 bytes, 93 lines), `W0-195` (**`gCling` is `None`** - honest, but a dereference of it is a `NoneType` error rather than a full sentence) |
 | 85 | `489b800e` | **no workers** - the hands took `W0-155`, priced against the 6.40 oracle first: `RooRealSumPdf.compute` honours ROOT's `isSelectedComp` (a component curve was the whole model), `dependsOn(valueOnly=True)` walks value inputs only as `RooAbsReal::plotOnCompSelect` does, `RooCurve.GetPoint`, and `cppstd.cells.store`/`load` shared with `pyroot.core.refs` | **0 gained, 0 lost**: `gtest/roofit/*` measured at the tip is **9 PASS / 22 FAIL / 16 UNSUPPORTED**, the same 9 as the baseline (`$HOME/.cache/xrdroot-runs/ralph-round-202611231724/roofit`), and `testHistFactoryPlotting` reaches its invariant and stops there (`y2+y3 = 958` against `y1 = 480`). Gate `TOTAL 125363 0 31436 0 100%` (13 863 + 44, `…/gate2.log`) | 2: `W0-196` (**the projection is the wall** - `plotOn`'s component list never reaches `createPlotProjection`, and ROOT's `selectNormalization(&fullNormSet)` is what makes components add up), `W0-197` (`testParamHistFunc` needs the `RooFit::Detail` batch API); `W0-155` **re-priced** with the oracle's 35 points and 2/478/480 |
 | 86 | `34c5bb8c` | **no workers** - the hands took `W0-196`/`W0-155`: `plotSamplingHint` (`RooCurve::plotSamplingHintForBinBoundaries`' `delta = (xhi-xlo)*1e-9` either side of every interior bin edge and of both limits) answered by `RooHistFunc`/`RooHistPdf` and merged by `RooProduct`, `RooRealSumPdf`, `RooProdPdf` and the simultaneous projection, the hint being the whole starting grid; and `RooBinWidthFunction`'s `HistFuncForBinWidth` a **shape** server as ROOT declares it | **gtest +1, 86 -> 87**: `testHistFactoryPlotting` FAIL -> PASS, `gtest/roofit/*` **10 PASS / 21 FAIL / 16 UNSUPPORTED**, no other row moved (`…/ralph-round-202611231820/roofit2`); our three curves are the oracle's 35 points, `diff` of the test's body as a macro empty (`…/probe/ours.txt` vs `oracle.txt`). Gate `TOTAL 125406 0 31452 0 100%` (13 877 + 44, `…/gate1.log`, `-n 2`) | 1: `W0-198` (the `-n 4` gate can read 99 % - `commands.py:463->453`, `LOADED` is per worker); `W0-155`/`W0-196` **closed** |
+| 87 | `8fb8e0ba` | **a measurement round, no code**: `W0-199` priced before it was believed - ten runs of ROOT's own `rf102_dataimport.py` and nine of ours | **0 gained, 0 lost** (nothing changed): the row was **wrong** - a tutorial that hands RooFit a Python `set` flips in ROOT too (7:3 over ten oracle runs, 4:2 and 2:1 over ours), so the 29 `PASS -> DIFF` rows the round-86 ratchet reported are phantoms. `W0-198` reproduced: the `-n 4` gate reads 99 % on one arc and `-n 2` 100 %, while the same file alone covers that arc - an xdist collection artefact, not a missing test | 1: `W0-200` (the tutorial harness must detect an oracle that varies - two samples find nothing at 1 in 3); `W0-199` closed **as a correction**, `W0-198` sharpened |
 
 ## Notes
 
@@ -3144,3 +3145,50 @@ and in the reverse order once - a hash set's order, where ROOT keeps insertion o
 `ratchet` baseline was recorded on a lucky run. Base-vs-tip diffs of two of the 29 contain only that
 swap plus a timing line the harness already drops, and `rf205_compplot.py`'s PNG is byte for byte
 the same on the base, at the tip, and under the oracle. Queued as `W0-199`.
+
+## Round 87's close
+
+Round 87 wrote no code, and that is its result: the queue row it was given was **wrong**, and
+finding that out took ten runs of ROOT itself.
+
+**The row.** `W0-199` said a dataset lists its observables in a hash set's order where ROOT keeps
+insertion order, and that this made 29 roofit tutorials' stdout a coin toss. The first half is
+true - this kit's `rf102_dataimport.py` printed `1) x = 0.0174204` four times and `1) x =
+9.46654` twice over six runs - but the second is not. The tutorial's own line is
+
+```python
+ds = ROOT.RooDataSet("ds", "ds", {x, y}, Import=tree)
+```
+
+a **Python `set`**, which PyROOT iterates in whatever order the process's memory has laid the two
+`RooRealVar`s out in. ROOT's own output therefore flips as well: ten runs of
+`~/.local/root-oracle/bin/python rf102_dataimport.py`, each in a working copy of its own, gave `x =
+0.0174204` **seven** times and `x = 9.46654` **three** times - and this kit, at four in six and two
+in three, is the same coin at the same rate.
+
+**What that means.** The 29 `PASS -> DIFF: stdout` rows the round-86 ratchet reported are not a
+regression and no code should chase them. They are the baseline promising something no
+implementation can promise for a tutorial that hands RooFit an unordered container.
+
+**The mistake in the measurement, recorded so it is not repeated.** The first sweep ran the oracle
+**twice** per tutorial and flagged **0 of 28** (`…/oracle-varies.log`). At a rate of one in three,
+two samples agree five times in nine - so a two-sample sweep is blind to exactly the effect it was
+looking for. Five runs is the floor; ten is what settled it.
+
+**`W0-198` reproduced, not settled.** The coverage gate at `-n 4` reads `TOTAL 125406 0 31452 1
+99%` with the same single arc missing (`src/xrdroot/pycint/interactive/commands.py:463->453`), twice
+in a row at the round's base, and 100 % at `-n 2` on the same tree. It is not a missing test: the
+file that reaches that arc alone (`pytest tests/test_pycint_interactive_cli.py --cov`) covers it and
+misses four other things instead. So the round records it as an xdist **collection** artefact of
+`-n 4`, keeps the row open with that evidence, and notes the likely resolution - make `-n 2` the
+canonical command and say so, instead of every round rediscovering it.
+
+The round's own gate, since nothing in the tree changed: **`TOTAL 125406 0 31452 0 100%` at
+`-n 2`** (13 877 + 44 passed, `…/gate-n2.log`) and **`TOTAL 125406 0 31452 1 99%` at `-n 4`**
+(`…/gate-n4b.log`) - the same tree, the same 13 877 tests, one arc of difference.
+
+**What the next round should know.** `W0-200` is the harness change the measurement asks for:
+`tools/tutorials run --oracle-repeat N`, marking a tutorial whose *normalised* ROOT outputs
+disagree `FLAKY`, with `ratchet` treating `FLAKY` as neither a gain nor a loss. Until that exists,
+the roofit tutorial group's 29 stdout rows cannot be quoted either way - and everything else in that
+group (the 13 image diffs, the 21 failures, the 19 refusals) is unchanged from round 86.
