@@ -64,6 +64,10 @@ class PolyBins:
         self.squares: np.ndarray[Any, Any] | None = None
         #: Which bins each cell of the search grid holds, built by :meth:`grid`.
         self._table: dict[tuple[int, int], tuple[int, ...]] | None = None
+        #: The bins' boxes as plain tuples, for the fill that rejects a candidate with them.
+        self._boxed: list[tuple[float, float, float, float]] = []
+        #: ``x0, y0, 1/stepx, 1/stepy, ncellsx, ncellsy``, built with the table by :meth:`grid`.
+        self._fast: tuple[float, float, float, float, int, int] = (0.0, 0.0, 1.0, 1.0, 1, 1)
 
     def copy(self) -> PolyBins:
         """A copy of these bins, deep enough that neither histogram can move the other's."""
@@ -73,7 +77,6 @@ class PolyBins:
         made.overflow, made.sums = self.overflow.copy(), list(self.sums)
         made.squares = None if self.squares is None else self.squares.copy()
         return made
-
     def add(self, polygons: Sequence[tuple[Any, Any]]) -> int:
         """A bin of these polygons - each ``(xs, ys)`` - and its number, from 1."""
         made = [([float(v) for v in x], [float(v) for v in y]) for x, y in polygons]
@@ -125,21 +128,39 @@ class PolyBins:
             return float(self.overflow[-number - 1]) if -number <= REGIONS else 0.0
         return float(self.contents[number - 1]) if 0 < number <= len(self.contents) else 0.0
 
-    def region(self, x: float, y: float) -> int:
-        """Which region round the range ``(x, y)`` is in: -1..-9, -5 within the range."""
-        row = -1 if y > self.yrange[1] else -4 if y > self.yrange[0] else -7
-        return row + (-2 if x > self.xrange[1] else -1 if x > self.xrange[0] else 0)
-
     def find(self, x: float, y: float) -> int:
-        """The bin holding ``(x, y)``, or the region it fell in, as ``TH2Poly::Fill`` finds."""
-        region = self.region(x, y)
-        if region != -5:
-            return region
+        """The bin holding ``(x, y)``, or the region it fell in: -1..-9, -5 within the range.
+
+        The region's number is worked out and the search grid's cell looked up here,
+        rather than by a method of their own, and a candidate whose box does not hold
+        the point is dropped before the crossing count is walked: a fill is the hottest
+        method a ``TH2Poly`` has - a program fills one a million times over - and the
+        calls and the wasted crossing counts cost more than the search does.
+        """
+        row = -1 if y > self.yrange[1] else -4 if y > self.yrange[0] else -7
+        column = -2 if x > self.xrange[1] else -1 if x > self.xrange[0] else 0
+        if row + column != -5:
+            return row + column
         table = self._table if self._table is not None else self.grid()
-        for index in table.get(self._key(x, y), ()):
-            for px, py in self.polygons[index]:
-                if inside(px, py, x, y):
-                    return index + 1
+        ox, oy, sx, sy, nx, ny = self._fast
+        key = (min(max(int((x - ox) * sx), 0), nx - 1),
+               min(max(int((y - oy) * sy), 0), ny - 1))  # fmt: skip
+        return self._first(table.get(key, ()), x, y)
+
+    def _first(self, candidates: Sequence[int], x: float, y: float) -> int:
+        """The first of one cell's bins that holds ``(x, y)``, or -5 if none does.
+
+        A bin's box is tested before its crossing count is walked, as no point outside
+        a polygon's box can be inside the polygon: a cell holds about four boxes and
+        the fill reaches the crossing count once rather than four times.
+        """
+        boxes = self._boxed
+        for index in candidates:
+            box = boxes[index]
+            if box[0] <= x <= box[1] and box[2] <= y <= box[3]:
+                for px, py in self.polygons[index]:
+                    if inside(px, py, x, y):
+                        return index + 1
         return -5
 
     def grid(self) -> dict[tuple[int, int], tuple[int, ...]]:
@@ -151,12 +172,12 @@ class PolyBins:
         """
         if self._table is None:
             side = max(1, math.isqrt(max(1, len(self.polygons))))
-            #: ``x0, y0, 1/stepx, 1/stepy, ncellsx, ncellsy``: what a cell lookup needs.
             self._fast = (self.xrange[0], self.yrange[0],
                           side / ((self.xrange[1] - self.xrange[0]) or 1.0),
                           side / ((self.yrange[1] - self.yrange[0]) or 1.0),
                           side, side)  # fmt: skip
             self.steps = (side, side)
+            self._boxed = [tuple(box) for box in self.boxes.tolist()]
             found: dict[tuple[int, int], list[int]] = {}
             for index, box in enumerate(self.boxes.tolist()):
                 for key in self._covered(box):
@@ -171,12 +192,6 @@ class PolyBins:
         y0 = _cell(box[2], self.yrange[0], (self.yrange[1] - self.yrange[0]) or 1.0, self.steps[1])
         y1 = _cell(box[3], self.yrange[0], (self.yrange[1] - self.yrange[0]) or 1.0, self.steps[1])
         return [(ix, iy) for ix in range(x0, x1 + 1) for iy in range(y0, y1 + 1)]
-
-    def _key(self, x: float, y: float) -> tuple[int, int]:
-        """The cell of the grid a point falls in, clamped to it."""
-        ox, oy, sx, sy, nx, ny = self._fast
-        return (min(max(int((x - ox) * sx), 0), nx - 1),
-                min(max(int((y - oy) * sy), 0), ny - 1))  # fmt: skip
 
     def moments(self, w: float, x: float, y: float) -> None:
         """One fill's moments: the weight, its square, and x's and y's, which only a fill
