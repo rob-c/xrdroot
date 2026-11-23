@@ -162,8 +162,15 @@ def test_the_old_spellings_name_the_variables_of_the_shape():
 
 
 def test_parameters_are_numbered_by_their_number_and_named_ones_take_the_next_free():
+    """A number keeps its own index and a name takes the next free one, then ROOT sorts both.
+
+    The sort is ``TFormulaParamOrder``'s, and it is ROOT's own: measured on the 6.40 oracle,
+    ``TF1("[slope]*x+[offset]")`` answers ``GetParName(0)`` ``"offset"`` and ``GetParName(1)``
+    ``"slope"``, so ``SetParameters(1, 2)`` at x = 3 evaluates to 7 - ``offset`` first.
+    """
     assert Function("f", "[0]+[A]*x").parameter_names == ("p0", "A")
-    assert Function("f", "[slope]*x+[offset]").parameter_names == ("slope", "offset")
+    assert Function("f", "[slope]*x+[offset]").parameter_names == ("offset", "slope")
+    assert float(Function("f", "[slope]*x+[offset]", parameters=[1.0, 2.0])(3.0)) == 7.0
     assert Function("f", "[1]*x").parameter_names == ("p0", "p1")
     assert Function("f", "[A]*x+[A]").npar == 1
     assert Function("f", "[0]+[p0]*x").parameter_names == ("p0",)

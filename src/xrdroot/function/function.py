@@ -94,6 +94,16 @@ def _ordered(names: Sequence[str]) -> dict[str, int]:
     return {names[i]: i for i in sorted(range(len(names)), key=lambda i: param_order(names[i]))}
 
 
+def _identities(count: int) -> range:
+    """Every place as it was written: a predefined shape keeps its own parameters' order."""
+    return range(count)
+
+
+def _places(names: Sequence[str]) -> list[int]:
+    """Which name goes to which index, in ``TFormulaParamOrder``."""
+    return sorted(range(len(names)), key=lambda i: param_order(names[i]))
+
+
 class Function(Displayed):
     """A function of one, two or three variables and some parameters, as ROOT's ``TF1`` is.
 
@@ -142,11 +152,13 @@ class Function(Displayed):
                 f"{len(names)} names were given for them"
             )
         text = _renamed(expanded.text, expanded.names, names)
-        tree = parse(text, {label: index for index, label in enumerate(names)})
+        places = _places(names) if not expanded.predefined else list(_identities(len(names)))
+        ranked = tuple(names[at] for at in places)
+        tree = parse(text, {label: index for index, label in enumerate(ranked)})
         limits = _limits(range, _dimensions(tree))
-        values = _values(parameters, len(names), formula)
+        ordered = _values(parameters, len(names), formula)
         heading = title or formula
-        held = formula_members(name, heading, text, names, values, len(limits), expanded.linear)
+        held = formula_members(name, heading, text, ranked, ordered, len(limits), expanded.linear)
         members = function_members(name, heading, limits, len(names), formula=held)
         self._adopt(CLASSES[len(limits)], members, None)
 
