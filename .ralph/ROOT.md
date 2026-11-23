@@ -2378,6 +2378,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 81 | `3e5a19a5` | **none** - no workers: the round opened at a load average of 20-30 after a reboot, and the target priced itself in one probe; the round's own hands wrote it | **gtest +1, the kind 83 -> 84**: `gtest/hist/hist/testTGraphsa` **PASSES all 10 cases** (`$HOME/.cache/xrdroot-runs/ralph-round-202611231323/tgraph`: `{"gtest": {"PASS": 1, "FAIL": 1, ...}}`, the FAIL being `testTGraphSorting`, untouched), because `TGraph::SaveAs` now writes `.csv`/`.tsv`/`.txt` with ROOT's three column sets and its `title`/`asroot`/`native`/`errors`/`asymmerrors`/`noerrors` options, and `TGraph(filename, format, option)` reads one back - and **all ten files are byte for byte what the 6.40 oracle writes** for the same graph (`.../probe/fmt/oracle` against `.../ours`, `cmp` on every one). Gate `TOTAL 125099 0 31362 0 100%` (13 822 + 44, `.../gate3.log`) at `-n 2` under a load average of 24-30 | 2: `W0-190` (`testTH1sa` is a **translator** wall first - a file-scope `struct TestSaveAs` is not a name - and `TH1::SaveAs` second, its bytes measured on the oracle: `fNcells` lines with the flow bins, the file's own delimiter in the header), `W0-191` (ROOT's `%lg` format and delimiter-option reader, refused by name since nothing in the suite asks for it) |
 | 82 | `cbf3803f` | **one target, three commits, and the whole gtest kind measured at the base**: ROOT's own `test_TH1_SaveAs` - a class body's statics and enumerators read the body's own name (`cbf3803f`), `std::ios` and the open modes a stream is given (`6dd2a7de`), and `TH1::SaveAs` as `.csv`/`.tsv`/`.txt` with `TH1::GetBinUpEdge` (`24918aa8`) | **`gtest/hist/hist/testTH1sa` goes from a translation refusal to `{'failed': 1, 'passed': 3}`** (`$HOME/.cache/xrdroot-runs/ralph-round-202611231402/th1sa`), and the three files it writes are **byte for byte what the 6.40 oracle writes** for the same histogram; **the whole gtest kind at the round's base** (`…/gtest-base`, `2fa1a7a9`) is **84 PASS / 189 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350, the first whole figure since round 71 and exactly what rounds 72-81's ledger said | 1: `W0-190` **partly** - its translator half is closed, and its one remaining case needs `TH1::SavePrimitive`, the `.C` macro, which is `testMapCppName`'s wall too |
 | 83 | `2471ff7f` | **one target, priced from the round-82 ranking**: ROOT's own `test_TH1_SaveAs` - `TObject::SaveAs`'s `.C`/`.cc` macro path with `SavePrimitive`/`SavePrimitiveDraw` (`2471ff7f`), `TH1::SavePrimitive` with `ProvideSaveName`/`MapCppName` and `colors.saved` for `TColor::SavePrimitiveColor`, and the three lines a histogram outside a directory writes (`14bb0ec2`) | **gtest +1, the kind 84 -> 85**: `gtest/hist/hist/testTH1sa` **PASSES all four of its cases** (`$HOME/.cache/xrdroot-runs/ralph-round-202611231440/mine`: `{"gtest": {"PASS": 1, "FAIL": 1, ...}}`, the FAIL being `testMapCppName`), and the macro is **byte for byte what the 6.40 oracle writes** for that histogram (`…/probe`, `diff H1dump.C ours.C` empty). Gate `TOTAL 125285 0 31418 0 100%` (13 850 + 44, `…/gate1.log`) | 2: `W0-193` (ROOT's own `SaveAs` writes a macro for **any** name but a ROOT file - measured: `x.dat` is a macro), `W0-194` (**a pad macro** is what `testMapCppName` needs, not `TH1::SavePrimitive`; `pyroot/graphics/macro.py` has no constructor for `TH2F`/`TH2Poly`/`TProfile`) |
+| 84 | `5ab03918` | **one target, five names**: ROOT's own `core/clingutils` unit test - `ROOT::TMetaUtils::GetCppName` (the 31-entry encoding every character C++ would not take is spelled as), `GetRealPath`, `ROOT::FoundationUtils::GetCurrentDir`, `gCling` (null, there being no cling here) and POSIX's `symlink` in a new `cppstd/unistd.py` | **gtest +1, the kind 85 -> 86**: `gtest/core/clingutils/coreclingutilstestUnit` goes from two refused cases to both passing (`$HOME/.cache/xrdroot-runs/ralph-round-202611231620/mine`: `{"gtest": {"PASS": 1, "FAIL": 0, ...}}`), and `GetCppName`'s answer is **character for character** the one ROOT's own test pins. Gate `TOTAL 125328 0 31418 0 100%` (13 858 + 44, `…/gate2.log`) | 2: `W0-194` **advanced** (the `MapCppName` encoding `testMapCppName` needs is now here, and ROOT's own file for that canvas was measured: 6646 bytes, 93 lines), `W0-195` (**`gCling` is `None`** - honest, but a dereference of it is a `NoneType` error rather than a full sentence) |
 
 ## Notes
 
@@ -2991,3 +2992,41 @@ four cases pass through the harness (`…/mine/results.json`).
 - **A test harness detail worth keeping**: `TH1D.AddDirectory(False)` is what makes `GetDirectory()`
   `None`, so the three lines can be reached at all; ROOT's `ProvideSaveName` and `SavePrimitive` are
   both sensitive to that flag, so the test puts it back in a `finally`.
+
+## Round 84's close
+
+**One program, five names, all read off ROOT's own source.** `gtest/core/clingutils/
+coreclingutilstestUnit` refused both of its cases at the first name it asked for; it now passes
+both.
+
+- **`ROOT::TMetaUtils::GetCppName`** is a 31-entry substitution table: every character C++ would
+  not put in a name is spelled as two letters (`+` → `pL`, `<` → `lE`, a space → `sP`, `[` → `oB`),
+  and an empty name or one starting with a digit gets an underscore. That is why ROOT's own macros
+  hold variables like `lEoBsPnOaTdAp...`, and ROOT's test pins the answer **character for
+  character** — which is what made transcribing the table from
+  `core/clingutils/src/TClingUtils.cxx` verifiable rather than plausible. The first argument is a
+  `std::string &`, so the dialect's out-parameter table marks it a cell and the runtime writes
+  through it, as `TGraph::GetPoint`'s `x` and `y` do.
+- **`GetRealPath`** is llvm's canonical path (symlinks followed, `~` expanded) — `os.path.realpath`
+  of `os.path.expanduser`, and the test's four symlink chains resolve to the files they name.
+- **`ROOT::FoundationUtils::GetCurrentDir`** is the working directory *with the separator on the
+  end*, which ROOT's own callers paste a file name onto.
+- **`gCling`** is `None`: this kit has no cling, its interpreter being `gInterpreter`, and ROOT's
+  test asserts `gCling` is null before an interpreter starts — so the truthful answer is also the
+  one that passes.
+- **POSIX's `symlink`**, which that test's `<unistd.h>` declares, is a new `cppstd/unistd.py`
+  gathered by the plain runtime as C's other library calls are — a dialect-free home, because
+  `symlink` is C's, not ROOT's.
+
+- **`W0-194` advanced rather than closed**: the *naming* half of `testMapCppName` is now here (the
+  encoding above is exactly what its variables need), and this round measured ROOT's own answer
+  for that canvas — **6646 bytes**, 93 lines, `…/probe/cppname/C_Output.C` — so the next round
+  knows both the shape to match and the `±200` window it must land in. What remains is
+  `pyroot/graphics/macro.py`'s 2-D/poly/profile constructors and ROOT's own pad-macro lines
+  (`#ifdef __CLING__`, `gStyle->SetOptFit(0)`, `C->Range(0,0,1,1)`, `C->Modified();
+  C->SetSelected(C);`, `Draw("alp")`).
+- **`W0-195`**: `gCling` being `None` is honest but a *dereference* of it gives a `NoneType`
+  attribute error instead of the kit's full-sentence refusals. No test needs that yet.
+- **The first gate run was at a load average of 110** when the gate ran, so the coverage figure was
+  re-measured once it settled (see the round's `gate*.log`); nothing was concluded from the
+  figure taken at that load (`W0-103`, `W0-109`).
