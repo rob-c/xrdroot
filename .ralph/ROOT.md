@@ -2380,6 +2380,7 @@ Each iteration appends one row here, and the *detail* of the round goes into `TO
 | 83 | `2471ff7f` | **one target, priced from the round-82 ranking**: ROOT's own `test_TH1_SaveAs` - `TObject::SaveAs`'s `.C`/`.cc` macro path with `SavePrimitive`/`SavePrimitiveDraw` (`2471ff7f`), `TH1::SavePrimitive` with `ProvideSaveName`/`MapCppName` and `colors.saved` for `TColor::SavePrimitiveColor`, and the three lines a histogram outside a directory writes (`14bb0ec2`) | **gtest +1, the kind 84 -> 85**: `gtest/hist/hist/testTH1sa` **PASSES all four of its cases** (`$HOME/.cache/xrdroot-runs/ralph-round-202611231440/mine`: `{"gtest": {"PASS": 1, "FAIL": 1, ...}}`, the FAIL being `testMapCppName`), and the macro is **byte for byte what the 6.40 oracle writes** for that histogram (`…/probe`, `diff H1dump.C ours.C` empty). Gate `TOTAL 125285 0 31418 0 100%` (13 850 + 44, `…/gate1.log`) | 2: `W0-193` (ROOT's own `SaveAs` writes a macro for **any** name but a ROOT file - measured: `x.dat` is a macro), `W0-194` (**a pad macro** is what `testMapCppName` needs, not `TH1::SavePrimitive`; `pyroot/graphics/macro.py` has no constructor for `TH2F`/`TH2Poly`/`TProfile`) |
 | 84 | `516e979c` | **one target, five names**: ROOT's own `core/clingutils` unit test - `ROOT::TMetaUtils::GetCppName` (the 31-entry encoding every character C++ would not take is spelled as), `GetRealPath`, `ROOT::FoundationUtils::GetCurrentDir`, `gCling` (null, there being no cling here) and POSIX's `symlink` in a new `cppstd/unistd.py` | **gtest +1, the kind 85 -> 86**: `gtest/core/clingutils/coreclingutilstestUnit` goes from two refused cases to both passing (`$HOME/.cache/xrdroot-runs/ralph-round-202611231620/mine`: `{"gtest": {"PASS": 1, "FAIL": 0, ...}}`), and `GetCppName`'s answer is **character for character** the one ROOT's own test pins. Gate `TOTAL 125330 0 31420 0 100%` (13 859 + 44, `…/gate2.log`) | 2: `W0-194` **advanced** (the `MapCppName` encoding `testMapCppName` needs is now here, and ROOT's own file for that canvas was measured: 6646 bytes, 93 lines), `W0-195` (**`gCling` is `None`** - honest, but a dereference of it is a `NoneType` error rather than a full sentence) |
 | 85 | `489b800e` | **no workers** - the hands took `W0-155`, priced against the 6.40 oracle first: `RooRealSumPdf.compute` honours ROOT's `isSelectedComp` (a component curve was the whole model), `dependsOn(valueOnly=True)` walks value inputs only as `RooAbsReal::plotOnCompSelect` does, `RooCurve.GetPoint`, and `cppstd.cells.store`/`load` shared with `pyroot.core.refs` | **0 gained, 0 lost**: `gtest/roofit/*` measured at the tip is **9 PASS / 22 FAIL / 16 UNSUPPORTED**, the same 9 as the baseline (`$HOME/.cache/xrdroot-runs/ralph-round-202611231724/roofit`), and `testHistFactoryPlotting` reaches its invariant and stops there (`y2+y3 = 958` against `y1 = 480`). Gate `TOTAL 125363 0 31436 0 100%` (13 863 + 44, `…/gate2.log`) | 2: `W0-196` (**the projection is the wall** - `plotOn`'s component list never reaches `createPlotProjection`, and ROOT's `selectNormalization(&fullNormSet)` is what makes components add up), `W0-197` (`testParamHistFunc` needs the `RooFit::Detail` batch API); `W0-155` **re-priced** with the oracle's 35 points and 2/478/480 |
+| 86 | `34c5bb8c` | **no workers** - the hands took `W0-196`/`W0-155`: `plotSamplingHint` (`RooCurve::plotSamplingHintForBinBoundaries`' `delta = (xhi-xlo)*1e-9` either side of every interior bin edge and of both limits) answered by `RooHistFunc`/`RooHistPdf` and merged by `RooProduct`, `RooRealSumPdf`, `RooProdPdf` and the simultaneous projection, the hint being the whole starting grid; and `RooBinWidthFunction`'s `HistFuncForBinWidth` a **shape** server as ROOT declares it | **gtest +1, 86 -> 87**: `testHistFactoryPlotting` FAIL -> PASS, `gtest/roofit/*` **10 PASS / 21 FAIL / 16 UNSUPPORTED**, no other row moved (`…/ralph-round-202611231820/roofit2`); our three curves are the oracle's 35 points, `diff` of the test's body as a macro empty (`…/probe/ours.txt` vs `oracle.txt`). Gate `TOTAL 125406 0 31452 0 100%` (13 877 + 44, `…/gate1.log`, `-n 2`) | 1: `W0-198` (the `-n 4` gate can read 99 % - `commands.py:463->453`, `LOADED` is per worker); `W0-155`/`W0-196` **closed** |
 
 ## Notes
 
@@ -3076,3 +3077,51 @@ queued:
   sum's "term not selected" arc each got a test that reaches them (the first sum test had built a
   sum with one coefficient fewer than its funcs, so `zip` never reached the second term). `TOTAL
   125363 0 31436 0 100%` (13 863 + 44, `…/gate2.log`).
+
+## Round 86's close
+
+Round 86 closed `W0-196` and `W0-155` together, and with them
+`gtest/roofit/histfactory/testHistFactoryPlotting` passes - the kind's 86th PASS became its 87th.
+
+**What was actually wrong.** Round 85 had made the sum add only the components a plot selected, and
+the test then failed on an invariant: at the last sampled point of the first bin the full model gave
+478 while its two component curves gave 2 and 478. The cause was not the selection at all but
+**where the curve is sampled**: our grid put points exactly on a bin edge, where a binned function's
+value depends on which side you ask about, and the three curves asked differently. ROOT never
+samples a bin edge. `RooCurve::plotSamplingHintForBinBoundaries` asks for
+`delta = (xhi - xlo) * 1e-9` either side of every interior edge and of both limits, and
+`RooCurve::addPoints` takes that hint as the **whole** starting grid (`minPoints = hint->size()`,
+`xval = hint`) rather than as extra points on the frame's bins - which is also why ROOT's curve has
+35 points and not a frame's worth.
+
+**The names that answer it.** `RooHistFunc` and `RooHistPdf` answer the hint (and answer none for an
+interpolated bin, which is smooth); `RooProduct`, `RooRealSumPdf`, `RooProdPdf` and the simultaneous
+projection merge their children's, as ROOT's do, through one `merge_hints`. `RooHistFunc` and
+`RooHistPdf` share it on `_Histogram`, where `bin_boundaries` already lived.
+
+**The one-line discovery that made the components add up.** `RooBinWidthFunction`'s
+`HistFuncForBinWidth` proxy is `valueServer=true, shapeServer=true` in ROOT
+(`roofit/roofitcore/inc/RooBinWidthFunction.h:35`), and that shape flag is load-bearing: a
+value-only walk - which is what `plotOnCompSelect` uses - stops at the bin width, so the bin width
+does not drag a sibling sample's histogram into a component's indirect selection. Round 85 had each
+component selecting both samples and the selected one masking it; the flag is what makes
+`*histoSig*` select `sig` alone and `*histoBG*` select `bg` alone, as ROOT's own INFO lines say.
+
+**How it was proved.** The test's own body was turned into a macro and run twice - once by the
+oracle, once by `xrdroot run` - printing `GetPoint(i, x, y)` for all three curves at every point.
+`diff ours.txt oracle.txt` is empty: 35 points each, identical x (2896.4482758620688,
+2896.5517241379312, 3000, 3199.9999969999999, ... 6103.5517241379312) and identical y
+(`y_full = 479.99999999999994`, `y_sig = 2`, `y_bg = 478`). Nothing about this round is argued from
+a tolerance; it is the same digits.
+
+**Nothing lost.** `gtest/roofit/*` was re-run whole at the tip: **10 PASS / 21 FAIL / 16
+UNSUPPORTED**, and a row-by-row diff against round 85's results names exactly one change,
+`testHistFactoryPlotting` FAIL -> PASS. The four local suites that draw curves
+(`test_roofit_pdfplot_curves`, `test_roofit_pdfplot_sums`, `test_histfactory_functions`,
+`test_roofit_branchcore_plots`) are 95 passed and 15 xfailed, and ten new tests pin the hint itself.
+
+**What the next round should know.** `W0-198` is new: the gate at `-n 4` read 99 % on
+`pycint/interactive/commands.py:463->453`, because the test that reaches a *second* class source
+requires a library to have been loaded in the same worker (`LOADED` is per process) - the same tree
+at `-n 2` is 100 %. Everything else in `gtest/roofit` is where round 85 left it, and `W0-197`
+(`testParamHistFunc`'s batch API) is still the biggest single wall in that family.
