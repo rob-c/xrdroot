@@ -22,6 +22,16 @@ or `ralph_start({ name: "ROOT", taskContent: <this file>, maxIterations: 0 })`, 
 `/ralph resume ROOT` — a resume keeps the state file's `maxIterations`, so
 `.ralph/ROOT.state.json` must say `0` for the loop to stay unlimited.
 
+**This file is append-only.** Each round appends its own `## Round NN's close` section at the end
+and one row of the round-log table, and nothing before it is rewritten, reordered or trimmed: the
+rounds already here are the record of 86 rounds and the only account of what was tried and refused.
+`/ralph start ROOT` and `/ralph resume ROOT` only ever *read* this file, and every `ralph_done`
+re-reads it before the next iteration, so an appended close is what the next iteration reads — but
+the **`ralph_start` tool writes its `taskContent` argument over the file**, so this loop is started
+and resumed through the slash commands, never with an inline `taskContent`. The next round is the
+one after the last `## Round NN's close` below; `iteration` in `.ralph/ROOT.state.json` is a counter
+of prompts and has no relation to a round's number.
+
 ## Mission
 
 Make xrdroot run ROOT 6.40's own test suite, in pure Python, with ROOT used only as a validation
