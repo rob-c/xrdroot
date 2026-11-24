@@ -4352,6 +4352,7 @@ read first, and then the two-line offsets table.
 | 110 | `6249ef1b` | **the `io/stdpair` bucket's two unknowns measured on the 6.40 oracle, and a first fix reverted**: `GetStreamerInfos()->GetSize()` is ROOT's `TObjArray` room (13, not the 2 entries) - the walk a test makes only reaches `#2` because of it; an entry must be the *same object* `GetStreamerInfo()` answers; and `second`'s `offset=` 4-vs-8 is ROOT's emulated `AlignUp(offset, align) + size` run again when the map's proxy is created (`0,0` before, `0,8` after) | no code | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 either side; the first fix (Expand + per-class cache) broke four existing tests and was reverted - those four are the next attempt's specification. Gate unchanged (`TOTAL 125988 0 31626 0 100%`, round 109's) | 0 new: `W0-239` **rewritten** with the three measured pieces, `W0-230` **carries the offsets rule** |
 | 111 | `cee9a211` | **`io/stdpair`'s fix measured to five rules, the fifth tried and the whole attempt reverted**: the room and the entry identity are one change (the room alone prints `#1` as well as `#2`); a class in memory lists as met and only an emulated one is indexed by version (`Evo`: 2 blocks against the ref's 3); building follows the element (an enum carries `newtype=13`, a string element stays `Emulation`); the current entry keeps `from_file` (`offset=99999 type= 3 newtype=-1`); and the pair's dictionary warning needs a known-type predicate first - `stlNoLibTest.ref` warns of `pair<float,int>` where this kit warns of no pair at all | no code | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 of 44 and `io/emulated` 4 / 1 / 1 / 2 of 8 at the tip, both their predecessors' figures; four attempts reverted, each after the reflection suite named what it broke. Gate unchanged (`TOTAL 125988 0 31626 0 100%`, round 109's) | 1 new: `W0-240` (the dictionary-warning predicate); `W0-239` **rewritten** with the five rules and the seven pinning tests |
 | 112 | `46c791dc` | **the layouts array as ROOT keeps it, and the offsets ROOT accumulates - `io/stdpair` 4 -> 8 PASS**: one array per class (entries are the objects `GetStreamerInfo()` answers), ROOT's **thirteen** slots, indexed by class version for a versioned or emulated class, every emulated layout **built** (`built=1` in every slot of the 6.40 oracle), an older layout compared against the current one (`newtype=`, actions two hundred above the file's type) and `offset = AlignUp(offset, GetAlignment()) + GetSize()` with 8 for a container and 4 otherwise - with three unit tests corrected against that measurement | `3b1d6e89` | **roottest +4**: `io/stdpair` 4 / 40 -> 8 / 36 of 44, the four `pairEnumEvo_{0,1}_{0,1}_0_1` and none lost; `io/emulated` 4 / 1 / 1 / 2 unchanged; baseline raised by `--merge`, its only diff those four rows. Gate `TOTAL 126034 0 31642 0 100%` (13 968 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 3 new: `W0-241` (the eight `kNothing` refs' `offset= 8`), `W0-242` (which file's layout is current), `W0-243` (the `Emulation` title and an enum's `type=13`); `W0-239` and `W0-240` partly closed |
+| 113 | `47e0b444` | **no code: `io/stdpair`'s remaining 36 DIFFs counted to the line with the judge's own list comparison**, and the one state they wait on named - every test is 5-19 lines from PASS; the six nearest differ only by the pair's dictionary warning and `second`'s `offset= 8`; and the 8-vs-4 split is the *loaded-dictionary* state (`kNothing` and interpreted say 8, a loaded dictionary 4), the same state that decides which file layout is current | no code | **0 PASS moved, 0 lost**: `io/stdpair` 8 / 36 of 44 at the base, `io/datamodelevolution` 22 / 20 / 2 of 44 re-measured (`…/base-dml`), its chain still four features. Gate unchanged (`TOTAL 126034 0 31642 0 100%`, round 112's) | 1 new: `W0-244` (**model the dictionary a macro loads** - alignment, current layout and the warning at once); `W0-241`/`W0-242` marked as its halves |
 
 ## Round 110's close
 
@@ -4477,3 +4478,46 @@ is loaded, and this kit cannot tell the configurations apart), `W0-242` (which f
 *current*: the `libtype=3` ref keeps the last, we keep the first, which reorders their blocks) and
 `W0-243` (the `Emulation` element title and an enum's `type=13`). With those, the remaining 36 DIFFs
 of this bucket are arithmetic and ordering rather than a missing feature.
+
+## Round 113's close
+
+Round 113 wrote no code, and its product is the map the last three rounds had been circling: **the
+remaining 36 `io/stdpair` DIFFs, counted to the line with the judge's own comparison, and the one
+state they all wait on.**
+
+**The counting was redone with the judge's rule.** Round 112's bucket table was built by comparing
+the ref and our output as *multisets* of space-stripped lines, which under-reports a **swapped pair of
+blocks** (the same lines, another order) - and that is exactly what the failing families do. The
+judge is `refdiff.filtered(ref, True) == filtered(out, True)`, a **list** comparison, so the round
+recounted with `difflib.SequenceMatcher` over those same lists. The true figures: every one of the 36
+is **5 to 19 lines** from PASS (0-8 ours-only against 5-19 ref-only), and the 322 ref-only lines are
+**132 element lines, 120 action lines, 34 `#N` block lines and 72 others** (warnings, block headers,
+and one `TStreamerInfo::Build` warning that only two refs carry).
+
+**The six nearest are five lines from a PASS**, and they need exactly two rules:
+`pairEnumEvo_{4_0_0_1, 4_0_1_1, 4_1_0_1, 4_1_1_1, 2_0_1_1, 2_1_1_1}` differ by the missing
+`Warning in <TClass::Init>: no dictionary for class pair<...>` (1 line, `W0-240`) and `second`'s
+`offset=` being **8** rather than our 4 (4 lines). Nothing else.
+
+**And the round proved one cause behind that 8-versus-4**, from ROOT's refs alone: the families whose
+run **loaded a dictionary** print `offset= 4` and the run that loaded nothing (`libtype=4`,
+`kNothing`, and the interpreted `libtype=2` reading first) prints **8**. Our kit prints 4 everywhere
+because it models no load - which is why round 112's four gains are exactly the four tests whose ref
+also says 4. The same state decides **which file layout is current**: `pairEnumEvo_0_0_0_0`'s two
+blocks are ours with the roles swapped, and `pairEnumEvo_2_0_0_1`'s current layout is v2 where
+`0_0_0_1`'s is v1 - one state, two symptoms. That is **`W0-244`**, and `W0-241`/`W0-242` are its two
+halves; the three rows now say so instead of describing the symptoms separately.
+
+**What the round also re-measured, so the next one does not pay for it.** `io/datamodelevolution` is
+**22 PASS / 20 FAIL / 2 DIFF** of 44 at this round's base (`…/ralph-round-202611241744/base-dml`),
+unchanged from round 108, and its failures still want the four features `W0-233` lists
+(`GetDataType`/`GetOffset`/`TClass::New`, a write through `(char*)obj + offset`, free-function
+overload selection, `FindConversions`) - not a round's worth of one-line work.
+
+**No code, so the gate stands**: `git diff` against `47e0b444` is `TODO.md` and `.ralph/ROOT.md`
+alone, and round 112's seven-command gate - **`TOTAL 126034 0 31642 0 100%`** (13 968 + 44), ruff,
+mypy 1 062 files, maintainability, components, `mkdocs --strict` - is this round's.
+
+**The round's own lesson, recorded because it bit twice.** A multiset comparison is not the judge
+(`W0-75`, round 104), and a *list* comparison is - so a bucket table built from counts must be built
+from the list diff, or it will call a swapped pair "one line" when the judge sees a different test.
