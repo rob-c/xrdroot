@@ -153,6 +153,12 @@ FILE_INFOS: dict[str, list[Layout]] = {}
 #: The classes a file's layout was reported as disagreeing with the class in memory about -
 #: which ROOT warns of once per class, however many files its layouts are read from.
 DISAGREED: set[str] = set()
+#: The classes a library load re-emulated: ROOT's ``TClass::Update`` runs the emulation again
+#: through the collection proxy when a class's element types at last have a dictionary, so
+#: ``fStreamerInfo`` holds the class's current layout **twice** - ``roottest``'s ``pairEnumEvo``
+#: prints the duplicate as its own ``#N`` block, which is what its own comment calls "it now has
+#: duplicated StreamerInfo".
+RELOADED: set[str] = set()
 
 #: The flat lists of persistent data members built so far, by class: ``BuildRealData`` builds
 #: one and ``GetListOfRealData`` hands it back, as ROOT caches it with the class.
@@ -238,6 +244,20 @@ K_IS_TOBJECT = 0x00008000
 #: does, and ``kHasTClassInit`` - ROOT's ``kLoaded`` too - one a dictionary describes.
 K_INTERPRETED = 3
 K_HAS_TCLASS_INIT = 4
+
+
+def reload_emulated() -> None:
+    """A library has been loaded: each class nothing in memory describes is emulated again.
+
+    ROOT's ``TClass::Update`` re-reads an emulated class when the classes its members hold arrive
+    with a dictionary - ``R__ForceReload`` in the collection proxy, which ``pairEnumEvo``'s own
+    comment names - so the class's current layout is registered a **second time** and
+    ``fStreamerInfo`` holds it at two indices. A class the session already describes in memory is
+    not re-emulated, and one no file has described has nothing to re-emulate.
+    """
+    for name in FILE_INFOS:
+        if TClass(name)._layout() is None:
+            RELOADED.add(name)
 
 
 def note_generated_dictionary(classes: Any) -> None:
@@ -1241,14 +1261,20 @@ class TClass(TNamed):
         layouts array holds, so a program that compares an entry with this answer finds one
         object, as ``roottest``'s ``pairEnumEvo`` does.
         """
-        _signature, held, by_version = self._held()
+        self.GetStreamerInfos()
+        kept = self.__dict__.get("_slots")
+        slots: dict[int, TStreamerInfo] = {} if kept is None else kept[1]
+        if int(version) in slots:
+            # ``TClass::GetStreamerInfo`` is the array's ``At(version)`` - the object a load's
+            # duplicate sits at as much as any other, which is what ``pairEnumEvo`` walks.
+            return slots[int(version)]
+        _signature, held, _by_version = self._held()
         current = self._current_layout()
         if current is not None and int(version) in (0, int(current[1])):
-            return held[0]
-        found = by_version.get(int(version), held[0] if held else None)
-        # A version the class has no layout of answers its current one:
-        # ``TClass::GetStreamerInfo`` is ``At(version)`` with a fall-back to the class's.
-        return found
+            return held[0] if held else None
+        # A version the class has no layout of answers its current one: ``TClass::GetStreamerInfo``
+        # is ``At(version)`` with a fall-back to the class's.
+        return None if not held else held[0]
 
     def _entry(self, layout: Layout, built: bool, from_memory: bool) -> TStreamerInfo:
         """One layout as the class lists it, set against the class in memory where there is one."""
@@ -1267,7 +1293,8 @@ class TClass(TNamed):
         and the same layouts by version, kept once so that what a program compares is one object."""
         mine = self._layout()
         current = self._current_layout()
-        signature = (tuple(FILE_INFOS.get(self._name, [])), mine, current, self._versioned())
+        signature = (tuple(FILE_INFOS.get(self._name, [])), mine, current,
+                     self._versioned(), self._name in RELOADED)  # fmt: skip
         kept = self.__dict__.get("_held_kept")
         if kept is not None and kept[0] == signature:
             return signature, kept[1], kept[2]
@@ -1284,6 +1311,9 @@ class TClass(TNamed):
         held: list[TStreamerInfo] = []
         if current is not None:
             held.append(self._entry(current, True, current is mine))
+            if self._name in RELOADED:
+                # A load re-emulated the class, so its current layout is in the array twice.
+                held.append(self._entry(current, True, current is mine))
             if mine is not None and mine[0] != current[0]:
                 held.append(self._entry(mine, True, True))
         for info in FILE_INFOS.get(self._name, []):
@@ -1326,6 +1356,7 @@ class TClass(TNamed):
         if kept is not None and kept[0] == signature:
             return kept[1]
         made = TObjArray()
+        slots: dict[int, TStreamerInfo] = {}
         mine = self._layout()
         if self._indexed_by_version(mine):
             # A versioned class's layouts, and an emulated class's, are **indexed by class
@@ -1338,14 +1369,21 @@ class TClass(TNamed):
             taken: set[int] = set()
             for entry in ordered:
                 version = _free_version(self._name, int(entry.GetClassVersion()), taken)
+                while version in taken:
+                    # A load can register a layout twice, and one already at its version is the
+                    # next free slot: ROOT's array holds the duplicate above the current one.
+                    version += 1
                 taken.add(version)
                 made.AddAt(entry, version)
+                slots[version] = entry
             made.Expand(max(made.GetSize(), STREAMER_INFO_SLOTS))
         else:
             # A class in memory lists its own layout first and each file's as it was met.
             for entry in held:
                 made.Add(entry)
+                slots[made.GetSize() - 1] = entry
         self.__dict__["_infos_kept"] = (signature, made)
+        self.__dict__["_slots"] = (signature, slots)
         return made
 
     # -- members and bases --------------------------------------------------------------------

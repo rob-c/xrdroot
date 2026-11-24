@@ -857,6 +857,23 @@ def test_a_type_has_a_dictionary_through_the_template_that_answers_for_it():
     assert not reflection._has_dictionary("pair<int,string>")
 
 
+def test_a_load_registers_an_emulated_class_s_layout_a_second_time():
+    """ROOT's ``TClass::Update`` emulates a class again when the classes its members hold arrive
+    with a dictionary, so ``fStreamerInfo`` holds the class's current layout **twice** - which
+    ``pairEnumEvo`` prints as a block of its own - and ``GetStreamerInfo`` answers the array's
+    ``At(version)``, duplicate included. A class the session describes in memory is not reloaded."""
+    layout = (("TStreamerBasicType", "x", "", 3, 4, 0, 0, (0,) * 5, "int", ()),)
+    reflection.note_file_infos([("Reloaded", (0x51, 1, layout)), ("InMemory", (0x52, 1, layout))])
+    reloaded = ROOT.TClass("Reloaded")
+    assert [e.GetClassVersion() for e in reloaded.GetStreamerInfos()] == [1]
+    reflection.reload_emulated()
+    infos = reloaded.GetStreamerInfos()
+    assert [e.GetClassVersion() for e in infos] == [1, 1]
+    assert infos.At(2) is not infos.At(1)
+    assert reloaded.GetStreamerInfo(2) is infos.At(2)
+    assert reloaded.GetStreamerInfo(1) is infos.At(1)
+
+
 def test_a_pair_is_warned_of_when_nothing_in_the_session_answers_for_it(capfd):
     """ROOT hands a ``pair`` to its interpreter as one class: with a dictionary loaded for an
     argument's template - ``edm::Ref<...>`` - the pair is silent; with nothing loaded it is

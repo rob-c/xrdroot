@@ -238,6 +238,9 @@ def load_library(library: Library) -> Loaded:
     loaded = LOADED[key] = Loaded(library, module, headers)
     HEADERS.update(dict.fromkeys(headers, loaded))
     _declare(loaded)
+    from ...pyroot.core.reflection import reload_emulated
+
+    reload_emulated()
     own = dict.fromkeys(headers, loaded)
     for watched, translated in WATCHED:
         _rebound(watched, translated, own)
