@@ -815,8 +815,8 @@ def test_a_file_layout_keeps_the_offsets_the_session_did_not_know_yet(capfd):
 
 
 def test_a_file_layout_read_with_the_class_known_puts_the_member_at_four(capfd):
-    """The other side of the same rule: known when the file is read, a class the session describes aligns at 4 -
-    the alignment of the class's own compiled layout, which is what ``3_*``'s refs print."""
+    """The other side of the same rule: known when the file is read, a class the session
+    describes aligns at 4 - the alignment of the class's own compiled layout."""
     run_source("class ProbeRef { public: int i = 0; };", "ref.h", call=False)
     reflection.note_file_infos([(WITH_REF, (0x5E, 1, (FIRST, SECOND)))], "after.root")
     assert _offsets_printed(capfd) == [0, 4]
