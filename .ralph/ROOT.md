@@ -4045,3 +4045,66 @@ components 1 062 modules / 0 undeclared, `mkdocs build --strict` exit 0.
 `RootcpReadRemoteCheckOutput` is a FAIL for the same reason (`A fixture it requires was not set up`). They are
 the CERN-network copies `W0-43` has recorded since round 9 - the endpoint, not the code - and the kind's
 environmental floor is therefore 1318 PASS with those two never counted as regressions.
+
+## Round 104's close
+
+Round 104 wrote no code. It took the two rows round 103's whole-kind map had put at the top and
+**measured which side of each is wrong** - which is what the last two rounds had only predicted.
+
+**`W0-77` is a WRITER bug, and the oracle says so in its own words.** The eleven tests behind
+`a class reference at N points nowhere` all read the `Event.root` that `io/bigevent/write` produced,
+so the question was whether our writer or our reader is wrong. The answer needed a dictionary ROOT
+could load, and the 6.40 oracle can build one from the roottest's own `Event.h`:
+`rootcling -f bigdict.cxx -s libbig.so Event.h EventLinkDef.h`, then `clang++ -shared`. With that
+loaded, `GetEntry(0)` on **our** file says
+
+```
+Error in <TBufferFile::CheckByteCount>: object of class vector<TLine> read too few bytes: 1928 instead of 2408
+Warning in <TBufferFile::CheckByteCount>: list<string*>::Streamer() not in sync with data on file …
+Error in <TBufferFile::ReadClassBuffer>: class: TAttAxis, attempting to access a wrong version: 510, …
+ *** Break *** segmentation violation        (TBufferFile::ReadArray <- TAxis::Streamer)
+```
+
+**480 = 10 `TLine` objects × 48 bytes** - the same 48-per-event round 26 measured from the reader's
+side - so a **member-wise container of a class with a base** (`TLine : TObject, TAttLine`) is laid
+out 48 bytes an object short. Everything after it is the damage. The other direction is wrong too
+and *separately*: our reader on **ROOT's own** `Event.root` (the oracle's `IoBigEventGenerator`
+compiled against the same dictionary) fails with `FormatError: asked for 50273048 bytes with 30441
+left`, so the same member kind is misread as well. Both probes are three commands and are kept at
+`…/ralph-round-202611241318/probe/README.md` - the next round starts from a judged file rather than
+a trace.
+
+**`W0-230`'s 40 DIFFs, measured with the harness's own `custom_diff`** (round 29's rule: never a
+hand-rolled diff). `io/stdpair` is **4 PASS / 40 DIFF** of 44 at this round's base, and across the
+40 the whole difference is **556 `offset=` lines, 146 `StreamerInfo` block lines and 32
+`Warning in <TClass::Init>: no dictionary for class pair<…>`/`edm::Ref<…>` lines** - with **no test
+offsets-only**, so the bucket needs all three:
+
+- **offsets**: ROOT prints each element's accumulated `fOffset` (the enumerated `first` is 4 bytes,
+  so `second` is at 4); ours prints 0 in the element *and* the action lines.
+- **the info list**: ROOT's is `fStreamerInfo`, a `TObjArray` **indexed by class version**
+  (`core/meta/src/TClass.cxx:4657` - `GetStreamerInfo(version)` is `At(version)` with a fall-back to
+  the current one), and the macro walks `GetStreamerInfo(i)` for `i` in `1..size-1`, so the `#2`
+  block is the *other version's* info at index 2. The 16 combinations differ only in which versions
+  exist when - file read before the library load or after, and which library - so one
+  version-indexed model answers all 40.
+- **the warnings**: ROOT warns about `pair<…>` and `edm::Ref<…>` in the read-before-load and
+  interpreted/`kNothing` families; we warn in none.
+
+**A correction to round 103's own row, and it is the round's second lesson.** Round 103 recorded
+that our lines *padded* with trailing spaces, quoting a hand-rolled `difflib` diff. The harness's
+judge compares with **all spaces removed** (`refdiff.filtered(..., ignore_spaces=True)`), so padding
+never counted and that item was never part of the difference. `W0-75`'s rule ("use `custom_diff`,
+never a hand-written one") had to be re-learned here, in the very round that quoted round 29's other
+half - *a measurement tool that is not the judge's is not the judge*.
+
+**Also measured**: `io/datamodelevolution/00/test1`'s first failure is `W0-77`'s (`FormatError: a
+class reference at 120 points nowhere`), not the `Generator.h` `TypeError` `W0-233` names - so
+`W0-77` blocks 11 tests and `W0-233`'s 22 are a different member of that family.
+
+**The gate.** Nothing in the tree changed (`git diff` against `ca3c372f` is `TODO.md` and
+`.ralph/ROOT.md`), so the seven commands were run once at the final tree and read:
+**`TOTAL 125967 0 31620 0 100%`** (13 961 + 44 passed, `…/gate1.log` + `…/gate2b.log`); ruff clean,
+mypy 1 062 files, maintainability 33 328 functions, components 1 062 modules / 0 undeclared,
+`mkdocs build --strict` exit 0.
+| 104 | `ca3c372f` | **no code: the two rows round 103's map put on top, measured to the side they are wrong** - `W0-77` is proved a **writer** bug by the oracle (a `rootcling`+`clang++` dictionary, then `GetEntry(0)` on our `Event.root`: `CheckByteCount: object of class vector<TLine> read too few bytes: 1928 instead of 2408` = 480 = 10 x 48, then a segfault in `TAxis::Streamer`; our reader also fails on ROOT's own file), and `W0-230`'s 40 DIFFs are re-measured with the harness's own `custom_diff` - 556 offsets + 146 block lines + 32 dictionary warnings, no test offsets-only, and round 103's "trailing padding" **corrected** because the judge strips spaces | no code | **0 PASS moved, 0 lost**: `io/stdpair` measured whole at the base is **4 PASS / 40 DIFF** of 44 (`…/ralph-round-202611241318/base`); the round's product is the two rerunnable probes (`…/probe/README.md`) and two corrected, fully priced rows. Gate `TOTAL 125967 0 31620 0 100%` unchanged | 0 new: `W0-77` and `W0-230` **re-stated with both directions measured**; `W0-233` noted as a different member of the same family |
