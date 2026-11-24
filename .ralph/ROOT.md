@@ -39,6 +39,79 @@ oracle. "Done" is defined at the bottom of `AGENTS.md` and nothing here changes 
 all five kinds PASS, or refused with a full-sentence reason for something genuinely out of scope
 (GUI/Qt, SYCL/CUDA, cling internals, generated C++ dictionaries).
 
+## Maximise the tests that pass — two counters, both rising
+
+There are two numbers, and every round must move at least one of them without lowering the other:
+
+| counter | where it comes from | how to read it |
+|---|---|---|
+| **harness PASS** | `python -m tools.rootsuite run --root $ROOTSRC --jobs 4 --xrdroot-src $PWD/src --out $R/run` | `jq '[.tests[]|select(.status=="PASS")]|length'` on `$R/run/results.json` |
+| **unit tests** | `pytest -q -n 2 --cov=xrdroot tests` | the passed count in the last line |
+
+`tools/rootsuite/baseline.json` is the floor for the first. It must stay honest: every PASS in it is
+one a real run produced, the ratchet must print `0 regressions`, and a PASS that no longer reproduces
+is recorded at its measured status with the reason in the commit message — never hand-kept, because a
+hand-kept PASS fails the ratchet on every later run (`docs/decisions/bank-the-run-not-the-wish-*`).
+
+### Rank the work by how many tests a cause blocks
+
+Group the failures by *cause*, not by test, and count the tests behind each. A cause that blocks forty
+tests at once beats any amount of polish worth one. The grouping command is in "1. Read the queue";
+run it every round, because the ranking changes as causes are cleared.
+
+### The levers, in the order they have paid
+
+1. **A refused name is one test.** `UnsupportedFeatureError` on a class or method that ROOT's own test
+   calls converts to PASS as soon as the name exists and behaves: `QuasiRandomSobol`,
+   `QuasiRandomNiederreiter` and `RandomMT` turned `other/math/mathmore/mathmore-testQuasiRandom` from
+   UNSUPPORTED into PASS in one commit. Read the refusal text in the `.ref`/log, implement exactly what
+   the test calls, then re-run that one test id.
+2. **A TIMEOUT is a PASS you cannot see.** The cap is 300 s and never rises, so a test at 268 s is a
+   bug. `execmanydirs` was **162 s → 27 s** once `TFile::Write` stopped checkpointing once per
+   subdirectory and stopped replaying every patch (`75478091`), and it had been passing only by luck.
+   Profile the program at a *small* size, not the test: `python -m cProfile -o p.out -m xrdroot root -q -b
+   'macro.C(20)'`, then `pstats` by `tottime`.
+3. **Warning and silence parity is worth whole directories.** A missing `ROOT::TIOFeatures` warning broke
+   `treeformula/stl/SparseSelection`; an extra `TVirtualIndex` warning broke `secondindex`; both were one
+   line of judgement about which classes ROOT stays silent about (`75478091`).
+4. **Formatting-only DIFFs are cheap PASSes.** A `.ref` difference that is spacing, a count word, or the
+   order of two lines is a bug in the printer, not in the physics: fix the printer, re-run the id.
+5. **A dictionary regression hides a class.** `CheckMissingDictionaries` read a class with no members
+   because a lookup cache had settled before the dictionary loaded; the fix was to cache hits and never
+   misses (`9b8b9f00`). Any cache over reflection must be invalidated by a load, which imports no module
+   (`docs/architecture/a-loaded-dictionary-s-classes-are-in-declared-*`).
+6. **Perf work that is not a timeout is still a PASS.** `n=200` of `execmanydirs` went 437 s → 27 s; the
+   same shape (a quadratic over keys, a `sys.modules` scan per call) is behind several slow roottests.
+
+### Never buy one PASS with another
+
+- No PASS may be lost: run the ratchet on every harness run and name any id it reports.
+- Never raise a limit, the 300 s timeout, or `fail_under`; never add `# pragma: no cover`; never loosen
+  an assertion to make a test pass — find out whether the code or the test is wrong.
+- A test that passes only because of the machine's order is not a PASS: `ClonesArrayEvo`,
+  `forwardDeclAndFake` and `readGeo` differ inside a four-job run and pass alone, which is a harness
+  defect still worth fixing.
+
+### Measure each candidate before believing it
+
+- Pin the tree under test with `--xrdroot-src`; the harness otherwise uses whatever the environment
+  inherited, and a run against the wrong source looks like a regression.
+- Re-run a TIMEOUT and any DIFF alone before calling it either way: `--jobs 1 --only '<id>'`.
+- A roottest with a `DEPENDS` fixture is meaningless alone — its `-libgen-build` step creates the class it
+  reads. Run the whole glob, or accept that the isolated answer means nothing
+  (`docs/gotchas/an-isolated-roottest-failure-*`).
+- Five tests need CERN's network (`root://eospublic.cern.ch`, a `TWebFile`): they are environmental and
+  must never be counted as regressions.
+- To bisect a harness failure, rebuild the fixture at each commit (`--only '<dir>/*'`), or build it once
+  and run the macro directly when only the *reader* changes — 3 s per variant instead of 35
+  (`docs/gotchas/a-bisect-over-harness-tests-lies-*`).
+
+### Every worker's brief names its delta
+
+A scope is only worth a worker if it can be written as: *this id, from this status, to PASS, by editing
+these files, and the harness run that proves it is this command*. "Improve X" is not a scope; "move
+`roottest/root/io/json/*` from DIFF to PASS by matching ROOT's key ordering in `writer.py`" is.
+
 ## Where it stands
 
 Measured at `986f0d8` (`/tmp/x8/final2b` for roottest, `/tmp/x8/final1b` for the rest):
