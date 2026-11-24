@@ -87,6 +87,7 @@ nav:
   - A branch of a class with a base is written whole: gotchas/a-branch-of-a-class-with-a-base-is-written-whole-not-split.md
   - An in-memory TObjArray is written by hand: gotchas/an-in-memory-tobjarray-is-written-by-hand-not-by-its-description.md
   - "A name written from :: is the file's own": gotchas/a-name-written-from-the-global-scope-is-the-files-own.md
+  - "TClass::GetStreamerInfos reports the room, not the entries": gotchas/tclass-getstreamerinfos-reports-the-array-s-room-not-its.md
   - Instructions:
       - Triage merge conflicts before delegating: instructions/triage-merge-conflicts-mechanically-before-delegating-and-never.md
 
