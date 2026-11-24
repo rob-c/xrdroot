@@ -3587,7 +3587,12 @@ plus material radiation/interaction lengths inside PDG tolerances for two unit s
 `testTTreeCluster` asserts ROOT's own basket re-optimisation (`W0-182`). None is a name; each is a
 feature, and the round did not pretend otherwise.
 
-**Gate.** `TOTAL 125738 0 31556 0 100%` (13 924 + 44, by the two-command decomposition,
+**The round shipped a red gate for one commit, and says so.** `e1feb58f`'s nav entry named a slug
+`docs_record` did not choose (`…-names-a-bug-that-is-not-there.md` for the `…-names-a-bug.md` it
+wrote), so `mkdocs build --strict` **aborted with one warning** - and the seven-command gate is
+seven commands, not six and a note for later. `2c447529` has the real name and a strict build that
+is clean at the committed tree. `W0-210`'s lesson has a second half: **read each gate's exit
+status, not only the ones you expect to pass**. **Gate.** `TOTAL 125738 0 31556 0 100%` (13 924 + 44, by the two-command decomposition,
 `…/gate1.log` at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 061 files;
 maintainability 33 253 functions in 1 820 files; components 1 061 modules, 0 undeclared imports;
 `mkdocs build --strict` clean.
