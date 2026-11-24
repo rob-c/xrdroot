@@ -153,6 +153,13 @@ FILE_INFOS: dict[str, list[Layout]] = {}
 #: ``TStreamerInfo::fOnFileClassVersion``, which is not the slot once a version was already taken
 #: (``_free_version``) and is what ROOT matches a checksum against. ``_same_layout`` says so.
 RECORDED: dict[str, dict[tuple[int, int], int]] = {}
+#: Whether the session described a class **when the first of its layouts was read**: ROOT emulates a
+#: class whose members it can lay out and registers that layout before the file's records, so the
+#: answer - and not the session's state when the class is printed - decides which layout is current.
+#: ``io/stdpair``'s ``2_*_1_*`` families read their files **before** ``#include "cmspair.h"`` and
+#: keep the first record's layout; the ``2_*_0_*`` families read after it and get the emulation's.
+#: Its values are ``"dictionary"``, ``"declaration"`` or ``None`` - :func:`_describable`.
+DESCRIBED: dict[str, str | None] = {}
 #: The member offsets a file's layout had **when the file was read**, by class and checksum:
 #: ``TStreamerInfo::BuildOld`` lays a file's members out once, as the file is read, and a
 #: dictionary or an ``#include`` arriving later does not move them - ``io/stdpair``'s ``2_*_1_*``
@@ -397,6 +404,7 @@ def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None
         if name not in FILE_INFOS and _undictionaried(name):
             message("Warning", "TClass::Init", "no dictionary for class %s is available", name)
     for name, (checksum, version, elements) in infos:
+        DESCRIBED.setdefault(name, _describable(name, elements))
         FROZEN_OFFSETS.setdefault(
             (name, checksum), _accumulated([element_of(e) for e in elements])
         )
@@ -484,20 +492,34 @@ def _met(name: str, on_file: Layout, origin: str) -> bool:
     return met
 
 
-def _could_be_emulated(name: str, elements: tuple[Element, ...]) -> bool:
-    """Can ROOT have emulated the class - no dictionary of its own, but one for a member's type?
+def _describable(name: str, elements: tuple[Element, ...]) -> str | None:
+    """How the session described the class when this layout was read - and so how ROOT laid it out.
 
-    ROOT builds an emulated layout for a class whose members it can lay out, and only then
-    registers what a file records, so the class's own layout comes first. A class nothing
-    describes is created *from* the file's first record instead, and so is one the interpreter
-    merely **declares**: ``io/stdpair``'s ``kNothing`` families (no library at all) and its
-    interpreted ``libtype=2`` families (an ``#include``) list the file's first layout as current,
-    while ``libtype`` 0 and 1 - a library whose ``cmspair.h`` has a dictionary for ``edm::Ref``
-    and none for the pair - list the emulation's.
+    ``"dictionary"`` is a **library** whose LinkDef selected the class's member types: ROOT emulates
+    the class, so its own layout is the *emulated* spelling. ``"declaration"`` is an ``#include``:
+    the class is laid out from the declaration, so its own layout is the *mapped* one. ``None`` is
+    nothing at all, and the class is made from the file's first record.
     """
     if _dictionaried(name):
+        return None
+    if not any(_describing(element) for element in elements):
+        return None
+    if any(_dictionaried(element[8]) for element in elements):
+        return "dictionary"
+    return "declaration"
+
+
+def _describing(element: Element) -> bool:
+    """Is the type this element names one the session describes *as a class*?
+
+    A number is no evidence either way - every emulation can lay one out - so only a member whose
+    type a dictionary, a template or the interpreter answers for says the session described the
+    class. ``io/stdpair``'s pair has ``edm::Ref`` there and a bare enumeration, and ``pair<int,
+    string>`` has ``string``, which this kit models.
+    """
+    if _bare_type(element[8]) in PLAIN_TYPES:
         return False
-    return any(_dictionaried(element[8]) for element in elements)
+    return _has_dictionary(element[8]) or _dictionaried(element[8])
 
 
 def _dictionaried(name: str) -> bool:
@@ -753,7 +775,7 @@ def _undictionaried(name: str) -> bool:
         return not any(_has_dictionary(each) for each in _arguments(name))
     if _template(name):
         return False
-    if _pair_base(name) or _instantiable(name) or _modelled(name):
+    if _has_dictionary(name) or _pair_base(name) or _instantiable(name) or _modelled(name):
         return False
     return TClass(name)._class() is None
 
@@ -1349,15 +1371,34 @@ class TClass(TNamed):
         if not known:
             return None
         if _synthetic_pair(self._name):
-            spelled = next((info for info in known if _emulated_spelling(info[2])), None)
-            if spelled is not None and _could_be_emulated(self._name, spelled[2]):
-                # The class's own layout is the one an emulation builds, at the class's own
-                # version - the version the first record a file holds gave it (``new TClass(name,
-                # fClassVersion)``) - and not at the version the copy met here recorded. ROOT's
-                # array then holds it at slot 1, which is why the file's other layout is printed
-                # ``#2`` rather than ``#1``.
-                return spelled[0], known[0][1], spelled[2]
+            own = self._pair_own_layout(known)
+            if own is not None:
+                return own
         return known[0]
+
+    def _pair_own_layout(self, known: list[Layout]) -> Layout | None:
+        """The layout a pair's own emulation - or the declaration it came from - gives it.
+
+        ``DESCRIBED`` says how the session knew the class when the first of its layouts was read:
+        with a **library's dictionary** ROOT emulates it, so its own layout is the *emulated*
+        spelling; with only an ``#include`` it is laid out **from the declaration**, so its own
+        layout is the file's *mapped* spelling. Neither leaves the class made from the file's first
+        record. The layout is listed at the class's **own** version - the one the first record a
+        file holds gave it (``new TClass(name, fClassVersion)``) - which is what puts a file's other
+        layout at ``#2`` rather than ``#1``; and the entry itself is handed back where it already
+        names that version, because it must be **the** object the array holds (round 112).
+        """
+        described = DESCRIBED.get(self._name)
+        if described == "dictionary":
+            own = next((info for info in known if _emulated_spelling(info[2])), None)
+        elif described == "declaration":
+            own = next((info for info in known if not _emulated_spelling(info[2])), None)
+        else:
+            return None
+        if own is None:
+            return None
+        version = int(known[0][1])
+        return own if int(own[1]) == version else (own[0], version, own[2])
 
     def _versioned(self) -> bool:
         """Does a listing of one of the class's layouts name their version?

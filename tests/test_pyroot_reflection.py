@@ -36,6 +36,7 @@ def _fresh(tmp_path):
     infos = {name: list(found) for name, found in reflection.FILE_INFOS.items()}
     recorded = {name: dict(found) for name, found in reflection.RECORDED.items()}
     frozen = dict(reflection.FROZEN_OFFSETS)
+    described = dict(reflection.DESCRIBED)
     enums = dict(troot._ENUMS)
     troot._ENUMS.clear()
     yield from fresh(tmp_path)
@@ -47,6 +48,8 @@ def _fresh(tmp_path):
     reflection.RECORDED.update(recorded)
     reflection.FROZEN_OFFSETS.clear()
     reflection.FROZEN_OFFSETS.update(frozen)
+    reflection.DESCRIBED.clear()
+    reflection.DESCRIBED.update(described)
     reflection.DISAGREED.clear()
     reflection.GENERATED.clear()
     reflection.INTERPRETED_METHODS.clear()
@@ -806,6 +809,70 @@ EMULATED = (
     ("TStreamerBasicType", "first", "Emulation", 13, 4, 1, 0, (0, 0, 0, 0, 0), "int", ()),
     ("TStreamerObjectAny", "second", "Emulation", 62, 24, 1, 0, (0, 0, 0, 0, 0), "ProbeRef", ()),
 )
+
+
+def test_a_template_a_bare_declaration_answers_for_is_no_missing_dictionary():
+    """A type the interpreter *declares* needs no dictionary, however it is spelled.
+
+    ``cmspair.h`` declares ``edm::Ref`` and the file records its template instance: a class the
+    session can describe is one ``TClass::Init`` stays silent about, and ROOT prints no warning in
+    ``io/stdpair``'s four ``libtype=2`` families that read their files **after** the include - only
+    in the four that read them before it, when nothing was declared yet.
+    """
+    assert reflection._undictionaried("Probe<int>")
+    run_source("class Probe { public: int i = 0; };", "probe.h", call=False)
+    assert reflection._has_dictionary("Probe<int>")
+    assert not reflection._undictionaried("Probe<int>")
+
+
+def test_a_class_s_layouts_remember_whether_the_session_described_it_at_the_read(capfd):
+    """Which layout is current is decided **when the file is read**, not when it is printed.
+
+    ``io/stdpair``'s ``0_*_1_1`` families read their files before the library load and the
+    ``0_*_0_1`` families after it, and a session that learns the class afterwards does not renumber
+    the layouts it already holds - so the state is kept beside the layouts, once, as the first of
+    them is noted.
+    """
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))), (WITH_REF, (0xB5FB752, 2, EMULATED))],
+        "before.root",
+    )
+    assert reflection.DESCRIBED[WITH_REF] is None
+    reflection.note_generated_dictionary("ProbeRef")
+    assert reflection.DESCRIBED[WITH_REF] is None  # read before anything described it
+    current = ROOT.TClass.GetClass(WITH_REF)._current_layout()
+    assert current is not None and current[0] == 0xB15D1241
+
+
+def test_a_pair_a_dictionary_describes_still_reads_a_first_record_its_own_spelling_lacks(capfd):
+    """A dictionary makes ROOT *emulate* the class, but a file's layout can still be the only one
+    there is: the file's first record is then the current layout, as ``io/stdpair``'s mismatched
+    orders show."""
+    reflection.note_generated_dictionary("ProbeRef")
+    reflection.note_file_infos([(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND)))], "one.root")
+    assert reflection.DESCRIBED[WITH_REF] == "dictionary"
+    current = ROOT.TClass.GetClass(WITH_REF)._current_layout()
+    assert current is not None and current[0] == 0xB15D1241
+
+
+def test_a_pair_the_interpreter_only_declares_is_laid_out_from_the_declaration(capfd):
+    """An ``#include`` is a declaration, not a dictionary: the class is laid out **from it**, so its
+    own layout is the file's *mapped* spelling - where a loaded library's dictionary makes ROOT
+    *emulate* the class and its own layout the emulated one.
+
+    ``io/stdpair`` prints the difference: the four ``libtype=2`` families that read their files
+    after ``#include "cmspair.h"`` list the mapped layout as current with the emulated one beside
+    it, and the families that read their files before the include or load list whichever record
+    came first.
+    """
+    run_source("class ProbeRef { public: int i = 0; };", "ref.h", call=False)
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))), (WITH_REF, (0xB5FB752, 2, EMULATED))],
+        "after.root",
+    )
+    assert reflection.DESCRIBED[WITH_REF] == "declaration"
+    current = ROOT.TClass.GetClass(WITH_REF)._current_layout()
+    assert current is not None and current[0] == 0xB15D1241
 
 
 def test_a_pair_a_library_s_dictionary_reaches_is_emulated_before_its_files(capfd):
