@@ -4351,6 +4351,7 @@ read first, and then the two-line offsets table.
 1 062 modules / 0 undeclared, `mkdocs build --strict` exit 0 (`…/mkdocs.log`).
 | 110 | `6249ef1b` | **the `io/stdpair` bucket's two unknowns measured on the 6.40 oracle, and a first fix reverted**: `GetStreamerInfos()->GetSize()` is ROOT's `TObjArray` room (13, not the 2 entries) - the walk a test makes only reaches `#2` because of it; an entry must be the *same object* `GetStreamerInfo()` answers; and `second`'s `offset=` 4-vs-8 is ROOT's emulated `AlignUp(offset, align) + size` run again when the map's proxy is created (`0,0` before, `0,8` after) | no code | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 either side; the first fix (Expand + per-class cache) broke four existing tests and was reverted - those four are the next attempt's specification. Gate unchanged (`TOTAL 125988 0 31626 0 100%`, round 109's) | 0 new: `W0-239` **rewritten** with the three measured pieces, `W0-230` **carries the offsets rule** |
 | 111 | `cee9a211` | **`io/stdpair`'s fix measured to five rules, the fifth tried and the whole attempt reverted**: the room and the entry identity are one change (the room alone prints `#1` as well as `#2`); a class in memory lists as met and only an emulated one is indexed by version (`Evo`: 2 blocks against the ref's 3); building follows the element (an enum carries `newtype=13`, a string element stays `Emulation`); the current entry keeps `from_file` (`offset=99999 type= 3 newtype=-1`); and the pair's dictionary warning needs a known-type predicate first - `stlNoLibTest.ref` warns of `pair<float,int>` where this kit warns of no pair at all | no code | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 of 44 and `io/emulated` 4 / 1 / 1 / 2 of 8 at the tip, both their predecessors' figures; four attempts reverted, each after the reflection suite named what it broke. Gate unchanged (`TOTAL 125988 0 31626 0 100%`, round 109's) | 1 new: `W0-240` (the dictionary-warning predicate); `W0-239` **rewritten** with the five rules and the seven pinning tests |
+| 112 | `46c791dc` | **the layouts array as ROOT keeps it, and the offsets ROOT accumulates - `io/stdpair` 4 -> 8 PASS**: one array per class (entries are the objects `GetStreamerInfo()` answers), ROOT's **thirteen** slots, indexed by class version for a versioned or emulated class, every emulated layout **built** (`built=1` in every slot of the 6.40 oracle), an older layout compared against the current one (`newtype=`, actions two hundred above the file's type) and `offset = AlignUp(offset, GetAlignment()) + GetSize()` with 8 for a container and 4 otherwise - with three unit tests corrected against that measurement | `3b1d6e89` | **roottest +4**: `io/stdpair` 4 / 40 -> 8 / 36 of 44, the four `pairEnumEvo_{0,1}_{0,1}_0_1` and none lost; `io/emulated` 4 / 1 / 1 / 2 unchanged; baseline raised by `--merge`, its only diff those four rows. Gate `TOTAL 126034 0 31642 0 100%` (13 968 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 3 new: `W0-241` (the eight `kNothing` refs' `offset= 8`), `W0-242` (which file's layout is current), `W0-243` (the `Emulation` title and an enum's `type=13`); `W0-239` and `W0-240` partly closed |
 
 ## Round 110's close
 
@@ -4427,3 +4428,52 @@ functions in 1 824 files, components 1 062 modules / 0 undeclared, `mkdocs build
 reverted tree anyway, all seven commands, at a load average of 6.3: **13 967 + 44 passed, `TOTAL 125988 0 31626 0 100%`**,
 ruff clean, `mypy` clean, maintainability and components clean, `mkdocs --strict` exit 0 - the same figures round 109
 measured, which is what a round that ships no code should read.
+
+## Round 112's close
+
+Round 112 is the first round since 107 to move the harness number, and it moved **four tests** on the
+loop's biggest bucket: `roottest/root/io/stdpair` goes **4 PASS / 40 DIFF -> 8 PASS / 36 DIFF**, with
+nothing lost and `io/emulated` unchanged at 4 / 1 / 1 / 2.
+
+**What was already measured, and what the oracle settled this round.** Three rounds had priced this
+bucket; round 112 opened by asking the 6.40 oracle the one question they had left open -
+*is an emulated class's old layout built too?* - with two files the roottest itself ships
+(`probe/lists.C`): `GetStreamerInfos()->GetSize()` is **13**, `GetLast()` 2; every occupied slot has
+`IsBuilt() 1` **immediately**; the current entry is the **same object** `GetStreamerInfo()` answers
+(`same=1`); and a ROOT-written `pair<int,string>` lists `i= 0, first type= 3, offset= 0` and
+`i= 1, second type=300, offset= 8` - so **the action lines are printed for an emulated class's
+layout**, which one of our own unit tests had asserted the opposite of.
+
+**What landed** (`3b1d6e89`, one commit): `TClass` keeps **one** layouts array per class, so an entry
+is the object `GetStreamerInfo()` answers; the array has ROOT's **thirteen** slots and is indexed by
+class version for a versioned or an emulated class (as-met for a class in memory); every layout of an
+emulated class is built, `from_file` survives on a current entry that came from a file, and an older
+layout is compared against the class's current one, so its elements carry `newtype=13` and read with
+an action two hundred above the file's type. And `TStreamerElement`'s `offset=` is ROOT's
+`AlignUp(offset, GetAlignment())` then `offset += GetSize()`, with an alignment of 8 for a container
+and 4 otherwise - measured, not guessed: the oracle's `pair<int,string>` puts its string at 8 and its
+emulated pair puts the 24-byte `edm::Ref` at 4.
+
+**Three unit tests corrected against the measurement, not loosened.** `GetSize() == 4` became 13 (the
+room); a synthetic two-int layout's second action line `offset= 0` became 4 (the accumulation); and
+`"   i=" not in printed` became the two action lines the oracle prints. Each carries the oracle's
+own output or ROOT's source line in its comment.
+
+**The four gained** are `pairEnumEvo_{0,1}_{0,1}_0_1` - the `reportedorder=1` families of `libtype` 0
+and 1 - and the baseline recorded exactly those four rows (`rootsuite baseline --merge`; `ratchet` is
+not applicable to a `--only` run, as `W0-158` says). The gate is green: **`TOTAL 126034 0 31642 0
+100%`** (13 968 + 44), ruff, mypy 1 062 files, maintainability 33 3xx functions, components 1 062
+modules / 0 undeclared, `mkdocs --strict`.
+
+**The round also cost itself two gate cycles, and both are the gate doing its job**: `GetStreamerInfos`
+pushed `TClass._held` to **NPath 360** and a line past 100 characters, and the first green-ish run
+named two uncovered lines (`_version_of`, now dead, and the array cache's return). The functions were
+split (`_held_layouts`, `_indexed_by_version`) and a test now pins that asking a class for its array
+twice hands back the same one.
+
+**What is left is three named rows, each measured this round**: `W0-241` (the eight `kNothing` refs
+want `offset= 8` where the 32 others want 4 - ROOT's alignment knows the class only when a dictionary
+is loaded, and this kit cannot tell the configurations apart), `W0-242` (which file's layout is
+*current*: the `libtype=3` ref keeps the last, we keep the first, which reorders their blocks) and
+`W0-243` (the `Emulation` element title and an enum's `type=13`). With those, the remaining 36 DIFFs
+of this bucket are arithmetic and ordering rather than a missing feature.
