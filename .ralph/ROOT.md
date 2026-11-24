@@ -4354,6 +4354,7 @@ read first, and then the two-line offsets table.
 | 112 | `46c791dc` | **the layouts array as ROOT keeps it, and the offsets ROOT accumulates - `io/stdpair` 4 -> 8 PASS**: one array per class (entries are the objects `GetStreamerInfo()` answers), ROOT's **thirteen** slots, indexed by class version for a versioned or emulated class, every emulated layout **built** (`built=1` in every slot of the 6.40 oracle), an older layout compared against the current one (`newtype=`, actions two hundred above the file's type) and `offset = AlignUp(offset, GetAlignment()) + GetSize()` with 8 for a container and 4 otherwise - with three unit tests corrected against that measurement | `3b1d6e89` | **roottest +4**: `io/stdpair` 4 / 40 -> 8 / 36 of 44, the four `pairEnumEvo_{0,1}_{0,1}_0_1` and none lost; `io/emulated` 4 / 1 / 1 / 2 unchanged; baseline raised by `--merge`, its only diff those four rows. Gate `TOTAL 126034 0 31642 0 100%` (13 968 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 3 new: `W0-241` (the eight `kNothing` refs' `offset= 8`), `W0-242` (which file's layout is current), `W0-243` (the `Emulation` title and an enum's `type=13`); `W0-239` and `W0-240` partly closed |
 | 113 | `47e0b444` | **no code: `io/stdpair`'s remaining 36 DIFFs counted to the line with the judge's own list comparison**, and the one state they wait on named - every test is 5-19 lines from PASS; the six nearest differ only by the pair's dictionary warning and `second`'s `offset= 8`; and the 8-vs-4 split is the *loaded-dictionary* state (`kNothing` and interpreted say 8, a loaded dictionary 4), the same state that decides which file layout is current | no code | **0 PASS moved, 0 lost**: `io/stdpair` 8 / 36 of 44 at the base, `io/datamodelevolution` 22 / 20 / 2 of 44 re-measured (`…/base-dml`), its chain still four features. Gate unchanged (`TOTAL 126034 0 31642 0 100%`, round 112's) | 1 new: `W0-244` (**model the dictionary a macro loads** - alignment, current layout and the warning at once); `W0-241`/`W0-242` marked as its halves |
 | 114 | `291a9f05` | **a member's alignment follows the dictionaries the session loaded, and a synthetic pair of unknown classes is warned of** - `TStreamerInfo::BuildOld` aligns at 8 for a class no dictionary has (ROOT's emulated guess) and 4 for one the session knows, a template instance through its template; and `_undictionaried` warns of a `pair<A,B>` nothing answers for | `a60dc3d9` | **roottest +4**: `io/stdpair` 8 / 36 -> **12 / 32** of 44, the four `pairEnumEvo_4_{0,1}_{0,1}_1` and none lost; baseline raised by `--merge`, its only diff those four rows. Gate `TOTAL 126053 0 31650 0 100%` (13 971 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 0 new: `W0-244` **two thirds landed**, `W0-241` **closed**; what is left is the duplicate `StreamerInfo` block and the current-layout choice (`W0-242`) |
+| 115 | `e52042af` | **a load re-emulates an emulated class, so its current layout is listed twice** - `loading.load_library` calls `reflection.reload_emulated()`, the array keeps a second copy of the current layout, a taken slot is the next free one, and `GetStreamerInfo(v)` is the array's `At(v)` | `54a1412b` | **roottest +4**: `io/stdpair` 12 / 32 -> **16 / 28** of 44, the four `pairEnumEvo_{0,1}_{0,1}_1_1` and none lost; `io/tree` 18/0/0/2 and `meta/evolution` 20/7/8/2 unchanged; baseline raised by `--merge`. Gate `TOTAL 126072 0 31660 0 100%` (13 972 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 0 new: `W0-244` **three quarters landed**; what is left is `2_*_1_1`'s current-layout choice and the four `4_*_*_0` `kNothing` families |
 
 ## Round 110's close
 
@@ -4571,3 +4572,50 @@ instance through its template is what replaced it.
 and `2_*_1_1`'s four-line difference is the current-layout choice (`W0-242`). `W0-244` carries both,
 `W0-241` is closed by the alignment rule, and `io/stdpair` is now 12 of 44 with the remaining 32 each
 6 lines or fewer from a PASS.
+
+## Round 115's close
+
+Round 115 is the third round in five to move the harness number, and it moved **four tests** on the
+bucket that has carried the loop since round 103: `roottest/root/io/stdpair` goes **12 PASS / 32
+DIFF -> 16 PASS / 28 DIFF**, nothing lost.
+
+**What round 114 left, and what ROOT does.** Round 114's close named the two remaining causes of that
+bucket - a **missing duplicate `StreamerInfo` block** in six families, and `2_*_1_1`'s current-layout
+choice. The duplicate is ROOT's own documented behaviour: `pairEnumEvo.C`'s comment says *"'missing'
+StreamerInfo and after update (use ForceReload in GenCollectionProxy) it now has duplicated
+StreamerInfo"*, and a macro that prints its `fStreamerInfo` for a class **read before a library load**
+shows `At(1) = v1`, `At(2) = **v1 again**`, `At(3) = v2` - the class was emulated from the file, then
+emulated **again** when the library arrived, and both copies are kept.
+
+**What landed** (`54a1412b`). `pycint/library/loading.py` calls a new
+`reflection.reload_emulated()` after it declares what a library defines; that marks every class
+**nothing in memory describes**, and `_held_layouts` lists such a class's current layout **twice** -
+a second object, not the same one, which is why the macro prints it at all. Two supporting pieces
+were needed and the first attempt failed without them: a version slot already taken is now the next
+free one (`while version in taken: version += 1`), and **`GetStreamerInfo(version)` answers the entry
+the array holds at that index** instead of a separate version map - which is exactly the bug the
+round's own probe found (`At(2)` held the duplicate while `GetStreamerInfo(2)` answered the older
+layout, so the printer showed the wrong block and only one of them).
+
+**Measured.** The four gained are `pairEnumEvo_{0,1}_{0,1}_1_1` - every `readbeforeload=1` family of
+the two shared/ACLiC libraries, which is precisely the configuration the duplicate belongs to. Two
+areas that touch the same reflection were re-measured at the tip and are unchanged: `io/tree`
+**18 / 0 / 0 / 2** and `meta/evolution` **20 / 7 / 8 / 2** of 37. The baseline recorded the four rows
+with `rootsuite baseline --merge`. Gate: **`TOTAL 126072 0 31660 0 100%`** (13 972 + 44), ruff, mypy
+1 062 files, maintainability, components, `mkdocs --strict`.
+
+**The round's own gate caught two things and both were fixed rather than excused**: `mypy` named the
+slot map's `Any` (`Returning Any from function declared to return "TStreamerInfo | None"`), and part 2
+named two uncovered lines - the duplicate append and `reload_emulated`'s loop - which a new unit test
+now reaches (`test_a_load_registers_an_emulated_class_s_layout_a_second_time`).
+
+**One accident, recorded because it nearly shipped**: the round's first commit deleted `mkdocs.yml`
+(120 lines) - the file was missing from the worktree when the gate ran, so the gate could not see it,
+and only `git diff --stat` before the amend did. It was restored from the base and the commit amended;
+`mkdocs build --strict` is green at the shipped tree. **`git diff --stat` before every commit**, not
+only before the gate.
+
+**What is left is two causes no load explains.** `2_*_1_1`'s four lines are the **current-layout
+choice** for the interpreted run (`W0-242`), and the four `4_*_*_0` families are `kNothing` - no
+library is loaded at all, so the duplicate cannot come from one. Both are in `W0-244`, which is now
+three parts done of four; `io/stdpair` is 16 of 44.
