@@ -153,6 +153,12 @@ FILE_INFOS: dict[str, list[Layout]] = {}
 #: ``TStreamerInfo::fOnFileClassVersion``, which is not the slot once a version was already taken
 #: (``_free_version``) and is what ROOT matches a checksum against. ``_same_layout`` says so.
 RECORDED: dict[str, dict[tuple[int, int], int]] = {}
+#: The member offsets a file's layout had **when the file was read**, by class and checksum:
+#: ``TStreamerInfo::BuildOld`` lays a file's members out once, as the file is read, and a
+#: dictionary or an ``#include`` arriving later does not move them - ``io/stdpair``'s ``2_*_1_*``
+#: families read their files before the include and keep ``second`` at 8 where the ``2_*_0_*``
+#: families, which read after it, have it at 4.
+FROZEN_OFFSETS: dict[tuple[str, int], tuple[int, ...]] = {}
 
 #: The classes a file's layout was reported as disagreeing with the class in memory about -
 #: which ROOT warns of once per class, however many files its layouts are read from.
@@ -262,6 +268,19 @@ def reload_emulated() -> None:
     for name in FILE_INFOS:
         if TClass(name)._layout() is None:
             RELOADED.add(name)
+            _thaw(name)
+
+
+def _thaw(name: str) -> None:
+    """A class re-emulated lays its members out again, so the offsets its files were read with go.
+
+    ``TClass::Update`` runs ``BuildOld`` a second time on every layout of a class it re-emulates,
+    and that second run is the one that knows the classes the load has just described - which is
+    why ``io/stdpair``'s ``0_*_1_1``/``1_*_1_1`` families, which read their files **before** the
+    library load, print ``second offset= 4`` and not the 8 the read alone would have given it.
+    """
+    for key in [key for key in FROZEN_OFFSETS if key[0] == name]:
+        del FROZEN_OFFSETS[key]
 
 
 def note_generated_dictionary(classes: Any) -> None:
@@ -378,6 +397,9 @@ def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None
         if name not in FILE_INFOS and _undictionaried(name):
             message("Warning", "TClass::Init", "no dictionary for class %s is available", name)
     for name, (checksum, version, elements) in infos:
+        FROZEN_OFFSETS.setdefault(
+            (name, checksum), _accumulated([element_of(e) for e in elements])
+        )
         met = _met(name, (checksum, version, elements), origin)
         if met or _in_memory(name, checksum, version):
             continue
@@ -601,6 +623,24 @@ def _compare_content(name: str, mine: Layout, on_file: Layout) -> None:
 #: The room ROOT's ``TClass::fStreamerInfo`` has before it grows - measured on the 6.40 oracle,
 #: whose ``GetStreamerInfos()->GetSize()`` is 13 for a class of two layouts and 15 for ``TH1F``.
 STREAMER_INFO_SLOTS = 13
+
+
+def _accumulated(elements: list[Any]) -> tuple[int, ...]:
+    """Each element's offset in a layout ROOT accumulates for a class it emulates.
+
+    ``TStreamerInfo::BuildOld``'s ``offset = AlignUp(offset, element->GetAlignment());
+    SetOffset(offset); offset += element->GetSize()`` (``io/io/src/TStreamerInfo.cxx``), measured
+    on the 6.40 oracle: the pair's enum is at 0 and the 24-byte ``edm::Ref`` at 4 where the session
+    knows the class, and at 8 where it does not.
+    """
+    found: list[int] = []
+    offset = 0
+    for element in elements:
+        size = element.GetSize()
+        offset += -offset % _alignment_of(element, size)
+        found.append(offset)
+        offset += size
+    return tuple(found)
 
 
 def _alignment_of(element: Any, size: int) -> int:
@@ -2154,14 +2194,14 @@ class TStreamerInfo(TNamed):
         pair's enum is at 0 and the 24-byte ``edm::Ref`` at 4, and ``pair<int,string>``'s string,
         which this kit models, at 8.
         """
-        found: list[int] = []
-        offset = 0
-        for element in self._elements:
-            size = element.GetSize()
-            offset += -offset % _alignment_of(element, size)
-            found.append(offset)
-            offset += size
-        return found
+        if self._from_file and TClass(self._name)._layout() is None:
+            # A class nothing in memory describes keeps the offsets its file's layout was read
+            # with: ROOT lays them out then, and what the session learns afterwards - a loaded
+            # library, an ``#include`` - does not lay them out again.
+            frozen = FROZEN_OFFSETS.get((self._name, self._checksum))
+            if frozen is not None and len(frozen) == len(self._elements):
+                return list(frozen)
+        return list(_accumulated(self._elements))
 
     def ls(self, option: str = "") -> None:
         """``ls``: ROOT's ``StreamerInfo for class`` line, each element, and - for the layout
