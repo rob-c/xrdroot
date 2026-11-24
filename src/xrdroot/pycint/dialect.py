@@ -224,6 +224,14 @@ RETURNED = {
                                                   "RooHelpers::HijackMessageStream")},
     **{(kind, "Invert"): "TMatrixDSym" for kind in ("TDecompChol", "TDecompBK")},
     **{("RNTupleWriter", name): "RNTupleWriter" for name in ("Recreate", "Append")},
+    #: A graph's points and bars are pointers into storage the graph owns, so a program hands one
+    #: to an algorithm: ``std::is_sorted(graph.GetX(), graph.GetX() + n)`` is a range of the
+    #: points, and every kind of bar the family has answers with its own array.
+    **{(kind, name): "Double_t*"
+       for kind in ("TGraph", "TGraphErrors", "TGraphAsymmErrors", "TGraphBentErrors",
+                    "TGraphMultiErrors")
+       for name in ("GetX", "GetY", "GetEX", "GetEY", "GetEXlow", "GetEXhigh", "GetEYlow",
+                    "GetEYhigh", "GetEXlowd", "GetEXhighd", "GetEYlowd", "GetEYhighd")},
 }
 
 #: ROOT's getters, whose call leaves the object as it was: a loop bound using them is fixed.

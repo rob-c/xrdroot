@@ -64,7 +64,7 @@
  "gtest/hist/hist/testTF3": "PASS",
  "gtest/hist/hist/testTFormula": "FAIL",
  "gtest/hist/hist/testTFractionFitter": "PASS",
- "gtest/hist/hist/testTGraphSorting": "FAIL",
+ "gtest/hist/hist/testTGraphSorting": "PASS",
  "gtest/hist/hist/testTGraphsa": "PASS",
  "gtest/hist/hist/testTH1": "FAIL",
  "gtest/hist/hist/testTH1FindFirstBinAbove": "PASS",

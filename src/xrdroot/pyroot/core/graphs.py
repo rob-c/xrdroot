@@ -119,6 +119,9 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     """``TGraph``: points, joined or marked."""
 
     CLASS_TITLE = "Graph graphics class"
+    #: ``TGraph::EStatusBits``: set by a ``Sort`` that put the points in x order, and by
+    #: ``TGraph::Eval`` when it sorts them itself.
+    kIsSortedX = 1 << 19
     kIsHighlight = 1 << 20
 
     def __init__(self, *args: Any) -> None:
@@ -501,11 +504,31 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
             self._bars[key][i] = float(value)
         self._changed()
 
-    def Sort(self, *args: Any) -> None:
-        """``Sort``: the points in increasing x, their bars with them."""
+    def Sort(self, greaterfunc: Any = None, ascending: bool = True, low: int = 0,
+             high: int = -1111) -> None:
+        """``TGraph::Sort``: the points in increasing x, their bars with them.
+
+        ROOT sorts a permutation of the point numbers - ``std::stable_sort`` over ``0..N-1``
+        with the comparator it was given - and then moves *every* array the graph keeps by it
+        (``UpdateArrays``), which is why a graph's errors follow their points. The default is
+        ``TGraph::CompareX`` ascending over the whole graph, and that is what sets
+        ``kIsSortedX`` and lets ``Eval`` binary-search the points afterwards.
+
+        A comparator, a descending order or a sub-range is refused by name rather than ignored:
+        a graph sorted the wrong way round is drawn wrong, and the numbers a test reads back
+        would be another graph's.
+        """
+        if greaterfunc is not None or not ascending or low != 0 or high != -1111:
+            raise UnsupportedFeatureError(
+                "TGraph::Sort does not yet take a comparator, a descending order or a sub-range: "
+                "this kit sorts the whole graph by x, ascending, as TGraph::CompareX's default "
+                "does. Sort the points before they are put in the graph, or call Sort() with no "
+                "arguments"
+            )
         order = np.argsort(self._points[0], kind="stable")
         self._points = (self._points[0][order], self._points[1][order])
         self._bars = {key: value[order] for key, value in self._bars.items()}
+        self.SetBit(self.kIsSortedX)
         self._changed()
 
     def Print(self, option: str = "") -> None:

@@ -41,6 +41,7 @@ from ...cppstd.objects import reverse_range as reverse_range
 from ...cppstd.objects import set_attr as set_attr
 from ...cppstd.objects import set_item as set_item
 from ...cppstd.objects import sort_range as sort_range
+from ...cppstd.objects import sorted_range as sorted_range
 from ...cppstd.objects import throw as throw
 from ...cppstd.objects import value_copy as value_copy
 from ..errors import Refusal
@@ -61,6 +62,7 @@ __all__ = [
     "Pair",
     "iterate",
     "sort_range",
+    "sorted_range",
     "reverse_range",
     "CppException",
     "throw",

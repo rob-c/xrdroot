@@ -403,6 +403,15 @@ class CallEmitter(ExprEmitter):
         extra = "".join(f", {self.value(arg)}" for arg in node.args[2:3])
         return f"{helper}({container}, {start}, {stop}{extra})", P.POSTFIX
 
+    def _sorted(self, func: Name, node: Call) -> Out | None:
+        """``std::is_sorted(begin, end[, less])``: whether the range is in order, as C++ asks it
+        - no element less than the one before it - which a range of this kit answers in one pass."""
+        if len(node.args) not in (2, 3):
+            raise self.refuse(f"std::{func.last} with {len(node.args)} arguments", node)
+        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
+        extra = "".join(f", {self.value(arg)}" for arg in node.args[2:3])
+        return f"sorted_range({container}, {start}, {stop}{extra})", P.POSTFIX
+
     def _accumulate(self, func: Name, node: Call) -> Out | None:
         if len(node.args) != 3:
             raise self.refuse("std::accumulate with an operation of its own", node)
@@ -479,6 +488,7 @@ class CallEmitter(ExprEmitter):
         "stable_sort": _sort,
         "reverse": _sort,
         "accumulate": _accumulate,
+        "is_sorted": _sorted,
         "sprintf": _unsupported,
         "snprintf": _unsupported,
         "strcpy": _unsupported,

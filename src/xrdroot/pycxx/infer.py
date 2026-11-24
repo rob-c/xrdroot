@@ -124,6 +124,19 @@ def arithmetic_result(left: CType | None, right: CType | None) -> CType | None:
     return INT  # pragma: no cover - every rank is some type's
 
 
+def _named_type(text: str) -> CType:
+    """The type a dialect's ``method_returns`` names, as a declaration would spell it.
+
+    A table entry is a class's name (``TMatrixD``) or a pointer to one written with the ``*`` a
+    declaration has - ``Double_t*``, which a graph's ``GetX`` answers - and a pointer is what
+    makes a range of it: ``std::is_sorted(g.GetX(), g.GetX() + n)`` needs the return type to say
+    so, or the range is refused.
+    """
+    starred = text.rstrip().endswith("*")
+    base = text.rstrip().rstrip("*").strip() if starred else text
+    return CType(base, pointer=int(starred))
+
+
 def _made_field(func: Member) -> CType | None:
     """A dialect's field maker ``MakeField<T>``: the ``shared_ptr<T>`` a value is written
     through."""
@@ -378,7 +391,7 @@ class Inference(EmitterBase):
         info = self.program.classes.get(owner.name) if owner is not None else None
         if info is None:
             kept = active().method_returns.get((owner.name, func.name)) if owner else None
-            return CType(kept) if kept is not None else _made_field(func)
+            return _named_type(kept) if kept is not None else _made_field(func)
         methods = info.methods.get(func.name, [])
         return methods[0].returns if methods else None
 

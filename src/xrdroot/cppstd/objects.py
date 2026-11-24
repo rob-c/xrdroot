@@ -11,6 +11,7 @@ arguments, which of several translated functions to call.
 from __future__ import annotations
 
 import functools
+import itertools
 import operator
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
@@ -34,6 +35,7 @@ __all__ = [
     "Pair",
     "iterate",
     "sort_range",
+    "sorted_range",
     "reverse_range",
     "CppException",
     "throw",
@@ -293,6 +295,23 @@ def _comparison(less: Callable[..., Any]) -> Callable[[Any, Any], int]:
         return 1 if less(b, a) else 0
 
     return compare
+
+
+def sorted_range(
+    container: Any, start: int, stop: Any, less: Callable[..., Any] | None = None
+) -> bool:
+    """``std::is_sorted(begin, end[, less])`` over ``container[start:stop]``.
+
+    C++ answers whether no element is less than the one before it, which is a weaker question
+    than "is it in ascending order" for a comparator that is not a strict weak ordering: an
+    unordered comparator answers true, and C++ answers the same. ``less`` is a C++ predicate
+    (``less(a, b)``), so the comparison is ``not less(later, earlier)``.
+    """
+    end = len(container) if stop is None else int(stop)
+    values = list(container[start:end])
+    if less is None:
+        return all(not (later < earlier) for earlier, later in itertools.pairwise(values))
+    return all(not less(later, earlier) for earlier, later in itertools.pairwise(values))
 
 
 def reverse_range(container: Any, start: int, stop: Any) -> None:
