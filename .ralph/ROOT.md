@@ -4355,6 +4355,7 @@ read first, and then the two-line offsets table.
 | 113 | `47e0b444` | **no code: `io/stdpair`'s remaining 36 DIFFs counted to the line with the judge's own list comparison**, and the one state they wait on named - every test is 5-19 lines from PASS; the six nearest differ only by the pair's dictionary warning and `second`'s `offset= 8`; and the 8-vs-4 split is the *loaded-dictionary* state (`kNothing` and interpreted say 8, a loaded dictionary 4), the same state that decides which file layout is current | no code | **0 PASS moved, 0 lost**: `io/stdpair` 8 / 36 of 44 at the base, `io/datamodelevolution` 22 / 20 / 2 of 44 re-measured (`…/base-dml`), its chain still four features. Gate unchanged (`TOTAL 126034 0 31642 0 100%`, round 112's) | 1 new: `W0-244` (**model the dictionary a macro loads** - alignment, current layout and the warning at once); `W0-241`/`W0-242` marked as its halves |
 | 114 | `291a9f05` | **a member's alignment follows the dictionaries the session loaded, and a synthetic pair of unknown classes is warned of** - `TStreamerInfo::BuildOld` aligns at 8 for a class no dictionary has (ROOT's emulated guess) and 4 for one the session knows, a template instance through its template; and `_undictionaried` warns of a `pair<A,B>` nothing answers for | `a60dc3d9` | **roottest +4**: `io/stdpair` 8 / 36 -> **12 / 32** of 44, the four `pairEnumEvo_4_{0,1}_{0,1}_1` and none lost; baseline raised by `--merge`, its only diff those four rows. Gate `TOTAL 126053 0 31650 0 100%` (13 971 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 0 new: `W0-244` **two thirds landed**, `W0-241` **closed**; what is left is the duplicate `StreamerInfo` block and the current-layout choice (`W0-242`) |
 | 115 | `e52042af` | **a load re-emulates an emulated class, so its current layout is listed twice** - `loading.load_library` calls `reflection.reload_emulated()`, the array keeps a second copy of the current layout, a taken slot is the next free one, and `GetStreamerInfo(v)` is the array's `At(v)` | `54a1412b` | **roottest +4**: `io/stdpair` 12 / 32 -> **16 / 28** of 44, the four `pairEnumEvo_{0,1}_{0,1}_1_1` and none lost; `io/tree` 18/0/0/2 and `meta/evolution` 20/7/8/2 unchanged; baseline raised by `--merge`. Gate `TOTAL 126072 0 31660 0 100%` (13 972 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 0 new: `W0-244` **three quarters landed**; what is left is `2_*_1_1`'s current-layout choice and the four `4_*_*_0` `kNothing` families |
+| 116 | `81364c2b` + `12ec0b60` | **`io/stdpair` 16 -> 20 PASS - a file's layout is matched to a held one by checksum only where the held one was recorded unversioned** - `TStreamerInfo::BuildCheck` looks a layout read from a file up by **checksum** only against an entry whose `GetOnFileClassVersion()` is 0 or 1 and by class version otherwise, so the same bytes can be held twice, at two slots: `io/stdpair`'s `ab02.root` (the pair at version 1, `0xb15d1241`, and at version 2, `0xb5fb752`) followed by `aa02.root` (`0xb5fb752` as version 1) lists `At(1) 0xb15d1241`, `At(2) 0xb5fb752`, `At(3) 0xb5fb752` - measured with two oracle probes (`probe/one.C` per file, `probe/steps.C` in both orders), not deduced. The version each layout recorded is kept beside the slot it is listed at, because `_free_version` renumbers a layout that lands above one already taken; the slot-based first shape **broke** `test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory` and the recorded version is what the second shape reads | `81364c2b` | **roottest +4**: `io/stdpair` **20 / 24 of 44** (`…/run3`), the four `4_{0,1}_{0,1}_0` `kNothing` families; `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2, `meta/evolution` 20/7/8/2, `io/datamodelevolution` 22/20/2 re-measured whole and unchanged (`…/guards`, 64/28/11/6 of 109). Gate **`TOTAL 126083 0 31666 0 100%`** (13 971 + 44 passing, one pre-existing failure), ruff, mypy 1 062 files, maintainability 33 354 functions, components, `mkdocs --strict` | 2 new: `W0-245` (a synthetic pair's in-memory layout is the **emulated** one - the `0_*`/`1_*` refs are byte-identical in either file order, which corrects round 113's "the order decides the current layout"; 8 tests) and `W0-246` (a file layout's offsets are laid out once, as the file is read, so an `#include` afterwards does not move `second` from 8 to 4; 4 tests); `W0-243` gains the evidence, `W0-244` is four fifths landed; a rule that skipped `_current_layout`'s file-over-memory swap for a synthetic pair **moved no test** and was reverted |
 
 ## Round 110's close
 
@@ -4619,3 +4620,71 @@ only before the gate.
 choice** for the interpreted run (`W0-242`), and the four `4_*_*_0` families are `kNothing` - no
 library is loaded at all, so the duplicate cannot come from one. Both are in `W0-244`, which is now
 three parts done of four; `io/stdpair` is 16 of 44.
+
+## Round 116's close
+
+**One rule, four tests, and the reason the four `kNothing` families were six lines short.** `io/stdpair`
+was 16 PASS / 28 DIFF of 44 at the base; the round's oracle probes and ROOT's own source found the
+rule the remaining `#3` block needed, and it is not about loads, files or offsets at all:
+**`TStreamerInfo::BuildCheck` matches a file's layout to one the class already holds by checksum
+only against an entry whose `GetOnFileClassVersion()` is 0 or 1**, and by class version otherwise.
+The same bytes can therefore be held twice, at two slots - which `pairEnumEvo.C`'s own comment
+calls "after update it now has duplicated StreamerInfo" and prints as its `#2` and `#3` blocks.
+
+**Measured, not deduced.** A probe against the 6.40 oracle (`probe/steps.C`, `probe/one.C` in the
+round's directory) read each input file on its own and then in both orders: `ab02.root` holds the
+pair at **version 1** (checksum `0xb15d1241`, `first type= 3`) *and* at **version 2** (`0xb5fb752`,
+`first type=13`), `aa02.root` holds `0xb5fb752` as **version 1**, and read `ab02` then `aa02` the
+array is `At(1) = 0xb15d1241`, `At(2) = 0xb5fb752`, `At(3) = 0xb5fb752` - the version-2 entry is
+**not** retired by the version-1 record that repeats it, because the entry it would be matched
+against was recorded versioned. Read the other way round the version-2 record *is* matched (against
+`At(1)`, which was recorded unversioned) and dropped.
+
+**The first shape of the rule was wrong, and an existing test said so.** Comparing the *slot* a held
+layout sits at - `held[1] <= 1` - is not the same question: `_free_version` renumbers a layout that
+lands above one already taken, so a layout a file recorded as version 1 can sit at slot 2.
+`test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory` opens one file twice and must
+hold one layout; the slot-based rule held two. The fix keeps the **recorded** version beside the
+slot (`RECORDED`, filled where the layout is noted, read by `_same_layout`) and the test is green
+again - it was the second attempt's specification, as `R110`/`R111`/`R114` were before it.
+
+**Measured.** `io/stdpair` **16 PASS / 28 DIFF -> 20 PASS / 24 DIFF** (`…/run3`, `--jobs 3`): the
+four gained are `pairEnumEvo_4_{0,1}_{0,1}_0`, the `kNothing` families that read `ab02.root` first.
+None lost. The four areas that share this reflection code were re-measured **whole** at the tip and
+are **the ledger's figures to the test**: `io/tree` 18 / 0 / 0 / 2, `io/emulated` 4 / 1 / 1 / 2,
+`meta/evolution` 20 / 7 / 8 / 2 of 37, `io/datamodelevolution` 22 / 20 / 2 of 44 - 64 / 28 / 11 / 6
+of 109 (`…/guards`). The baseline recorded the four rows with `rootsuite baseline --merge`. Gate: **`TOTAL 126083 0 31666 0 100%`** (13 971 + 44 passing; part 1 also reports the one
+**pre-existing** failure below), ruff, mypy 1 062 files, maintainability 33 354 functions, components
+1 062 modules / 0 undeclared, `mkdocs --strict` - each read for its own exit status.
+
+**What the other twenty-four now wait on, measured and written down rather than guessed.** (a) *Eight
+of them* - `0_{0,1}_{0,1}_{0,1}` and `1_{0,1}_{0,1}_{0,1}` - need ROOT's in-memory layout of a
+**synthetic pair** to be the **emulated** one (`first type=13`, title `Emulation`), so a file's mapped
+layout of the same version takes a *slot beside it* instead of becoming the current one. The refs
+prove it without any modelling: `pairEnumEvo_0_0_0_0.ref` and `pairEnumEvo_0_0_0_1.ref` are
+**byte-identical**, so for a library loaded without a pair dictionary the file order does not matter
+at all - which **corrects round 113's** reading that the order decides the current layout (`W0-245`,
+which is `W0-243`'s shape at the class level rather than the element's). (b) *Four more* -
+`2_{0,1}_1_{0,1}` - need a file layout's offsets to be laid out **once, as the file is read**: those
+families say `second offset= 8` and `2_*_0_*` says `4` with the same `#include`, and the difference
+is that the former reads the files *before* the include, while this kit asks `_has_dictionary` at
+print time (`W0-246`). (c) The eight `3_*` families need both, plus `W0-242`. `W0-244` is four
+fifths landed.
+
+**A rule that was tried and reverted this round**: skipping `_current_layout`'s file-over-memory
+replacement for a synthetic pair. It moved **no test** (the area read 20/24 either way), so it is
+not in the tree; the round's run 2 is the evidence for that.
+
+**A gate that was already red, measured rather than assumed, and a row in this file corrected.** Part 1
+of the two-command gate fails **one** test -
+`tests/test_pyroot_trees_refs.py::test_the_reference_of_a_member_read_back_names_the_process_of_the_file_it_came_from`
+(`assert made.GetObject() is None` gets the `TNamed` this session made) - and it fails **at the round's
+base `e6ea6664` and at round 115's own tip `dee8fd28`** in fresh worktrees (`…/base`, `…/base2`), so
+this round neither caused it nor can it honestly claim it gone. What the round *did* find is that
+round 115's `gate2.log` records **`part1=1`**: its close quoted `TOTAL 126072 0 31660 0 100%` from
+`coverage report` without reading part 1's **exit status**, so the row above it in this file
+overstates that gate by one failing test. The lesson is the one `R96` already paid for - *the gate is
+seven commands and every one of them is the gate, and each one's exit status is read* - and it is
+now written into the run's own gate script as `echo "part1=$?"` at the point it can still be seen.
+The failure itself is queued as **`W0-247`**, not patched: it is in the process-id/`TRef` filing that
+another round is working in, and a fix guessed from one assertion would break the two tests beside it.
