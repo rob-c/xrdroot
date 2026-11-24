@@ -3928,3 +3928,49 @@ maintainability 33 301 functions in 1 823 files; components 1 062 modules, 0 und
 `mkdocs build --strict` clean. The round's own first gate found the characterisation test above,
 which is `W0-63` doing its job on a change that touches every written tree.
 | 101 | `b14b9fb3` | **the row round 100 priced, closed**: a leaf list of several leaves as **one** `TBranch` - `Store.joined()` groups a leaf list's slots into one column of rows for `_Record`'s leaves at their offsets, and `layout.py`'s record lookup goes by the branch name | `09f7aaf5` | **pyunittest 84 -> 86**: `pyroot_pyz_ttree_iterable` and `pyroot_pyz_ttree_setbranchaddress` PASS where their last case was `SetBranchAddress` on a leaflist of a struct in a file this kit had written; the file's layout is the oracle's, `branch [structleaflistb] title=[myintll1/I:myintll2/I]` with both leaves, and both weak kinds measured whole at the tip - 86 / 40 / 2 / 1 and 10 / 6 / 43 (`…/after`) - nothing lost | 1: `W0-225` **closed**, `W0-228` (**a leaf list of mixed types** is still a leaf to a branch, and the in-memory layout disagrees with the file about it) |
+
+## Round 102's close
+
+Round 102 took `W0-226`, the one row the last three rounds had left standing in the TTree pythonization
+group, and finished the group: **`pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_ttree_branch`
+PASSES all 14 of its cases**, so all four `pyz_ttree_*` files pass.
+
+**What ROOT does, read off its own source first.** `TTree::Branch(TCollection*, Int_t bufsize, Int_t
+splitlevel, const char *name)` (`tree/tree/src/TTree.cxx:1864`) is a recursion with three naming rules,
+each transcribed: an object that is itself a collection (but not a `TClonesArray`) is walked as
+`<name>_<collection>_` with the split level one lower; an object's branch is `<name>_<object>`, no second
+underscore when the name already ends in one; and a split level above 99 ends the name with a dot, which
+is how ROOT marks a branch it will not split further. A `TClonesArray` is refused in ROOT's own words.
+That is why the test's `TList` holding a `TObjArray` called `myobjarray` of `one` and `two` gives
+`myobjarray_one` and `myobjarray_two`, and why `entry.myobjarray_one.GetName()` is `one`.
+
+**The wall behind it was a class, not the naming.** The objects are `TObjString`s, and
+`wclasses.harvested()` accepts only `TStreamerBasicType`/`TStreamerObjectAny` members, so a class with a
+`TObject` base has no split layout here at all. It is written **whole** instead - `Whole("TObjString",
+split=0)`, one `TBranchElement` whose entry is `_record(...)[RECORD_HEAD:]`, the members the class's
+description names without the byte count and version its streamer puts round them - which is exactly what
+`splitlevel` 0 asks ROOT for. **ROOT reads the file we write**: on the 6.40 oracle,
+`SetBranchAddress("myobjarray_one", &one)` and `GetEntry(0)` fill a `TObjString` that answers `one`. And
+a row read back makes the object again through a new `BY_ROW` factory, because `entry.b` of a whole branch
+is a dict and ROOT hands back the object.
+
+**Measured.** pyunittest **86 -> 87**, and the whole kind measured either side moves that one row and no
+other: **87 PASS / 39 FAIL / 2 UNSUPPORTED / 1 SKIP** (`…/ralph-round-202611241201/after`, `--jobs 3`),
+with `test/` unchanged at **10 / 6 / 43**. The baseline row was raised by `rootsuite baseline --merge`
+from that same run and `ratchet` prints **0 regressions**.
+
+**The gate caught the round's own complexity, twice.** The new form's early return pushed
+`TTree.Branch` to **NPath 256** against the limit of 200, so it was split - `_collection_form` for the
+dispatch, `_branch_from` for the object-or-leaf-list decision, `_leaf_branch` for the leaves - rather
+than excused. Gate: **`TOTAL 125967 0 31620 0 100%`** (13 961 + 44, by the two-command decomposition at
+`-n 4`); `ruff` clean; `mypy` clean on 1 062 files; maintainability 33 328 functions in 1 824 files;
+`mkdocs --strict` clean.
+
+**What the round queued rather than did.** **`W0-229`** is the fidelity gap the work measured: a class
+with a base is written whole where ROOT splits it, and the three pieces that would split it - flatten
+`TStreamerBase`, allow `TStreamerString` in `SPLITTABLE`, give `Split._member` a `StringRows` column - are
+a change to every class `harvested` describes, so they want their own round with the tree area measured
+either side. `docs/gotchas/a-branch-of-a-class-with-a-base-is-written-whole-not-split.md` is the record.
+`W0-222` is refreshed: the four TTree pythonization files all pass, and the kind's biggest group left is
+`cppyy/*`, which needs compiled dictionaries.
+| 102 | `a9d794d8` | **`W0-226` closed, and the TTree pythonization group finished**: `TTree::Branch(TCollection*)` as ROOT's own recursion (`_collection_form`/`_collection_branches`, the three naming rules transcribed from `TTree.cxx:1864`, a `TClonesArray` refused in ROOT's words) plus a `Named` kind that writes a `TObjString` branch **whole** (`Whole(split=0)`, one `TBranchElement`, which the 6.40 oracle reads back into a `TObjString`) and a `BY_ROW` factory so a row makes the object again | `c51f9582` | **pyunittest 86 -> 87**: `pyroot_pyz_ttree_branch` PASSES all 14 cases, so all four `pyz_ttree_*` files pass; the whole kind measures **87 / 39 / 2 / 1** with no other row moved (`…/ralph-round-202611241201/after`) and `test/` unchanged at 10 / 6 / 43. Gate `TOTAL 125967 0 31620 0 100%` (13 961 + 44), the round's own NPath 256 split rather than excused | 1: `W0-229` (**a class with a base has no split layout** - written whole where ROOT splits, with the three pieces and the doc that names them); `W0-226` **closed**, `W0-222` refreshed |
