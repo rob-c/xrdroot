@@ -93,6 +93,7 @@ nav:
   - "A checksum match needs an unversioned layout": gotchas/tstreamerinfo-buildcheck-matches-a-checksum-only-against-an.md
   - "A file layout's offsets are laid out once": gotchas/a-file-layout-s-member-offsets-are-laid-out-once-as-the-file-is.md
   - "A pair a dictionary reaches is emulated first": gotchas/a-pair-a-library-s-dictionary-reaches-is-emulated-before-a-file.md
+  - "A declared class's own layout is the emulated spelling": gotchas/a-declared-class-s-own-layout-is-the-emulated-spelling-and-only.md
   - Instructions:
       - Triage merge conflicts before delegating: instructions/triage-merge-conflicts-mechanically-before-delegating-and-never.md
 
