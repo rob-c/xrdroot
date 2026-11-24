@@ -186,7 +186,7 @@
  "gtest/roofit/roofitcore/testRooTruthModel": "PASS",
  "gtest/roofit/roofitcore/testRooWorkspace": "FAIL",
  "gtest/roofit/roofitcore/testTestStatisticsPlot": "UNSUPPORTED",
- "gtest/roofit/roofitmore/testRooHypatia2": "FAIL",
+ "gtest/roofit/roofitmore/testRooHypatia2": "PASS",
  "gtest/roofit/roostats/testAsymptoticCalculator": "PASS",
  "gtest/roofit/roostats/testBayesianCalculator": "PASS",
  "gtest/roofit/roostats/testHypoTestInvResult": "PASS",
