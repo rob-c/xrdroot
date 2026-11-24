@@ -62,9 +62,15 @@ class Slot:
         size: int = 1,
         counter: str | None = None,
         title: str | None = None,
+        own: tuple[str, str] | None = None,
     ) -> None:
         self.name = name
         self.branch = branch
+        #: The leaf's own name and bracket text when the branch was given a leaf list: ROOT
+        #: names the leaf after the list's token - ``Branch("i", &i, "ianalias/I")`` writes a
+        #: leaf called ``ianalias`` in a branch called ``i`` - where this kit's column is the
+        #: branch. ``None`` for a leaf whose name is its column's.
+        self.own = own
         self.code = code
         self.address = address
         self.size = size
@@ -276,6 +282,16 @@ class Store:
         counted = self.counters()
         return {name: slot.spec() for name, slot in self.slots.items() if name not in counted}
 
+    def leaf_parts(self) -> dict[str, tuple[str, str]]:
+        """Each column whose leaf is named by the leaf list it was declared with, and that name
+        and title - the two strings ROOT writes into the ``TLeaf``; see :attr:`Slot.own`.
+
+        A branch of objects and a branch of clones answer no ``own`` at all: neither is given a
+        leaf list, and each writes the leaf it does have under the branch's own name.
+        """
+        found = ((name, getattr(slot, "own", None)) for name, slot in self.slots.items())
+        return {name: own for name, own in found if own is not None}
+
     def write(
         self, directory: Any, name: str, title: str, classname: str = "TTree", empty: bool = False
     ) -> Any:
@@ -284,7 +300,7 @@ class Store:
         branches, which is otherwise refused."""
         tree = directory.tree(
             name, self.specs(), title=title, counters=self.counters(), classname=classname,
-            empty=empty, basket_sizes=self.basket_sizes,
+            empty=empty, basket_sizes=self.basket_sizes, leaf_parts=self.leaf_parts(),
         )  # fmt: skip
         tree.only_at_cluster = self.only_at_cluster
         for slot in self.slots.values():

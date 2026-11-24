@@ -60,7 +60,9 @@ def test_an_alias_is_read_before_a_branch_of_the_same_name() -> None:
     tree.SetAlias("myalias", "floatb")
     assert tree.myalias == pytest.approx(7.0)
     tree.SetAlias("floatb", "array2Db")  # an alias over the branch's own name: the alias wins
-    assert tree.floatb is not None and getattr(tree.floatb, "shape", None) == (20,)
+    # ``(10, 2)`` and not its twenty values: the leaf's title keeps the list's brackets, which
+    # is where a static array's dimensions live, and ROOT reads them back the same way.
+    assert getattr(tree.floatb, "shape", None) == (10, 2)
     handle.Close()
 
 
@@ -176,3 +178,30 @@ def test_a_branch_of_several_leaves_is_no_object_at_all() -> None:
     reader = object.__new__(_Reading)
     reader._layout_cache = []
     assert reader._branch_value(branch) is None
+
+
+def test_a_leaf_list_names_the_leaf_and_writes_its_own_brackets() -> None:
+    """ROOT writes the leaf list's token as the leaf and keeps the whole list as the branch's
+    title: the oracle answers `branch [myint1b] title=[myint1balias/I]` with `leaf [myint1balias]`,
+    and `branch [array2Db] title=[array2Db[10][2]/F]` with `leaf [array2Db] title=[array2Db[10][2]]
+    len=20` - so a static array's dimensions survive in the file, which is what shapes it."""
+    handle = ROOT.TFile("leafparts.root", "RECREATE")
+    tree = ROOT.TTree("leafparts", "leafparts")
+    tree.Branch("myint1b", array.array("i", [3]), "myint1balias/I")
+    tree.Branch("array2Db", array.array("f", [float(at) for at in range(20)]), "array2Db[10][2]/F")
+    tree.Fill()
+    handle.Write()
+    handle.Close()
+    read = ROOT.TFile("leafparts.root")
+    back = read.Get("leafparts")
+    assert [(b.name, b.title) for b in back._layout()] == [
+        ("myint1b", "myint1balias/I"),
+        ("array2Db", "array2Db[10][2]/F"),
+    ]
+    assert [(leaf.name, leaf.title) for b in back._layout() for leaf in b.leaves] == [
+        ("myint1balias", "myint1balias"),
+        ("array2Db", "array2Db[10][2]"),
+    ]
+    back.GetEntry(0)
+    assert back.array2Db.shape == (10, 2)  # the dimensions the leaf's title kept
+    read.Close()

@@ -192,6 +192,18 @@ def _read(where: Path) -> str:
     return source
 
 
+def declares_namespaces(source: str) -> bool:
+    """Could this text declare a namespace - itself, or through a header it includes?
+
+    Most of them come from a header: ROOT's own pythonization test declares
+    ``namespace Foo { class MyTree : public TTree {...} }`` in ``TreeHelper.h`` and asks for
+    ``ROOT.Foo.MyTree`` afterwards, and it is the *translation of the include* that declares it.
+    The word is looked for rather than a parse run, because this is asked of every line that is
+    declarations and almost none of them declares a namespace.
+    """
+    return "namespace" in source or "#include" in source
+
+
 def run_source(
     source: str,
     file: str = "<macro>",
@@ -210,7 +222,7 @@ def run_source(
     macro's own ``#define`` lines were kept for it.
     """
     preload(source)
-    before = dict(DECLARED) if "namespace" in source else None
+    before = dict(DECLARED) if declares_namespaces(source) else None
     done = _cxx.run_source(
         source, file, args, dialect=dialect or session_dialect(), namespace=root,
         use_cache=use_cache, call=call,

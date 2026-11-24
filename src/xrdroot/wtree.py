@@ -397,12 +397,25 @@ class _Column:
         "tot_bytes",
         "zip_bytes",
         "compress",
+        "part",
     )
 
-    def __init__(self, name: str, typecode: str, length: int, basket_size: int) -> None:
+    def __init__(
+        self,
+        name: str,
+        typecode: str,
+        length: int,
+        basket_size: int,
+        part: tuple[str, str] | None = None,
+    ) -> None:
         self.name = name
         self.typecode = typecode
         self.length = length
+        #: The leaf's own name and bracket text, for a branch given a leaf list: ROOT writes the
+        #: list's token as the leaf and the branch's own name as the branch, so
+        #: ``Branch("i", &i, "ianalias/I")`` is a branch ``i`` holding one leaf ``ianalias``
+        #: titled ``ianalias`` (`GetListOfLeaves` on the oracle says exactly that).
+        self.part = part
         self.classname, self.letter, self.itemsize, self.unsigned = self._leaf_class()
         self.form = f">{length}{typecode}" if length > 1 else f">{typecode}"
         #: How many bytes one entry of this column takes, which is what makes
@@ -442,8 +455,16 @@ class _Column:
         return f"{self.leaf_title}/{self.letter}"
 
     @property
+    def leaf_name(self) -> str:
+        """What the ``TLeaf`` is called: its own name where a leaf list gave one."""
+        return self.name if self.part is None else self.part[0]
+
+    @property
     def leaf_title(self) -> str:
-        """The leaf title: the name, and the size of an entry if it is an array."""
+        """The leaf title: the name, and the size of an entry if it is an array - or the leaf
+        list's own brackets, which is where a static array's dimensions are written."""
+        if self.part is not None:
+            return self.part[1]
         return self.name if self.length == 1 else f"{self.name}[{self.length}]"
 
     @property
@@ -860,7 +881,8 @@ def _leaf(
     branch before this one, for a column whose length it gives - or zero, the
     null pointer, for a column whose size is its own.
     """
-    name, title, length, offset = part or (column.name, column.leaf_title, column.leaf_len, 0)
+    name, title, length, offset = part or (
+        column.leaf_name, column.leaf_title, column.leaf_len, 0)  # fmt: skip
     at = buf.tag(column.classname)
     outer = buf.start(SUBLEAF_VERSION)
     inner = buf.start(LEAF_VERSION)
@@ -978,6 +1000,7 @@ def _declared(
     basket_size: int,
     counters: dict[str, _Counter],
     types: Mapping[str, Any],
+    part: tuple[str, str] | None = None,
 ) -> _Column:
     """The column a declaration asks for, sharing a counter already made if named.
 
@@ -991,7 +1014,7 @@ def _declared(
         return _Text(name, basket_size, spec.width)
     typecode, length = _typecode(name, spec)
     if isinstance(length, int):
-        return _Column(name, typecode, length, basket_size)
+        return _Column(name, typecode, length, basket_size, part)
     if isinstance(length, tuple):
         return _Record(name, typecode, length, basket_size)
     _require_name(length, "counter")
@@ -1072,6 +1095,7 @@ class WritableTree:
         classname: str = "TTree",
         empty: bool = False,
         basket_sizes: Mapping[str, int] | None = None,
+        leaf_parts: Mapping[str, tuple[str, str]] | None = None,
     ) -> None:
         _check_declared(classname, columns, basket_size, empty)
         self._file = file
@@ -1095,18 +1119,26 @@ class WritableTree:
         self._specs: list[Any] = []
         types = counters or {}
         own = dict(basket_sizes or {})
+        parts = dict(leaf_parts or {})
         for column, spec in columns.items():
-            self._declare(column, spec, own.get(column, basket_size), types)
+            self._declare(column, spec, own.get(column, basket_size), types, parts.get(column))
         self._branches = self._in_order()
 
-    def _declare(self, column: str, spec: Any, basket_size: int, types: Mapping[str, Any]) -> None:
+    def _declare(
+        self,
+        column: str,
+        spec: Any,
+        basket_size: int,
+        types: Mapping[str, Any],
+        part: tuple[str, str] | None = None,
+    ) -> None:
         """One declared column: a branch of objects, or one of numbers or text."""
         if hasattr(spec, "build"):  # named as ROOT names it, spaces and dots and all
             _require_branch_name(column)
             self._objects(column, spec, basket_size)
             return
         _require_name(column, "column")
-        made = _declared(column, spec, basket_size, self._counters, types)
+        made = _declared(column, spec, basket_size, self._counters, types, part)
         self._columns[column] = made
         self._tops.append(made)
 

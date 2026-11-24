@@ -106,3 +106,17 @@ def test_a_line_shaped_like_a_declaration_that_is_none_runs_as_a_statement(capsy
     ROOT.gInterpreter.ProcessLine("int shown_here = 5;")
     ROOT.gInterpreter.ProcessLine("std::cout << shown_here;")
     assert capsys.readouterr().out == "5"
+
+
+def test_an_included_header_s_namespace_is_an_object_too(tmp_path, monkeypatch):
+    """A header is where most namespaces come from: ROOT's own pythonization test puts
+    ``namespace Foo { class MyTree : public TTree {...} }`` in ``TreeHelper.h`` and asks for
+    ``ROOT.Foo.MyTree`` afterwards, and the *translation of the include* declares it - so the
+    word is looked for through ``#include`` as well as in the text itself."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "namespace99.h").write_text(
+        "namespace Included99 { struct Inner { int v() { return 4; } }; }\n"
+    )
+    ROOT.gInterpreter.Declare('#include "namespace99.h"')
+    assert ROOT.Included99.Inner().v() == 4
+    assert repr(ROOT.Included99) == "<namespace Included99>"

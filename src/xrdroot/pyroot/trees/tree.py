@@ -86,6 +86,7 @@ def _slot(branch: str, leaf: Leaf, address: Any, title: str | None) -> Slot:
         size=leaf.size,
         counter=leaf.counter,
         title=leaf.title if title is None else title,
+        own=(leaf.name, leaf.title) if title is not None else None,
     )
 
 
