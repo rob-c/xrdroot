@@ -554,12 +554,23 @@ STREAMER_INFO_SLOTS = 13
 
 
 def _alignment_of(element: Any, size: int) -> int:
-    """An element's alignment, as ROOT lays it out: eight for a container - a ``std::string`` is at
-    8 in the 6.40 oracle's ``pair<int,string>`` - four for anything else, a one-byte member
-    included at one, which is what puts the oracle's ``edm::Ref`` at 4 after an enum."""
+    """An element's alignment, as ROOT lays it out.
+
+    Eight for a container - the 6.40 oracle puts a ``pair<int,string>``'s ``string`` at 8 - and for
+    a class **no dictionary has declared**, which is ROOT's own emulated guess; four for a class
+    the session knows, because a compiled class's alignment is its own (the oracle's ``edm::Ref``
+    sits at 4 once the library that declares it is loaded and at 8 when nothing has been); and one
+    for a one-byte member. Measured in round 114 from the ``io/stdpair`` refs: the twelve families
+    whose run loads no dictionary say ``offset= 8`` and the twenty-eight that load one say ``4``.
+    """
     if isinstance(element, TStreamerSTL):
         return 8
-    return 1 if size == 1 else 4
+    if size == 1:
+        return 1
+    if isinstance(element, (TStreamerBasicType, TStreamerBasicPointer, TStreamerLoop,
+                            TStreamerString, TStreamerBase)):  # fmt: skip
+        return 4
+    return 4 if _has_dictionary(element.GetTypeName()) else 8
 
 
 def _free_version(name: str, version: int, taken: set[int]) -> int:
@@ -603,11 +614,51 @@ def _is_constant(name: str, value: Any) -> bool:
 def _undictionaried(name: str) -> bool:
     """Has nothing here a dictionary of the class ``name`` - neither the program nor ROOT -
     which ROOT warns of when a file it opens describes one?"""
-    if _template(name) or _synthetic_pair(name):
+    if _synthetic_pair(name):
+        # A ``pair`` is warned of when nothing in the session answers for it: ``roottest``'s
+        # ``pair<reco::Muon::MuonTrackType,edm::Ref<...> >`` is warned of in the twelve families
+        # that load no dictionary and silent in the twenty-eight that load one, and a pair of a
+        # number and a string - which ``winfo`` models - is never warned of. Measured in round 114.
+        return not any(_has_dictionary(each) for each in _arguments(name))
+    if _template(name):
         return False
     if _pair_base(name) or _instantiable(name) or _modelled(name):
         return False
     return TClass(name)._class() is None
+
+
+#: The C++ types whose layout is a number's: a dictionary answers for them without one.
+PLAIN_TYPES = FUNDAMENTAL | NUMBERS
+
+
+def _bare_type(name: str) -> str:
+    """A type as a declaration writes it, with its ``const``, pointers and references off."""
+    text = name.strip().removeprefix("const").strip()
+    while text and text[-1] in "*&":
+        text = text[:-1].strip()
+    return text
+
+
+def _has_dictionary(name: str) -> bool:
+    """Has this session a dictionary for the type ``name``?
+
+    A number needs none; a class ``winfo`` describes has one; one a library the session **loaded**
+    declared has one - and a template instance has one through its template, which is how
+    ``cmspair.h``'s ``edm::Ref<...>`` answers. A class the session has never heard of is laid out
+    as ROOT's own emulated guess, which is why the twelve families of ``io/stdpair`` that load no
+    dictionary say ``offset= 8`` and the twenty-eight that load one say ``4`` (measured in round
+    114 off the refs themselves).
+    """
+    bare = _bare_type(name)
+    head = bare.split("<", 1)[0].strip()
+    return any(_answers(each) for each in dict.fromkeys((bare, head)))
+
+
+def _answers(name: str) -> bool:
+    """Is ``name`` a type one dictionary in this session answers for, by itself or as a model?"""
+    from .declared import find_class
+
+    return name in PLAIN_TYPES or name in INFOS or _modelled(name) or find_class(name) is not None
 
 
 #: Classes ROOT's own libraries carry a dictionary for that this kit implements nothing of

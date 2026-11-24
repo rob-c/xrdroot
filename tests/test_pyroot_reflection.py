@@ -824,6 +824,54 @@ def test_a_versioned_classs_layouts_are_indexed_by_version_and_a_hole_stays_empt
     assert gapped.GetStreamerInfo(2).GetElement(0).GetTypeName() == "int"
 
 
+def test_a_member_is_laid_out_on_the_alignment_the_session_s_own_dictionaries_give_it():
+    """``TStreamerInfo::BuildOld`` rounds each member to its alignment, and the alignment follows
+    what the session knows: eight for a container - the 6.40 oracle puts a ``pair<int,string>``'s
+    string at 8 - four for a number or a class a dictionary has declared, and **eight for a class
+    no dictionary has**, which is ROOT's emulated guess and the whole of ``io/stdpair``'s
+    ``offset= 4``-against-``8`` split: the twenty-eight families whose run loads a dictionary say
+    4 and the twelve that load nothing say 8."""
+    made = reflection.element_of
+    basic = made(("TStreamerBasicType", "n", "", 3, 4, 0, 0, (0,) * 5, "int", ()))
+    string = made(("TStreamerSTL", "s", "", 500, 0, 0, 0, (0,) * 5, "string", ()))
+    flag = made(("TStreamerBasicType", "b", "", 18, 1, 0, 0, (0,) * 5, "bool", ()))
+    known = made(("TStreamerObject", "a", "", 61, 24, 0, 0, (0,) * 5, "TNamed", ()))
+    unknown = made(("TStreamerObject", "r", "", 62, 24, 0, 0, (0,) * 5, "edm::Ref<int>", ()))
+    assert reflection._alignment_of(basic, 4) == 4
+    assert reflection._alignment_of(string, 0) == 8
+    assert reflection._alignment_of(flag, 1) == 1
+    assert reflection._alignment_of(known, 24) == 4
+    assert reflection._alignment_of(unknown, 24) == 8
+
+
+def test_a_type_has_a_dictionary_through_the_template_that_answers_for_it():
+    """A number needs none and a class ``winfo`` describes has one; a pointer is the type it points
+    at; and a template instance answers only when its template does - which is how ``cmspair.h``'s
+    ``edm::Ref`` puts ``io/stdpair``'s member at 4 once the library is loaded, and why a session
+    that has loaded nothing answers nothing for it."""
+    assert reflection._has_dictionary("int")
+    assert reflection._has_dictionary("TNamed")
+    assert reflection._has_dictionary("TNamed*")
+    assert not reflection._has_dictionary("Nonexistent")
+    assert not reflection._has_dictionary("const Nonesuch *")
+    assert not reflection._has_dictionary("pair<int,string>")
+
+
+def test_a_pair_is_warned_of_when_nothing_in_the_session_answers_for_it(capfd):
+    """ROOT hands a ``pair`` to its interpreter as one class: with a dictionary loaded for an
+    argument's template - ``edm::Ref<...>`` - the pair is silent; with nothing loaded it is
+    warned of, as ``io/stdpair``'s twelve dictionary-less families print."""
+    reflection.note_file_infos(
+        [("pair<reco::Muon::MuonTrackType,edm::Ref<reco::Track> >", (0x31, 1, ()))]
+    )
+    assert "no dictionary for class pair<reco::Muon::MuonTrackType," in capfd.readouterr().err
+    reflection.note_file_infos([("pair<int,string>", (0x32, 1, ()))])
+    assert "pair<int,string>" not in capfd.readouterr().err
+    # A template that is no pair is a name ROOT's own dictionaries answer for, so no warning.
+    reflection.note_file_infos([("vector<int>", (0x33, 1, ()))])
+    assert "vector<int>" not in capfd.readouterr().err
+
+
 def test_a_classs_layouts_array_is_the_one_it_keeps():
     """ROOT keeps the layouts array per class, so asking twice hands back the same one - which is
     also what makes an entry comparable with ``GetStreamerInfo``'s answer by identity, as
