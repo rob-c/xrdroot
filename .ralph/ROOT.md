@@ -3878,3 +3878,53 @@ maintainability 33 296 functions in 1 823 files; components 1 062 modules, 0 und
 `ClonedSlot` has no `own` either, so `leaf_parts` asks with `getattr` and says why in its
 docstring - which is `W0-63` doing its job on new code.
 | 100 | `4c2eab48` | **two of round 99's three TTree-pythonization rows, one of them a whole program**: a namespace declared in an `#include`d header is an object (`declares_namespaces` looks through `#include`), and a leaf list's token and brackets are the leaf's own (`Slot.own` -> `Store.leaf_parts()` -> `writer.tree(leaf_parts=)` -> `_Column.part`) | `ec52b4c8` | **pyunittest 83 -> 84**: `pyroot_pyz_ttree_branch_attr` PASSES where 2 of its 10 cases failed, and the four `pyz_ttree_*` files go 7 -> 4 failing cases (`test10_read_struct_separate_branches` too); the written leaves are the oracle's four lines to the character (`branch [myint1b] title=[myint1balias/I]`, `leaf [array2Db] title=[array2Db[10][2]]`). Both kinds measured whole at the tip - 84 / 42 / 2 / 1 and 10 / 6 / 43 (`…/after`) - nothing lost | 3: `W0-224` **closed**, `W0-226` **partly** (the `Branch(TCollection)` case is left), `W0-225` **priced** (one `TBranch`, two leaves at `fOffset` 0/4, one basket - two programs), and `W0-227` (six probe `.root` files `main` carries from round 79) |
+
+## Round 101's close
+
+Round 101 closed the row round 100 had priced - **`W0-225`, the two programs behind a leaf list of
+several leaves** - and the kind went **84 -> 86**: `pyroot_pyz_ttree_iterable` and
+`pyroot_pyz_ttree_setbranchaddress` both PASS.
+
+**Why it was two programs for one small change.** ROOT writes `Branch("structleaflistb", &ms,
+"myintll1/I:myintll2/I")` as **one** `TBranch` - the oracle's own answer is `branch
+[structleaflistb] title=[myintll1/I:myintll2/I]`, two leaves at `fOffset` 0 and 4, **one basket**
+holding a row per entry - and this kit wrote a branch per leaf. Both failing cases ended at
+`SetBranchAddress("structleaflistb", ms)`, which answered `Error in <TTree::SetBranchAddress>:
+unknown branch` in a file this kit had written itself.
+
+**What was already there, and what was not.** The *reader* takes a leaf list of one branch from a
+ROOT-written file already - round 100's `…/probe/multi.root` reads as `pairb` with leaves `first`
+and `second`, and `SetBranchAddress("pairb", obj)` fills the object - and `_Record` already lays a
+column out as *"a leaf list, `a/F:b/F:c/F`: one value per leaf each entry"* with the whole leaf list
+as the branch's title. So the gap was the store's presentation of a leaf list: it held one slot per
+leaf and handed the writer one column per slot. `Store.joined()` groups them - a leaf list's slots
+are the only ones whose `branch` is not their own name - and gives the writer one column of rows;
+`layout.py`'s record lookup now asks what was written for the **branch** rather than for a leaf,
+because one branch is one set of baskets.
+
+**Measured.** The written file answers the oracle's layout to the character, `SetBranchAddress` +
+`GetEntry` fills both members for every entry, and both programs pass (`…/a1`: 3 of 4 PASS in the
+group, the fourth being `pyz_ttree_branch`). Both weak kinds measured whole at the tip: pyunittest
+**86 / 40 / 2 / 1** and `test/` **10 / 6 / 43** (`…/after`) against round 100's 84 / 42 / 2 / 1 -
+two gained, nothing lost, and the baseline records them with `ratchet` reading 0 regressions.
+
+**One characterisation test corrected, and it was the round's own specification.** 
+`tests/test_pyroot_trees_write.py`'s leaf-list test already asserted ROOT's shape - its last line is
+`branch.GetTitle() == "a/I:b/D" and len(branch.GetListOfLeaves()) == 2` - but read its values by
+top-level leaf name, which was only true while a leaf list was a branch per leaf. A leaf list of one
+type is now one branch, so its leaves are read as the branch's own columns (`xyz.u`); the values,
+the title and the leaf count are untouched.
+
+**What is left in the group is one case and one fidelity gap.** `W0-226` is `Branch(TCollection)`,
+the last case of `pyz_ttree_branch`. And **`W0-228`** is new, found while pricing this one: a leaf
+list of *mixed* types (`mi/I:mf/F`) is still written a leaf to a branch, because `_Record`'s row
+needs one element type and `joined()` therefore leaves it out - and the *in-memory* layout groups
+those slots by branch, so `t.GetBranch("mixb")` answers before the write and is `None` in the file.
+Nothing in the suite asks for it; the row names the first step.
+
+**Gate.** `TOTAL 125901 0 31602 0 100%` (13 949 + 44, by the two-command decomposition,
+`…/gate2.log` at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 062 files;
+maintainability 33 301 functions in 1 823 files; components 1 062 modules, 0 undeclared imports;
+`mkdocs build --strict` clean. The round's own first gate found the characterisation test above,
+which is `W0-63` doing its job on a change that touches every written tree.
+| 101 | `b14b9fb3` | **the row round 100 priced, closed**: a leaf list of several leaves as **one** `TBranch` - `Store.joined()` groups a leaf list's slots into one column of rows for `_Record`'s leaves at their offsets, and `layout.py`'s record lookup goes by the branch name | `09f7aaf5` | **pyunittest 84 -> 86**: `pyroot_pyz_ttree_iterable` and `pyroot_pyz_ttree_setbranchaddress` PASS where their last case was `SetBranchAddress` on a leaflist of a struct in a file this kit had written; the file's layout is the oracle's, `branch [structleaflistb] title=[myintll1/I:myintll2/I]` with both leaves, and both weak kinds measured whole at the tip - 86 / 40 / 2 / 1 and 10 / 6 / 43 (`…/after`) - nothing lost | 1: `W0-225` **closed**, `W0-228` (**a leaf list of mixed types** is still a leaf to a branch, and the in-memory layout disagrees with the file about it) |
