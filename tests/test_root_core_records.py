@@ -87,6 +87,17 @@ def test_roots_core_objects_from_a_script_become_records_and_anything_else_stays
     assert recorded(hist) is hist._xrd
 
 
+def test_an_array_of_objects_from_a_script_is_handed_over_as_the_entries_it_holds():
+    array = ROOT.TObjArray()
+    array.SetName("mine")
+    array.Add(ROOT.TObjString("a"))
+    made = recorded(array)
+    assert isinstance(made, Record) and made.classname == "TObjArray"
+    assert made.name == "mine" and made.title == "An array of objects"
+    assert [entry.classname for entry in made.members] == ["TObjString"]
+    assert made.members[0].members["fString"] == "a"
+
+
 def test_a_list_writes_one_key_with_ksinglekey_and_a_key_per_object_without(tmp_path):
     path = str(tmp_path / "lists.root")
     out = ROOT.TFile(path, "RECREATE")

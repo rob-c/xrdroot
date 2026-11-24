@@ -76,6 +76,12 @@ STRING_NAMES = ("TString", "string", "basic_string")
 #: ``THashList`` layout at 0 still writes version 5 of ``TList`` in front of its entries.
 STREAMED_COLLECTIONS = {"TObjArray": "TObjArray", "TList": "TList", "THashList": "TList"}
 
+#: The collections whose entries this writer lays out itself for an object held in memory, as
+#: it does for one read out of a file, because the layout a file describes one with says
+#: nothing about its entries - ROOT writes them by hand. A ``TList``'s in-memory entries go
+#: through the writer's own list instead, which is passed a collection's objects directly.
+IN_MEMORY = frozenset({"TObjArray"})
+
 
 
 class Clones(NamedTuple):
@@ -318,6 +324,16 @@ def written_flat(
     return True
 
 
+def _streams_itself(classname: str, value: Any) -> bool:
+    """Whether ``value`` is one of ROOT's collections this writer lays out by hand: one read out
+    of a file, whose entries came back with it, or an array held in memory that the layer above
+    hands over as the entries it holds - the layout a file describes a ``TObjArray`` with names
+    none of them."""
+    if isinstance(value, (Written, Listed)):
+        return True
+    return classname in IN_MEMORY and isinstance(value, Record)
+
+
 class _Writer:
     """Writes objects into one buffer, by the descriptions of one catalogue."""
 
@@ -336,7 +352,7 @@ class _Writer:
         if isinstance(value, Clones):
             self._clones(value)
             return
-        if isinstance(value, (Written, Listed)):
+        if _streams_itself(classname, value):
             self.streamed(classname, value)
             return
         stype = ARRAY_STREAMS.get(classname)
@@ -414,6 +430,10 @@ class _Writer:
         as the empty ones a freshly made array and list start with. Which record is written
         follows what was read, since that is where the shape is: an array is an array of
         entries and a list is entries with the option each was added under.
+
+        An array held in memory is the same shape - the layer that knows the class hands over
+        its entries as a ``Record``, whose name is the collection's - because the layout a file
+        describes a ``TObjArray`` with names no entry at all.
         """
         held = STREAMED_COLLECTIONS.get(classname)
         listed = isinstance(value, Listed)
@@ -425,17 +445,18 @@ class _Writer:
                 f"classes that file describes; write what you want as the object of the "
                 f"class holding it instead"
             )
+        entries = value.members if isinstance(value, Record) else list(value)
         at = self.buf.start(INFOS[held][1])
         self.buf.tobject()
         self.buf.string(str(getattr(value, "name", "")))
-        self.buf.i32(len(value))
+        self.buf.i32(len(entries))
         if listed:
-            for item, option in zip(value, value.options, strict=True):
+            for item, option in zip(entries, value.options, strict=True):
                 self.streamed_item(item)
                 self.buf.string(str(option))
         else:
             self.buf.i32(0)  # fLowerBound, which reading an array does not keep
-            for item in value:
+            for item in entries:
                 self.streamed_item(item)
         self.buf.end(at)
 

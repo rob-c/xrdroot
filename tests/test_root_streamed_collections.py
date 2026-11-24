@@ -26,7 +26,7 @@ from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.wdeclared import Catalogue, Declaration, Field
 from xrdroot.wdobjects import Instance, write_instance, write_value
 from xrdroot.winfo import INFOS
-from xrdroot.writer import WBuffer
+from xrdroot.writer import Record, WBuffer
 
 
 def _tnamed(buf: Buffer) -> dict[str, str]:
@@ -63,6 +63,19 @@ def test_a_tobjarrays_record_is_the_version_of_the_streamer_that_writes_it() -> 
     buf = WBuffer()
     write_value(buf, "TObjArray", Written([], name=""), Catalogue({}))
     assert _version_at_zero(bytes(buf.data)) == INFOS["TObjArray"][1]
+
+
+def test_an_array_held_in_memory_is_written_as_the_shape_root_streams_one_in() -> None:
+    """The bigevent roottest's ``Event::fObjArray``: the layer hands the writer a ``Record`` of
+    the entries, because the layout a file describes an array with names none of them, and the
+    writer lays them out as ``TObjArray::Streamer`` does - so this kit reads its own file."""
+    entry = Record("TNamed", {"TObject": {}, "fName": "a", "fTitle": ""})
+    buf = WBuffer()
+    write_value(buf, "TObjArray", Record("TObjArray", [entry], "An array of objects", "mine"),
+                Catalogue({}))  # fmt: skip
+    read = Buffer(bytes(buf.data)).objarray({"TNamed": _tnamed})
+    assert read.name == "mine"
+    assert [item["fName"] for item in read] == ["a"]
 
 
 def test_a_tlist_read_from_a_file_keeps_the_option_each_entry_was_added_under() -> None:

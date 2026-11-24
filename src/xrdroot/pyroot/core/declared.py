@@ -1232,10 +1232,18 @@ def _refilled(value: Any, found: Spelled, current: Any) -> Any:
         for key, item in map(_pair_of, items):
             _put(current, converted(key, key_type, None), converted(item, value_type, None))
         return current
-    add = getattr(current, "push_back", None) or current.insert
+    add = getattr(current, "push_back", None) or _appender(current)
     for item in items:
         add(converted(item, found.args[0], None))
     return current
+
+
+def _appender(current: Any) -> Callable[[Any], None]:
+    """How one item goes on the end of a container that is a C++ one to neither the translation
+    nor this layer: a plain list, as a class that derives from an STL container keeps its
+    elements before anything has filled them, appends to it.  A container of C++'s own says
+    ``insert``, which takes the item alone - a list's takes a place and an item."""
+    return current.append if isinstance(current, list) else current.insert
 
 
 def _pair_of(item: Any) -> tuple[Any, Any]:

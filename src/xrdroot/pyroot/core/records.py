@@ -90,12 +90,16 @@ MEMBERS = {
     "TObjString": _objstring,
     "TList": _held,
     "THashList": _held,
+    "TObjArray": _held,
     "TRef": _tref,
     "TRefArray": _trefarray,
     "TBits": _tbits,
 }
 #: The classes that, written, need a file to say which of its processes they name.
 PROCESSED = ("TRef", "TRefArray")
+#: The collections that keep a name of their own, which ROOT streams inside their record -
+#: ``TCollection::fName`` - rather than as part of the members it describes.
+NAMED_COLLECTIONS = ("TList", "THashList", "TObjArray")
 
 
 def recorded(obj: Any, writer: Any = None) -> Any:
@@ -109,7 +113,7 @@ def recorded(obj: Any, writer: Any = None) -> Any:
     members = MEMBERS.get(classname)
     if members is None or (writer is None and classname in PROCESSED):
         return obj
-    name = obj.GetName() if classname in ("TList", "THashList") else ""
+    name = obj.GetName() if classname in NAMED_COLLECTIONS else ""
     return Record(classname, members(obj, writer), obj.GetTitle(), name)
 
 

@@ -595,6 +595,16 @@ def test_a_pointer_read_to_a_class_no_one_declared_is_kept_as_read():
     assert converted(-1.5, parse_type("short"), 0) == -1
 
 
+def test_a_container_standing_where_a_plain_list_does_takes_the_items_read():
+    """The bigevent roottest's ``UShortVector`` derives from ``std::vector<UShort_t>``, so the
+    elements arrive with a plain Python list where they go - and a list's ``insert`` takes a
+    place and an item, where a C++ container's takes the item alone."""
+    from xrdroot.pyroot.core.declared import converted
+
+    made = converted([1, 2], parse_type("std::vector<unsigned short>"), [])
+    assert list(made) == [1, 2]
+
+
 def test_a_record_of_a_class_the_kit_makes_whole_is_given_to_the_object_read_into():
     # ROOT finishes a read in the object it was handed, so a TBufferFile round trip hands back
     # the object ``Streamer(buffer)`` was called on; where there is no such object, or it is
