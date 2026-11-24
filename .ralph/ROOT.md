@@ -3974,3 +3974,67 @@ either side. `docs/gotchas/a-branch-of-a-class-with-a-base-is-written-whole-not-
 `W0-222` is refreshed: the four TTree pythonization files all pass, and the kind's biggest group left is
 `cppyy/*`, which needs compiled dictionaries.
 | 102 | `a9d794d8` | **`W0-226` closed, and the TTree pythonization group finished**: `TTree::Branch(TCollection*)` as ROOT's own recursion (`_collection_form`/`_collection_branches`, the three naming rules transcribed from `TTree.cxx:1864`, a `TClonesArray` refused in ROOT's words) plus a `Named` kind that writes a `TObjString` branch **whole** (`Whole(split=0)`, one `TBranchElement`, which the 6.40 oracle reads back into a `TObjString`) and a `BY_ROW` factory so a row makes the object again | `c51f9582` | **pyunittest 86 -> 87**: `pyroot_pyz_ttree_branch` PASSES all 14 cases, so all four `pyz_ttree_*` files pass; the whole kind measures **87 / 39 / 2 / 1** with no other row moved (`…/ralph-round-202611241201/after`) and `test/` unchanged at 10 / 6 / 43. Gate `TOTAL 125967 0 31620 0 100%` (13 961 + 44), the round's own NPath 256 split rather than excused | 1: `W0-229` (**a class with a base has no split layout** - written whole where ROOT splits, with the three pieces and the doc that names them); `W0-226` **closed**, `W0-222` refreshed |
+
+## Round 103's close
+
+Round 103 wrote no code, and says so. It spent itself on the measurement the loop's own rule 1 asks for -
+*rank the current failures by cause, from the last run's JSON rather than from memory* - because every
+ranking the queue carried was 40 or more rounds old, and two of the last three rounds' targets had been
+priced only to discover they were features.
+
+**The measurement: the whole roottest kind, for the first time since round 17.**
+
+**1318 PASS / 449 FAIL / 157 DIFF / 237 UNSUPPORTED / 10 SKIP / 2 TIMEOUT** of 2173
+(`$HOME/.cache/xrdroot-runs/ralph-round-202611241234/roottest`, `--jobs 5`, `--xrdroot-src` a worktree of
+`57440c96`). That is **60.6 %** where the ledger's own estimate said 1241 (57 %) - it was an estimate built
+from in-area runs, and 77 PASS were missing from it. The run took 27 minutes. **The load average was 60-98
+throughout** (another session), so the two TIMEOUTs are the CERN-network pair (`main/RootcpReadRemote*`,
+`W0-43` - rerun alone at the end, see below) and **the timings are unquotable while the reasons are**;
+`W0-103`/`W0-109` say what that means and nothing here is argued from a wall clock.
+
+**The three biggest buckets, each one cause, each priced.**
+
+- **`io/stdpair`: 40 DIFFs, one printer** - the largest bucket in the kind (`W0-230`). Measured line by
+  line against `pairEnumEvo_0_0_0_1.ref`: a member's `offset=` is **0** where ROOT prints **4**; our line
+  pads after `Emulation` and ROOT's does not; and **a whole `#2 StreamerInfo:` block is missing** (ROOT
+  prints the older emulated info too, `checksum=0xb15d1241`, `first type= 3 newtype=13`). `pairEnumEvo.C`
+  already runs in all 16 combinations, so the work is in the streamer-info printer and the emulated layout -
+  not in I/O.
+- **`W0-77`: 11 tests behind one `class reference at N points nowhere`** - seven `io/compression/read-*`
+  and `io/bigevent/read`, all reading the `Event.root` `io/bigevent/write` produced, plus
+  `io/datamodelevolution/00/test1` and its two dependants. **This is a file this kit wrote itself that it
+  cannot read back**, and the round took the trace: eleven `any()` calls in a row return `None` (null
+  pointers), then at 10787 a `CLASS_MASK`-tagged reference whose key was never mapped - and the words just
+  before it are ASCII, so the reader has desynced ~100 bytes earlier, inside whichever member holds the
+  `TNamed` containers. The writer only emits back-references in the streamer-info record (`backrefs`), so
+  the tag is one the reader read out of alignment. The trace's `(Named) (null) (null) (Named) …` cadence is
+  `vector<TNamed> *fVectorTnamed[6]`.
+- **`W0-231`: `__PRETTY_FUNCTION__`, 5 tests** - and the row records why it is not a one-line name: the
+  tests **search** the string (`strstr(PF,"TemplateArgument")`, `find("Parent")`), so it has to carry the
+  *instantiated* template argument, which the translator has erased by the time it emits the body. The
+  route is a runtime helper over the arguments' `ClassName()`.
+
+**The gtest menu is not a menu of cheap entries.** `W0-219`'s 21 remaining one-case programs were re-priced
+and **four of them are features**: `testRooHypatia2` already passes (round 97); `test_RooFitZMQ_mkstemp`
+needs ZeroMQ itself, not `mkstemp`; `dataframe_splitcoll_arrayview` and `tree/evolution` both need a split
+`std::vector<MyStruct>` read back - the feature round 71 wrote, measured and reverted (`W0-183`); and
+`testTFoam` needs a whole Foam sampler reproducing ROOT's five draws to 1e-9. Recorded so the next round
+does not pay for that pricing again.
+
+**What else the map says, for whoever takes the next rounds.** `io/evolution` 139 PASS of 173 (34 not);
+`tree/addresses` 24 of 52 (28 not, 11 of them UNSUPPORTED); `meta/tclass` 21 of 46 (25); `datamodelevolution`
+22 of 44 (22, and `W0-233` is the one `Generator.h` `TypeError` behind 21 of them); `tree/friend` 8 of 27;
+`meta/genreflex` 70 of 88; `io/filemerger` 31 of 48 (`Q-20`'s byte counts); `meta/evolution` 20 of 37
+(`W0-183`'s `#pragma read`); `io/newstl` 19 of 32; `io/stdarray` 11 of 25. `roottest/cling` contributes a
+long tail of translator gaps, three of which are named here (`W0-231`, `W0-232`, and `ConversionOp`'s
+`'(' was expected`).
+
+**The gate.** Nothing in the tree changed (`git diff` against `57440c96` is `TODO.md` and `.ralph/ROOT.md`),
+so the seven commands were run once at the final tree and read: **`TOTAL 125967 0 31620 0 100%`** (13 961 +
+44 passed, `…/gate1.log` + `…/gate2b.log`), ruff clean, mypy 1 062 files, maintainability 33 328 functions,
+components 1 062 modules / 0 undeclared, `mkdocs build --strict` exit 0.
+
+**A housekeeping finding.** `TODO.md` carries its §7 ledger and its appendices **twice** - a second
+`## Appendix A` at the end and a second `W0-77` row - an earlier scripted rewrite duplicating the tail
+(`W0-94`'s trap). Rounds append to the first copy; the row is in §5 so a reader does not edit the wrong one.
+| 103 | `57440c96` | **no code: the roottest kind measured whole for the first time since round 17**, and its three biggest buckets priced - `io/stdpair`'s 40 DIFFs are one printer (`offset` 0 vs 4, trailing spaces, a missing `#2 StreamerInfo:` block), 11 tests behind one `class reference at N points nowhere` in a file this kit wrote itself (with the desync trace), and `__PRETTY_FUNCTION__`'s 5 tests (which need a runtime helper, not a literal); the gtest one-case menu re-priced with four of its entries shown to be features | no code | **0 PASS moved, 0 lost, and the kind's whole figure is the round's product: 1318 PASS / 449 FAIL / 157 DIFF / 237 UNSUPPORTED / 10 SKIP / 2 TIMEOUT** of 2173 (`…/ralph-round-202611241234/roottest`, `--jobs 5`, load average 60-98) - 77 more than the ledger's 1241 estimate, which was an estimate. Gate `TOTAL 125967 0 31620 0 100%` unchanged | 4 new: `W0-230` (40 tests, one printer), `W0-231` (5, `__PRETTY_FUNCTION__`), `W0-232` (3, multiple-inheritance MRO), `W0-233` (22, one `Generator.h` `TypeError`); `W0-77` **refreshed to 11 tests** with the trace, `W0-219` re-priced |
