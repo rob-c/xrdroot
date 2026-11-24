@@ -56,6 +56,7 @@ nav:
       - /tmp is wiped mid-session: gotchas/tmp-is-wiped-mid-session-keep-root-s-sources-and-every-run.md
       - A canvas macro is each primitive's SavePrimitive: gotchas/a-canvas-macro-is-save-sources-frame-plus-each-primitives-own.md
       - The harness names the first differing line: gotchas/the-harness-reports-the-first-differing-line-not-the-only-one.md
+      - A dialect pointer return must carry its star: gotchas/a-dialect-return-type-naming-a-pointer-must-carry-its-star.md
       - docs_record and mkdocs --strict: gotchas/docs-record-s-docs-readme-md-and-unlisted-notes-break-mkdocs.md
       - Delaunay2D takes no zout and its diagonal is CDT's: gotchas/root-math-delaunay2d-takes-no-zout-and-its-diagonal-comes-from-cdt.md
       - Tutorial work is 2-for-1 on twin pairs: discoveries/tutorial-work-is-2-for-1-on-twin-pairs-roofit-s-text-diffs-have.md
