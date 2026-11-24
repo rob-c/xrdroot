@@ -54,7 +54,7 @@ from ...wobjects import named, stream, stream_clones
 from ...writer import WBuffer
 from .store import OBJECT
 
-__all__ = ["ObjectSlot", "object_slot"]
+__all__ = ["ObjectSlot", "object_slot", "row_object"]
 
 #: GenVector's Cartesian four-vector, the one class of it this writer splits.
 LORENTZ = "ROOT::Math::LorentzVector<ROOT::Math::PxPyPzE4D<double> >"
@@ -788,3 +788,27 @@ def object_slot(name: str, address: Any, split: int, bufsize: int | None) -> Obj
     if isinstance(kind, Macro) and not _splittable(obj, split):
         kind = MacroWhole()
     return ObjectSlot(name, address, kind, kind.spec(obj, split, bufsize))
+
+def row_object(row: dict[str, Any], classname: str) -> Any:
+    """``row`` as an instance of the class ``classname`` names, if it can be made into one.
+
+    ``TTree``'s attribute pythonization hands back the object a branch points at. ROOT's is a
+    pointer into the branch's own buffer, so it *is* the object the entry was read into; this
+    kit keeps a row of members per entry instead, so the object is made as it is asked for, with
+    the current entry's values in it - which is what a program reading
+    ``for entry in tree: entry.structb.myint1`` sees. A class this session has not declared, or
+    one whose constructor needs arguments, answers ``None`` and the row stands for itself.
+    """
+    from ..core.declared import find_class
+
+    cls = find_class(classname)
+    if cls is None:
+        return None
+    try:
+        made = cls()
+    except TypeError:
+        return None
+    for member, value in row.items():
+        if not member.startswith("_"):
+            setattr(made, member, value)
+    return made

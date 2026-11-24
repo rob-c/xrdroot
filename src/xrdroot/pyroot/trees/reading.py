@@ -23,6 +23,7 @@ from .addresses import address_of, members_of
 from .bind import bind_object, is_object
 from .branches import TBranch, TLeaf
 from .core import _TreeCore, python_value
+from .objects import row_object
 
 __all__ = ["_Reading"]
 
@@ -244,12 +245,60 @@ class _Reading(_TreeCore):
             yield self
 
     def __getattr__(self, name: str) -> Any:
+        """A branch or a leaf as an attribute, in the order PyROOT's pythonization reads them.
+
+        ROOT's ``GetBranchAttr`` (``bindings/pyroot/pythonizations/src/TTreePyz.cxx:187``) takes
+        the name as an **alias** first - ``TTree::GetAlias`` - then as a **branch**,
+        ``GetBranch(name)`` or ``GetBranch(name + '.')`` because a sub-branch is named with a
+        trailing dot, and only then as a **leaf**: ``GetLeaf(name)``, the branch's own leaf of
+        that name, or the one leaf of a branch that holds exactly one. A branch holding an
+        object answers the object it points at, which is why ``entry.structb`` has the struct's
+        members rather than a row of them.
+        """
         if name.startswith("_"):
             raise AttributeError(name)
-        leaf = self._leaf_info(name)
+        asked = self.GetAlias(name) or name
+        branch = self._asked_branch(asked)
+        held = None if branch is None else self._branch_value(branch)
+        if held is not None:
+            return held
+        leaf = self._asked_leaf(asked, branch)
         if leaf is None:
             return super().__getattr__(name)
         return python_value(self._current(leaf.column), leaf)
+
+    def _asked_branch(self, name: str) -> Any:
+        """``GetBranch(name)``, or ``GetBranch(name + '.')`` - a sub-branch is named with a
+        trailing dot, which is the second name ROOT's ``SearchForBranch`` tries."""
+        return self._branch_info(name) or self._branch_info(name + ".")
+
+    def _asked_leaf(self, name: str, branch: Any) -> Any:
+        """The leaf a name asks for: its own, its branch's, or that branch's only one.
+
+        ROOT's ``SearchForLeaf`` takes ``GetLeaf(name)`` first, then ``branch->GetLeaf(name)``,
+        and then - *"if unambiguously only this one"* - the single leaf the branch holds, which
+        is how a leaflist branch is reached by the branch's own name.
+        """
+        leaf = self._leaf_info(name)
+        if leaf is not None:
+            return leaf
+        if branch is not None and len(branch.leaves) == 1:
+            return branch.leaves[0]
+        return None
+
+    def _branch_value(self, branch: Any) -> Any:
+        """The object a branch of objects points at, or ``None`` when it holds something else.
+
+        ROOT answers ``*(void **)branch->GetAddress()`` as an instance of the branch's class;
+        this kit reads a class-typed branch into a *row* of its members, so the row is what an
+        instance of that class is made from.
+        """
+        if len(branch.leaves) != 1:
+            return None
+        row = self._current(branch.leaves[0].column)
+        if not isinstance(row, dict):
+            return None
+        return row_object(row, branch.classname)
 
     def GetBranch(self, name: str) -> TBranch | None:
         """The branch ``name``, at the top of the tree, under a branch of objects, or in a

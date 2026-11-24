@@ -59,14 +59,38 @@ class CharArray:
 
 def python_value(value: Any, leaf: LeafInfo) -> Any:
     """A value as a PyROOT script is handed it: a number, an array, a ``char[n]`` or a
-    ``std::vector``."""
+    ``std::vector``.
+
+    A static array of more than one dimension comes back shaped as its dimensions, which ROOT
+    reads out of the leaf's *title*: ``WrapLeaf`` parses every ``[n]`` of it (``getMultiDims``,
+    ``bindings/pyroot/pythonizations/src/TTreePyz.cxx:113``) and hands the buffer to cppyy with
+    those dimensions, so ``array2Db[10][2]`` is a ``(10, 2)`` view and not its twenty values.
+    """
     if isinstance(value, np.generic):
         return value.item()
     if leaf.vector and isinstance(value, np.ndarray):
         return std.vector[value.dtype](value)
     if leaf.classname == "TLeafC" and "[" in leaf.title:
         return CharArray(value, leaf.size)  # a char[n] branch: cppyy's proxy, not a str
+    if isinstance(value, np.ndarray):
+        dims = array_dims(leaf.title)
+        if len(dims) > 1 and int(np.prod(dims)) == value.size:
+            return value.reshape(dims)
     return value
+
+
+def array_dims(title: str) -> tuple[int, ...]:
+    """Every ``[n]`` a leaf's title spells, in order - ROOT's ``getMultiDims``.
+
+    ROOT parses the dimensions out of the title because a ``TLeaf`` has no other way to say
+    them: ``array2Db[10][2]/F`` is a leaf of twenty floats that a reader must shape itself.
+    """
+    found = []
+    for part in str(title).split("[")[1:]:
+        number = part.split("]")[0]
+        if number.strip().isdigit():
+            found.append(int(number))
+    return tuple(found)
 
 
 class _TreeCore(_TObjectLike):
