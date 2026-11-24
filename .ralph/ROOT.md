@@ -4947,3 +4947,32 @@ the emulation and the load's re-emulation duplicates **the emulation**, so the a
 where this kit prints five; the fix is which block the duplicate is, not the spelling. `W0-248`'s eight
 `3_*` unchanged. New: `W0-250` (five `cling/*` tests, `__PRETTY_FUNCTION__` with its instantiation,
 two shapes measured and neither free).
+
+## Round 120's close, continued: CI had been red since round 118 and is now green
+
+`gh run list` after the push showed **failure** on 3.11, 3.12, 3.13 and 3.10 green, for the pushes of
+rounds 118 and 119 alike - a red nobody had recorded, because the local gate runs Python 3.11 with
+NumPy 1.26 while the runners have NumPy 2:
+
+```
+TypeError: only 0-dimensional arrays can be converted to Python scalars
+src/xrdroot/pyroot/core/funcs.py:72
+FAILED tests/test_pyroot_tkde.py::test_the_estimate_as_a_function_is_sampled_and_drawable
+```
+
+The cause is a deprecation this machine can show on demand: `float(np.array([2.5]))` is
+`DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated, and will error
+in future` (NumPy 1.25) and NumPy 2 made it that error. Code written for arrays - the normal way to
+write a `TF1` here, since the same code takes thousands of rows at once - answers a one-row input
+with a one-element array, so the model's point-at-a-time path was relying on removed behaviour.
+
+`_scalar` (`6211a6ef`) extracts the single element, which is what the warning asks for, and refuses
+several values for one point rather than truncating to the first; it is used where one point's answer
+is taken as a number - the point-at-a-time model and both `EvalPar` branches. `TF1::Eval`'s
+`float(code(np.array([x, y, z, t]), params))` was left alone: it is handed a four-vector, a
+different question, and no test reaches it.
+
+Gate after it: part 1 **13 986 passed, 0 failed**, part 2 44, **`TOTAL 126169 0 31708 0 100%`**,
+ruff, mypy 1 063 files, maintainability 33 383 functions, components, `mkdocs --strict` exit 0. CI
+on `6211a6ef`: **all eight jobs success** - `lint`, `docs`, `distribution`, and `test` on
+ubuntu 3.10/3.11/3.12/3.13 and macos 3.12 (run 45494267359), the first green run since round 117.
