@@ -4309,3 +4309,43 @@ unchanged at 22 / 20 / 2.
 **The gate.** Seven commands at `7ed2e7e1`, each read for its own exit status: **`TOTAL 125983 0 31624 0 100%`**
 (13 966 + 44, `…/gate1.log`), ruff clean, mypy 1 062 files, maintainability 33 337 functions, components 1 062
 modules / 0 undeclared, `mkdocs build --strict` exit 0 (`…/mkdocs.log`).
+| 109 | `971651c5` | **a versioned class's layouts indexed by class version, and `io/stdpair`'s 40 DIFFs priced from its own refs**: `GetStreamerInfos` is ROOT's `fStreamerInfo` now (`AddAt(entry, version)`, holes kept) and `GetStreamerInfo(v)` falls back to the class's current layout as `TClass.cxx` does; the bucket's two remaining differences follow the *configuration* (blocks `#1`..`#4` by lib/read-before-load/reported-order; `second`'s `offset=` 4 except `kNothing` and interpreted-read-first, which say 8) | `971651c5` | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 of 44 at the tip, the same four as its base, because no ref is offsets-only; 237 tests of `io/{evolution,tree,stdpair}/*` are 161 / 13 / 47 / 16 and the two `AddVersion-2-*` DIFFs are DIFF at the base too (`…/basever`). Gate `TOTAL 125988 0 31626 0 100%` (13 967 + 44) | 1 new: `W0-239` (the dense version numbering of an emulated class's layouts); `W0-230` **rewritten** with both tables |
+
+## Round 109's close
+
+Round 109 landed the bookkeeping half of `io/stdpair`'s 40 DIFFs and measured the rest off the refs themselves.
+
+**What landed.** `TClass.GetStreamerInfos` now builds what ROOT keeps: `fStreamerInfo` is a `TObjArray` **indexed by
+class version**, so `At(n)` is version `n`'s layout and a version the class has no layout of is an empty slot - the
+class whose files recorded 2 and 3 has `GetSize()` 4 and a hole at 1. `GetStreamerInfo(v)` answers the class's
+current layout for a version it does not have, which is `TClass::GetStreamerInfo`'s own `At(version)`-with-a-fall-back
+(`core/meta/src/TClass.cxx`), and `TObjArray`'s walk leaves its empty slots out as ROOT's iterator does. Two unit
+tests pinned the *old* answer (`GetStreamerInfo` of an absent version is `None`); they were **corrected against ROOT's
+source**, with the citation in the test, not loosened - and one new test pins the gapped array (versions 2 and 3,
+`At(1)` empty, `GetSize()` 4, the fall-back).
+
+**The measurement, and it is why no test flipped.** The 40 `.ref`s are the oracle's own output, so the bucket was
+priced from them instead of from a diff: **no ref is offsets-only or blocks-only**, and both differences follow the
+*configuration* - `pairEnumEvo(libtype, fixed, readbeforeload, reportedorder)`:
+
+- blocks: one (`#2`) for `libtype` 0/1 with `readbeforeload=0`; `#2,#3` (`#2,#3,#4` when `reportedorder=0`) for 0/1
+  with `readbeforeload=1`; `#2,#3` (`#2`) for 2-with-`0` and for 4; `#1,#2,#3` (`#1,#2`) for `libtype=3`;
+- `second`'s `offset=`: `4` everywhere but `libtype=4` (`kNothing`) and `libtype=2` with `readbeforeload=1`, which
+  say `8` - `TStreamerInfo::BuildOld`'s `AlignUp(offset, element->GetAlignment())` then
+  `offset += element->GetSize()` (`io/io/src/TStreamerInfo.cxx:2723`), the alignment being 8 only where that
+  configuration knows the `edm::Ref` class.
+
+**Nothing lost, and it was checked both ways.** `io/stdpair` is 4 PASS / 40 DIFF at the tip, the same four as its
+base (`…/base` against `…/areas`); 237 tests of `io/{evolution,tree,stdpair}/*` measured at the tip are **161 PASS /
+13 FAIL / 47 DIFF / 16 UNSUPPORTED**, and the two `AddVersion-2-*` DIFFs in it are DIFF at the **base** too
+(`…/basever`, measured against the primary checkout's tree) - so the version bookkeeping cost nothing.
+
+**What is left is `W0-239` and `W0-230`'s offsets.** Our reader numbers an emulated class's layouts **densely from
+1** (`note_file_infos`'s `_free_version`, whose docstring claims ROOT "numbers its layouts as they come"), and the
+pair's files put them at 1 and 2 where the refs print `#1`..`#4` - a dense counter cannot produce the hole at index 1
+that makes ROOT print `#2` rather than `#1`. That is the next piece, with `TClass::GetStreamerInfo`'s bookkeeping to
+read first, and then the two-line offsets table.
+
+**The gate.** Seven commands at `971651c5`, each read for its own exit status: **`TOTAL 125988 0 31626 0 100%`**
+(13 967 + 44 passed, `…/gate1.log`), ruff clean, mypy 1 062 files, maintainability 33 339 functions, components
+1 062 modules / 0 undeclared, `mkdocs build --strict` exit 0 (`…/mkdocs.log`).
