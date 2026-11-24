@@ -4350,6 +4350,7 @@ read first, and then the two-line offsets table.
 (13 967 + 44 passed, `…/gate1.log`), ruff clean, mypy 1 062 files, maintainability 33 339 functions, components
 1 062 modules / 0 undeclared, `mkdocs build --strict` exit 0 (`…/mkdocs.log`).
 | 110 | `6249ef1b` | **the `io/stdpair` bucket's two unknowns measured on the 6.40 oracle, and a first fix reverted**: `GetStreamerInfos()->GetSize()` is ROOT's `TObjArray` room (13, not the 2 entries) - the walk a test makes only reaches `#2` because of it; an entry must be the *same object* `GetStreamerInfo()` answers; and `second`'s `offset=` 4-vs-8 is ROOT's emulated `AlignUp(offset, align) + size` run again when the map's proxy is created (`0,0` before, `0,8` after) | no code | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 either side; the first fix (Expand + per-class cache) broke four existing tests and was reverted - those four are the next attempt's specification. Gate unchanged (`TOTAL 125988 0 31626 0 100%`, round 109's) | 0 new: `W0-239` **rewritten** with the three measured pieces, `W0-230` **carries the offsets rule** |
+| 111 | `cee9a211` | **`io/stdpair`'s fix measured to five rules, the fifth tried and the whole attempt reverted**: the room and the entry identity are one change (the room alone prints `#1` as well as `#2`); a class in memory lists as met and only an emulated one is indexed by version (`Evo`: 2 blocks against the ref's 3); building follows the element (an enum carries `newtype=13`, a string element stays `Emulation`); the current entry keeps `from_file` (`offset=99999 type= 3 newtype=-1`); and the pair's dictionary warning needs a known-type predicate first - `stlNoLibTest.ref` warns of `pair<float,int>` where this kit warns of no pair at all | no code | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 of 44 and `io/emulated` 4 / 1 / 1 / 2 of 8 at the tip, both their predecessors' figures; four attempts reverted, each after the reflection suite named what it broke. Gate unchanged (`TOTAL 125988 0 31626 0 100%`, round 109's) | 1 new: `W0-240` (the dictionary-warning predicate); `W0-239` **rewritten** with the five rules and the seven pinning tests |
 
 ## Round 110's close
 
@@ -4389,3 +4390,40 @@ the offsets are both needed, and neither alone flips a single file.
 109's seven-command gate stands: **`TOTAL 125988 0 31626 0 100%`** (13 967 + 44 passed, `…/ralph-round-202611241641`'s
 base is that tip), ruff clean, mypy 1 062 files, maintainability 33 339 functions, components 1 062 modules / 0
 undeclared, `mkdocs build --strict` exit 0.
+
+## Round 111's close
+
+**The bucket was opened one line at a time.** `pairEnumEvo_4_0_0_1` run under this kit against its own ref is **2 lines
+only ours, 11 only the ref**: the `edm::Ref` element's `offset= 0` where the ref says `8` (twice), one `#2 StreamerInfo:`
+block of six lines, and three `TClass::Init` dictionary warnings. That is a small, complete list - the round priced
+exactly it.
+
+**The fix is five rules, and only one of them is bookkeeping.** (1) The 13-slot room and the entry identity are **one**
+change: the room alone makes the walk print `#1` beside `#2`, which is worse than the base, so a half of it is not
+shippable. (2) `by_version` is `_layout() is None and any(version)`, not `any(version)` - indexing `Evo` by version
+collapses its memory layout and its first file layout into one slot and prints two blocks where the ref has three, so a
+class in memory lists as met and only an emulated one is indexed by version. (3) Building follows the **element**, not
+the layout: the ref's enum element is built (`newtype=13`) and `pair<int,string>`'s string element
+(`type=300 stl=365 ctype=365 Emulation`) never is, so `test_a_layout_a_file_holds_is_listed_beside_the_one_in_memory`'s
+`"   i=" not in` stays true. (4) The array's current entry keeps `from_file` when the current layout is the file's own,
+because `test_a_layout_the_class_in_memory_disowns_is_listed_as_roots_file_layout` needs `offset=99999 type= 3
+newtype=-1`. (5) The pair's missing warning is a **separate predicate** and needs a known-type test first.
+
+**And it was reverted, four times, at the point the suite named what it broke.** The fifth rule was tried on its own and
+measured: the stdpair line appears, and `pair<int,string>` warns too, because nothing here models `string` - so the
+predicate has to exist before the rule can. Each attempt ended in `git checkout -- src tests`; the tree is its base's
+exactly, and the seven pinning tests are the next attempt's specification. That is the same trade as round 110 and a
+better one than a half-finished cache.
+
+**Nothing moved, and that is consistent.** `io/stdpair` is **4 PASS / 40 DIFF** of 44 at the tip and `io/emulated`
+**4 / 1 / 1 / 2** of 8, both exactly their predecessors' figures: no ref is warning-only, offsets-only or blocks-only, so
+no single rule flips a file. What the round bought is the list of rules and the five `.ref`-backed facts behind them
+(`io/newstl/stlNoLibTest.ref` warns of `pair<float,int>` and `pair<short,SameAsShort>`, where this kit warns of no pair at
+all).
+
+**The gate.** No code: `git diff` against `cee9a211` is `TODO.md` and `.ralph/ROOT.md` alone, so round 109's seven-command
+gate stands - **`TOTAL 125988 0 31626 0 100%`** (13 967 + 44), ruff clean, mypy 1 062 files, maintainability 33 339
+functions in 1 824 files, components 1 062 modules / 0 undeclared, `mkdocs build --strict` exit 0. It was re-measured on the
+reverted tree anyway, all seven commands, at a load average of 6.3: **13 967 + 44 passed, `TOTAL 125988 0 31626 0 100%`**,
+ruff clean, `mypy` clean, maintainability and components clean, `mkdocs --strict` exit 0 - the same figures round 109
+measured, which is what a round that ships no code should read.
