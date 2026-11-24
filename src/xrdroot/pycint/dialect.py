@@ -224,6 +224,10 @@ RETURNED = {
                                                   "RooHelpers::HijackMessageStream")},
     **{(kind, "Invert"): "TMatrixDSym" for kind in ("TDecompChol", "TDecompBK")},
     **{("RNTupleWriter", name): "RNTupleWriter" for name in ("Recreate", "Append")},
+    #: Where a base class's part of an object starts, in bytes - so ``((char*)obj) + offset`` is
+    #: the base's address, which is how roottest's ``datamodelevolution`` generator walks a
+    #: class's bases. Without the type the sum reads as a string concatenation.
+    ("TClass", "GetBaseClassOffset"): "Int_t",
     #: A graph's points and bars are pointers into storage the graph owns, so a program hands one
     #: to an algorithm: ``std::is_sorted(graph.GetX(), graph.GetX() + n)`` is a range of the
     #: points, and every kind of bar the family has answers with its own array.

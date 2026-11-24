@@ -147,6 +147,33 @@ def test_a_method_calls_its_classs_other_members_through_self(
     assert printed(capsys, source) == "2 7 7\n"
 
 
+def test_a_name_written_from_the_global_scope_is_the_files_own(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``::Report(3)`` in a class's method is the file's free function, never the member of that
+    name: a leading ``::`` is C++'s global namespace. Without that, a method calling the free
+    function of its own name calls itself - roottest's ``Holder::Print`` did."""
+    source = """
+    void Report(int n) { printf("free %d\\n", n); }
+    class Holder { public: void Report() { printf("member\\n"); }
+      void Go() { ::Report(3); Report(); } };
+    void t() { Holder h; h.Go(); }
+    """
+    assert printed(capsys, source) == "free 3\nmember\n"
+
+
+def test_a_base_class_offset_is_bytes_a_char_pointer_moves_by() -> None:
+    """A dialect's table entry is a declaration, typedefs and all: ``GetBaseClassOffset`` is an
+    ``Int_t``, which is the ``int`` pointer arithmetic is written against - read as a bare name it
+    is no arithmetic type, and ``((char *)obj) + off`` became a string concatenation."""
+    text = translate(
+        "void t() { TClass *cl = 0; TBaseClass *b = 0; void *obj = 0;"
+        " void *p = ((char *)obj) + cl->GetBaseClassOffset(b); }",
+        "t.C",
+    )
+    assert "byte_offset(obj, (cl.GetBaseClassOffset(b)))" in text
+
+
 def test_a_class_deriving_from_roots_reaches_roots_members_through_self() -> None:
     source = """
     class MySelector : public TSelector { public:

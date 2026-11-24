@@ -145,6 +145,22 @@ class Scope:
             scope = scope.parent
         return None
 
+    def global_scope(self) -> Scope:
+        """The module's own scope, which a name written from ``::`` is looked up in."""
+        scope = self
+        while scope.parent is not None:
+            scope = scope.parent
+        return scope
+
+    def global_lookup(self, name: str) -> Symbol | None:
+        """``::name``: the name as the file's own scope has it, skipping every class and block.
+
+        A leading ``::`` is C++'s global namespace, so a member of the class being translated
+        of that name is not what it means: ``::Print(h.fSingle)`` inside ``Holder::Print`` is
+        the file's free ``Print``, and reading it as ``self.Print`` calls the method again.
+        """
+        return self.global_scope().symbols.get(name)
+
     def add(self, symbol: Symbol) -> Symbol:
         self.symbols[symbol.name] = symbol
         return symbol

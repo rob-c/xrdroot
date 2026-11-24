@@ -118,7 +118,7 @@ class NameEmitter(Inference):
         """The macro's own declaration ``name`` refers to, or ``None`` if it is not the macro's."""
         parts = self._unqualified(name.parts)
         if len(parts) == 1:
-            return self.lookup(parts[0])
+            return self.scope.global_lookup(parts[0]) if name.rooted else self.lookup(parts[0])
         owner = self.program.classes.get(parts[-2])
         if owner is not None:
             return self._class_member(owner.name, parts[-1])

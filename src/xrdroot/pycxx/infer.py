@@ -14,7 +14,7 @@ from dataclasses import replace
 from typing import Any, ClassVar
 
 from .base import EmitterBase
-from .ctype import FLOATING, INTEGRAL, CType
+from .ctype import FLOATING, INTEGRAL, CType, canonical
 from .dialect import active
 from .freeops import UNARY as FREE_UNARY
 from .freeops import FreeOperator, choose
@@ -130,11 +130,12 @@ def _named_type(text: str) -> CType:
     A table entry is a class's name (``TMatrixD``) or a pointer to one written with the ``*`` a
     declaration has - ``Double_t*``, which a graph's ``GetX`` answers - and a pointer is what
     makes a range of it: ``std::is_sorted(g.GetX(), g.GetX() + n)`` needs the return type to say
-    so, or the range is refused.
+    so, or the range is refused. A typedef is looked through as a declaration's is, so an entry
+    naming ``Int_t`` is the ``int`` every arithmetic rule here is written against.
     """
     starred = text.rstrip().endswith("*")
     base = text.rstrip().rstrip("*").strip() if starred else text
-    return CType(base, pointer=int(starred))
+    return CType(canonical(base), pointer=int(starred))
 
 
 def _made_field(func: Member) -> CType | None:
