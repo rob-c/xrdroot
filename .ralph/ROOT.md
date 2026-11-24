@@ -3766,3 +3766,55 @@ pyunittest failures bucketed, with the TTree four named as the next group and a
 maintainability 33 272 functions in 1 822 files; components 1 062 modules, 0 undeclared imports;
 `mkdocs build --strict` clean.
 | 98 | `13f2a9d0` | **the two weak kinds measured whole, then the two cheapest fixes in them**: a `std::vector` of numbers answers NumPy's `__array_interface__` as ROOT's `_rvec.py` builds it (an empty one reporting the address **1**), and `TGraphMultiErrors` takes ROOT's `(name, title, ...)` constructors and answers `GetEYlow`/`GetEYhigh` both summed and per layer | `d97fd305`, `2fbca5d3` | **pyunittest 81 -> 83**: `pyroot_pyz_array_interface` (2 of 4 cases -> 4 of 4) and `pyroot_pyz_tgraph_getters` (1 of 5 -> 5 of 5) PASS, and both kinds measured whole at the tip move **exactly those two rows and no other** (`…/final`: 83 / 43 / 2 / 1 and 10 / 6 / 43 against the base's 81 / 45 / 2 / 1 and 10 / 6 / 43). The gate caught the round's own breakage - `__array__` was dead once the interface existed and the RDF mask kernel's guard was asking about it - which `2fbca5d3` fixes. `test/` measures **10**, not the ledger's 9 | 3: `W0-221` (the PDF pair priced: 8 009 of 13 765 bytes are 25 fill-pattern streams), `W0-222` (the 45 pyunittest failures bucketed), `W0-223` (the six `test/` interpreted stress programs); `W0-179` and `W0-124` restated |
+
+## Round 99's close
+
+Round 99 took the pyunittest kind's largest remaining group - the four `pyz_ttree_*` files, ten
+failing cases between them - and found that the attribute lookup ROOT pythonizes was missing
+three of its four rules. **0 programs gained, 0 lost, and the group went from 10 failing cases to
+7**, each of the seven measured as a *writer* gap and queued.
+
+**What `GetBranchAttr` does, read off ROOT's own source.** `TTree.__getattr__` is
+`bindings/pyroot/pythonizations/python/ROOT/_pythonization/_ttree.py`'s `_TTree__getattr__`, which
+asks the C++ helper `GetBranchAttr` (`src/TTreePyz.cxx:187`) for the name, and that helper reads
+it in a fixed order: as an **alias** (`TTree::GetAlias`), then as a **branch** - `GetBranch(name)`,
+or `GetBranch(name + '.')`, *"for benefit of naming of sub-branches, the actual name may have a
+trailing '.'"* - and only then as a **leaf** (`GetLeaf(name)`, then `branch->GetLeaf(name)`, then
+the branch's single leaf *"if unambiguously only this one"*). A branch whose address is an object
+answers `*(void **)branch->GetAddress()` cast to the branch's class, and a leaf titled with more
+than one bracket is shaped by the dimensions `getMultiDims` parses out of its title.
+
+**What was here before** was one of those rules: a leaf, found by column or by name. So
+`entry.structb` was a dict of members rather than a `MyStruct`, `ds.myalias` did not exist, and a
+2-D array leaf could not be shaped. All three are in now - `_asked_branch`, `_asked_leaf` and
+`_branch_value`/`row_object` in `pyroot/trees/reading.py`, `array_dims` beside `python_value` -
+and they fix `test08_read_struct_single_branch`, `test_alias_branch` and
+`test_struct_branch` (`…/ralph-round-202611241030/a1`).
+
+**The remaining seven are all on the write side, and each was measured against the oracle before
+it was queued.**
+
+- `W0-224`: a leaflist's leaf is named after the branch here and its title is flattened. ROOT
+  writes `branch [myint1b] title=[myint1balias/I]` holding `leaf [myint1balias]`, and
+  `branch [array2Db] title=[array2Db[10][2]/F]` with `leaf [array2Db] title=[array2Db[10][2]]
+  len=20` (`…/probe/l2.C`, the 6.40 oracle). Ours writes `array2Db[20]/F`, which is also why the
+  reader has no dimensions to shape.
+- `W0-225`: a leaflist branch of several leaves is written as one branch per leaf, so
+  `SetBranchAddress("structleaflistb", ms)` answers `unknown branch` - the last case of two
+  *programs*, the biggest single thing left in this group.
+- `W0-226`: `Branch(TCollection)` and `ROOT.<namespace>.<class>` are names this kit has not.
+
+**The gate caught two things in the round's own code, and both were fixed rather than excused**:
+`__getattr__` hit **NPath 384** against the limit of 200, so it was split (`_asked_branch`,
+`_asked_leaf`) rather than limited; and five branches were unreachable by the suite - a leaf whose
+title does not count its values, an object branch with more than one leaf, a class this session
+never declared, a class whose constructor needs arguments, a private member in a row - each got a
+test that reaches it. `TOTAL 125869 0 31592 0 100%` (13 944 + 44, `…/gate3.log`, `-n 2`), ruff,
+mypy 1 062 files, maintainability 33 291 functions, components 1 062 modules / 0 undeclared,
+`mkdocs --strict`.
+
+**Measured at the tip, both weak kinds whole**: pyunittest **83 / 43 / 2 / 1** and `test/`
+**10 / 6 / 43** (`…/after`) - the same figures as round 98's, so this round cost nothing; the
+`gained 96` the diff printed is the round's *base* run being a `--only` of four files, not a gain.
+`W0-158` again: a subset run is a subset run.
+| 99 | `40339ab8` | **the pyunittest kind's largest group, priced from ROOT's own source**: `TTree.__getattr__` as `GetBranchAttr` - an alias first, then a branch (`n` or `n + '.'`), then a leaf (its own, its branch's, or the branch's only one) - a branch holding an object answered as that object (`row_object`), and a leaf's title's dimensions shaping it (`array_dims` = `getMultiDims`) | `f2d0065e` | **0 programs gained, 0 lost, the wall moved 10 failing cases -> 7** in the four `pyz_ttree_*` files (`…/a1`), with `test08_read_struct_single_branch`, `test_alias_branch` and `test_struct_branch` passing; both weak kinds measured whole at the tip - pyunittest 83 / 43 / 2 / 1, `test/` 10 / 6 / 43 (`…/after`) - nothing lost. The seven left are writer gaps, each measured on the oracle | 3: `W0-224` (a leaflist's leaf name and bracket text), `W0-225` (a multi-leaf leaflist branch written as one branch per leaf - two programs), `W0-226` (`Branch(TCollection)`, `ROOT.<ns>.<class>`); `W0-222` partly |
