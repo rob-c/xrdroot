@@ -4159,3 +4159,55 @@ the seven commands were run once at the final tree and read: **`TOTAL 125967 0 3
 passed); ruff clean, mypy 1 062 files, maintainability 33 328 functions, components 1 062 modules / 0
 undeclared, `mkdocs build --strict` exit 0.
 | 105 | `f488105c` | **no code: round 104's 48-byte hypothesis disproved in a five-file probe, and `W0-77` split into the two failures it really is** - `struct H { std::vector<TLine> v; }` written by the oracle and by this kit shows our own round trip clean and ROOT's own file clean, so the container is not 48 bytes an object short; what differs is that ROOT writes a declared class's branch **split** (a sub-branch `v`) and we write it whole (`fClassVersion` -1 against 1), which is why ROOT complains of the first container it meets; and our reader dies separately and later, at `buf.objarray` for `Event::fObjArray` with the offsets before it already drifted | no code | **0 PASS moved, 0 lost**: nothing in the tree changed, so the family was not re-measured; the round's product is the probe (`…/ralph-round-202611241332/probe/`) and two named rows. Gate `TOTAL 125967 0 31620 0 100%` unchanged | 2 new: `W0-234` (**a declared class's branch is whole where ROOT splits it**, 8 tests), `W0-235` (**the reader's per-member offsets in a 50-member class**, 3 tests); `W0-77` re-scoped to both |
+
+## Round 106's close
+
+Round 106 wrote no code and **withdrew its own previous hypothesis**. Round 105 recorded `W0-235` as "the reader's
+per-member offsets drift inside a 50-member declared class". They do not.
+
+**The per-member log, and why round 105's attempt failed.** `interp._plan` gathers a run of consecutive plain
+numbers into **one** struct read ("the fewest reads that read them in the order they come"), so wrapping each step
+*before* `_plan` - which is what round 105 did - makes `type(step) is _Plain` false, disables the gathering, and
+changes the bytes read. The round-105 trace was an artefact of exactly that, and it was discarded then; this round
+rebuilt `_members` from the same `_steps`/`_plan` with logging added *after* the plan is made
+(`…/ralph-round-202611241344/trace3.py`), which preserves the read path exactly - the same failure at the same
+offset, 10787, and now 39 named members with their byte counts.
+
+**What the log says.** `Event` reads sensibly member by member: `TObject` 10, `fType` 20, `fEventName` 17, `fBoolA`
+1, the six gathered plain numbers 120, `fClosestDistance` 37, `fTemperature` 4, `fTracksInVertex` 10, the four
+scalar `vector`s 10/10/58/250, `fVectorD` 22, `fVectorTLine` 2412, `fVectorTobject` 36, `fVectorTnamed` 32,
+`fLachaud` 112, `fDeque` 36, `fVectorTobjectp` 10, `fListString` 50, `fListStringp` 114, `fMapTNamedp` 385,
+`fTemplateMember` 10, `fMapList` 16, `fMapTAxisp` 1150, `fSetTAxis` 10, `fSetTAxisp` 1108, `fMultiMapTNamedp` 385,
+`fMultiSetTAxisp` 1108, `fString` 27, `fStringp` 19, `fTstringp` 96, `fNames` 12, `fXaxis` 108, `fYaxis` 324,
+`fVaxis` 366, `fPaxis` 978, `fQaxis` 1104, `fDatime` 4, `fEvtHdr` 18 - ending at 10668, with **`fObjArray` the
+first step that runs away** (`buf.objarray` reads a garbage count and walks to 10787).
+
+**The six-line reproduction, and it is decisive.** `struct O { TObjArray a; }` filled with two `TNamed`s
+(`…/probe/{o.h,owrite_oracle.C,owrite_ours.C}`):
+- **the 6.40 oracle's file reads through this kit** - `{'a': [{'TObject': …, 'fName': 'one', 'fTitle': 'for
+  file'}, {'TObject': …, 'fName': 'two', 'fTitle': 'for memory'}]}`;
+- **ours does not** - `FormatError: the record ends 4 bytes before it said it would`.
+
+**The cause, read off ROOT's own source.** ROOT's `TObjArray::Streamer` (`core/cont/src/TObjArray.cxx:448-497`,
+write side) is `WriteVersion(TObjArray::IsA(), kTRUE)`, `TObject::Streamer`, `fName.Streamer`, `nobjects` (Int_t),
+`fLowerBound` (Int_t), then each `b << fCont[i]`; a `TList` writes an option string after each entry. Ours routes an
+in-memory collection to `wdobjects.record`'s **description** path (`catalogue.written_as("TObjArray")`), which lays
+out `INFOS["TObjArray"]`'s three elements - the `TSeqCollection` base, `fLowerBound`, `fLast` - with **no name, no
+count and no entries**. The reader is already right: `buffer.objarray`/`tlist` read exactly ROOT's shape, which is
+why the oracle's file decodes and ours does not.
+
+**So `W0-235` is rewritten and the fix is a new row.** `W0-235` now carries the log and the repro; **`W0-236`** is
+the writer's gap - 8 tests (`io/bigevent/read` and the seven `io/compression/read-*`), with both layouts, the
+existing precedent for the fix (`pyroot/graphics/snapshot.py:112` and `pyroot/core/stacks.py:101` already hand the
+engine a `Written`/`Listed` of entries), and the two places that must change (`streamed`'s
+`(held == "TList") != listed` guard has to learn the in-memory case, and `record` must route every
+`STREAMED_COLLECTIONS` class to `streamed`).
+
+**Measured at the base, unchanged**: `io/bigevent` is **3 PASS / 0 FAIL / 1 UNSUPPORTED** of 4
+(`…/ralph-round-202611241344/base`, `--jobs 2`).
+
+**The gate.** Nothing in the tree changed (`git diff` against `3355726f` is `TODO.md` and `.ralph/ROOT.md`), so the
+seven commands were run once at the final tree and read: **`TOTAL 125967 0 31620 0 100%`** (13 961 + 44 passed);
+ruff clean, mypy 1 062 files, maintainability 33 328 functions, components 1 062 modules / 0 undeclared,
+`mkdocs build --strict` exit 0.
+| 106 | `3355726f` | **no code: round 105's `W0-235` hypothesis withdrawn, and its cause nailed with a per-member log and a six-line reproduction** - `Event`'s reader consumes all 39 members sensibly and `fObjArray` is the first that runs away; `struct O { TObjArray a; }` with two `TNamed`s reads correctly when the 6.40 oracle writes it and fails (`the record ends 4 bytes before it said it would`) when this kit does, because an in-memory collection is written as its *description* (base plus two ints) where ROOT writes `TCollection::Streamer`'s name + count + entries | no code | **0 PASS moved, 0 lost**: `io/bigevent` measured at the base is 3 PASS / 0 FAIL / 1 UNSUPPORTED of 4 (`…/ralph-round-202611241344/base`); the round's product is the log (`…/trace3.py`), the repro (`…/probe/`) and two rows. Gate `TOTAL 125967 0 31620 0 100%` unchanged | 1 new: `W0-236` (**an in-memory `TObjArray`/`TList` member is written as a description where ROOT writes its streamer's shape**, 8 tests); `W0-235` **rewritten** with the evidence |
