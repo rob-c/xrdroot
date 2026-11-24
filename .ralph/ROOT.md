@@ -4108,3 +4108,54 @@ class reference at 120 points nowhere`), not the `Generator.h` `TypeError` `W0-2
 mypy 1 062 files, maintainability 33 328 functions, components 1 062 modules / 0 undeclared,
 `mkdocs build --strict` exit 0.
 | 104 | `ca3c372f` | **no code: the two rows round 103's map put on top, measured to the side they are wrong** - `W0-77` is proved a **writer** bug by the oracle (a `rootcling`+`clang++` dictionary, then `GetEntry(0)` on our `Event.root`: `CheckByteCount: object of class vector<TLine> read too few bytes: 1928 instead of 2408` = 480 = 10 x 48, then a segfault in `TAxis::Streamer`; our reader also fails on ROOT's own file), and `W0-230`'s 40 DIFFs are re-measured with the harness's own `custom_diff` - 556 offsets + 146 block lines + 32 dictionary warnings, no test offsets-only, and round 103's "trailing padding" **corrected** because the judge strips spaces | no code | **0 PASS moved, 0 lost**: `io/stdpair` measured whole at the base is **4 PASS / 40 DIFF** of 44 (`…/ralph-round-202611241318/base`); the round's product is the two rerunnable probes (`…/probe/README.md`) and two corrected, fully priced rows. Gate `TOTAL 125967 0 31620 0 100%` unchanged | 0 new: `W0-77` and `W0-230` **re-stated with both directions measured**; `W0-233` noted as a different member of the same family |
+
+## Round 105's close
+
+Round 105 wrote no code, and the round's result is that it **disproved its own starting hypothesis** in twenty
+minutes with a five-file probe - which is worth more than the hour it would have cost to build on it.
+
+**The hypothesis round 104 left.** `W0-77` was recorded as *the writer lays a member-wise container of a class
+with a base out 48 bytes an object short*, on the strength of ROOT saying `Error in <TBufferFile::CheckByteCount>:
+object of class vector<TLine> read too few bytes: 1928 instead of 2408` on our own `Event.root` (= 480 = 10 × 48).
+
+**The probe.** `struct H { std::vector<TLine> v; }` with ten lines, written by the 6.40 oracle
+(`woracle.C`, ACLiC) and by this kit (`wours.C`), then read by each of them and by the other:
+- our file **reads back cleanly through our own reader** - `v` has 10 lines and every member of the first is
+  right (`TObject`, `TAttLine`, `fX1..fY2`);
+- the oracle reads **its own** file cleanly (`v.size()=10 first=(0,0,1,1)`);
+- the oracle on our file **segfaults** in `TBufferIO::MapObject` with no byte-count message at all.
+
+So the member-wise container is not 48 bytes short, and the bytes of the two records differ by 58 in a way that
+is not per-object.
+
+**What the probe does show, and it is structural.** `TTree::Print` on the two files:
+ROOT's `h` branch has a **sub-branch `v`** (`*Br 0 :v : vector<TLine>`, Total 1220) - it splits a declared
+class's branch at the default splitlevel 99 - and ours is one branch `h` of Total 1162, written **whole**. Both
+are `TBranchElement` with `fType=0 fStreamerType=-1`; the only other difference ROOT names is `fClassVersion`
+**1 against our -1**. ROOT therefore reads our whole record with its member-wise streamer, and the
+`vector<TLine>` complaint is that reading - a symptom, not the cause.
+
+**And our own reader's failure is a second, separate one, late in the class.** With no instrumentation the
+traceback is unambiguous: `interp.py:1000`'s `buf.objarray(held)` for `Event::fObjArray`, reached with a garbage
+count (`FormatError: a class reference at 10787 points nowhere`) - so the offsets of the members *before*
+`fObjArray` have already drifted. Those are `TString fNames[12]`, `TAxis fXaxis`/`fYaxis[3]`/`fVaxis[3]`/`fPaxis`/
+`fQaxis`, `TDatime fDatime` and `EventHeader fEvtHdr`.
+
+**One instrumented run named the wrong member, and the close records it as mine.** Wrapping `interp._steps` to
+log each member made the run stop earlier, at `Event::fClosestDistance` with a `TypeError` - a half-changed-tree
+artifact of exactly `W0-218`'s shape (round 96's "a probe written against a half-changed tree can name a bug that
+does not exist"). Its trace was discarded and only the uninstrumented traceback is quoted.
+
+**So `W0-77` is re-scoped to two rows**, each with its own side of the file:
+- **`W0-234`** (8 tests): a declared class's branch is written whole where ROOT splits it - `object_slot` picks
+  `MacroWhole()` because a class with containers among its members is not `_splittable`, while ROOT splits at
+  splitlevel 99. `W0-183`'s neighbourhood, and the piece that makes an `Event` file ROOT can read.
+- **`W0-235`** (3 tests): our reader's per-member offsets inside a 50-member declared class - first step a
+  per-member offset log (a `Buffer` position before and after each member against the member's recorded byte
+  size), which is the tool `W0-230`'s `offset=` work needs as well.
+
+**The gate.** Nothing in the tree changed (`git diff` against `f488105c` is `TODO.md` and `.ralph/ROOT.md`), so
+the seven commands were run once at the final tree and read: **`TOTAL 125967 0 31620 0 100%`** (13 961 + 44
+passed); ruff clean, mypy 1 062 files, maintainability 33 328 functions, components 1 062 modules / 0
+undeclared, `mkdocs build --strict` exit 0.
+| 105 | `f488105c` | **no code: round 104's 48-byte hypothesis disproved in a five-file probe, and `W0-77` split into the two failures it really is** - `struct H { std::vector<TLine> v; }` written by the oracle and by this kit shows our own round trip clean and ROOT's own file clean, so the container is not 48 bytes an object short; what differs is that ROOT writes a declared class's branch **split** (a sub-branch `v`) and we write it whole (`fClassVersion` -1 against 1), which is why ROOT complains of the first container it meets; and our reader dies separately and later, at `buf.objarray` for `Event::fObjArray` with the offsets before it already drifted | no code | **0 PASS moved, 0 lost**: nothing in the tree changed, so the family was not re-measured; the round's product is the probe (`…/ralph-round-202611241332/probe/`) and two named rows. Gate `TOTAL 125967 0 31620 0 100%` unchanged | 2 new: `W0-234` (**a declared class's branch is whole where ROOT splits it**, 8 tests), `W0-235` (**the reader's per-member offsets in a 50-member class**, 3 tests); `W0-77` re-scoped to both |
