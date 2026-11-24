@@ -84,6 +84,7 @@ nav:
   - Auditing a branch backlog: instructions/auditing-a-branch-backlog-git-cherry-then-a-branch-s-tests.md
   - A merge can cost PASSes through cost: discoveries/a-merge-can-cost-passes-through-cost-not-behaviour-profile-the.md
   - A removal returns on the next merge: gotchas/a-deliberate-removal-returns-on-the-next-merge-assert-the.md
+  - A branch of a class with a base is written whole: gotchas/a-branch-of-a-class-with-a-base-is-written-whole-not-split.md
   - Instructions:
       - Triage merge conflicts before delegating: instructions/triage-merge-conflicts-mechanically-before-delegating-and-never.md
 
