@@ -1186,7 +1186,11 @@ class TClass(TNamed):
                                  from_file=current is not mine)
         found = [i for i in FILE_INFOS.get(self._name, []) if i[1] == version]
         if not found:
-            return None
+            # A version the class has no layout of answers ROOT's current one:
+            # ``TClass::GetStreamerInfo`` is ``At(version)`` with a fall-back to the class's, so a
+            # walk of the versions prints only the layouts there are.
+            return None if current is None else TStreamerInfo(
+                self._name, current, built=True, versioned=self._versioned())  # fmt: skip
         return TStreamerInfo(self._name, found[0], built=emulated, versioned=self._versioned(),
                              from_file=True, memory=mine[2] if mine else None)
 
@@ -1202,11 +1206,13 @@ class TClass(TNamed):
         """``GetStreamerInfos``: every layout known - the one in memory, and each a file read
         describes it with that is not that one.
 
-        ROOT keeps a versioned class's layouts in the order of their versions, which is not
-        the order the files were read in: ``roottest``'s ``AddVersion-1-4`` reads a file
-        holding versions 1 and 3 beside a library at version 2 and lists them 1, 2, 3. A class
-        told apart by checksum has no version to be sorted by, so there the layout in memory
-        comes first and each file's follows as it was met.
+        ROOT keeps a versioned class's layouts in a ``TObjArray`` **indexed by version**, so
+        ``At(n)`` is version ``n``'s and a version the class has no layout of is an empty slot -
+        ``roottest``'s ``AddVersion-1-4`` reads a file holding versions 1 and 3 beside a
+        library at version 2 and lists them at 1, 2, 3, and a class whose files recorded 2 and
+        3 has an empty slot at 1 and ``GetSize()`` 4. A class told apart by checksum has no
+        version to be indexed by, so there the layout in memory comes first and each file's
+        follows as it was met.
         """
         from .collections import TObjArray
 
@@ -1218,9 +1224,17 @@ class TClass(TNamed):
         if versioned:
             held.sort(key=_version_of)
         for info, in_memory in held:
-            made.Add(TStreamerInfo(self._name, info, built=in_memory, versioned=versioned,
-                                   memory=None if in_memory or current is None
-                                   else current[2]))
+            entry = TStreamerInfo(self._name, info, built=in_memory, versioned=versioned,
+                                  memory=None if in_memory or current is None
+                                  else current[2])  # fmt: skip
+            if versioned:
+                # ROOT keeps ``fStreamerInfo`` a ``TObjArray`` **indexed by class version**, so a
+                # class whose files recorded 2 and 3 has an empty slot at 1 and ``GetSize()`` 4:
+                # ``TClass::GetStreamerInfo(version)`` is ``At(version)``, and the loop a test
+                # walks prints only the versions there are.
+                made.AddAt(entry, int(info[1]))
+            else:
+                made.Add(entry)
         return made
 
     # -- members and bases --------------------------------------------------------------------

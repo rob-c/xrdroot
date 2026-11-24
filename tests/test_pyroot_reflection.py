@@ -202,7 +202,11 @@ def test_a_layout_a_file_holds_is_listed_beside_the_one_in_memory(capsys):
     pair = ROOT.TClass.GetClass("pair<int,string>")
     assert pair.GetStreamerInfo(1).GetCheckSum() == 0xB5FB752
     assert pair.FindStreamerInfo(0xB5FB752).GetClassVersion() == 1
-    assert pair.GetStreamerInfo(7) is None and pair.FindStreamerInfo(1) is None
+    # ``TClass::GetStreamerInfo(version)`` clamps a version past the last one to it and
+    # answers the class's current layout where a slot is empty (``core/meta/src/TClass.cxx``),
+    # so the layout is never absent while the class has one; a *checksum* nobody recorded is.
+    assert pair.GetStreamerInfo(7).GetCheckSum() == 0xB5FB752
+    assert pair.FindStreamerInfo(1) is None
     pair.GetStreamerInfos().ls()
     printed = capsys.readouterr().out
     assert printed.startswith("OBJ: TObjArray\tTObjArray\tAn array of objects : 0\n")
@@ -226,7 +230,7 @@ def test_a_class_only_files_describe_is_built_from_the_first_layout_read(capfd):
     assert (current.IsBuilt(), current.GetClassVersion()) == (True, 1)
     assert current.GetElement(0).GetTypeName() == "int"
     assert evo.GetStreamerInfo(2).GetElement(0).GetTypeName() == "float"
-    assert evo.GetStreamerInfo(2).IsBuilt() and evo.GetStreamerInfo(3) is None
+    assert evo.GetStreamerInfo(2).IsBuilt() and evo.GetStreamerInfo(3).GetClassVersion() == 1
     current.ls()
     printed = capfd.readouterr().out
     # A class only a file describes is versioned: ROOT prints the version the file gave it.
@@ -791,6 +795,27 @@ def test_a_versioned_classs_layouts_are_listed_by_version():
         (3, "double"),
     ]
     assert [i.IsBuilt() for i in infos] == [False, False, True]
+
+
+def test_a_versioned_classs_layouts_are_indexed_by_version_and_a_hole_stays_empty():
+    """ROOT's ``fStreamerInfo`` is a ``TObjArray`` indexed by class version, so a class whose
+    files recorded versions 2 and 3 has an empty slot at 1 and ``GetSize()`` 4 - and asking for
+    a version the class has no layout of answers the class's current one
+    (``TClass::GetStreamerInfo`` is ``At(version)`` with a fall-back to it)."""
+    reflection.FILE_INFOS["Gapped"] = [
+        (0x11, 2, (("TStreamerBasicType", "x", "", 3, 4, 0, 0, (0, 0, 0, 0, 0), "int", ()),)),
+        (0x12, 3, (("TStreamerBasicType", "x", "", 7, 4, 0, 0, (0, 0, 0, 0, 0), "float", ()),)),
+    ]
+    gapped = ROOT.TClass("Gapped")
+    infos = gapped.GetStreamerInfos()
+    assert infos.GetSize() == 4
+    assert infos.At(1) is None
+    assert (infos.At(2).GetClassVersion(), infos.At(3).GetClassVersion()) == (2, 3)
+    # A version the class has no layout of answers the class's current one, which for a class
+    # nothing in memory describes is the first layout a file gave it.
+    assert gapped.GetStreamerInfo(1).GetClassVersion() == 2
+    assert [info.GetClassVersion() for info in infos] == [2, 3]
+    assert gapped.GetStreamerInfo(2).GetElement(0).GetTypeName() == "int"
 
 
 def test_a_layout_the_class_in_memory_has_is_not_noted_again():

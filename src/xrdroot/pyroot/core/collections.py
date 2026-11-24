@@ -632,6 +632,12 @@ class TObjArray(TSeqCollection):
         """``MakeIterator``: an array's walk leaves its empty slots out, as ROOT's does."""
         return TObjArrayIter(self, dir)
 
+    def __iter__(self) -> Iterator[Any]:
+        """``TObjArray``'s walk leaves its empty slots out, as ROOT's iterator does - an array
+        indexed by version, with holes where a class has no layout of that version, is walked as
+        the layouts it holds."""
+        return iter([item for item in self._items if item is not None])
+
     def AddAt(self, obj: Any, index: int) -> None:
         """``AddAt``: into slot ``index``, growing the array with empty slots to reach it."""
         while len(self._items) <= index:
