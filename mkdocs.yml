@@ -64,6 +64,7 @@ nav:
       - An array interface retires __array__, and the guards still ask: gotchas/an-array-interface-makes-array-unreachable-and-the-guards-ask.md
       - A tree's branch attribute is GetBranchAttr's, order and all: discoveries/a-trees-branch-attribute-is-getbranchattr-and-its-order-is-the.md
       - A leaf list names the leaf and keeps its brackets: discoveries/a-leaf-list-names-the-leaf-and-keeps-its-brackets.md
+      - A leaf list of several leaves is one branch and one basket: architecture/a-leaf-list-of-several-leaves-is-one-branch-and-one-basket.md
       - Both roads numeric makes an integral test pass: gotchas/a-test-that-compares-an-analytic-integral-with-a-numeric-one.md
       - docs_record and mkdocs --strict: gotchas/docs-record-s-docs-readme-md-and-unlisted-notes-break-mkdocs.md
       - Delaunay2D takes no zout and its diagonal is CDT's: gotchas/root-math-delaunay2d-takes-no-zout-and-its-diagonal-comes-from-cdt.md
