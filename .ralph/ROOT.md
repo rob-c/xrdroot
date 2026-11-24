@@ -4868,3 +4868,82 @@ was restored from `HEAD` and the cut redone with the order asserted.
 33 372 functions in 1 824 files; components 1 062 modules / 0 undeclared; `mkdocs --strict` exit 0.
 The baseline needed no row (no PASS moved), and `docs/gotchas/a-pair-a-library-s-dictionary-reaches-is-emulated-before-a-file.md`
 gained the sentence this round proved.
+
+## Round 120's close
+
+**`io/stdpair` 28 → 32 PASS, none lost: a declared class's own layout is the emulated spelling, and
+`TStreamerInfo::Build` is what a *missing record* makes ROOT do.**
+
+**The round's own choice was measured, not assumed.** The queue's two best-priced targets were the
+last sixteen `io/stdpair` DIFFs and `W0-233`'s twenty `io/datamodelevolution` FAILs. The second was
+measured first (`--only 'roottest/root/io/datamodelevolution/*'`, `…/dme0`): **22 PASS / 20 FAIL / 2
+DIFF** of 44, and its first wall is `TDataMember.GetDataType` in a `Generator.h` that walks a class's
+members and writes their values **through raw pointers** (`*(int*)(((char*)obj) + member->GetOffset())
+= genInt()`), needing `GetDataType`, `GetTrueTypeName`, `GetOffset`, `TClass.New`,
+`GetListOfDataMembers`, `GetListOfBases` and a write through `char*` arithmetic - `W0-233`'s four
+walls, a programme and not a round. Twelve of its twenty FAILs carry no log at all because a fixture
+did not pass, so most of them sit behind other walls. The six `__PRETTY_FUNCTION__` tests (`W0-231`)
+were measured too and are **five** (three stop at the name, two are fixture dependants), and the
+string must carry the *instantiated* argument, which a template body here has already erased - so
+that is `W0-250` and a design decision, not an afternoon. `io/stdpair`'s quartet was the one target
+whose shape was already written down: round 119 had priced it at **two lines each**.
+
+**What landed** (`8d76246a`). Two rules, both read off ROOT's source and then measured on the oracle.
+
+*A class the session only declares has a layout in memory from the first read*, so **every** file
+layout is set against it - the current one included - and the emulated copies, which *are* that
+spelling, against nothing. That is what makes the four `2_*_0_*` families print the file's mapped
+layout as `type= 3 newtype=13` read with action `203`: `TStreamerInfo::Compile` adds `kConv` (200) to
+a converted member's type (`io/io/src/TStreamerInfoActions.cxx:4317`), and `TStreamerInfoElement::ls`
+prints `newtype=` when `fType != fNewType && fNewType != kUnset` (`core/meta/src/TStreamerElement.cxx:501`).
+`_own_spelling` reads that layout **off the file's own emulated copy** rather than rebuilding it -
+round 119 had measured that the checksum of those same elements is `0xca84d2aa` where the file says
+`0xb5fb752`, so a rebuilt one would be a different layout.
+
+*The warning is a different event, and the read order decides it.* `probe/slots.C` under the 6.40
+oracle, `#include "cmspair.h"` first, both orders:
+
+| read order | slot 1 | `fOnFileClassVersion` | warning |
+|---|---|---|---|
+| `ab02.root` then `aa02.root` | `0xb15d1241` | 1 — a file's copy | none |
+| `aa02.root` then `ab02.root` | `0xb15d1241` | **0** — built | yes |
+
+Same checksum either way; only the provenance differs, and `TClass::GetStreamerInfo` is where it
+comes from (`core/meta/src/TClass.cxx:4716`: no entry at the class's version → `NewInfo` +
+`Build`, and `Build` is what warns per member whose class it has no streamer for). The **slot** is
+not the version a layout recorded - `_free_version` renumbers - so `_recorded_at` asks the *records*:
+"did any file record this checksum at the version the class gives it?". A member spelled with a
+number's streamer code (`< 61`, `kObject`) is no class and is passed over; the pair's enumeration is
+`3` and its `edm::Ref` member `62`.
+
+**First shape, and what it cost.** `_note_built` was called inside the "a layout is new" branch, so a
+file whose records were **all met** never reached it, and the warning never printed (`…/run2`, still
+30). The call moved to a second pass over the names a file describes - a record already met still
+moves where the class's own layout sits.
+
+**The guards, all five, whole, unchanged** (`…/guard*`): `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2,
+`meta/evolution` 20/7/8/2 of 37, `io/datamodelevolution` 22/20/2 of 44, `io/newstl` 19/11/2 of 32 -
+**83 / 39 / 13 / 6 of 141**, every figure the ledger's.
+
+**The gate, seven commands, each read for its own exit status.** The maintainability gate named
+`note_file_infos` at **ccn 11 / npath 648** after the change, so the per-layout step became
+`_note_layout` (no limit touched). Part 1 **13 985 passed, 0 failed** (99.75 % by design); part 2 44
+passed and `coverage report` **`TOTAL 126164 0 31706 0 100%`**; ruff clean; mypy 1 062 files;
+maintainability 33 381 functions in 1 824 files; components 1 062 modules / 0 undeclared;
+`mkdocs --strict` exit 0. **+3 unit tests** (104 in the reflection file), and the fixture now restores
+`BUILT` beside the other module state - a state added to the module without the fixture is a state
+that leaks between tests.
+
+**The baseline** was raised from the run at this round's tip (`…/tip`, `--jobs 4`), whose only
+baseline movement is those four rows; `rootsuite ratchet` on that same `--only` run reports 1503
+`MISSING` rows, which is `W0-158` and not a regression.
+
+**A doc, for the next reader**:
+`docs/gotchas/a-declared-class-s-own-layout-is-the-emulated-spelling-and-only.md`, with the two
+orders' table, ROOT's own print and `Compile` conditions, and the number-versus-class rule.
+
+**Still open, re-scoped**: `W0-245`'s last four (`0_*_1_0`/`1_*_1_0`) - there the *current* layout is
+the emulation and the load's re-emulation duplicates **the emulation**, so the array keeps four blocks
+where this kit prints five; the fix is which block the duplicate is, not the spelling. `W0-248`'s eight
+`3_*` unchanged. New: `W0-250` (five `cling/*` tests, `__PRETTY_FUNCTION__` with its instantiation,
+two shapes measured and neither free).
