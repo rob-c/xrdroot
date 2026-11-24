@@ -6,15 +6,17 @@ tags: [tutorials, planning, baseline, flaky, measurement]
 created: "2026-11-24T10:10:09.374Z"
 updated: "2026-11-24T10:10:09.374Z"
 ---
-750 tutorials is 66 % of everything still obtainable, so the first requirement is a fresh whole-suite run, not more fixes: the committed `tools/tutorials/baseline.json` stood at **564 PASS** while rounds 65–96 changed roofit, the canvas and the harness (`flaky.json`, `record-flaky`), and nobody had re-measured whole.
+750 tutorials is 68 % of everything still reachable, so the first requirement is a fresh whole-suite run, not more fixes: the committed `tools/tutorials/baseline.json` stood at **564 PASS** while rounds 65–96 changed roofit, the canvas and the harness (`flaky.json`, `record-flaky`), and nobody had re-measured whole.
 
 ```text
 1189 tutorials
  ├─ 326 SKIP            (GUI 164 of visualisation alone, helpers, not-in-CMake)
  ├─  15 ORACLE-FAIL     (ROOT itself fails here)
- ├─  10 recorded flaky  (tools/tutorials/flaky.json: ROOT's two runs differ in the draw)
- └─ ~848 obtainable ── 564 PASS ── ~284 failing
-                                    └─ 750 needs 186 of them fixed  (66 %)
+ ├─  10 recorded flaky  (tools/tutorials/flaky.json: ROOT's two runs differ in the draw;
+ │                        the harness gives them the status FLAKY, which is neither a PASS
+ │                        nor a promise, so they are excluded rather than counted as failures)
+ └─  838 reachable ── 564 PASS ── 274 to fix
+                                  └─ 750 needs 186 of them  (68 %)
 ```
 
 ```bash
@@ -39,3 +41,18 @@ python -c "import json,collections; d=json.load(open('$HOME/.cache/xrdroot-runs/
 | hist | 76 | 1 | 5 | 2 | contours, `THnSparse`, `TH1::FFT` |
 
 Roofit 55 + canvas 20 + the name tail 45 + exactness 20 ≈ 700; 750 additionally needs part of the Minuit2/TMVA/byte-exact block. Plan for 800 and treat the three subsystems as the campaign.
+
+
+## `FLAKY` is a status, not a failure
+
+`Harness._flaky` (`tools/tutorials/harness.py`) looks the tutorial up in `flaky.json` and returns
+`FLAKY` with the recorded draw, clearing its images — because "ROOT's own run of this tutorial is
+not the same twice, so neither side's output is a property of the code". Ten tutorials stand that
+way at round 96 (`rf102_dataimport.py`, `rf403_weightedevts.py`, `rf404_categories.py`,
+`FourBinInstructional` ×2, `StandardBayesianNumericalDemo.py`,
+`StandardHistFactoryPlotsWithCategories.py`, `StandardProfileLikelihoodDemo.py`,
+`StandardTestStatDistributionDemo.py`, `rs101_limitexample.py`), so the honest denominator for
+"750 working" is 838, and a baseline recorded before `flaky.json` still carries them as DIFF or
+FAIL until it is re-recorded. `python -m tools.tutorials record-flaky PATH… --runs N` is what puts
+a tutorial there: it repeats ROOT's own run, keeps each distinct draw, and the next run of the suite
+answers FLAKY instead of a difference nobody can fix.
