@@ -22,6 +22,18 @@ flowchart TD
     F --> G["the file's other layouts are listed beside it"]
 ```
 
+## The state is the one the file was read in, not the one it is printed in
+
+A session that learns the class **after** the file was read does not get the emulated layout as its
+current one: ``io/stdpair``'s ``2_*_1_*`` families read their files before ``#include "cmspair.h"``
+and keep the first record's layout, while the ``2_*_0_*`` families - the same include, the files read
+after it - get the declaration's. And an ``#include`` is a **declaration**, not a dictionary: the
+class is laid out from it, so its own layout is the file's *mapped* spelling, where a loaded
+library's dictionary makes ROOT *emulate* the class and its own layout the emulated one. That is why
+the answer has to be recorded once, as the first layout is noted (``DESCRIBED`` in
+``src/xrdroot/pyroot/core/reflection.py``), with three values - ``"dictionary"``, ``"declaration"``
+and ``None`` - rather than asked at print time.
+
 ## What to do
 
 Ask two questions of the session, not of the file: has a **loaded library** a dictionary of the class (`GENERATED`), and one of a member's type. Only where the answer to the second is yes and to the first no is the emulation the class's own layout - and it is listed at the class's **own** version (the version the first record gave it), not at the version the copy the file happened to hold named.
