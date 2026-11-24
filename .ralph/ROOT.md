@@ -3455,3 +3455,44 @@ maintainability 33 220 functions in 1 819 files; components 1 061 modules, 0 und
 `if GetSumw2N()` branch, which no object can reach (a `TProfile` keeps squared weights from its
 constructor: measured, an unfilled one answers 4 for 4 cells), so it went too.
 | 93 | ``0c6490d9`` | **one target, measured before it was believed**: `W0-194` - the pad macro as ROOT writes it (`TCanvas::SaveSource`'s frame, `TPad::SavePrimitive`'s fill and border, and each primitive's own `SavePrimitive`: `TH1`'s `ProvideSaveName`/`MapCppName`, `TProfile`'s entries before its means, `TH2Poly`'s a-`TGraph`-a-polygon, `TGraph`'s two `std::vector<Double_t>`) | ``ff2ec418`` | **gtest 87 -> 88**: `gtest/hist/hist/testMapCppName` FAIL -> PASS, the 57 `gtest/hist/*` + `gtest/graf2d/*` programs moving one row and no other (`…/hist-graf`); our macro is 6598 bytes and 93 lines against ROOT's 6616 and 93 (`…/probe/pad/full`), and it runs under this kit | 5: `W0-194` closed; `W0-211` (**`rs101` is the MCMC stream, not the parameter order** - six differing lines, not the one the harness names), `W0-212`, `W0-213`, `W0-214`, `W0-215` |
+
+## Round 94's close
+
+Round 94 took the smallest one-case program in the hist area that looked like a name, and found three
+general gaps behind it: **`std::is_sorted`, a pointer-typed return from a dialect, and `TGraph::Sort`**.
+`gtest/hist/hist/testTGraphSorting` PASSES all five of its cases.
+
+**The measurement first.** The round's own words were `ROOT has std.is_sorted` - a name, which is the
+kind of row `W0-55` says a round may spend an hour on. Pricing it took four probes: the program refused
+at `std::is_sorted` (all five cases), the *translator* then refused the range (`an iterator this
+translator cannot follow back to its container`, because `typeof(graph.GetX())` was unknown), and after
+that `TGraphMultiErrors` had no `GetEXlow`. Each wall was one layer of the same question - *can a program
+hand a graph's own array to an algorithm* - and each answer is general rather than about that test.
+
+**What is in now.** `cppstd.objects.sorted_range` is C++'s `is_sorted`: no element less than the one
+before it, with the predicate a program gives or C++'s own `<`; the translator answers
+`std::is_sorted(begin, end[, less])` over the range `iterator_range` already follows back to its
+container; `pycxx.infer._named_type` reads a dialect's `method_returns` entry as a *declaration*, so
+`"Double_t*"` is a pointer and `Graph.GetX() + n` is a range end rather than an element-wise add; the
+whole graph family answers `GetX`/`GetY`/`GetEX`/`GetEY` and the asymmetric and bent bars with
+`Double_t*`; `TGraph::Sort` takes ROOT's signature, sorts a stable permutation of the point numbers and
+moves every array by it (`UpdateArrays`), sets `kIsSortedX`, and refuses a comparator, a descending
+order or a sub-range **by name**; and `TGraphMultiErrors::Sort` carries its layers of y errors and its
+own x errors with the points, with `GetEXlow`/`GetEXhigh` as ROOT's overrides of the
+`TGraphAsymmErrors` accessors.
+
+**Measured.** The program goes 0 of 5 cases to 5 of 5 (`…/sort5`), and the 57 `gtest/hist/*` +
+`gtest/graf2d/*` programs measured whole at the tip move **one row and no other** (`…/hist-graf`: 40
+PASS / 13 FAIL / 4 UNSUPPORTED, the diff against `baseline.json` being that row, raised by
+`rootsuite baseline --merge`). The kind is **89 / 350**.
+
+**Two rows queued rather than guessed at.** `W0-216`: ROOT's `Sort` also takes a comparator, a
+descending order and a sub-range, and the three are now *named* refusals instead of silent wrong
+sorts. `W0-217`: ROOT sets `kIsSortedX` because `TGraph::Eval` then binary-searches the points; the bit
+is set here and nothing reads it, so `Eval` is still linear - nobody measures it yet.
+
+**Gate.** `TOTAL 125670 0 31532 0 100%` (13 917 + 44, by the two-command decomposition, `…/gate1.log`
+at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 061 files; maintainability
+33 235 functions in 1 820 files; components 1 061 modules, 0 undeclared imports; `mkdocs build
+--strict` clean.
+| 94 | `3a99abad` | **one one-case program, priced four times before it was believed**: `gtest/hist/hist/testTGraphSorting` - `std::is_sorted` as a `cppstd` range check and a translator name, a dialect's `method_returns` allowed to name a **pointer** so a graph's arrays are ranges, `TGraph::Sort` with ROOT's signature and `kIsSortedX`, and `TGraphMultiErrors::Sort` carrying its layers and x errors | `127f2320` | **gtest 88 -> 89**: all five cases of `testTGraphSorting` PASS (`…/sort5`), and the 57 `gtest/hist/*` + `gtest/graf2d/*` programs move one row and no other (`…/hist-graf`, 40 / 13 / 4) | 2: `W0-216` (`Sort`'s comparator, descending order and sub-range are named refusals), `W0-217` (`kIsSortedX` is set and `Eval` does not read it) |
