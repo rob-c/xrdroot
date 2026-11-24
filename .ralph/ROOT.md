@@ -4349,3 +4349,43 @@ read first, and then the two-line offsets table.
 **The gate.** Seven commands at `971651c5`, each read for its own exit status: **`TOTAL 125988 0 31626 0 100%`**
 (13 967 + 44 passed, `…/gate1.log`), ruff clean, mypy 1 062 files, maintainability 33 339 functions, components
 1 062 modules / 0 undeclared, `mkdocs build --strict` exit 0 (`…/mkdocs.log`).
+| 110 | `6249ef1b` | **the `io/stdpair` bucket's two unknowns measured on the 6.40 oracle, and a first fix reverted**: `GetStreamerInfos()->GetSize()` is ROOT's `TObjArray` room (13, not the 2 entries) - the walk a test makes only reaches `#2` because of it; an entry must be the *same object* `GetStreamerInfo()` answers; and `second`'s `offset=` 4-vs-8 is ROOT's emulated `AlignUp(offset, align) + size` run again when the map's proxy is created (`0,0` before, `0,8` after) | no code | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 either side; the first fix (Expand + per-class cache) broke four existing tests and was reverted - those four are the next attempt's specification. Gate unchanged (`TOTAL 125988 0 31626 0 100%`, round 109's) | 0 new: `W0-239` **rewritten** with the three measured pieces, `W0-230` **carries the offsets rule** |
+
+## Round 110's close
+
+Round 110 wrote no code, and the round says so: it spent itself turning `W0-239`'s two guesses into measurements, and
+then **reverted the fix those measurements made possible** when four existing tests said its shape was wrong.
+
+**What the oracle says, in four probes.** With the roottest's own `aa02.root`/`ab02.root` (`…/probe/slots.C`,
+`elems.C`, `testlike.C`, `sizes.C` in `…/ralph-round-202611241641`):
+
+- **`GetStreamerInfos()->GetSize()` is the `TObjArray`'s room, not its entries** - `13` for `TNamed`, `TObject` and
+  `pair<int,int>`, `15` for `TH1F`, `GetLast() -2` for a class with no layouts - and the pair's array holds
+  `At(1) = v1 0xb5fb752` (the current) and `At(2) = v2 0xb15d1241`, `size=13 last=2 entries=2`, in **either** file
+  order. So `pairEnumEvo`'s `GetSize()-1` walk reaches `#2` only because the room is past the highest version; this
+  kit answers `GetSize() 2`, the loop runs zero times, and no `#N` block is printed at all.
+- **An entry has to be the same object** `GetStreamerInfo()` answers, because the test prints only what
+  `info != currentInfo`; `GetStreamerInfo(i)` here builds a fresh `TStreamerInfo` per call, so a first attempt printed
+  `#1` as well as `#2`.
+- **`_free_version`'s dense numbering is right** - the collision takes v2 - so round 109's version-indexed array was
+  the correct half.
+- **The `4`-against-`8` split of `second`'s `offset=` is ROOT's emulated accumulation**: the elements answer `offset`
+  **0 and 0** (`align` 4 and 8, `size` 4 and 24) with only the files open, and **0 and 8** after the test's own
+  `c->GetClassInfo(); c->GetCollectionProxy(); p->GetValueClass()` - `TStreamerInfo::BuildOld`'s
+  `offset = AlignUp(offset, element->GetAlignment()); SetOffset(offset); offset += element->GetSize()`, run a second
+  time by the proxy. That is why the 40 refs split: a family with a **library loaded** prints the compiled class's
+  real offsets (`4`), one without it the emulated accumulation (`8`).
+
+**And the fix was reverted.** `Expand(13)` plus a per-class array cache made the blocks right and broke four existing
+tests - `built` for an emulated class, `FindStreamerInfo`'s unbuilt answer, and a version collision that must bump
+rather than replace. Shipping it with four red tests is not an option and relaxing them is not either, so the tree is
+exactly its base's and **those four tests are the next attempt's specification** - which is worth more than a
+half-finished cache.
+
+**Nothing moved, and that is consistent.** `io/stdpair` is 4 PASS / 40 DIFF at the tip and at its base: the room and
+the offsets are both needed, and neither alone flips a single file.
+
+**The gate.** Nothing in the tree changed (`git diff` against `6249ef1b` is `TODO.md` and `.ralph/ROOT.md`), so round
+109's seven-command gate stands: **`TOTAL 125988 0 31626 0 100%`** (13 967 + 44 passed, `…/ralph-round-202611241641`'s
+base is that tip), ruff clean, mypy 1 062 files, maintainability 33 339 functions, components 1 062 modules / 0
+undeclared, `mkdocs build --strict` exit 0.
