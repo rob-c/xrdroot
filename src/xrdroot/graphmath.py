@@ -129,18 +129,22 @@ def _sorted_line(xs: Any, ys: Any, points: Any) -> Any:
     return np.where(np.isnan(points), ys[0], line)
 
 
-def evaluate(graph: Graph, x: Any) -> Any:
+def evaluate(graph: Graph, x: Any, sorted_x: bool | None = None) -> Any:
     """``TGraph::Eval(x)``: straight lines between the points, and past the ends along them.
 
     No points gives zero and one point its own ``y``, as ROOT's does; on a
     point it is that point's ``y``, and two points at the same ``x`` give the
     first one's.
+
+    ``sorted_x`` is ROOT's ``kIsSortedX`` bit: a graph told its points are in order is answered
+    by one binary search, and ``None`` means nobody said - so the points are looked at once, which
+    is what a ``Sort`` sets the bit to save.
     """
     points = np.asarray(x, dtype=np.float64)
     xs, ys = graph.x, graph.y
     if len(xs) < 2:
         found = np.full(points.shape, float(ys[0]) if len(xs) else 0.0)
-    elif np.all(np.diff(xs) > 0):
+    elif sorted_x if sorted_x is not None else np.all(np.diff(xs) > 0):
         found = _sorted_line(xs, ys, points)
     else:
         walk = [_walked(xs.tolist(), ys.tolist(), value) for value in points.ravel().tolist()]

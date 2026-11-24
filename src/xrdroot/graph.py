@@ -319,7 +319,7 @@ class Graph(Displayed):
             },
         )
 
-    def eval(self, x: Any) -> Any:
+    def eval(self, x: Any, sorted_x: bool | None = None) -> Any:
         """``Eval``: the graph at ``x`` along straight lines between points, past the ends too.
 
             >>> Graph.new("g", [0, 1, 2], [0, 10, 40]).eval([0.5, 3.0]).tolist()
@@ -328,7 +328,7 @@ class Graph(Displayed):
         As ROOT's ``Eval`` does it without a spline: the points need not be
         in order, and past either end it extrapolates along the last two.
         """
-        return graphmath.evaluate(self, x)
+        return graphmath.evaluate(self, x, sorted_x)
 
     def integral(self, first: int = 0, last: int = -1) -> float:
         """``Integral``: the area of the polygon the points make, from ``first`` to ``last``."""

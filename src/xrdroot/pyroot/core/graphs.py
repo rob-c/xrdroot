@@ -666,8 +666,12 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     # -- what is worked out from it ---------------------------------------------------------------
 
     def Eval(self, x: float, spline: Any = None, option: str = "") -> float:
-        """``Eval``: along straight lines between the points, extrapolated past the ends."""
-        return float(self._xrd.eval(float(x)))
+        """``Eval``: along straight lines between the points, extrapolated past the ends.
+
+        A graph ``Sort`` put in x order is answered by one binary search - ROOT's ``kIsSortedX``
+        bit is what says so - where an unordered one is walked point by point.
+        """
+        return float(self._xrd.eval(float(x), self.TestBit(self.kIsSortedX)))
 
     def Integral(self, first: int = 0, last: int = -1) -> float:
         return float(self._xrd.integral(first, last))
