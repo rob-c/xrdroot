@@ -3670,3 +3670,43 @@ status, not only the ones you expect to pass**. **Gate.** `TOTAL 125738 0 31556 
 maintainability 33 253 functions in 1 820 files; components 1 061 modules, 0 undeclared imports;
 `mkdocs build --strict` clean.
 | 96 | `1a3c7e1d` | **two queued rows closed, one by measurement**: `W0-217` - `TGraph::Eval` reads `kIsSortedX` and one `np.searchsorted` finds the points around `x` (18 467 us -> 208 us on 200 000 points, same answer); `W0-218` - **does not reproduce**, the probe that named it was taken while round 95's own `named_call` wrapper corrupted inference | `b93a1f7f` | **0 gtest PASS, 0 lost, and the kind measured whole again at the tip: 92 PASS / 181 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350 (`…/gtest`), round 95's two gains still there; three menu entries priced and refused as features (`boolean_extrusion`'s overlap check, `material_units`' `TGeoUnit`, `testTTreeCluster`'s basket re-optimisation) | 1: `W0-219` **refreshed to 22** one-case programs, with the list; `W0-217` and `W0-218` closed |
+
+## Round 97's close
+
+Round 97 took the one-case program with the most bounded feature behind it and closed it:
+`gtest/roofit/roofitmore/testRooHypatia2` PASSES, the kind **92 -> 93**.
+
+**What the shape is.** ROOT's Hypatia2 - the line shape a heavy-tailed peak is fitted with - is a
+`(1 + d^2/sigma^2)^(lambda - 1/2)` core between two cut points, `a*sigma` on the left and `a2*sigma`
+on the right, and beyond each a power law `A (B -+ d)^-n` whose `A` and `B` are chosen so the tail
+meets the core's value and its slope there. That is `roofit/roofitmore/src/RooHypatia2.cxx:242`
+transcribed for the `zeta = 0`, `lambda < 0` branch - the branch ROOT's own test writes - into
+`roofit/pdfs/hypatia.py`, and it went in with nothing else: the test's `RooNumIntConfig`,
+`defaultIntegratorConfig`, `setIntegratorConfig` and `forceNumInt` were all already here from the
+earlier RooFit work, which is why a feature that looked a round deep took one file.
+
+**Measured against the oracle before anything was claimed.** A macro asking ROOT itself
+(`…/probe/hyp.C`) gives the density at seven abscissae across the core and both tails, and this kit
+answers **the same 17 digits at every one**: `x = -10 -> 0.00098518533684157348`, `-2 ->
+0.089442719099991588`, `-0.5 -> 0.71554175279993271`, `0 -> 1`, `0.5 -> 0.71554175279993271`, `2 ->
+0.26794336563407328`, `10 -> 0.21632221225408768`. The integral over `[-10, 10]` is 3.8552011036701885
+against ROOT's 3.8552008214678435 - **7.3e-8**, the integrator's own tolerance.
+
+**Two refusals, named, and one row for what is not here.** `zeta > 0` needs the ratio of two modified
+Bessel functions ROOT computes with `TMath::BesselK` plus its `LogEval`/`diff_eval` pair, and
+`lambda >= 0` is a shape ROOT itself answers 0 for while logging; both are refused in a full sentence
+with what to build instead. And `createIntegral` is **numeric**: ROOT's
+`RooHypatia2::analyticalIntegral` is not written here, so `forceNumInt` changes nothing for this
+class and the test's two roads are the same numeric integral - the values agree, the *closed form* is
+the gap. That is `W0-220`, and the class's own docstring says it too.
+
+**The area, measured whole at the tip**: 47 `gtest/roofit/*` programs are **11 PASS / 20 FAIL / 16
+UNSUPPORTED** (`…/roofit`), from round 95's 10 / 21 / 16 - this round's row and the known `W0-154`
+row (`testRooRombergIntegrator` measures UNSUPPORTED where the baseline says FAIL) - so nothing was
+lost. The baseline was raised by `rootsuite baseline --merge` from that same run.
+
+**Gate.** `TOTAL 125799 0 31560 0 100%` (13 928 + 44, by the two-command decomposition,
+`…/gate1.log` at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 062 files;
+maintainability 33 263 functions in 1 822 files; components 1 062 modules, 0 undeclared imports;
+`mkdocs build --strict` clean.
+| 97 | `d9859f31` | **one one-case program, its feature the smallest in the menu**: ROOT's `RooHypatia2` line shape (`roofit/pdfs/hypatia.py`, `RooHypatia2.cxx:242` transcribed for the `zeta = 0`, `lambda < 0` branch) and its registry entry - the `RooNumIntConfig`/`forceNumInt` surface the test needs was already here | `f0f6813d` | **gtest 92 -> 93**: `gtest/roofit/roofitmore/testRooHypatia2` FAIL -> PASS, and the 47 `gtest/roofit/*` programs measured whole at the tip move two rows - that one and the known `W0-154` - so nothing lost (`…/roofit`: 11 / 20 / 16). The density is **the oracle's to 17 digits** at seven abscissae and its integral differs by 7.3e-8 | 1: `W0-220` (`RooHypatia2::analyticalIntegral` is not written, so both roads are numeric and `forceNumInt` changes nothing); `W0-219` down to 21 |
