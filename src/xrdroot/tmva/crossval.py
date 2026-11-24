@@ -85,6 +85,19 @@ class CrossValidation:
         self.methods: list[MethodInfo] = []
         self.results: list[CrossValidationResult] = []
 
+    def GetName(self) -> str:
+        """``GetName``: the job name the cross-validation was made with.
+
+        ROOT's ``CrossValidation`` is a ``TNamed`` through its ``Envelope`` base, and the name is
+        the ``jobName`` its constructor was given - which a program uses to find the weights the
+        folds wrote, as ``ROOT's own cross-validation test`` does.
+        """
+        return self.job
+
+    def GetTitle(self) -> str:
+        """``GetTitle``: a ``CrossValidation`` is named and not titled, so this is ROOT's empty."""
+        return ""
+
     # -- booking and asking ----------------------------------------------------------------
 
     def BookMethod(self, method: Any, title: Any, options: Any = "") -> None:

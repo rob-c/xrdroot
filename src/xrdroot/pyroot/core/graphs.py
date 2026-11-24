@@ -10,6 +10,7 @@ points' range with a tenth more either side, made when first asked for.
 
 from __future__ import annotations
 
+import functools
 from functools import partial
 from os import PathLike, fspath
 from pathlib import Path
@@ -91,6 +92,22 @@ def _frame_histogram(
     made.SetStats(False)
     made.GetYaxis().SetLimits(down, up)
     return made
+
+
+def _comes_first(comparator: Any, ascending: bool, graph: Any, left: int, right: int) -> int:
+    """How C++'s ``stable_sort`` sees one pair of point numbers.
+
+    ``greaterfunc(this, left, right) != ascending`` is "left comes first" - ROOT's comparator
+    answers "is left greater", so an ascending sort asks for the pairs it says no about - and a
+    pair is neither first when that is false both ways.
+    """
+
+    def first(one: int, other: int) -> bool:
+        return one != other and bool(comparator(graph, one, other)) != bool(ascending)
+
+    if first(left, right):
+        return -1
+    return 1 if first(right, left) else 0
 
 
 def _saved_look(graph: Any, out: list[str], variable: str) -> None:
@@ -504,32 +521,64 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
             self._bars[key][i] = float(value)
         self._changed()
 
+    @staticmethod
+    def CompareX(graph: Any, left: int, right: int) -> bool:
+        """``TGraph::CompareX``: whether point ``left`` is to the *right* of point ``right``.
+
+        ROOT's comparators answer "is left greater", and ``Sort`` inverts that for an ascending
+        order - so ``CompareX`` with ``ascending`` true is a graph in increasing x.
+        """
+        return float(graph._points[0][left]) > float(graph._points[0][right])
+
+    @staticmethod
+    def CompareY(graph: Any, left: int, right: int) -> bool:
+        """``TGraph::CompareY``: whether point ``left``'s y is greater than point ``right``'s."""
+        return float(graph._points[1][left]) > float(graph._points[1][right])
+
     def Sort(self, greaterfunc: Any = None, ascending: bool = True, low: int = 0,
              high: int = -1111) -> None:
-        """``TGraph::Sort``: the points in increasing x, their bars with them.
+        """``TGraph::Sort``: the points in the order the comparator gives, every array with them.
 
-        ROOT sorts a permutation of the point numbers - ``std::stable_sort`` over ``0..N-1``
-        with the comparator it was given - and then moves *every* array the graph keeps by it
-        (``UpdateArrays``), which is why a graph's errors follow their points. The default is
-        ``TGraph::CompareX`` ascending over the whole graph, and that is what sets
+        ROOT sorts a permutation of the point numbers - ``std::stable_sort`` over ``low`` to
+        ``high`` with ``greaterfunc`` as its comparator - and hands the permutation to
+        ``UpdateArrays``, which each kind of graph overrides to move the arrays it keeps. The
+        default is ``CompareX`` ascending over the whole graph, and *that* is what sets
         ``kIsSortedX`` and lets ``Eval`` binary-search the points afterwards.
 
-        A comparator, a descending order or a sub-range is refused by name rather than ignored:
-        a graph sorted the wrong way round is drawn wrong, and the numbers a test reads back
-        would be another graph's.
+        ``greaterfunc`` is C++'s function pointer - ``TGraph::CompareX``, ``TGraph::CompareY``,
+        or a callable of ``(graph, left, right) -> bool`` - and it answers "is left greater", so
+        ``ascending`` false gives the other order. ``low`` and ``high`` sort a window and leave
+        the points outside it where they are, as ROOT's own sub-range does.
         """
-        if greaterfunc is not None or not ascending or low != 0 or high != -1111:
-            raise UnsupportedFeatureError(
-                "TGraph::Sort does not yet take a comparator, a descending order or a sub-range: "
-                "this kit sorts the whole graph by x, ascending, as TGraph::CompareX's default "
-                "does. Sort the points before they are put in the graph, or call Sort() with no "
-                "arguments"
-            )
-        order = np.argsort(self._points[0], kind="stable")
-        self._points = (self._points[0][order], self._points[1][order])
-        self._bars = {key: value[order] for key, value in self._bars.items()}
-        self.SetBit(self.kIsSortedX)
+        count = len(self._points[0])
+        comparator = TGraph.CompareX if greaterfunc is None else greaterfunc
+        last = count - 1 if high == -1111 else min(int(high), count - 1)
+        order = list(range(count))
+        window = order[low:last + 1]
+        window.sort(key=functools.cmp_to_key(partial(_comes_first, comparator, ascending, self)))
+        order[low:last + 1] = window
+        self._update_arrays(order, len(window), low)
+        if comparator is TGraph.CompareX and ascending and low == 0 and high == -1111:
+            self.SetBit(self.kIsSortedX)
         self._changed()
+
+    def _update_arrays(self, order: list[int], count: int, low: int) -> None:
+        """``TGraph::UpdateArrays``: the window ``[low, low + count)`` given the sorted points.
+
+        ROOT's base moves ``fX`` and ``fY`` alone, and each kind that keeps bars overrides this
+        to move its own arrays first - which is why a point's errors stay its own.
+        """
+        window = order[low:low + count]
+        self._points = (self._moved(self._points[0], window, low),
+                        self._moved(self._points[1], window, low))  # fmt: skip
+        self._bars = {key: self._moved(value, window, low) for key, value in self._bars.items()}
+
+    @staticmethod
+    def _moved(values: Any, window: list[int], low: int) -> Any:
+        """``values`` with those of ``window`` put back at ``low``, the rest left as they were."""
+        moved = np.array(values, dtype=np.float64, copy=True)
+        moved[low:low + len(window)] = np.asarray(values, dtype=np.float64)[window]
+        return moved
 
     def Print(self, option: str = "") -> None:
         """``Print``: a line per point, ``x[i]=..., y[i]=...`` and its bars, as ROOT prints them."""

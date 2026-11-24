@@ -18,9 +18,11 @@ from typing import Any
 
 from .ctype import CType
 from .dialect import active
+from .errors import Refusal
 from .instantiate import Templates
 from .nodes import (
     Binary,
+    Block,
     Call,
     ClassDecl,
     DeclStmt,
@@ -161,6 +163,10 @@ class Program:
         self.constants: dict[str, str] = {}
         self.enums: dict[str, EnumDecl] = {}
         self.aliases: dict[str, CType] = {}
+        #: The ``using X = T`` a *function's body* writes: a value position's question - what
+        #: ``X(...)`` makes - and not a type position's, which the parser answered while reading
+        #: the declaration. Kept apart so that a body's alias changes no inference about a name.
+        self.local_aliases: dict[str, CType] = {}
         #: The declarations at namespace scope, namespaces flattened, in the order written.
         self.order: list[Stmt] = []
         #: For each function (by ``id``), the names in it whose address is taken.
@@ -215,7 +221,48 @@ class Program:
             self.order.append(decl)
             self._collect(decl)
 
+    def _local_alias(self, decl: Stmt) -> None:
+        """``using cv_milli_t = std::chrono::duration<double, std::milli>;`` inside a function.
+
+        C++ scopes an alias to the block it is written in; this kit keeps one table, because what
+        asks for an alias is a *call* - ``cv_milli_t(end - start)`` - emitted with no view of the
+        block it stands in. So every function's aliases go in that table, and two functions that
+        give one name two different types are refused rather than silently sharing the last one.
+        """
+        aliases = [one for one in self._aliases_in(decl) if one.ctype.args]
+        for one in aliases:
+            known = self.local_aliases.get(one.name)
+            if known is not None and known != one.ctype:
+                raise Refusal(
+                    f"the name {one.name} stands for two types in one program - "
+                    f"{known.name} and {one.ctype.name} - and this translator keeps one alias "
+                    "table for a program's functions. Rename one of them",
+                    one.where,
+                )
+            self.local_aliases[one.name] = one.ctype
+
+    def _aliases_in(self, decl: Stmt) -> list[Typedef]:
+        """Every ``typedef`` and ``using X =`` written inside the function ``decl`` defines."""
+        body = getattr(decl, "body", None)
+        if not isinstance(body, Block):
+            return []
+        found: list[Typedef] = []
+        todo: list[Stmt] = list(body.body)
+        while todo:
+            one = todo.pop()
+            if isinstance(one, Typedef):
+                found.append(one)
+                continue
+            nested = getattr(one, "body", None)
+            if isinstance(nested, Block):
+                todo.extend(nested.body)
+            elif isinstance(nested, list):
+                todo.extend(item for item in nested if isinstance(item, Stmt))
+        return found
+
     def _collect(self, decl: Stmt) -> None:
+        if isinstance(decl, (Function, DeclStmt)):
+            self._local_alias(decl)
         if isinstance(decl, ClassDecl):
             self._class(decl)
         elif isinstance(decl, EnumDecl):

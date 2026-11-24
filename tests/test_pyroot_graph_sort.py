@@ -17,7 +17,6 @@ import xrdroot.pyroot as ROOT
 from cintfake import fake
 from pyrootgraphics import fresh_session, gaussian  # noqa: F401
 from xrdroot.cppstd.objects import sorted_range
-from xrdroot.errors import UnsupportedFeatureError
 from xrdroot.pycint import Refusal, translate
 from xrdroot.pycint.execute import run_source
 from xrdroot.pycxx.infer import _named_type
@@ -85,15 +84,41 @@ def test_a_graph_sorted_by_x_carries_its_points_and_its_bars_with_them():
     assert graph.TestBit(graph.kIsSortedX) is True
 
 
-def test_a_sort_this_does_not_do_is_refused_by_name_rather_than_done_another_way():
-    """A comparator, a descending order and a sub-range are ROOT's other sorts, and a graph
-    sorted the wrong way round is drawn wrong - so each is refused with what to do instead."""
-    graph = ROOT.TGraph(2)
-    graph.SetPoint(0, 2.0, 1.0)
-    graph.SetPoint(1, 1.0, 2.0)
-    for arguments in ((lambda *_: False,), (None, False), (None, True, 1), (None, True, 0, 1)):
-        with pytest.raises(UnsupportedFeatureError, match="TGraph::Sort does not yet take"):
-            graph.Sort(*arguments)
+def test_a_graph_sorts_by_y_and_the_other_way_round_with_roots_comparators():
+    """``TGraph::CompareY`` and ``ascending`` false are ROOT's other two ways: the comparator
+    answers "is left greater", so a *descending* order is ``ascending = kFALSE`` over it."""
+    graph = ROOT.TGraph(3)
+    for at, (x, y) in enumerate([(1.0, 30.0), (2.0, 10.0), (3.0, 20.0)]):
+        graph.SetPoint(at, x, y)
+    graph.Sort(ROOT.TGraph.CompareY, False)
+    assert list(graph.GetY()) == [30.0, 20.0, 10.0]
+    assert list(graph.GetX()) == [1.0, 3.0, 2.0]  # each point's x went with its y
+
+
+def test_a_sort_of_a_window_leaves_the_points_outside_it_where_they_are():
+    """``Sort(..., low, high)`` is ROOT's sub-range: ``std::stable_sort`` over that window of the
+    point numbers, and ``UpdateArrays`` writing the window back - the rest untouched."""
+    graph = ROOT.TGraph(4)
+    for at, value in enumerate([9.0, 7.0, 1.0, 3.0]):
+        graph.SetPoint(at, value, value * 10.0)
+    graph.Sort(None, True, 1, 2)
+    assert list(graph.GetX()) == [9.0, 1.0, 7.0, 3.0]
+    assert list(graph.GetY()) == [90.0, 10.0, 70.0, 30.0]
+
+
+def test_only_the_whole_graph_ascending_by_x_is_marked_sorted():
+    """ROOT sets ``kIsSortedX`` in the one case ``Eval`` may binary-search on - the default
+    comparator, ascending, over the whole graph - and leaves it alone otherwise."""
+    whole = ROOT.TGraph(2)
+    whole.SetPoint(0, 2.0, 1.0)
+    whole.SetPoint(1, 1.0, 2.0)
+    whole.Sort()
+    assert whole.TestBit(whole.kIsSortedX) is True
+    by_y = ROOT.TGraph(2)
+    by_y.SetPoint(0, 2.0, 1.0)
+    by_y.SetPoint(1, 1.0, 2.0)
+    by_y.Sort(ROOT.TGraph.CompareY, False)
+    assert by_y.TestBit(by_y.kIsSortedX) is False
 
 
 def test_a_multi_error_graph_sorts_every_layer_and_the_x_errors_with_its_points():

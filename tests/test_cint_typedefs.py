@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from cintfake import fake
-from xrdroot.pycint import translate
+from xrdroot.pycint import Refusal, translate
 from xrdroot.pycint.execute import run_source
 
 
@@ -47,3 +47,35 @@ def test_roots_opaque_handles_are_pointers_shared_not_copied_and_passed_by_refer
     )
     assert "value_copy" not in python
     assert "child = Cell(xml.GetChild(node))" in python and "xml.ShiftToNext(child)" in python
+
+
+def test_a_using_inside_a_function_names_the_type_its_call_makes() -> None:
+    """``using cv_milli_t = std::chrono::duration<double, std::milli>;`` in a body, then
+    ``cv_milli_t(end - start)``: C++ makes one of the type the alias stands for, and a template
+    instance's constructor is the runtime's own call of that template. ROOT's cross-validation
+    test times its own run exactly so, and both of its programs passed only once this was here.
+    """
+    source = """
+    #include <chrono>
+    double t() {
+      using cv_clock_t = std::chrono::high_resolution_clock;
+      using cv_milli_t = std::chrono::duration<double, std::milli>;
+      auto StartTime = cv_clock_t::now();
+      auto EndTime = cv_clock_t::now();
+      return cv_milli_t(EndTime - StartTime).count() / 1000.0;
+    }
+    """
+    translated = translate(source, "t.C")
+    assert "chrono.duration['double', 'std::milli'](EndTime - StartTime).count()" in translated
+    assert "ROOT.cv_milli_t" not in translated
+
+
+def test_a_name_two_functions_give_two_types_is_refused_by_name() -> None:
+    """One alias table serves a program's functions, so two of them giving a name two types is
+    refused with what to do - rather than the last one quietly winning in both."""
+    source = """
+    void f() { using Length = std::chrono::duration<double, std::milli>; Length l(1); (void)l; }
+    void g() { using Length = std::chrono::duration<double, std::ratio<1>>; Length l(1); (void)l; }
+    """
+    with pytest.raises(Refusal, match="stands for two types in one program"):
+        translate(source, "t.C")

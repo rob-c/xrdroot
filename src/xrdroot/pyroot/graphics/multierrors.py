@@ -168,18 +168,14 @@ class TGraphMultiErrors(TGraph):
         """``AddYError(np, eyl, eyh)``: another kind of y error, over the points there are."""
         self._append_layer(low, high, self.GetN() or int(count))
 
-    def Sort(self, greaterfunc: Any = None, ascending: bool = True, low: int = 0,
-             high: int = -1111) -> None:
-        """``TGraphMultiErrors::Sort``: the base's sort, taking every layer of bars with it.
-
-        ROOT's ``UpdateArrays`` moves every array the graph keeps, and a multi-error graph
-        keeps two arrays a layer - so a sort that reordered only the points would put each
-        point's errors on another point.
-        """
-        order = np.argsort(self._points[0], kind="stable")  # the permutation the base will use
-        self._layers = [[layer[0][order], layer[1][order]] for layer in self._layers]
-        self._ex = (self._ex[0][order], self._ex[1][order])
-        TGraph.Sort(self, greaterfunc, ascending, low, high)
+    def _update_arrays(self, order: list[int], count: int, low: int) -> None:
+        """``TGraphMultiErrors::UpdateArrays``: each layer of y errors and the x errors moved by
+        the same permutation as the points, as ROOT's own override does before the base's."""
+        window = order[low:low + count]
+        self._layers = [[self._moved(layer[0], window, low), self._moved(layer[1], window, low)]
+                        for layer in self._layers]  # fmt: skip
+        self._ex = (self._moved(self._ex[0], window, low), self._moved(self._ex[1], window, low))
+        TGraph._update_arrays(self, order, count, low)
 
     def DeleteYError(self, layer: int) -> None:
         """``DeleteYError(e)``: one layer fewer - and the last one is never deleted."""

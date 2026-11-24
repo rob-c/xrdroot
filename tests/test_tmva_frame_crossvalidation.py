@@ -79,6 +79,14 @@ def test_the_cross_validation_answers_what_it_was_booked_with(session):
         cv.GetResults()
 
 
+def test_the_cross_validation_is_named_by_the_job_it_was_given(session):
+    """``CrossValidation`` is a ``TNamed`` in ROOT - through its ``Envelope`` base - and its name
+    is the ``jobName`` of the constructor, which a program uses to find the weights its folds
+    wrote (ROOT's own cross-validation test does, and passed only once this was here)."""
+    cv = ROOT.TMVA.CrossValidation("job", loader(), "!V:Silent:AnalysisType=Classification")
+    assert (cv.GetName(), cv.GetTitle()) == ("job", "")
+
+
 def test_a_split_expression_without_deterministic_splitting_is_refused(session):
     with pytest.raises(TMVAError, match="SplitExpr can only be used with Deterministic"):
         ROOT.TMVA.CrossValidation("job", loader(), f"!V:Silent:SplitExpr={SPLIT}")

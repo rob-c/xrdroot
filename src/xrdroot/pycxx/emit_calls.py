@@ -160,6 +160,9 @@ class CallEmitter(ExprEmitter):
         cast = self._typedef_cast(func, node)
         if cast is not None:
             return cast, P.POSTFIX
+        alias = self._alias_call(func, node)
+        if alias is not None:
+            return alias, P.POSTFIX
         inherited = self.inherited_call(func)
         if inherited is not None:
             return f"{inherited}({self.arguments(node)})", P.POSTFIX
@@ -167,6 +170,26 @@ class CallEmitter(ExprEmitter):
         if written is not None:
             return written, P.POSTFIX
         return f"{self.library(func)[0]}({self.arguments(node)})", P.POSTFIX
+
+    def _alias_call(self, func: Name, node: Call) -> str | None:
+        """``cv_milli_t(end - start)``: a name ``typedef`` or ``using`` gave a type *is* that type.
+
+        C++ makes one of it there, so the call is that type's own construction - and a template
+        instance's name is the runtime's call of the template with the arguments a declaration
+        writes (``std::chrono::duration<double, std::milli>`` is ``duration['double',
+        'std::milli']``). A smart pointer's alias is the pointer it holds and is
+        :meth:`_smart_alias`'s, so it is left alone here. A function's own ``using`` is
+        :attr:`~xrdroot.pycxx.program.Program.local_aliases`.
+
+        This reads the arguments, so it belongs where a *value* is emitted: a type question about
+        the same call must not write into the macro being built.
+        """
+        if len(func.parts) != 1:
+            return None
+        alias = self.program.local_aliases.get(func.last) or self.program.aliases.get(func.last)
+        if alias is None or alias.name in SMART or alias.is_pointer:
+            return None
+        return f"{self.class_expr(alias)}({self.arguments(node)})"
 
     def _typedef_cast(self, func: Name, node: Call) -> str | None:
         """``std::size_t(1)`` or ``uint8_t(x)``: written as a call, a standard typedef's name
