@@ -3710,3 +3710,59 @@ lost. The baseline was raised by `rootsuite baseline --merge` from that same run
 maintainability 33 263 functions in 1 822 files; components 1 062 modules, 0 undeclared imports;
 `mkdocs build --strict` clean.
 | 97 | `d9859f31` | **one one-case program, its feature the smallest in the menu**: ROOT's `RooHypatia2` line shape (`roofit/pdfs/hypatia.py`, `RooHypatia2.cxx:242` transcribed for the `zeta = 0`, `lambda < 0` branch) and its registry entry - the `RooNumIntConfig`/`forceNumInt` surface the test needs was already here | `f0f6813d` | **gtest 92 -> 93**: `gtest/roofit/roofitmore/testRooHypatia2` FAIL -> PASS, and the 47 `gtest/roofit/*` programs measured whole at the tip move two rows - that one and the known `W0-154` - so nothing lost (`…/roofit`: 11 / 20 / 16). The density is **the oracle's to 17 digits** at seven abscissae and its integral differs by 7.3e-8 | 1: `W0-220` (`RooHypatia2::analyticalIntegral` is not written, so both roads are numeric and `forceNumInt` changes nothing); `W0-219` down to 21 |
+
+## Round 98's close
+
+Round 98 went to the two kinds no round had measured in forty, found where their failures live,
+and took the two cheapest: **the pyunittest kind goes 81 -> 83**, with both kinds measured whole
+before and after.
+
+**What the measurement said first.** `pyunittest` at the round's base is **81 PASS / 45 FAIL /
+2 UNSUPPORTED / 1 SKIP** of 129 and `test/` is **10 PASS / 6 FAIL / 43 UNSUPPORTED** of 59
+(`…/python-test`). Two things came out of it that the ledger did not have: `test/` measures
+**ten**, not the nine the ledger said (the two `stressIOPlugins` programs), and the 45
+pyunittest failures have **no wide cluster** - 15 are the `cppyy/*` files that need compiled
+dictionaries (a scope question, queued), and the rest are one file each. The biggest group is
+the four TTree pythonization files (`W0-222`).
+
+**What landed, each read off ROOT's own code.**
+
+- **`_Vector.__array_interface__`**: a `std::vector` of numbers answers NumPy's array interface,
+  transcribed from `bindings/pyroot/pythonizations/python/ROOT/_pythonization/_rvec.py`'s
+  `get_array_interface` - the shape, the endian-tagged `typestr`, `version 3`, and, for an empty
+  vector, **the address 1**, which ROOT writes for a reason its own comment gives: *"Numpy
+  breaks for data pointer of 0 even though the array is empty"*. A vector of anything but a
+  number answers none, exactly as ROOT's map of fundamental types decides.
+  `pyroot_pyz_array_interface` 2 of 4 cases -> 4 of 4.
+- **`TGraphMultiErrors`'s `(name, title, ...)` constructors** (`TGraphMultiErrors.h:63`, every
+  overload declared again with them in front, and `(name, title)` alone a graph of no points),
+  and **`GetEYlow`/`GetEYhigh` both ways ROOT declares them** (`:143`): summed over the layers
+  by the graph's sum mode - which is `CalcYErrorsSum` - or one layer's own bars, a layer the
+  graph has not being a null pointer. `pyroot_pyz_tgraph_getters` 1 of 5 -> 5 of 5.
+
+**The gate caught the round's own breakage, and that is the useful hour of it.** Once a vector
+answers the interface, `numpy.asarray` never reaches `__array__`, so `_Vector.__array__` was
+dead - and the RDF **mask kernel's guard**, which refuses the batched fast path when a program
+has replaced an RVec's conversion, was asking about exactly that dead method. Two symptoms in
+one gate run: `test_a_replaced_rvec_array_conversion_keeps_its_calls` failing, and
+`containers.py:642-643` uncovered. `2fbca5d3` deletes the dead method, asks the guard about the
+interface property, and re-points the test at the property it now replaces - the assertion's
+substance (the optimised path converts no fewer times than the entrywise one) unchanged.
+
+**Measured at the tip, both weak kinds whole** (`…/final`, `--jobs 4`, `--xrdroot-src` a frozen
+copy): **pyunittest 83 / 43 / 2 / 1** and **`test/` 10 / 6 / 43**, against the base's 81 / 45 /
+2 / 1 and 10 / 6 / 43 - **exactly the two rows gained and none lost**, and the baseline records
+them with `ratchet` reading 0 regressions.
+
+**The other four things the round priced and did not do are queue rows with their numbers**:
+`W0-221` is the PDF pair, taken apart byte by byte (**8 009 of ROOT's 13 765 bytes are the 25
+fill-pattern streams**, each page's content 125, the assertion ±1 %); `W0-222` is the 45
+pyunittest failures bucketed, with the TTree four named as the next group and a
+`std::vector<float>` branch read back with **0 of the 4 elements** it was filled with;
+`W0-223` is the six `test/` `*-interpreted` stress programs, each with the name it stops on.
+
+**Gate.** `TOTAL 125823 0 31568 0 100%` (13 933 + 44, by the two-command decomposition,
+`…/gate2.log` at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 062 files;
+maintainability 33 272 functions in 1 822 files; components 1 062 modules, 0 undeclared imports;
+`mkdocs build --strict` clean.
+| 98 | `13f2a9d0` | **the two weak kinds measured whole, then the two cheapest fixes in them**: a `std::vector` of numbers answers NumPy's `__array_interface__` as ROOT's `_rvec.py` builds it (an empty one reporting the address **1**), and `TGraphMultiErrors` takes ROOT's `(name, title, ...)` constructors and answers `GetEYlow`/`GetEYhigh` both summed and per layer | `d97fd305`, `2fbca5d3` | **pyunittest 81 -> 83**: `pyroot_pyz_array_interface` (2 of 4 cases -> 4 of 4) and `pyroot_pyz_tgraph_getters` (1 of 5 -> 5 of 5) PASS, and both kinds measured whole at the tip move **exactly those two rows and no other** (`…/final`: 83 / 43 / 2 / 1 and 10 / 6 / 43 against the base's 81 / 45 / 2 / 1 and 10 / 6 / 43). The gate caught the round's own breakage - `__array__` was dead once the interface existed and the RDF mask kernel's guard was asking about it - which `2fbca5d3` fixes. `test/` measures **10**, not the ledger's 9 | 3: `W0-221` (the PDF pair priced: 8 009 of 13 765 bytes are 25 fill-pattern streams), `W0-222` (the 45 pyunittest failures bucketed), `W0-223` (the six `test/` interpreted stress programs); `W0-179` and `W0-124` restated |
