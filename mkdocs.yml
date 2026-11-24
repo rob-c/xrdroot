@@ -91,6 +91,7 @@ nav:
   - "A name written from :: is the file's own": gotchas/a-name-written-from-the-global-scope-is-the-files-own.md
   - "TClass::GetStreamerInfos reports the room, not the entries": gotchas/tclass-getstreamerinfos-reports-the-array-s-room-not-its.md
   - "A checksum match needs an unversioned layout": gotchas/tstreamerinfo-buildcheck-matches-a-checksum-only-against-an.md
+  - "A file layout's offsets are laid out once": gotchas/a-file-layout-s-member-offsets-are-laid-out-once-as-the-file-is.md
   - Instructions:
       - Triage merge conflicts before delegating: instructions/triage-merge-conflicts-mechanically-before-delegating-and-never.md
 

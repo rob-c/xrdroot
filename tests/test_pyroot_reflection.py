@@ -35,6 +35,7 @@ def _fresh(tmp_path):
     declared = dict(DECLARED)
     infos = {name: list(found) for name, found in reflection.FILE_INFOS.items()}
     recorded = {name: dict(found) for name, found in reflection.RECORDED.items()}
+    frozen = dict(reflection.FROZEN_OFFSETS)
     enums = dict(troot._ENUMS)
     troot._ENUMS.clear()
     yield from fresh(tmp_path)
@@ -44,6 +45,8 @@ def _fresh(tmp_path):
     reflection.FILE_INFOS.update(infos)
     reflection.RECORDED.clear()
     reflection.RECORDED.update(recorded)
+    reflection.FROZEN_OFFSETS.clear()
+    reflection.FROZEN_OFFSETS.update(frozen)
     reflection.DISAGREED.clear()
     reflection.GENERATED.clear()
     reflection.INTERPRETED_METHODS.clear()
@@ -780,6 +783,54 @@ def test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory(capfd):
         printed.count("StreamerInfo for class: Evo, checksum=") == 3 and "version=" not in printed
     )
     assert evo.FindStreamerInfo(evo.GetCheckSum()).IsBuilt()
+
+
+#: A layout of a class nothing in memory describes whose second member is a class the session may
+#: or may not know: a class this session has no dictionary for, so the emulated alignment applies.
+FIRST = ("TStreamerBasicType", "first", "", 3, 4, 1, 0, (0, 0, 0, 0, 0), "int", ())
+SECOND = ("TStreamerObjectAny", "second", "", 62, 24, 1, 0, (0, 0, 0, 0, 0), "ProbeRef", ())
+WITH_REF = "pair<First,ProbeRef>"
+
+
+def _offsets_printed(capfd):
+    """The offset each element line of a layout's listing names."""
+    ROOT.TClass.GetClass(WITH_REF).GetStreamerInfo().ls()
+    return [int(line.split("offset=")[1].split()[0])
+            for line in capfd.readouterr().out.splitlines()
+            if "offset=" in line and " i= " not in line]
+
+
+def test_a_file_layout_keeps_the_offsets_the_session_did_not_know_yet(capfd):
+    """``TStreamerInfo::BuildOld`` lays a file's members out **as the file is read**, and a class
+    the session learns afterwards does not move them.
+
+    ``io/stdpair``'s ``2_*_1_*`` families read their files before ``#include "cmspair.h"`` and
+    print ``second offset= 8`` - the emulated guess for a class nothing describes - where the
+    ``2_*_0_*`` families, which read after the include, print 4. A count of a member's offset that
+    is worked out when the layout is *printed* answers 4 in both, which is what round 116 left.
+    """
+    reflection.note_file_infos([(WITH_REF, (0x5E, 1, (FIRST, SECOND)))], "before.root")
+    run_source("class ProbeRef { public: int i = 0; };", "ref.h", call=False)
+    assert _offsets_printed(capfd) == [0, 8]
+
+
+def test_a_file_layout_read_with_the_class_known_puts_the_member_at_four(capfd):
+    """The other side of the same rule: known when the file is read, a class the session
+    describes aligns at 4 - the alignment of the class's own compiled layout."""
+    run_source("class ProbeRef { public: int i = 0; };", "ref.h", call=False)
+    reflection.note_file_infos([(WITH_REF, (0x5E, 1, (FIRST, SECOND)))], "after.root")
+    assert _offsets_printed(capfd) == [0, 4]
+
+
+def test_a_load_lays_a_class_s_file_layouts_out_again(capfd):
+    """``TClass::Update`` re-emulates a class a load touches and ``BuildOld`` runs a second time,
+    so the offsets of the layouts its files were read with are laid out again - which is why
+    ``io/stdpair``'s ``0_*_1_1``/``1_*_1_1`` families, read before the load, print 4."""
+    reflection.note_file_infos([(WITH_REF, (0x5E, 1, (FIRST, SECOND)))], "before.root")
+    assert _offsets_printed(capfd) == [0, 8]
+    run_source("class ProbeRef { public: int i = 0; };", "ref.h", call=False)
+    reflection.reload_emulated()
+    assert _offsets_printed(capfd) == [0, 4]
 
 
 def test_a_versioned_classs_layouts_are_listed_by_version():
