@@ -3818,3 +3818,63 @@ mypy 1 062 files, maintainability 33 291 functions, components 1 062 modules / 0
 `gained 96` the diff printed is the round's *base* run being a `--only` of four files, not a gain.
 `W0-158` again: a subset run is a subset run.
 | 99 | `40339ab8` | **the pyunittest kind's largest group, priced from ROOT's own source**: `TTree.__getattr__` as `GetBranchAttr` - an alias first, then a branch (`n` or `n + '.'`), then a leaf (its own, its branch's, or the branch's only one) - a branch holding an object answered as that object (`row_object`), and a leaf's title's dimensions shaping it (`array_dims` = `getMultiDims`) | `f2d0065e` | **0 programs gained, 0 lost, the wall moved 10 failing cases -> 7** in the four `pyz_ttree_*` files (`…/a1`), with `test08_read_struct_single_branch`, `test_alias_branch` and `test_struct_branch` passing; both weak kinds measured whole at the tip - pyunittest 83 / 43 / 2 / 1, `test/` 10 / 6 / 43 (`…/after`) - nothing lost. The seven left are writer gaps, each measured on the oracle | 3: `W0-224` (a leaflist's leaf name and bracket text), `W0-225` (a multi-leaf leaflist branch written as one branch per leaf - two programs), `W0-226` (`Branch(TCollection)`, `ROOT.<ns>.<class>`); `W0-222` partly |
+
+## Round 100's close
+
+Round 100 closed two of the three rows round 99 had left in the TTree pythonization group, and
+one of them was a whole program: **`pyroot_pyz_ttree_branch_attr` PASSES, the pyunittest kind
+83 -> 84**, with the four `pyz_ttree_*` files going from 7 failing cases to 4.
+
+**What the two fixes are, and how each was measured first.**
+
+- **A namespace declared in an `#include`d header was not an object.** `ROOT.gInterpreter.Declare`
+  runs a text of declarations through `pycint.execute.run_source`, which decided whether to make
+  namespaces out of the result by looking for the word in the text it was handed - and
+  `'#include "TreeHelper.h"'` has none, so the namespaces the include's *translation* declares
+  were never registered (`MyStruct` and `MyTree` were, because classes come through another
+  path). `declares_namespaces` now looks through an `#include` as well, which is where most
+  namespaces come from: ROOT's own pythonization test asks for `ROOT.Foo.MyTree()` with
+  `namespace Foo` in `TreeHelper.h`.
+- **A leaf list names the leaf, not the branch, and keeps its brackets.** The 6.40 oracle's own
+  answer (`…/probe/l2.C`) is `branch [myint1b] title=[myint1balias/I]` holding
+  `leaf [myint1balias] title=[myint1balias]`, and `branch [array2Db] title=[array2Db[10][2]/F]`
+  with `leaf [array2Db] title=[array2Db[10][2]] len=20 lenStatic=20`; this kit wrote the branch's
+  name as the leaf's and rebuilt the title from the column (`array2Db[20]`), so a static array's
+  dimensions were gone from the file and nothing could shape the value read back.
+  `leaflist.parse` already knew the token and its brackets, so `Slot.own` carries them and
+  `Store.leaf_parts()` hands them to the writer beside `basket_sizes` - `WritableDirectory.tree`,
+  `WTree._declare`, `_declared`, `_Column.part`, where `leaf_name`/`leaf_title` answer it. The
+  round's files now read back as the oracle's four lines, to the character.
+
+**Measured.** `pyz_ttree_branch_attr` PASSES (its `test_array_2D_branch` and
+`test_ttree_subclass_in_namespace` were the two failing cases) and `pyz_ttree_branch` is down to
+its two `Branch(TCollection)` cases, `test10_read_struct_separate_branches` now passing. Both
+weak kinds measured whole at the tip: pyunittest **84 / 42 / 2 / 1** and `test/` **10 / 6 / 43**
+(`…/after`), against round 98's 83 / 43 / 2 / 1 - the one gained and nothing lost, and the
+baseline records it with `ratchet` reading 0 regressions.
+
+**One assertion corrected against the oracle, not loosened.** Round 99's own test asserted that a
+2-D leaflist branch read back flat (`(20,)`) - which was the *symptom* - and it now asserts
+`(10, 2)`, which is what the leaf's title means and what ROOT gives.
+
+**What is left in the group, priced rather than guessed.** `W0-225` is two programs - the last
+case of `pyz_ttree_iterable` and of `pyz_ttree_setbranchaddress` - and the round took its
+specification off the oracle: `t.Branch("pairb", &s, "first/I:second/I")` is **one `TBranch`**
+(not a `TBranchElement`) with two leaves at `fOffset` 0 and 4 and **one basket** holding a row per
+entry, which is why `SetBranchAddress` with the struct's address fills it. The writer's unit is
+one `_Column` per branch, so it needs a column whose entry is its leaves' bytes in offset order,
+a reader that splits that entry back, and a `SetBranchAddress` that fills an object leaf by leaf.
+`W0-226` is one case left, `Branch(TCollection)`.
+
+**And a stray-file row the round found**: `main` carries six probe `.root` files at its root
+(`kde79.root`, `probe79*.root`, `probe80.root`, `test_tkde.root`), committed by round 79's
+`f7c113af`. Nothing reads them; `W0-227` says so, and this round left them alone rather than ship
+a deletion with an unrelated fix.
+
+**Gate.** `TOTAL 125882 0 31594 0 100%` (13 946 + 44, by the two-command decomposition,
+`…/gate2.log` at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 062 files;
+maintainability 33 296 functions in 1 823 files; components 1 062 modules, 0 undeclared imports;
+`mkdocs build --strict` clean. The gate's first run named the round's own breakage in 368 errors -
+`ClonedSlot` has no `own` either, so `leaf_parts` asks with `getattr` and says why in its
+docstring - which is `W0-63` doing its job on new code.
+| 100 | `4c2eab48` | **two of round 99's three TTree-pythonization rows, one of them a whole program**: a namespace declared in an `#include`d header is an object (`declares_namespaces` looks through `#include`), and a leaf list's token and brackets are the leaf's own (`Slot.own` -> `Store.leaf_parts()` -> `writer.tree(leaf_parts=)` -> `_Column.part`) | `ec52b4c8` | **pyunittest 83 -> 84**: `pyroot_pyz_ttree_branch_attr` PASSES where 2 of its 10 cases failed, and the four `pyz_ttree_*` files go 7 -> 4 failing cases (`test10_read_struct_separate_branches` too); the written leaves are the oracle's four lines to the character (`branch [myint1b] title=[myint1balias/I]`, `leaf [array2Db] title=[array2Db[10][2]]`). Both kinds measured whole at the tip - 84 / 42 / 2 / 1 and 10 / 6 / 43 (`…/after`) - nothing lost | 3: `W0-224` **closed**, `W0-226` **partly** (the `Branch(TCollection)` case is left), `W0-225` **priced** (one `TBranch`, two leaves at `fOffset` 0/4, one basket - two programs), and `W0-227` (six probe `.root` files `main` carries from round 79) |
