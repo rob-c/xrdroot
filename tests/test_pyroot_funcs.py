@@ -496,3 +496,17 @@ def test_a_copy_of_a_function_keeps_its_axes_titles():
     copied = square.DrawCopy()
     assert copied.GetXaxis().GetTitle() == "xtitle" and copied.GetHistogram() is not \
         square.GetHistogram()
+
+
+def test_one_point_s_value_is_taken_from_a_one_element_array_and_only_from_one():
+    """Code written for arrays answers one row with a one-element array.
+
+    ``float()`` accepted that until NumPy 2 made it an error, which is what turned CI red on
+    3.11-3.13 while 3.10's NumPy 1.x stayed green; several values for one point is not one
+    point's value and is refused rather than truncated to its first.
+    """
+    assert funcs._scalar(np.array([2.5])) == 2.5
+    assert funcs._scalar(2.5) == 2.5
+    assert funcs._scalar(np.float64(2.5)) == 2.5
+    with pytest.raises(ValueError, match="gave 2 values for one point, not one"):
+        funcs._scalar(np.array([1.0, 2.0]))

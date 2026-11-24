@@ -69,7 +69,7 @@ def adapted(fn: Callable[..., Any], dimensions: int) -> Callable[[Any, Any], Any
         out, flags = np.empty(len(rows)), np.zeros(len(rows), dtype=bool)
         for at, row in enumerate(rows):
             REJECTING[0] = False
-            out[at] = float(call(row, values))
+            out[at] = _scalar(call(row, values))
             flags[at] = REJECTING[0]
         model.rejected = flags if flags.any() else None  # type: ignore[attr-defined]
         return out
@@ -80,6 +80,22 @@ def adapted(fn: Callable[..., Any], dimensions: int) -> Callable[[Any, Any], Any
 #: ``TF1::RejectPoint``'s flag: set by the code of a function evaluated at one point, that the
 #: point be left out of the fit.
 REJECTING = [False]
+
+
+def _scalar(answer: Any) -> float:
+    """One point's value as a number, from a NumPy answer that carries it as a one-element array.
+
+    Code written for arrays answers a **one-row** input with a one-element array - the normal way
+    to write a ``TF1`` here, since the same code takes thousands of rows at once - and ``float()``
+    of such an array was accepted with a deprecation warning until NumPy 2 made it an error
+    (``only 0-dimensional arrays can be converted to Python scalars``), which is what turned CI red
+    on 3.11-3.13 while 3.10's NumPy 1.x stayed green. Several numbers for one point is not one
+    point's value, so that is refused rather than truncated.
+    """
+    found = np.asarray(answer, dtype=np.float64)
+    if found.size != 1:
+        raise ValueError(f"a function gave {found.size} values for one point, not one")
+    return float(found.reshape(()))
 
 
 def _at_once(call: Callable[[Any, Any], Any], rows: Any, values: Any) -> Any:
@@ -411,8 +427,8 @@ class TF1(TFormula, TAttLine, TAttFill, TAttMarker):
         given = self.GetParameters() if params is None else np.asarray(params, dtype=np.float64)
         points = np.asarray(x, dtype=np.float64)
         if points.ndim == 2:
-            return np.array([float(code(row, given)) for row in points])
-        return float(code(points.reshape(-1), given))
+            return np.array([_scalar(code(row, given)) for row in points])
+        return _scalar(code(points.reshape(-1), given))
 
     # -- the range and the drawing grid ---------------------------------------------------
 
