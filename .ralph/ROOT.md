@@ -4356,6 +4356,7 @@ read first, and then the two-line offsets table.
 | 114 | `291a9f05` | **a member's alignment follows the dictionaries the session loaded, and a synthetic pair of unknown classes is warned of** - `TStreamerInfo::BuildOld` aligns at 8 for a class no dictionary has (ROOT's emulated guess) and 4 for one the session knows, a template instance through its template; and `_undictionaried` warns of a `pair<A,B>` nothing answers for | `a60dc3d9` | **roottest +4**: `io/stdpair` 8 / 36 -> **12 / 32** of 44, the four `pairEnumEvo_4_{0,1}_{0,1}_1` and none lost; baseline raised by `--merge`, its only diff those four rows. Gate `TOTAL 126053 0 31650 0 100%` (13 971 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 0 new: `W0-244` **two thirds landed**, `W0-241` **closed**; what is left is the duplicate `StreamerInfo` block and the current-layout choice (`W0-242`) |
 | 115 | `e52042af` | **a load re-emulates an emulated class, so its current layout is listed twice** - `loading.load_library` calls `reflection.reload_emulated()`, the array keeps a second copy of the current layout, a taken slot is the next free one, and `GetStreamerInfo(v)` is the array's `At(v)` | `54a1412b` | **roottest +4**: `io/stdpair` 12 / 32 -> **16 / 28** of 44, the four `pairEnumEvo_{0,1}_{0,1}_1_1` and none lost; `io/tree` 18/0/0/2 and `meta/evolution` 20/7/8/2 unchanged; baseline raised by `--merge`. Gate `TOTAL 126072 0 31660 0 100%` (13 972 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 0 new: `W0-244` **three quarters landed**; what is left is `2_*_1_1`'s current-layout choice and the four `4_*_*_0` `kNothing` families |
 | 116 | `81364c2b` + `12ec0b60` | **`io/stdpair` 16 -> 20 PASS - a file's layout is matched to a held one by checksum only where the held one was recorded unversioned** - `TStreamerInfo::BuildCheck` looks a layout read from a file up by **checksum** only against an entry whose `GetOnFileClassVersion()` is 0 or 1 and by class version otherwise, so the same bytes can be held twice, at two slots: `io/stdpair`'s `ab02.root` (the pair at version 1, `0xb15d1241`, and at version 2, `0xb5fb752`) followed by `aa02.root` (`0xb5fb752` as version 1) lists `At(1) 0xb15d1241`, `At(2) 0xb5fb752`, `At(3) 0xb5fb752` - measured with two oracle probes (`probe/one.C` per file, `probe/steps.C` in both orders), not deduced. The version each layout recorded is kept beside the slot it is listed at, because `_free_version` renumbers a layout that lands above one already taken; the slot-based first shape **broke** `test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory` and the recorded version is what the second shape reads | `81364c2b` | **roottest +4**: `io/stdpair` **20 / 24 of 44** (`…/run3`), the four `4_{0,1}_{0,1}_0` `kNothing` families; `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2, `meta/evolution` 20/7/8/2, `io/datamodelevolution` 22/20/2 re-measured whole and unchanged (`…/guards`, 64/28/11/6 of 109). Gate **`TOTAL 126083 0 31666 0 100%`** (13 971 + 44 passing, one pre-existing failure), ruff, mypy 1 062 files, maintainability 33 354 functions, components, `mkdocs --strict` | 2 new: `W0-245` (a synthetic pair's in-memory layout is the **emulated** one - the `0_*`/`1_*` refs are byte-identical in either file order, which corrects round 113's "the order decides the current layout"; 8 tests) and `W0-246` (a file layout's offsets are laid out once, as the file is read, so an `#include` afterwards does not move `second` from 8 to 4; 4 tests); `W0-243` gains the evidence, `W0-244` is four fifths landed; a rule that skipped `_current_layout`'s file-over-memory swap for a synthetic pair **moved no test** and was reverted |
+| 117 | `e8cdedd5` + `499031e4` | **`io/stdpair` 20 -> 24 PASS - a file layout's member offsets are laid out once, as the file is read** - `TStreamerInfo::BuildOld` accumulates them then (`AlignUp(offset, align)`, then `offset += GetSize()`) and a dictionary or an `#include` arriving later does not move them; the one event that lays them out again is a **library load**, which re-emulates the class so `BuildOld` runs a second time. `io/stdpair` states both halves with the same inputs: `2_*_1_*` read before the include and print `second offset= 8`, `2_*_0_*` read after it and print 4, `0_*_1_1`/`1_*_1_1` read before the load and print 4 - and the freeze-with-no-thaw first shape **lost the four `0_*_1_1`** before `_thaw` in `reload_emulated` supplied the other half (`…/run1` vs `…/run2`). `W0-247` closed as a **test** corrected against the oracle: ROOT finds the object a `TRef` names when the session itself wrote the file (`…/probe/tref.py`), so `GetObject() is None` was the bug; its first correction assumed the session's object count, which the gate's `-n 4` caught (`W0-117`), and the member read now carries `ref.GetUniqueID()` | `e8cdedd5`, `499031e4`, `f87feed3` | **roottest +4**: `io/stdpair` **24 / 20 of 44** (`…/run2`), the four `2_{0,1}_1_{0,1}` families; `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2, `meta/evolution` 20/7/8/2, `io/datamodelevolution` 22/20/2 re-measured whole and unchanged (`…/guards`, 64/28/11/6 of 109). Gate **`TOTAL 126095 0 31672 0 100%`** - part 1 **13 975 passed, 0 failed** (99.75 % by design, so its exit status 1 is the floor, not a test), part 2 44 passed - ruff, mypy 1 062 files, maintainability 33 360 functions, components, `mkdocs --strict` | 2 new: `W0-248` (with the pair's dictionary loaded ROOT lists the mapped layout at `#1` beside the current one and stays silent about `edm::Ref`; 8 tests) and `W0-249` (`2_*_0_*` wants `TStreamerInfo::Build`'s per-member warning, not `TClass::Init`'s per-class one; 4 tests); `W0-245` sharpened with a `rootcling`-built dictionary probe that answers both file orders; `W0-246` and `W0-247` **closed** |
 
 ## Round 110's close
 
@@ -4688,3 +4689,62 @@ seven commands and every one of them is the gate, and each one's exit status is 
 now written into the run's own gate script as `echo "part1=$?"` at the point it can still be seen.
 The failure itself is queued as **`W0-247`**, not patched: it is in the process-id/`TRef` filing that
 another round is working in, and a fix guessed from one assertion would break the two tests beside it.
+
+## Round 117's close
+
+**One rule with two halves, four tests, and the gate's part 1 green for the first time in four rounds.**
+`io/stdpair` was 20 PASS / 24 DIFF of 44 at the base and is **24 / 20** at the tip.
+
+**The rule.** `TStreamerInfo::BuildOld` accumulates a file layout's member offsets **when the file
+is read** - `AlignUp(offset, element->GetAlignment())`, then `offset += GetSize()` - and what the
+session learns afterwards does not move them. The one event that lays them out again is a **library
+load**, which re-emulates the class (`TClass::Update` through the collection proxy) so `BuildOld`
+runs a second time. `io/stdpair` states both halves with the same two input files: the `2_*_1_*`
+families read them before `#include "cmspair.h"` and print `second offset= 8` - the emulated guess,
+an unknown class aligning at 8 - while the `2_*_0_*` families read after it and print **4**
+(`edm::RefCoreWithIndex` is `ushort, ushort, unsigned int`, so 4 is its own alignment); and the
+`0_*_1_1`/`1_*_1_1` families read before the **load** print 4 for the same reason in reverse.
+
+**The first shape was half a rule, and the measurement said so in one run.** A freeze with no thaw
+(`FROZEN_OFFSETS`, filled where the layout is noted) took the four `2_*_1_*` families and **lost the
+four `0_*_1_1`/`1_*_1_1`** - 20 PASS / 24 DIFF with four in and four out, `…/run1`. `_thaw`, called
+from `reload_emulated`, is the missing half: a load drops the frozen offsets so the live computation
+- which now knows `edm::Ref` - lays them out again. With it, `…/run2` is **24 PASS / 20 DIFF** and
+nothing is lost. The four areas that share this reflection code were re-measured whole and are the
+ledger's figures to the test: `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2, `meta/evolution` 20/7/8/2
+of 37, `io/datamodelevolution` 22/20/2 of 44 - 64 / 28 / 11 / 6 of 109 (`…/guards`).
+
+**`W0-247` closed, and it was the test that was wrong.** The one failure that made the gate's part 1
+exit 1 at rounds 115 and 116 asserted `made.GetObject() is None` for a `TRef` read back in the
+session that wrote it. The 6.40 oracle says otherwise (`…/probe/tref.py`): write a `TRef` to a file,
+close it, read the reference back - `GetPID()` is the same `ProcessID0` record and `GetObject()` is
+the `TNamed` it was made from, because that process record is this session's own. The test now pins
+the process's identity and the object's. Its **first correction was itself order-dependent**
+(`fUniqueID: 1` assumed the session had numbered nothing else) and the gate's `-n 4` caught it: the
+member read now carries `ref.GetUniqueID()`, which is `W0-117`'s lesson - a test that reads global
+state must not assume it is the only one that has touched it.
+
+**Measured.** Gate at `f87feed3`: part 1 **13 975 passed, 0 failed**, 4 skipped, 46 xfailed - and
+99.75 % by design, which is what its exit status 1 means here (`W0-112`: the two ignored files'
+code is not covered by part 1); part 2's report, `TOTAL 126095 0 31672 0 100%`, is the coverage
+answer. ruff clean after wrapping one docstring it named at 112 characters, mypy 1 062 files,
+maintainability 33 360 functions in 1 824 files, components 1 062 modules / 0 undeclared,
+`mkdocs --strict` exit 0.
+
+**What the remaining 20 are, each measured this round.** Eight are `W0-245` - ROOT's in-memory
+layout of a **synthetic pair** is the **emulated** one, so a file's mapped layout of the same version
+sits beside it and not in its place. A probe with a real ROOT dictionary for the map and the `Ref`
+but **not** the pair (`…/probe/probe0.C`, built with `rootcling` + `clang++` this round) answers it
+in both orders: after `ab02.root` the array is `At(1) version 1 onfile 1 0xb5fb752` (the emulated
+spelling) and `At(2) version 2 onfile 1 0xb15d1241` (the mapped one), and `aa02.root` adds nothing -
+the class's own emulated layout comes **first**. This kit has **no** layout of the pair in memory
+(`mine=None`), so it lists the file's first layout as current. Four more are `W0-249`: `2_*_0_*`
+wants `TStreamerInfo::Build`'s per-member warning (`… has no streamer or dictionary, data member
+"second" will not be saved`) where this kit prints `TClass::Init`'s per-class one. Eight are
+`W0-248`: with the pair's dictionary loaded, ROOT lists the mapped layout at `#1` beside the current
+one and stays silent about `edm::Ref`, and this kit lists a block fewer and warns.
+
+**A rule considered and not tried**: giving a synthetic pair an in-memory layout of its own. The
+probe above says what it would have to be (the emulated spelling, checksum `0xb5fb752`), and nothing
+in this kit builds one; that is `W0-245`'s first step and not a forty-minute change, so the round
+stopped at the offsets and recorded the shape instead.
