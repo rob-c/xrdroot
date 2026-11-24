@@ -1,11 +1,16 @@
 """A pad saved under a ``.C`` name, as the macro ROOT writes: the calls that draw it again.
 
-ROOT saves no picture for that name. Every drawing class has a
-``SavePrimitive`` writing the C++ that rebuilds it, so what runs the file - the
-test's ``.x``, a user's - makes the pad again rather than looking at it. This
-is that idea over the members :mod:`.drawn` keeps: the arguments its
-constructor takes, by member name, then a setter for each attribute it carries,
-then ``Draw`` with the option it was drawn with.
+ROOT saves no picture for that name. Its ``TCanvas::SaveSource`` writes the
+``#ifdef __CLING__`` header, the ``gStyle`` lines a canvas carries, the canvas
+and then what is in it - each object asking its own ``SavePrimitive`` for the
+C++ that rebuilds it - and ends with ``Modified`` and ``SetSelected``. A
+histogram, a profile, a ``TH2Poly`` and a plain ``TGraph`` here write ROOT's own
+text for themselves (:data:`ROOT_PRIMITIVES`), so a pad of those is ROOT's
+macro. The remaining drawing classes - a line, a box, a lateX, a pad, a
+multigraph - are written from the tables below instead: their constructor's
+members by name, a setter for each attribute, and ``Draw`` with the option they
+were drawn with, which is this kit's idea of them rather than ROOT's
+``SavePrimitive``.
 
 A class whose constructor this does not spell out is refused by name instead of
 written some other way: a macro that rebuilds an object differently is not the
@@ -17,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ...colors import saved
 from .drawn import GROUPS, Drawn
 
 __all__ = ["CORNERS", "CTORS", "EXTRAS", "PAD", "POINTS", "ROUNDED", "write"]
@@ -92,9 +98,6 @@ ERRORS: dict[str, tuple[str, ...]] = {
     "TGraphErrors": ("GetErrorX", "GetErrorY"),
     "TGraphAsymmErrors": ("GetErrorXlow", "GetErrorXhigh", "GetErrorYlow", "GetErrorYhigh"),
 }  # fmt: skip
-#: Each one-dimensional histogram written from its public API, by the axis its binning is:
-#: a macro makes it from its bin count and its edges, then gives each bin its content.
-HISTS = frozenset({"TH1C", "TH1S", "TH1I", "TH1F", "TH1D", "TH1L"})
 #: The attribute groups a graph or a histogram is written with, in the order ROOT's macro
 #: sets them: neither carries text of its own, its title being the pad's.
 API_GROUPS = ("line", "fill", "marker")
@@ -113,6 +116,10 @@ PIECES: dict[str, tuple[str, tuple[str, ...]]] = {
 HOLDS: dict[str, str] = {"TMultiGraph": "GetListOfGraphs"}
 #: The class of a pad inside the canvas, which a macro makes and then draws into.
 PAD = "TPad"
+#: The classes that write ROOT's own ``SavePrimitive`` text, so the macro asks the object for
+#: its statements rather than writing them from the tables above: every TH1, TH2 and TH3 kind, a
+#: profile, a ``TH2Poly`` and a plain ``TGraph``. Each of those writes its own ``Draw`` too.
+ROOT_PRIMITIVES = frozenset({"TProfile", "TH2Poly", "TGraph"})
 #: A canvas this cannot measure is written at ROOT's default window, 700 by 500.
 DEFAULT_WINDOW = (700, 500)
 
@@ -222,25 +229,6 @@ def _axis_titles(obj: Any) -> list[tuple[str, str]]:
     ]
 
 
-def _hist(obj: Any, classname: str, variable: str) -> list[str]:
-    """A histogram made from its binning and then given every bin's content, and its error."""
-    axis = obj.GetXaxis()
-    given = ", ".join([
-        _literal(str(obj.GetName())), _literal(str(obj.GetTitle())),
-        str(int(obj.GetNbinsX())), _literal(float(axis.GetXmin())),
-        _literal(float(axis.GetXmax())),
-    ])
-    lines = [f"   {classname} *{variable} = new {classname}({given});"]
-    for at in range(1, int(obj.GetNbinsX()) + 1):
-        lines.append(
-            f"   {variable}->SetBinContent({at}, {_literal(float(obj.GetBinContent(at)))});"
-        )
-        error = float(obj.GetBinError(at))
-        if error:
-            lines.append(f"   {variable}->SetBinError({at}, {_literal(error)});")
-    return lines
-
-
 def _line_arguments(line: Any, kind: str) -> str:
     """The arguments a pave's line is added back with: its corners, or its text where it was put.
 
@@ -281,7 +269,7 @@ def _unknown(classname: str) -> None:
     """Refuse a class this has no constructor for, by name, and say what to save instead."""
     from ...errors import UnsupportedFeatureError
 
-    known = ", ".join(sorted({*CTORS, *POINTS, *PIECES, *GRAPHS, *ERRORS, *HOLDS, *HISTS, PAD}))
+    known = ", ".join(sorted({*CTORS, *POINTS, *PIECES, *GRAPHS, *ERRORS, *HOLDS, PAD}))
     raise UnsupportedFeatureError(
         f"A pad drawing a {classname} is not yet written as the C macro the '.C' name asks "
         f"for: xrdroot writes the calls that draw a pad again for {known}, and knows no "
@@ -309,7 +297,7 @@ def _setters(obj: Any, classname: str, variable: str) -> list[str]:
 
 def _known(classname: str) -> bool:
     """Whether this writes a ``classname`` at all: by a constructor, or by its public API."""
-    return classname in {*CTORS, *POINTS, *PIECES, *GRAPHS, *ERRORS, PAD, *HOLDS, *HISTS}
+    return classname in {*CTORS, *POINTS, *PIECES, *GRAPHS, *ERRORS, PAD, *HOLDS}
 
 
 def _object(obj: Any, counted: list[int]) -> list[str]:
@@ -328,8 +316,6 @@ def _object(obj: Any, counted: list[int]) -> list[str]:
         return _holder(obj, classname, variable, counted)
     if classname in GRAPHS or classname in ERRORS:
         return _graph(obj, classname, variable) + _api_setters(obj, variable)
-    if classname in HISTS:
-        return _hist(obj, classname, variable) + _api_setters(obj, variable)
     lines = _made(obj, classname, variable) + _setters(obj, classname, variable)
     if classname in LINES:
         lines += _added_lines(obj, classname, variable)
@@ -365,36 +351,111 @@ def _canvas(pad: Any) -> str:
     ))  # fmt: skip
     left, up = (int(members.get(key, 0)) for key in ("fWindowTopX", "fWindowTopY"))
     given = ", ".join(_literal(members[key]) for key in ("fName", "fTitle"))
-    return f"   TCanvas *canvas = new TCanvas({given}, {left}, {up}, {across}, {down});"
+    return f"   TCanvas *{members['fName']} = new TCanvas({given}, {left}, {up}, {across}, {down});"
 
 
-def _contents(pad: Any, counted: list[int]) -> list[str]:
+def _contents(pad: Any, counted: list[int], canvas: str = "canvas") -> list[str]:
     """Everything ``pad`` holds, drawn: a pad inside it is entered, drawn into, and left again.
 
-    ``counted`` is the one counter of the macro's variables, carried down into the pads
-    drawn in this one, so that no two objects of the macro share a name.
+    ``counted`` is the one counter of the macro's variables, carried down into the pads drawn
+    in this one, so that no two objects of the macro share a name. A class that writes ROOT's
+    own ``SavePrimitive`` is asked for its statements and draws itself; anything else is made
+    from the tables and drawn here.
     """
     lines: list[str] = []
     for obj, option in pad.primitives:
         counted[0] += 1
-        classname, variable = _classname(obj), _variable(counted[0], _classname(obj))
+        classname = _classname(obj)
+        if _writes_itself(classname):
+            obj.SavePrimitive(lines, str(option))
+            continue
+        variable = _variable(counted[0], classname)
         lines += _object(obj, counted)
         lines.append(f"   {variable}->Draw({_literal(option)});")
         if classname == PAD:
             lines.append(f"   {variable}->cd();")
-            lines += _contents(obj, counted)
-            lines.append("   canvas->cd();")
+            lines += _contents(obj, counted, canvas)
+            lines.append(f"   {canvas}->cd();")
+    return lines
+
+
+def _writes_itself(classname: str) -> bool:
+    """Whether ``classname``'s own ``SavePrimitive`` is ROOT's: a histogram's, a profile's, a
+    ``TH2Poly``'s or a ``TGraph``'s."""
+    kind = classname[:3]
+    return classname in ROOT_PRIMITIVES or (len(classname) == 4 and kind in ("TH1", "TH2", "TH3"))
+
+
+def _stamp() -> str:
+    """When the macro was written, as ROOT's ``TDatime::AsString`` says it."""
+    import time
+
+    return time.strftime("%a %b %d %H:%M:%S %Y")
+
+
+def _header(function: str) -> list[str]:
+    """``SaveSource``'s first lines: the pragma a file ROOT runs itself carries, and the name
+    the macro is found under - never one that starts with a digit, which is no C++ name."""
+    lines = ["#ifdef __CLING__", "#pragma cling optimize(0)", "#endif"]
+    if not function[:1].isdigit():
+        lines.append(f"void {function}()")
+    return lines
+
+
+def _style_lines() -> list[str]:
+    """The style a canvas carries into a macro: the three options it was drawn with, and the
+    palette - ROOT writes the palette only when it is not the default one, 57."""
+    from .style import gStyle
+
+    return [
+        f"   gStyle->SetOptFit({gStyle.GetOptFit()});",
+        f"   gStyle->SetOptStat({gStyle.GetOptStat()});",
+        f"   gStyle->SetOptTitle({gStyle.GetOptTitle()});",
+        "   TColor::SetPalette(57, nullptr);",
+    ]
+
+
+def _ranged(value: Any) -> str:
+    """A number as ROOT's stream writes it: sixteen significant digits, no trailing zeros."""
+    return f"{float(value):.16g}"
+
+
+def _pad_frame(pad: Any, name: str) -> list[str]:
+    """``TPad::SavePrimitive``'s own part of a top-level canvas: its range, its fill, and the
+    border it carries when it is not ROOT's default one."""
+    members = pad.members
+    corners = ",".join(_ranged(members[key]) for key in ("fX1", "fY1", "fX2", "fY2"))
+    lines = [f"   {name}->Range({corners});"]
+    if float(members.get("fFillColor", -1)) != -1:
+        lines.append(f"   {name}->SetFillColor({saved(members['fFillColor'])});")
+    if float(members.get("fFillStyle", -1)) != -1:
+        lines.append(f"   {name}->SetFillStyle({int(members['fFillStyle'])});")
+    if int(members.get("fBorderMode", 1)) != 1:
+        lines.append(f"   {name}->SetBorderMode({int(members['fBorderMode'])});")
+    if int(members.get("fBorderSize", 4)) != 4:
+        lines.append(f"   {name}->SetBorderSize({int(members['fBorderSize'])});")
     return lines
 
 
 def write(pad: Any, filename: str) -> None:
     """Write ``pad`` as the macro ``filename`` names: run it and the pad is drawn again."""
+    from ..core.objects import reset_save_state
+    from ..core.troot import gROOT
+
+    reset_save_state()
+    canvas = pad.GetCanvas()
+    name = str(canvas.GetName())
     lines = [
-        f"// A macro generated from the pad {pad.members['fName']} by xrdroot.",
-        "",
-        f"void {_function(filename)}()",
+        *_header(_function(filename)),
         "{",
+        f"//=========Macro generated from canvas: {name}/{canvas.GetTitle()}",
+        f"//=========  ({_stamp()}) by ROOT version {gROOT.GetVersion()}",
         _canvas(pad),
-        *_contents(pad, [0]),
+        *_style_lines(),
+        *_pad_frame(canvas, name),
+        *_contents(pad, [0], name),
+        f"   {name}->Modified();",
+        f"   {name}->SetSelected({name});",
+        "}",
     ]
-    Path(filename).write_text("\n".join([*lines, "}", ""]))
+    Path(filename).write_text("\n".join([*lines, ""]))

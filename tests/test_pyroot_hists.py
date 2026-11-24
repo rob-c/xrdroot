@@ -543,12 +543,16 @@ def test_the_macro_names_a_variable_after_the_histogram_and_a_count():
     expect((first.startswith("counted__"), True), (first == second, False))
 
 
-def test_a_histogram_whose_name_is_no_cpp_identifier_is_saved_under_one():
+def test_a_histogram_whose_name_is_no_cpp_identifier_is_saved_under_roots_spelling():
     """``MapCppName``: ROOT's own `testMapCppName` saves histograms whose names are punctuation,
-    and a C++ compiler is given ``_`` for every character it would not take."""
+    and the name it writes is ``ROOT::TMetaUtils::GetCppName``'s encoding of it, not an
+    underscore a character. Measured off the 6.40 oracle's own ``C_Output.C`` for that test,
+    where this name is that variable character for character."""
     odd = "<[ !@$%&^*().,[]/+=-&:|'~]>"
     variable = _variable(_saved_macro(ROOT.TH1D(odd, "t", 2, 0, 2), "odd.C"))
-    expect((variable.startswith("_" * len(odd)), True), (len(variable) > len(odd), True))
+    mapped, _, count = variable.rpartition("__")
+    expect((mapped, "lEoBsPnOaTdApEaNhAmUoPcPdOcOoBcBdIpLeQmIaNcLoRsQwAcBgR"),
+           (count.isdigit(), True))  # fmt: skip
 
 
 def test_the_palette_colour_a_histogram_keeps_is_written_with_its_channels():

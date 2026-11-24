@@ -28,7 +28,38 @@ from .strings import MemberString, TString
 #: ``SaveAs`` still fills with a ROOT file, `W0-193`).
 MACRO_SUFFIXES = (".C", ".cc")
 
+#: ``gROOT->ClassSaved`` and ``TObject::SavePrimitiveVector``'s counter: what the macro being
+#: written has already spelled out and numbered. ROOT keeps both for the whole of a save, so the
+#: second ``TGraph`` of one macro is ``graph = new TGraph(...)`` without its type, and every
+#: array it writes takes the next ``_vectN``. :func:`reset_save_state` starts a new macro.
+SAVE_STATE: dict[str, Any] = {"classes": set(), "vectors": 0}
+
+
+def reset_save_state() -> None:
+    """Start a new macro: no class spelled out yet, no array numbered."""
+    SAVE_STATE["classes"] = set()
+    SAVE_STATE["vectors"] = 0
+
+
+def _cpp_string(text: Any) -> str:
+    """``TString::ReplaceSpecialCppChars``: the escapes a C++ string literal needs."""
+    return str(text).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _vector_text(values: list[Any]) -> str:
+    """``SavePrimitiveVector``'s braced list: a space before every number, ten to a line once
+    there are more than fifteen of them - which is where ROOT breaks the line."""
+    parts = []
+    for at, value in enumerate(values):
+        lead = "\n      " if len(values) > 15 and at % 10 == 0 else " "
+        comma = "," if at < len(values) - 1 else ""
+        parts.append(f"{lead}{float(value):.16g}{comma}")
+    return "{" + "".join(parts) + ("\n   }" if len(values) > 15 else " }")
+
+
 __all__ = [
+    "SAVE_STATE",
+    "reset_save_state",
     "TObject",
     "TNamed",
     "TAttLine",
@@ -422,6 +453,7 @@ class TObject:
 
         from .troot import gROOT
 
+        reset_save_state()
         named = f"{self.GetName()}/{self.GetTitle()}"
         lines = ["{", f"//========= Macro generated from object: {named}"]
         lines.append(f"//========= by ROOT version{gROOT.GetVersion()}")
@@ -429,6 +461,45 @@ class TObject:
         lines.append("}")
         Path(target).write_text("".join(line + "\n" for line in lines), encoding="utf-8")
         self.Info("SaveAs", "C++ Macro file: %s has been generated", target)
+
+    @staticmethod
+    def SavePrimitiveConstructor(out: list[str], classname: str, variable: str,
+                                 arguments: str, empty_line: bool = False) -> None:  # fmt: skip
+        """``SavePrimitiveConstructor``: the line that makes an object of ``classname``.
+
+        The type is spelled out only the first time a macro makes that class, which is what
+        ``gROOT->ClassSaved`` is for: ROOT's own macro for a canvas holding two graphs writes
+        ``TGraph *graph = new TGraph(...)`` and then ``graph = new TGraph(...)`` again.
+        """
+        if empty_line:
+            out.append("   ")
+        declaration = "" if classname in SAVE_STATE["classes"] else f"{classname} *"
+        SAVE_STATE["classes"].add(classname)
+        out.append(f"   {declaration}{variable} = new {classname}({arguments});")
+
+    @staticmethod
+    def SavePrimitiveVector(out: list[str], prefix: str, values: Any, flag: int = 0) -> str:
+        """``SavePrimitiveVector``: an array a macro is given as a ``std::vector<Double_t>``.
+
+        ROOT writes the points of a graph that way rather than one ``SetPoint`` a point. The
+        name is ``prefix`` and the next number of the macro's own count, ten numbers to a line
+        once there are more than fifteen, and each at sixteen significant digits. ``flag`` 1 puts
+        an empty line first; ``flag`` 111 answers ``nullptr`` for an array of nothing but zeros,
+        and otherwise hands back the name to call ``data()`` on.
+        """
+        if flag == 1:
+            out.append("   ")
+        elif flag == 111 and not any(values):
+            return "nullptr"
+        name = f"{prefix}_vect{SAVE_STATE['vectors']}"
+        SAVE_STATE["vectors"] += 1
+        out.append(f"   std::vector<Double_t> {name}{_vector_text(list(values))};")
+        return name + (".data()" if flag == 111 else "")
+
+    def SavePrimitiveNameTitle(self, out: list[str], variable: str) -> None:
+        """``TNamed::SavePrimitiveNameTitle``: the name and title a macro gives back."""
+        out.append(f'   {variable}->SetName("{_cpp_string(self.GetName())}");')
+        out.append(f'   {variable}->SetTitle("{_cpp_string(self.GetTitle())}");')
 
     def SavePrimitive(self, out: list[str], option: str = "") -> None:
         """``SavePrimitive``: the statements a macro needs to remake this object, appended to

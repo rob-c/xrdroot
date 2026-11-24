@@ -9,7 +9,6 @@ read from a file comes back as the class it was written as.
 
 from __future__ import annotations
 
-import re
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -166,7 +165,7 @@ class TH1(
         """
         name = _save_name(self, str(option))
         out.append("   ")
-        out.append(_constructor(self, name))
+        _constructor(self, name, out)
         errors = self.GetSumw2N() > 0
         for at in range(self.GetNcells()):
             if self.GetBinContent(at):
@@ -409,22 +408,34 @@ for _cls in (TH1C, TH1S, TH1I, TH1L, TH1F, TH1D, TH2C, TH2S, TH2I, TH2L, TH2F, T
 #: histogram and that count, so two histograms of one name do not collide: ``h__1``, ``h__2``.
 SAVED = [0]
 
-#: What a C++ identifier may not hold, which ROOT's ``TInterpreter::MapCppName`` turns into an
-#: underscore - the names ROOT's own `testMapCppName` writes are almost all punctuation.
-_NOT_IDENTIFIER = re.compile(r"[^0-9A-Za-z_]")
-
-
 def _identifier(name: str) -> str:
-    """``MapCppName``: the name as a C++ identifier a compiler takes, a leading digit prefixed."""
-    mapped = _NOT_IDENTIFIER.sub("_", str(name))
-    return f"_{mapped}" if mapped[:1].isdigit() else mapped
+    """``MapCppName``: the name as a C++ identifier a compiler takes.
+
+    ROOT spells a character C++ will not take as the letters of its name - ``<`` is ``lE``,
+    ``(`` is ``pL``, a space is ``sP`` - which is ``ROOT::TMetaUtils::GetCppName``'s encoding,
+    and the identifiers ROOT's own `testMapCppName` file is written with are that encoding of
+    the histogram's name character for character.
+    """
+    from .metautils import _cpp_name
+
+    return _cpp_name(str(name)) or "unnamed"
 
 
-def _save_name(histogram: Any, option: str) -> str:
+def _save_name(histogram: Any, option: str, testfdir: bool = False) -> str:
     """``TH1::ProvideSaveName``: the variable a macro gives this histogram - its own name and a
-    count, unless the name is one ROOT leaves alone or the option asks for a ``colz`` draw."""
+    count, unless the name is one ROOT leaves alone or the option asks for a ``colz`` draw.
+
+    ``testfdir`` is what ``TProfile`` and ``TH2Poly`` pass: with it the count is added only to a
+    histogram that is in no directory, since one in a directory is that directory's name.
+    """
     held = str(histogram.GetName())
-    if "Graph" not in held and "_stack_" not in held and "colz" not in option.lower():
+    plain = (
+        "Graph" not in held
+        and "_stack_" not in held
+        and "colz" not in str(option).lower()
+        and (not testfdir or histogram.GetDirectory() is None)
+    )
+    if plain:
         SAVED[0] += 1
         held += f"__{SAVED[0]}"
     return _identifier(held or "unnamed")
@@ -441,16 +452,19 @@ def _cpp_text(text: Any) -> str:
     return str(text).replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _constructor(histogram: Any, name: str) -> str:
-    """The line that makes the histogram: its class, its name and title as C++ strings, and the
-    binning of each axis it has - a bin count and two limits per axis."""
-    klass = histogram.ClassName()
+def _constructor(histogram: Any, name: str, out: list[str]) -> None:
+    """The line that makes the histogram, appended: its name and title as C++ strings, and the
+    binning of each axis it has - a bin count and two limits per axis.
+
+    ``SavePrimitiveConstructor`` writes it because a macro spells a class out once: the second
+    ``TH1F`` of a canvas is ``h2 = new TH1F(...)`` with no type in front of it.
+    """
     args = [f'"{_cpp_text(histogram.GetName())}"', f'"{_cpp_text(histogram.GetTitle())}"']
     axes = (histogram.GetXaxis(), histogram.GetYaxis(), histogram.GetZaxis())
     for axis in axes[: histogram.GetDimension()]:
         args.append(str(axis.GetNbins()))
         args += [_number(axis.GetXmin()), _number(axis.GetXmax())]
-    return f"   {klass} *{name} = new {klass}({', '.join(args)});"
+    TObject.SavePrimitiveConstructor(out, histogram.ClassName(), name, ", ".join(args))
 
 
 def _att_numbers(out: list[str], name: str, histogram: Any) -> None:
@@ -499,6 +513,18 @@ def _axis_attributes(out: list[str], prefix: str, axis: Any) -> None:
     _axis_number(out, prefix, "SetTitleOffset", axis.GetTitleOffset(), 0.0, 0.001)
     _axis_number(out, prefix, "SetTitleColor", axis.GetTitleColor(), 1, 0.0, colour=True)
     _axis_number(out, prefix, "SetTitleFont", axis.GetTitleFont(), 62, 0.0)
+
+
+def _written(out: list[str], name: str, setter: str, values: list[float], first: int = 0) -> None:
+    """A ``Set`` per bin that is not zero, as ROOT's macro writes one - its own ``bin,value`` and
+    no blanks. A cell of nothing is the cell the constructor already made.
+
+    ``first`` is the number ``values`` starts at: a histogram's cells count from the underflow
+    bin 0, and a ``TH2Poly``'s bins count from 1, so the number written is not the position.
+    """
+    for at, value in enumerate(values, start=first):
+        if value:
+            out.append(f"   {name}->{setter}({at},{_number(value)});")
 
 
 def _appearance(histogram: Any, out: list[str], name: str) -> None:

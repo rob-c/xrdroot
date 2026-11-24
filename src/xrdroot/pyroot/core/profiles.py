@@ -16,10 +16,12 @@ from typing import Any
 import numpy as np
 
 from ...booking import ERROR_OPTIONS
+from ...errors import UnsupportedFeatureError
 from ...filling import one_bin
 from ...profile import ERROR_MODES
 from .histcore import axis_specs
-from .hists import TH1, TH2, TH3
+from .hists import TH1, TH2, TH3, _appearance, _cpp_text, _number, _save_name, _written
+from .objects import TObject
 from .wrapping import adopt, register, wrap
 
 __all__ = ["TProfile", "TProfile2D", "TProfile3D"]
@@ -143,6 +145,17 @@ class _Profiled:
     _xrd: Any
     DIM: int
 
+    def SavePrimitive(self, out: list[str], option: str = "") -> None:
+        """``SavePrimitive``: a two- or three-dimensional profile's own text is ROOT's
+        ``TProfile2D::SavePrimitive`` and ``TProfile3D::SavePrimitive``, which write the bin
+        entries of two and three axes; that is not written here yet, so it is refused by name."""
+        raise UnsupportedFeatureError(
+            f"A {self.ClassName()} is not yet written as the C macro a '.C' name asks for: "
+            "ROOT's TProfile2D::SavePrimitive and TProfile3D::SavePrimitive write the bin "
+            "entries of two and three axes, which this kit does not write yet. Save the "
+            "profile as a picture (.png, .pdf, .ps, .svg) instead."
+        )
+
     def _booked(self, args: tuple[Any, ...]) -> Any:
         """The profile ROOT's constructor arguments describe, drawn in ``gStyle``'s attributes.
 
@@ -264,6 +277,32 @@ class TProfile(_Profiled, TH1):  # type: ignore[misc]  # ProjectionX takes a pro
     CLASS_TITLE = "Profile histogram class"
     DIM = 1
     KIND = "D"
+
+    def SavePrimitive(self, out: list[str], option: str = "") -> None:
+        """``TProfile::SavePrimitive``: the statements a macro needs to remake this profile.
+
+        ROOT's own order: a blank line, the constructor - which takes the error option the
+        profile computes its errors with, after the binning - then a ``SetBinEntries`` per cell
+        before its ``SetBinContent``, since a mean is nothing without the count behind it, then
+        the errors, the look and a ``Draw``.
+        """
+        name = _save_name(self, str(option), testfdir=True)
+        out.append("   ")
+        axis = self.GetXaxis()
+        args = [
+            f'"{_cpp_text(self.GetName())}"', f'"{_cpp_text(self.GetTitle())}"',
+            str(axis.GetNbins()), _number(axis.GetXmin()), _number(axis.GetXmax()),
+            f'"{_cpp_text(self.GetErrorOption())}"',
+        ]  # fmt: skip
+        TObject.SavePrimitiveConstructor(out, self.ClassName(), name, ", ".join(args))
+        cells = range(self.GetNcells())
+        _written(out, name, "SetBinEntries", [self.GetBinEntries(at) for at in cells])
+        _written(out, name, "SetBinContent", [self.GetBinContent(at) for at in cells])
+        #: ROOT asks whether squared weights are kept before writing them; a profile keeps them
+        #: from the first fill and from its constructor, so there is nothing to ask here.
+        _written(out, name, "SetBinError", [self.GetBinError(at) for at in cells])
+        _appearance(self, out, name)
+        TObject.SavePrimitiveDraw(out, name, str(option))
 
 
 class TProfile2D(_Profiled, TH2):  # type: ignore[misc]  # ProjectionX takes a profile's arguments

@@ -74,7 +74,7 @@ def test_a_pad_is_written_as_the_c_macro_that_draws_it_again(tmp_path, capsys):
     c.SaveAs(str(path))
     written = path.read_text()
     assert "void sg_macro()" in written  # the function ``.x`` finds by the file's name
-    assert 'TCanvas *canvas = new TCanvas("mac", "a macro", 10, 10, 300, 200);' in written
+    assert 'TCanvas *mac = new TCanvas("mac", "a macro", 10, 10, 300, 200);' in written
     assert "new TLine(0.1, 0.2, 0.9, 0.8);" in written
     assert "tline1->SetLineColor(2);" in written and 'tline1->Draw("l");' in written
     assert 'new TLatex(0.1, 0.5, "says \\"hi\\"");' in written
@@ -148,8 +148,8 @@ def test_a_pad_of_pads_is_written_as_the_pads_it_was_divided_into(tmp_path):
     c.SaveAs(str(path))
     written = path.read_text()
     assert 'TPad *tpad1 = new TPad("divided_1", "divided_1", 0.01, 0.01, 0.49, 0.99);' in written
-    assert "tpad1->cd();" in written and "   canvas->cd();" in written
-    order = [written.index(part) for part in ("tpad1->cd();", "TEllipse", "canvas->cd();")]
+    assert "tpad1->cd();" in written and "   divided->cd();" in written
+    order = [written.index(part) for part in ("tpad1->cd();", "TEllipse", "divided->cd();")]
     assert order == sorted(order)
     run(path, use_cache=False)
     canvas = ROOT.gPad.GetCanvas()
@@ -185,8 +185,9 @@ def test_a_pave_label_and_a_crown_are_written_with_the_arguments_their_construct
 
 def test_a_pad_drawing_a_class_with_no_known_constructor_is_refused_by_name(tmp_path):
     c = ROOT.TCanvas("wrapped", "wrapped", 300, 200)
-    ROOT.TH2F("h", "h", 4, -4.0, 4.0, 4, -4.0, 4.0).Draw()
-    with pytest.raises(UnsupportedFeatureError, match="A pad drawing a TH2F is not yet written"):
+    ROOT.TGraphMultiErrors(2).Draw()
+    refused = "A pad drawing a TGraphMultiErrors is not yet"
+    with pytest.raises(UnsupportedFeatureError, match=refused):
         c.SaveAs(str(tmp_path / "c.C"))
     with pytest.raises(UnsupportedFeatureError, match=r"knows no constructor for this one"):
         c.Print(str(tmp_path / "c"), "cxx")
@@ -421,7 +422,7 @@ def test_a_mathtext_is_written_with_the_text_it_draws(tmp_path):
 
 def _graph_canvas():
     """A graph with two points, drawn with a title and a title on one of its axes."""
-    c = ROOT.TCanvas("graph", "a graph", 300, 200)
+    c = ROOT.TCanvas("gr", "a graph", 300, 200)  # not "graph": ROOT's graph variable is that
     graph = ROOT.TGraph(2)
     graph.SetPoint(0, 0.5, 1.5)
     graph.SetPoint(1, 1.5, 2.5)
@@ -433,17 +434,20 @@ def _graph_canvas():
     return c
 
 
-def test_a_graph_is_written_by_its_points_and_the_attributes_it_was_drawn_with(tmp_path):
-    """A graph keeps no members to read by name, so a macro makes it and sets each point."""
+def test_a_graph_is_written_as_the_two_arrays_roots_own_saveprimitive_writes(tmp_path):
+    """``TGraph::SavePrimitive``: the points are two ``std::vector<Double_t>`` and the constructor
+    is given their ``data()``, not one ``SetPoint`` a point - measured off the 6.40 oracle's own
+    ``C_Output.C``, whose graph lines these are character for character."""
     path = tmp_path / "sg_graph.C"
     _graph_canvas().SaveAs(str(path))
     written = path.read_text()
-    assert "TGraph *tgraph1 = new TGraph(2);" in written
-    assert "tgraph1->SetPoint(0, 0.5, 1.5);" in written
-    assert "tgraph1->SetLineColor(2);" in written and "tgraph1->SetMarkerStyle(21);" in written
-    assert 'tgraph1->SetTitle("a simple graph");' in written
-    assert 'tgraph1->GetXaxis()->SetTitle("X title");' in written
-    assert 'tgraph1->Draw("ACP");' in written
+    assert "std::vector<Double_t> graph_x_vect0{ 0.5, 1.5 };" in written
+    assert "std::vector<Double_t> graph_y_vect1{ 1.5, 2.5 };" in written
+    assert "TGraph *graph = new TGraph(2, graph_x_vect0.data(), graph_y_vect1.data());" in written
+    assert "graph->SetLineColor(2);" in written and "graph->SetMarkerStyle(21);" in written
+    assert 'graph->SetName("Graph");' in written and 'graph->SetTitle("a simple graph");' in written
+    assert 'graph->GetXaxis()->SetTitle("X title");' in written
+    assert 'graph->Draw("ACP");' in written
 
 
 def test_the_macro_of_a_graph_draws_the_points_and_titles_it_was_saved_with(tmp_path):
@@ -551,14 +555,20 @@ def test_a_histogram_is_written_from_its_binning_and_given_every_bin(tmp_path):
     path = tmp_path / "sg_hist.C"
     c.SaveAs(str(path))
     written = path.read_text()
-    assert 'TH1F *th1f1 = new TH1F("h", "a histogram", 2, 0, 2);' in written
-    assert "th1f1->SetBinContent(1, 1.5);" in written and "th1f1->SetBinError(1, 0.5);" in written
-    assert "th1f1->SetBinContent(2, 2.5);" in written
-    assert "th1f1->SetBinError(2, " not in written  # a bin with no error written is zero
+    # ``h__N``, the name ROOT's own ProvideSaveName gives a histogram with no directory
+    name = written.split("TH1F *")[1].split(" = new TH1F")[0]
+    assert name.startswith("h__") and name[3:].isdigit()
+    assert f'TH1F *{name} = new TH1F("h", "a histogram", 2, 0, 2);' in written
+    assert f"{name}->SetBinContent(1,1.5);" in written and f"{name}->SetBinError(1,0.5);" in written
+    assert f"{name}->SetBinContent(2,2.5);" in written
+    assert f"{name}->SetBinError(2," not in written  # a bin with no error written is zero
     run(path, use_cache=False)
     drawn = [o for o, _ in ROOT.gPad.GetCanvas().primitives if o.ClassName() == "TH1F"][-1]
+    # ROOT's own order is every content, then every error, and its ``Sumw2()`` - which the first
+    # ``SetBinError`` calls - takes the contents that are there as the squared weights. So a bin
+    # with no error of its own comes back with the root of its content, in ROOT and here alike.
     assert [(drawn.GetBinContent(at), drawn.GetBinError(at)) for at in (1, 2)] == [
-        (1.5, 0.5), (2.5, 0.0),
+        (1.5, 0.5), (2.5, 1.5811388300841898),
     ]
     assert (drawn.GetFillColor(), drawn.GetXaxis().GetTitle()) == (5, "x")
 

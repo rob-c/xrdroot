@@ -54,7 +54,7 @@
  "gtest/hist/hist/TFormulaGradientTests": "FAIL",
  "gtest/hist/hist/TFormulaHessianTests": "FAIL",
  "gtest/hist/hist/TGraphMultiErrorsTests": "PASS",
- "gtest/hist/hist/testMapCppName": "FAIL",
+ "gtest/hist/hist/testMapCppName": "PASS",
  "gtest/hist/hist/testProject3Dname": "PASS",
  "gtest/hist/hist/testSpline": "PASS",
  "gtest/hist/hist/testTF1": "FAIL",

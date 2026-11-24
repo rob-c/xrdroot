@@ -328,6 +328,10 @@ class TPad(Drawn):
     def Modified(self, flag: bool = True) -> None:
         self.members["fModified"] = bool(flag)
 
+    def SetSelected(self, pad: Any = None) -> None:
+        """``SetSelected``: which pad ROOT's pad editor has selected. There is no editor here, so
+        the call a saved canvas' macro ends with runs and nothing changes."""
+
     def IsOnHeap(self) -> bool:
         """Whether the pad was made with ``new``: ``StartTest`` deletes the old canvas if so."""
         from .drawn import ON_HEAP

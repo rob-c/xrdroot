@@ -67,6 +67,13 @@
     "draw": "a different file",
     "runs": 4
    }
+  ],
+  "roofit/roostats/rs101_limitexample.py": [
+   {
+    "path": "roofit/roostats/rs101_limitexample.py",
+    "draw": "'[#1] INFO:Minimization -- The global observables are not def' where the other run has '[#1] INFO:Minimization -- The global observables are not def'",
+    "runs": 6
+   }
   ]
  }
 }

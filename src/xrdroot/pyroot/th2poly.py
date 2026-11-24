@@ -70,14 +70,23 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
     #: The cells of the fixed grid ROOT gives a ``TH2Poly``'s x and y axes.
     GRID = 100
 
+    #: ``TH1::kNoStats``: set by ``SetStats(kFALSE)``, and what a macro writes as ``SetStats(0)``.
+    kNoStats = 1 << 9
+
     #: The bins, what they hold, and the regions round the range.
     _xrd_bins: PolyBins
+    #: ``fCellX, xmin, xmax, fCellY, ymin, ymax``: what the constructor was told, which a macro
+    #: is written with.
+    _xrd_cells: tuple[int, float, float, int, float, float]
 
     def __init__(self, name: Any = "NoName", title: Any = "NoTitle", *ranges: float) -> None:
         source = name if isinstance(name, TH2Poly) else None
         super().__init__(*self._called(source, name, title))
         #: ``TH2Poly(h2p)`` copies the bins, as ROOT's copy constructor copies them.
         self._xrd_bins = source._xrd_bins.copy() if source else PolyBins(*self._booked(ranges))
+        #: ``fCellX``/``fCellY`` and the two ranges, as the constructor was given them: ROOT's
+        #: macro writes them back, and a floating histogram has no cell count of its own.
+        self._xrd_cells = source._xrd_cells if source else self._cell_counts(ranges)
         self._extremes, self._stats = [UNSET, UNSET], True
         self._made: list[tuple[Any, str]] = []
         self._pad: Any = None
@@ -89,6 +98,15 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
         if source is None:
             return str(name), str(title)
         return str(source.GetName()), str(source.GetTitle())
+
+    @staticmethod
+    def _cell_counts(ranges: tuple[float, ...]) -> tuple[int, float, float, int, float, float]:
+        """``fCellX, xmin, xmax, fCellY, ymin, ymax``: what ``TH2Poly(name, title, nx, xlow, xup,
+        ny, ylow, yup)`` was told, and nothing but the two ends for a floating one."""
+        given = [float(v) for v in ranges]
+        if len(given) >= 6:
+            return int(given[0]), given[1], given[2], int(given[3]), given[4], given[5]
+        return 0, 0.0, 0.0, 0, 0.0, 0.0
 
     @staticmethod
     def _booked(ranges: tuple[float, ...]) -> tuple[tuple[float, ...], tuple[float, ...], bool]:
@@ -106,6 +124,34 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
         """
 
     # -- bins ----------------------------------------------------------------------------
+
+    def SavePrimitive(self, out: list[str], option: str = "") -> None:
+        """``TH2Poly::SavePrimitive``: the statements a macro needs to remake this histogram.
+
+        ROOT's own order: the constructor with the cell counts and ranges it was given, a
+        ``TGraph`` per polygon of a bin - a ``SetPoint`` a point is not how a polygon goes into a
+        macro, and the graph is added with ``AddBin`` - then the contents, the look and a
+        ``Draw``. A bin holds a list of polygons, and each of them is a graph of its own.
+        """
+        from .core.graphs import TGraph
+        from .core.hists import _appearance, _cpp_text, _number, _save_name, _written
+        from .core.objects import TObject
+
+        name = _save_name(self, str(option), testfdir=True)
+        out.append("   ")
+        given = [f'"{_cpp_text(self.GetName())}"', f'"{_cpp_text(self.GetTitle())}"']
+        given += [_number(value) for value in self._xrd_cells]
+        TObject.SavePrimitiveConstructor(out, "TH2Poly", name, ", ".join(given))
+        for polygons in self._xrd_bins.polygons:
+            for xs, ys in polygons:
+                TGraph(len(xs), xs, ys).SavePrimitive(out, f"th2poly{name}")
+        out.append("   ")
+        bins = range(1, int(self.GetNumberOfBins()) + 1)
+        _written(out, name, "SetBinContent", [self.GetBinContent(at) for at in bins], first=1)
+        if self.GetSumw2N():
+            _written(out, name, "SetBinError", [self.GetBinError(at) for at in bins], first=1)
+        _appearance(self, out, name)
+        TObject.SavePrimitiveDraw(out, name, str(option))
 
     def AddBin(self, *args: Any) -> int:
         """``AddBin(x1, y1, x2, y2)``, ``AddBin(n, x, y)`` or ``AddBin(graph)``: its number."""
@@ -182,6 +228,10 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
     def SetDirectory(self, directory: Any) -> None:
         """``SetDirectory``: a ``TH2Poly`` here belongs to no directory, so there is none to
         leave or join."""
+
+    def GetDirectory(self) -> Any:
+        """``GetDirectory``: always nothing, as :meth:`SetDirectory` says."""
+        return None
 
     def SetBinName(self, number: int, name: str) -> None:
         self.__dict__.setdefault("_names", {})[str(name)] = int(number)
@@ -335,6 +385,11 @@ class TH2Poly(TNamed, TAttLine, TAttFill, TAttMarker):
 
     def SetStats(self, stats: bool = True) -> None:
         self._stats = bool(stats)
+        self.SetBit(self.kNoStats, not stats)
+
+    def GetOption(self) -> str:
+        """``GetOption``: the draw option a saved histogram carries, which is none here."""
+        return ""
 
     def GetBinCenter(self, number: int) -> tuple[float, float]:
         """The middle of a bin's box: where its content is written."""

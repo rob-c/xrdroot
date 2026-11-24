@@ -17,11 +17,13 @@ from typing import Any
 
 import numpy as np
 
+from ...colors import saved
 from ...errors import UnsupportedFeatureError
 from ...graph import TEXT_ORDERS, Graph, text_delimiter, text_lines
 from ...graph import read_text as read_graph_text
 from .cformat import c_format
-from .objects import TAttFill, TAttLine, TAttMarker, TNamed
+from .hists import _cpp_text, _number
+from .objects import TAttFill, TAttLine, TAttMarker, TNamed, TObject
 from .refs import store
 from .wrapping import adopt, register, remember, unwrap, wrap
 
@@ -91,6 +93,28 @@ def _frame_histogram(
     return made
 
 
+def _saved_look(graph: Any, out: list[str], variable: str) -> None:
+    """What ``TGraph::SaveHistogramAndFunctions`` writes after the constructor: the name and
+    title, unless the graph is still the ``Graph`` ROOT names it, then a ``Set`` for each
+    attribute that differs from a graph's own default - no fill colour, a solid fill, a line and
+    a marker of one."""
+    if "Graph" != graph.GetName() or "Graph" != graph.GetTitle():
+        graph.SavePrimitiveNameTitle(out, variable)
+    for setter, value, default, colour in (
+        ("SetFillColor", graph.GetFillColor(), 0, True),
+        ("SetFillStyle", graph.GetFillStyle(), 1000, False),
+        ("SetLineColor", graph.GetLineColor(), 1, True),
+        ("SetLineStyle", graph.GetLineStyle(), 1, False),
+        ("SetLineWidth", graph.GetLineWidth(), 1, False),
+        ("SetMarkerColor", graph.GetMarkerColor(), 1, True),
+        ("SetMarkerStyle", graph.GetMarkerStyle(), 1, False),
+        ("SetMarkerSize", graph.GetMarkerSize(), 1, False),
+    ):  # fmt: skip
+        if float(value) != float(default):
+            written = saved(value) if colour else _number(value)
+            out.append(f"   {variable}->{setter}({written});")
+
+
 class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
     """``TGraph``: points, joined or marked."""
 
@@ -109,6 +133,40 @@ class TGraph(TNamed, TAttLine, TAttFill, TAttMarker):
         # ROOT's graphs are made with TAttFill(0, 1000): no colour, but a solid fill once given one.
         self.__dict__["_atts"] = {"TAttFill": {"fFillColor": 0, "fFillStyle": 1000}}
         self._construct(args)
+
+    def SavePrimitive(self, out: list[str], option: str = "") -> None:
+        """``TGraph::SavePrimitive``: the statements a macro needs to remake this graph.
+
+        ROOT writes the points as two ``std::vector<Double_t>`` and hands their ``data()`` to the
+        constructor - not a ``SetPoint`` a point - then the name and title the graph was given,
+        its look, and the ``Draw``. A graph carrying errors has a ``SavePrimitive`` of its own
+        that writes them per point, and none is written here yet.
+        """
+        if type(self).__name__ != "TGraph":
+            raise UnsupportedFeatureError(
+                f"A {type(self).__name__} is not yet written as the C macro a '.C' name asks for: "
+                "ROOT's TGraphErrors, TGraphAsymmErrors and TGraphBentErrors write a "
+                "SetPointError per point of their own, which this kit does not write yet. Save "
+                "the graph's points as text with SaveAs(name, '.csv'), or the pad as a picture "
+                "(.png, .pdf, .ps, .svg) instead."
+            )
+        count = int(self.GetN())
+        given = ""
+        if count >= 1:
+            xs = TObject.SavePrimitiveVector(out, "graph_x", self.GetX(), 1)
+            ys = TObject.SavePrimitiveVector(out, "graph_y", self.GetY())
+            given = f"{count}, {xs}.data(), {ys}.data()"
+        TObject.SavePrimitiveConstructor(out, "TGraph", "graph", given, count < 1)
+        _saved_look(self, out, "graph")
+        for axis in "XY":
+            title = str(getattr(self, f"Get{axis}axis")().GetTitle())
+            if title:
+                out.append(f'   graph->Get{axis}axis()->SetTitle("{_cpp_text(title)}");')
+        drawn = str(option)
+        if "th2poly" in drawn:  # a bin of a TH2Poly's: the polygon is added to the histogram
+            out.append(f"   {drawn[drawn.index('th2poly') + 7:]}->AddBin(graph);")
+            return
+        TObject.SavePrimitiveDraw(out, "graph", drawn)
 
     def SetHighlight(self, set: bool = True) -> None:
         """``SetHighlight``: mark the graph for highlighting its point under the mouse, which on
