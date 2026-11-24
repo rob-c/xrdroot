@@ -3395,3 +3395,63 @@ follows the nuisance order (similarity 0.7972). That is `W0-209`, and it is a re
 from a function declared `-> float` for a whole round; this round's `mypy` named it
 (`minimizer.py:83`, fixed in `b3a4106b`). The gate is seven commands and every one of them is the
 gate - `W0-210`.
+
+## Round 93's close
+
+Round 93 took `W0-194` and removed its wall: a canvas saved under a `.C` name is now ROOT's own macro,
+and `gtest/hist/hist/testMapCppName` PASSES.
+
+**The row's premise was wrong, in the useful direction.** It said the pad macro needed three
+constructors - a `TH2F`, a `TH2Poly` and a `TProfile`. Measured first, as `W0-209`'s round should have
+been: this kit's file for the test's own canvas was **1545 bytes** against the 6.40 oracle's **6616**,
+because *every* class's text differed. A `TGraph` was ten `SetPoint` calls where ROOT writes two
+`std::vector<Double_t>` and hands the constructor their `data()`; a histogram's variable was
+`th1f2` where ROOT writes `MapCppName`'s encoding of its name (`lEoBsPnOaTdA...__1`); the canvas had
+no `#ifdef __CLING__`, no `gStyle` lines, no palette, no `Modified()` and no `SetSelected()`. The
+assertion is `EXPECT_NEAR(FileSize, 6644, 200)`, so nothing short of ROOT's own shape could pass it.
+
+**What is in now.** `TObject::SavePrimitiveConstructor` (the type spelled out once per class, as
+`gROOT->ClassSaved` has it - a macro's second `TGraph` is `graph = new TGraph(...)`),
+`TObject::SavePrimitiveVector` (ROOT's braced list, ten to a line past fifteen, sixteen digits),
+`TObject::SavePrimitiveNameTitle`; `TH1::ProvideSaveName`'s `testfdir` and `_identifier` becoming
+`ROOT::TMetaUtils::GetCppName` - which round 84 had already added and nobody had wired in;
+`TProfile::SavePrimitive` (the error option in the constructor, `SetBinEntries` before
+`SetBinContent`); `TH2Poly::SavePrimitive` (a `TGraph` a polygon, `AddBin`, the bins numbered from
+one); `TGraph::SavePrimitive` with ROOT's `th2poly` branch; and `macro.write` as
+`TCanvas::SaveSource` + `TPad::SavePrimitive`: the header, the comment naming the canvas, the three
+`gStyle` sets, `TColor::SetPalette(57, nullptr)`, `Range`, fill and border, then each object's *own*
+`SavePrimitive` (so a histogram, a profile, a `TH2Poly` and a graph write ROOT's text and ROOT's
+`Draw`), then `Modified()` and `SetSelected()`.
+
+**Measured.** `testMapCppName` FAIL -> PASS (`…/ralph-round-202611232321/mapcpp2`), and the 57
+`gtest/hist/*` + `gtest/graf2d/*` programs measured whole at the tip move **one row and no other**
+(`…/hist-graf`, 39 PASS / 14 FAIL / 4 UNSUPPORTED; the diff against `baseline.json` is that row,
+raised by `rootsuite baseline --merge`). For the test's canvas ROOT writes **6616 bytes, 93 lines**
+and this kit **6598, 93**; the 13 lines that differ are the timestamp, `TCanvas(…, 10, 10, …)` for
+ROOT's `(…, 0, 0, …)`, `Draw()` for `Draw("alp")` (`W0-212`), the `TH2Poly`'s own fill defaults and
+one axis title offset (`W0-213`). **The macro runs**: `xrdroot run C_Output.C` exits 0 and rebuilds
+all five objects, which is what a macro is for.
+
+**Two assertions corrected against the oracle, not loosened.** A histogram named in punctuation is
+saved under `GetCppName`'s encoding, not an underscore a character - the round's own test had pinned
+the wrong spelling, and ROOT's `C_Output.C` is the evidence. And a round trip through ROOT's own
+order (every content, then every error, `Sumw2()` taking the contents it finds as the squared
+weights) gives `sqrt(content)` as the error of a bin that had none: ROOT does the same, so the test
+says so now instead of asserting a losslessness ROOT does not have.
+
+**`W0-209` priced, and it was not the wall.** `rs101_limitexample.C`'s DIFF has six differing lines,
+not one: ROOT draws 9588 chain steps at 47.94 % acceptance and reports MCMC limits 20.1859 / 102.808
+where this kit draws 9557 at 47.785 % and reports 18.8057 / 103.058. The harness names the *first*
+line, and round 92 read that as the only cause. That is `W0-211`; the parameter order is real and
+waits behind it. And `rs101_limitexample.py` is ROOT's own coin - 3 distinct draws in 6 oracle runs -
+because the tutorial hands RooFit a Python `set`, so it is recorded in `flaky.json` and the two DIFF
+rows round 92 left are now **1 DIFF + 1 FLAKY** (`W0-215`).
+
+**Gate.** `TOTAL 125639 0 31526 0 100%` (13 909 + 44, by the two-command decomposition, `…/gate2.log`
+for part 1 at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 061 files;
+maintainability 33 220 functions in 1 819 files; components 1 061 modules, 0 undeclared imports;
+`mkdocs build --strict` clean. The gate named the round's own dead code - `macro._hist` and its
+`HISTS` table, unreachable once every `TH1*` writes itself - which was deleted, and a profile's
+`if GetSumw2N()` branch, which no object can reach (a `TProfile` keeps squared weights from its
+constructor: measured, an unfilled one answers 4 for 4 cells), so it went too.
+| 93 | ``0c6490d9`` | **one target, measured before it was believed**: `W0-194` - the pad macro as ROOT writes it (`TCanvas::SaveSource`'s frame, `TPad::SavePrimitive`'s fill and border, and each primitive's own `SavePrimitive`: `TH1`'s `ProvideSaveName`/`MapCppName`, `TProfile`'s entries before its means, `TH2Poly`'s a-`TGraph`-a-polygon, `TGraph`'s two `std::vector<Double_t>`) | ``ff2ec418`` | **gtest 87 -> 88**: `gtest/hist/hist/testMapCppName` FAIL -> PASS, the 57 `gtest/hist/*` + `gtest/graf2d/*` programs moving one row and no other (`…/hist-graf`); our macro is 6598 bytes and 93 lines against ROOT's 6616 and 93 (`…/probe/pad/full`), and it runs under this kit | 5: `W0-194` closed; `W0-211` (**`rs101` is the MCMC stream, not the parameter order** - six differing lines, not the one the harness names), `W0-212`, `W0-213`, `W0-214`, `W0-215` |
