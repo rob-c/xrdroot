@@ -149,6 +149,10 @@ kConversionMatch = 1
 Layout = tuple[int, int, tuple[Element, ...]]
 #: The layouts files read so far describe each class with, in the order they were met.
 FILE_INFOS: dict[str, list[Layout]] = {}
+#: The class version each of those layouts recorded, by class and by the slot it is listed at -
+#: ``TStreamerInfo::fOnFileClassVersion``, which is not the slot once a version was already taken
+#: (``_free_version``) and is what ROOT matches a checksum against. ``_same_layout`` says so.
+RECORDED: dict[str, dict[tuple[int, int], int]] = {}
 
 #: The classes a file's layout was reported as disagreeing with the class in memory about -
 #: which ROOT warns of once per class, however many files its layouts are read from.
@@ -379,7 +383,9 @@ def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None
             continue
         held = FILE_INFOS[name]
         taken = {found[1] for found in held}
-        held.append((checksum, _free_version(name, version, taken), elements))
+        slot = _free_version(name, version, taken)
+        held.append((checksum, slot, elements))
+        RECORDED.setdefault(name, {})[(slot, checksum)] = version
 
 
 def _as_root_lists_them(infos: list[tuple[str, Layout]]) -> list[str]:
@@ -443,17 +449,41 @@ def _origin(source: Any) -> str:
 def _met(name: str, on_file: Layout, origin: str) -> bool:
     """Whether a layout a file describes is one already met - reported here, or already held.
 
-    ROOT warns about a class once, so a layout it has reported, and one whose checksum a
-    layout already held has, are both met; the disagreement with the class in memory is
+    ROOT warns about a class once, so a layout it has reported, and one :func:`_same_layout`
+    says the class already holds, are both met; the disagreement with the class in memory is
     reported as the file is opened, which is where ROOT reports it.
     """
     held = FILE_INFOS.setdefault(name, [])
-    met = any(found[0] == on_file[0] for found in held) or name in DISAGREED
+    met = any(_same_layout(name, found, on_file) for found in held) or name in DISAGREED
     mine = _disagreement_with(name, on_file, met)
     if mine is not None:
         DISAGREED.add(name)
         _disagreement(name, mine, on_file, origin)
     return met
+
+
+def _same_layout(name: str, held: Layout, on_file: Layout) -> bool:
+    """Is a layout a file describes one the class already holds, rather than one of its own?
+
+    ``TStreamerInfo::BuildCheck`` decides which slot of ``TClass::fStreamerInfo`` a layout read
+    from a file belongs to, and it looks the layout up differently by what the session knows of
+    the class. Nothing in memory describing it, a layout the file left **unversioned** (or any
+    layout of a ``pair``, which ROOT never trusts the version of) is looked for **by checksum**,
+    and only against an entry the file recorded unversioned too - so ``io/stdpair``'s
+    ``ab02.root``, which records the pair at version 1 and again at version 2, followed by
+    ``aa02.root``, which records the version 2 layout as version 1, leaves the array holding
+    that layout **twice**, at two slots, which ``pairEnumEvo`` prints as the ``#2`` and ``#3``
+    blocks of its ``4_*_*_0`` families. A layout the file numbered itself is looked for at that
+    version instead. A class the session describes is looked up by its version throughout, and a
+    second checksum of that version is the ``PostLoadCheck`` warning rather than a second entry.
+    """
+    if held[0] != on_file[0]:
+        return False
+    if not _emulated(name):
+        return True
+    if on_file[1] >= 2 and not _synthetic_pair(name):
+        return held[1] == on_file[1]
+    return RECORDED.get(name, {}).get((held[1], held[0]), held[1]) <= 1
 
 
 def _differing(mine: Layout, on_file: Layout) -> list[tuple[Element, Element]]:

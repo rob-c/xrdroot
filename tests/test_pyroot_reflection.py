@@ -34,6 +34,7 @@ def _reflection():  # the module these tests reach into
 def _fresh(tmp_path):
     declared = dict(DECLARED)
     infos = {name: list(found) for name, found in reflection.FILE_INFOS.items()}
+    recorded = {name: dict(found) for name, found in reflection.RECORDED.items()}
     enums = dict(troot._ENUMS)
     troot._ENUMS.clear()
     yield from fresh(tmp_path)
@@ -41,6 +42,8 @@ def _fresh(tmp_path):
     DECLARED.update(declared)
     reflection.FILE_INFOS.clear()
     reflection.FILE_INFOS.update(infos)
+    reflection.RECORDED.clear()
+    reflection.RECORDED.update(recorded)
     reflection.DISAGREED.clear()
     reflection.GENERATED.clear()
     reflection.INTERPRETED_METHODS.clear()
