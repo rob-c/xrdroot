@@ -47,6 +47,7 @@ nav:
       - Providers and adapters: components/providers.md
       - Boundary checks: components/boundaries.md
   - Project knowledge:
+      - Where the pass counts live: instructions/where-to-read-xrdroot-s-current-pass-counts-and-which-number-is.md
       - Tutorials ROOT vetoes for no display: instructions/running-the-tutorials-root-vetoes-for-no-display-also-vetoed.md
       - Landing work on main: instructions/landing-work-on-main-here-a-worktree-off-origin-main-pushed-at.md
       - Resuming the ROOT ralph loop: instructions/resuming-the-root-ralph-loop-ralph-resume-root-after-checking.md
