@@ -4357,6 +4357,7 @@ read first, and then the two-line offsets table.
 | 115 | `e52042af` | **a load re-emulates an emulated class, so its current layout is listed twice** - `loading.load_library` calls `reflection.reload_emulated()`, the array keeps a second copy of the current layout, a taken slot is the next free one, and `GetStreamerInfo(v)` is the array's `At(v)` | `54a1412b` | **roottest +4**: `io/stdpair` 12 / 32 -> **16 / 28** of 44, the four `pairEnumEvo_{0,1}_{0,1}_1_1` and none lost; `io/tree` 18/0/0/2 and `meta/evolution` 20/7/8/2 unchanged; baseline raised by `--merge`. Gate `TOTAL 126072 0 31660 0 100%` (13 972 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 0 new: `W0-244` **three quarters landed**; what is left is `2_*_1_1`'s current-layout choice and the four `4_*_*_0` `kNothing` families |
 | 116 | `81364c2b` + `12ec0b60` | **`io/stdpair` 16 -> 20 PASS - a file's layout is matched to a held one by checksum only where the held one was recorded unversioned** - `TStreamerInfo::BuildCheck` looks a layout read from a file up by **checksum** only against an entry whose `GetOnFileClassVersion()` is 0 or 1 and by class version otherwise, so the same bytes can be held twice, at two slots: `io/stdpair`'s `ab02.root` (the pair at version 1, `0xb15d1241`, and at version 2, `0xb5fb752`) followed by `aa02.root` (`0xb5fb752` as version 1) lists `At(1) 0xb15d1241`, `At(2) 0xb5fb752`, `At(3) 0xb5fb752` - measured with two oracle probes (`probe/one.C` per file, `probe/steps.C` in both orders), not deduced. The version each layout recorded is kept beside the slot it is listed at, because `_free_version` renumbers a layout that lands above one already taken; the slot-based first shape **broke** `test_files_layouts_are_numbered_as_met_while_no_class_is_in_memory` and the recorded version is what the second shape reads | `81364c2b` | **roottest +4**: `io/stdpair` **20 / 24 of 44** (`…/run3`), the four `4_{0,1}_{0,1}_0` `kNothing` families; `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2, `meta/evolution` 20/7/8/2, `io/datamodelevolution` 22/20/2 re-measured whole and unchanged (`…/guards`, 64/28/11/6 of 109). Gate **`TOTAL 126083 0 31666 0 100%`** (13 971 + 44 passing, one pre-existing failure), ruff, mypy 1 062 files, maintainability 33 354 functions, components, `mkdocs --strict` | 2 new: `W0-245` (a synthetic pair's in-memory layout is the **emulated** one - the `0_*`/`1_*` refs are byte-identical in either file order, which corrects round 113's "the order decides the current layout"; 8 tests) and `W0-246` (a file layout's offsets are laid out once, as the file is read, so an `#include` afterwards does not move `second` from 8 to 4; 4 tests); `W0-243` gains the evidence, `W0-244` is four fifths landed; a rule that skipped `_current_layout`'s file-over-memory swap for a synthetic pair **moved no test** and was reverted |
 | 117 | `e8cdedd5` + `499031e4` | **`io/stdpair` 20 -> 24 PASS - a file layout's member offsets are laid out once, as the file is read** - `TStreamerInfo::BuildOld` accumulates them then (`AlignUp(offset, align)`, then `offset += GetSize()`) and a dictionary or an `#include` arriving later does not move them; the one event that lays them out again is a **library load**, which re-emulates the class so `BuildOld` runs a second time. `io/stdpair` states both halves with the same inputs: `2_*_1_*` read before the include and print `second offset= 8`, `2_*_0_*` read after it and print 4, `0_*_1_1`/`1_*_1_1` read before the load and print 4 - and the freeze-with-no-thaw first shape **lost the four `0_*_1_1`** before `_thaw` in `reload_emulated` supplied the other half (`…/run1` vs `…/run2`). `W0-247` closed as a **test** corrected against the oracle: ROOT finds the object a `TRef` names when the session itself wrote the file (`…/probe/tref.py`), so `GetObject() is None` was the bug; its first correction assumed the session's object count, which the gate's `-n 4` caught (`W0-117`), and the member read now carries `ref.GetUniqueID()` | `e8cdedd5`, `499031e4`, `f87feed3` | **roottest +4**: `io/stdpair` **24 / 20 of 44** (`…/run2`), the four `2_{0,1}_1_{0,1}` families; `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2, `meta/evolution` 20/7/8/2, `io/datamodelevolution` 22/20/2 re-measured whole and unchanged (`…/guards`, 64/28/11/6 of 109). Gate **`TOTAL 126095 0 31672 0 100%`** - part 1 **13 975 passed, 0 failed** (99.75 % by design, so its exit status 1 is the floor, not a test), part 2 44 passed - ruff, mypy 1 062 files, maintainability 33 360 functions, components, `mkdocs --strict` | 2 new: `W0-248` (with the pair's dictionary loaded ROOT lists the mapped layout at `#1` beside the current one and stays silent about `edm::Ref`; 8 tests) and `W0-249` (`2_*_0_*` wants `TStreamerInfo::Build`'s per-member warning, not `TClass::Init`'s per-class one; 4 tests); `W0-245` sharpened with a `rootcling`-built dictionary probe that answers both file orders; `W0-246` and `W0-247` **closed** |
+| 118 | `c37ffb3a` + `a32733b1` | **`io/stdpair` 24 -> 28 PASS - a pair a library's dictionary reaches is emulated before a file's record** - ROOT builds the emulated layout for a class a loaded library's dictionary lays out the members of, registers it at the class's own version before the file's records, and drops a file's copy as the same layout, so the emulation's spelling is current in either file order; with nothing at all the class is made from the file's first record instead. Four shapes measured (18/26, 22/22, 24/20, **28/20**) before the predicate was right: `GENERATED`, a load's LinkDef selection under the **plain** name (`Ref`), not an `#include`'s declaration and not the type's bare name | `c37ffb3a`, `a32733b1` | **roottest +4**: `io/stdpair` **28 / 16 of 44** (`…/run5`), the four `pairEnumEvo_{0,1}_{0,1}_0_0`; `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2, `meta/evolution` 20/7/8/2, `io/datamodelevolution` 22/20/2 re-measured whole and unchanged (`…/guards`, 64/28/11/6 of 109). Gate **`TOTAL 126112 0 31680 0 100%`** - part 1 13 978 passed, 0 failed (99.75 % by design), part 2 44 passed - ruff, mypy 1 062 files, maintainability 33 366 functions, components, `mkdocs --strict`; the gate named one uncovered statement, which a third test now reaches | 0 new: `W0-245` **three quarters landed** (what is left is `0_*_1_0`/`1_*_1_0`'s four blocks), `W0-248`/`W0-249` re-priced from the refs |
 
 ## Round 110's close
 
@@ -4748,3 +4749,60 @@ one and stays silent about `edm::Ref`, and this kit lists a block fewer and warn
 probe above says what it would have to be (the emulated spelling, checksum `0xb5fb752`), and nothing
 in this kit builds one; that is `W0-245`'s first step and not a forty-minute change, so the round
 stopped at the offsets and recorded the shape instead.
+
+## Round 118's close
+
+**Four measured shapes of one rule, and four tests: `io/stdpair` 24 -> 28 PASS of 44.**
+
+**What the refs say.** Every failing family listed the *mapped* pair layout as the class's current
+streamer info where ROOT lists the **emulated** one - `checksum=0xb5fb752`, `type=13 Emulation`,
+action `13` with **no** `newtype`, because nothing compared it against another layout. ROOT builds
+that layout itself when a **library the session loaded** carries a dictionary of one of the pair's
+members (`cmspair.h`'s pragmas dictionary `edm::Ref`), registers it at the class's own version
+**before** the file's records, and then drops a file's copy of it as the same layout - which is why
+the file's mapped layout is printed as `#2` and not `#1`. With **no** dictionary at all the class is
+made *from the file's first record* instead, so that record's layout is current and the emulated one
+sits below it: which is exactly the `kNothing` and interpreted families' three blocks.
+
+**The four shapes, each measured.** (1) "the emulation-spelled layout is the current one", with no
+condition at all - **18 PASS / 26 DIFF**, six lost, including the four `kNothing` families that had
+passed since round 114 (`…/run1`); the refs say why, and the condition is the point. (2) conditioned
+on `_has_dictionary` (which counts a **declaration** the interpreter holds) - **22 / 22**, the four
+`{0,1}_{0,1}_0_0` in and the two `2_*_1_*` interpreted families out. (3) conditioned on
+`GENERATED` under the type's bare name and its head - **24 / 20**, no gain at all, because a load
+records its LinkDef's selection under the *plain* name (`Ref`, not `edm::Ref<...>`). (4) the same
+predicate asking the head's **last `::` component**, and requiring that the class itself has no
+dictionary - **28 / 20**, the four gained and nothing lost (`…/run5`).
+
+**What landed** (`c37ffb3a`): `TClass._file_layout` adopts the emulation-spelled layout - the one
+whose elements are all titled `Emulation`, the title `R__CreateEmulatedElement` writes and
+`pairEnumEvo`'s own `printElements` keeps - **at the class's own version**, the version the first
+record a file holds gave the class, and not at the version the copy met named; if the class's own
+dictionary is what the load selected, or none of its members' types is, the first record stays
+current. `_emulated_spelling`, `_could_be_emulated` and `_dictionaried` are the three pieces, and
+`tests/test_pyroot_reflection.py` pins all three answers.
+
+**Measured.** The four areas that share this reflection were re-measured **whole** at the tip and are
+the ledger's figures to the test: `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2, `meta/evolution`
+20/7/8/2 of 37, `io/datamodelevolution` 22/20/2 of 44 - 64 / 28 / 11 / 6 of 109 (`…/guards`). The
+baseline recorded the four rows with `rootsuite baseline --merge`.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **13 978 passed, 0 failed**
+(99.75 % by design: the two ignored files' code is not covered there); part 2 44 passed and
+`coverage report` **`TOTAL 126112 0 31680 0 100%`**; ruff clean; mypy 1 062 files; maintainability
+33 366 functions in 1 824 files; components 1 062 modules / 0 undeclared; `mkdocs --strict` exit 0.
+The round's first green-ish run named **one uncovered statement** - `_could_be_emulated`'s
+"the class itself has a dictionary" return - which a third unit test now reaches; that branch is
+also what keeps `3_*` unchanged.
+
+**What the remaining 16 are, each priced from the refs this round.** Four (`0_*_1_0`, `1_*_1_0`) keep
+**four** blocks: the files read before the load, then the load's re-emulation - a shape this round did
+not reproduce (ROOT's array there is current + mapped + two copies of the emulation). Four
+(`2_*_0_*`) want `TStreamerInfo::Build`'s per-member warning - `pair<...>: edm::Ref<...> has no
+streamer or dictionary, data member "second" will not be saved` (`W0-249`) - and every `2_*` family
+also wants the `TClass::Init` line *gone*, because the include declares the pair's elements. Eight
+are `3_*`: with the **pair's** own dictionary loaded the current is the *file's* mapped layout with
+`newtype=13`, and ROOT lists an emulated block at `#1` that this kit does not (`W0-248`).
+
+**A doc, for the next reader**: `docs/gotchas/a-pair-a-library-s-dictionary-reaches-is-emulated-before-a-file.md`,
+with the four-way table of what `io/stdpair` prints and the two predicates that decide it.

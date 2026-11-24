@@ -484,6 +484,47 @@ def _met(name: str, on_file: Layout, origin: str) -> bool:
     return met
 
 
+def _could_be_emulated(name: str, elements: tuple[Element, ...]) -> bool:
+    """Can ROOT have emulated the class - no dictionary of its own, but one for a member's type?
+
+    ROOT builds an emulated layout for a class whose members it can lay out, and only then
+    registers what a file records, so the class's own layout comes first. A class nothing
+    describes is created *from* the file's first record instead, and so is one the interpreter
+    merely **declares**: ``io/stdpair``'s ``kNothing`` families (no library at all) and its
+    interpreted ``libtype=2`` families (an ``#include``) list the file's first layout as current,
+    while ``libtype`` 0 and 1 - a library whose ``cmspair.h`` has a dictionary for ``edm::Ref``
+    and none for the pair - list the emulation's.
+    """
+    if _dictionaried(name):
+        return False
+    return any(_dictionaried(element[8]) for element in elements)
+
+
+def _dictionaried(name: str) -> bool:
+    """Has a **library** the session loaded a dictionary of this type, or of the template it is?
+
+    A library's dictionary names the classes its LinkDef selected under the plain name the class
+    is declared by - ``Ref`` for ``edm::Ref<...>`` - so the last component of the type's head is
+    the name to ask. A declaration the interpreter holds is *not* one of these: :func:`_answers`
+    counts it, because a member's alignment is the class's own once anything describes it, but a
+    header an ``#include`` read is no dictionary and ROOT does not emulate its classes.
+    """
+    bare = _bare_type(name)
+    head = bare.split("<", 1)[0].strip()
+    names = dict.fromkeys((bare, head, head.split("::")[-1]))
+    return any(each in GENERATED for each in names)
+
+
+def _emulated_spelling(elements: tuple[Element, ...]) -> bool:
+    """Is every element of a layout one an emulation built?
+
+    ``R__CreateEmulatedElement`` titles what it makes ``Emulation`` - the one title
+    ``pairEnumEvo``'s ``printElements`` leaves alone - and a layout whose elements all carry it is
+    the layout ROOT's emulation of the class writes.
+    """
+    return bool(elements) and all(element[2] == "Emulation" for element in elements)
+
+
 def _same_layout(name: str, held: Layout, on_file: Layout) -> bool:
     """Is a layout a file describes one the class already holds, rather than one of its own?
 
@@ -1288,15 +1329,35 @@ class TClass(TNamed):
         return INFOS.get(self._name)
 
     def _file_layout(self) -> tuple[int, int, tuple[Element, ...]] | None:
-        """The layout the first file to describe the class gave it, if any.
+        """The class's **own** layout, among those a file described it with, if any.
 
-        A class nothing in memory describes is emulated from the first description a file it
-        reads holds - ``kEmulated``, which the class to ``pair<reco::Muon::MuonTrackType,
-        edm::Ref<...>>`` roottest writes for shows - and that is the class's current layout
-        for the rest of the session.
+        A class nothing in memory describes is emulated from a description a file it reads holds
+        - ``kEmulated``, which the class to ``pair<reco::Muon::MuonTrackType, edm::Ref<...>>``
+        roottest writes for shows - and the *emulation's* layout is the class's own. ROOT builds
+        that layout before it registers the file's records, so it is the class's current one and a
+        file's copy of it is the same layout, dropped when it is met.
+
+        The emulation's spelling is what ``R__CreateEmulatedElement`` makes of a type name - an
+        enum kept as the emulated code, every element titled ``Emulation`` - which is the title
+        ``pairEnumEvo``'s own ``printElements`` keeps and clears from every other element. A pair
+        nothing in memory describes is therefore its emulated layout even when the first record a
+        file happens to hold is the *mapped* one: ``io/stdpair``'s ``0_*_*_0`` families read
+        ``ab02.root`` (mapped first, emulated second) and print the emulated layout as current in
+        either order, and this kit listed the mapped one until round 118.
         """
         known = FILE_INFOS.get(self._name, [])
-        return known[0] if known else None
+        if not known:
+            return None
+        if _synthetic_pair(self._name):
+            spelled = next((info for info in known if _emulated_spelling(info[2])), None)
+            if spelled is not None and _could_be_emulated(self._name, spelled[2]):
+                # The class's own layout is the one an emulation builds, at the class's own
+                # version - the version the first record a file holds gave it (``new TClass(name,
+                # fClassVersion)``) - and not at the version the copy met here recorded. ROOT's
+                # array then holds it at slot 1, which is why the file's other layout is printed
+                # ``#2`` rather than ``#1``.
+                return spelled[0], known[0][1], spelled[2]
+        return known[0]
 
     def _versioned(self) -> bool:
         """Does a listing of one of the class's layouts name their version?

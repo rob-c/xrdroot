@@ -800,6 +800,60 @@ def _offsets_printed(capfd):
             if "offset=" in line and " i= " not in line]
 
 
+#: The same two members as an emulation spells them: the enum kept as the unsigned type it was
+#: declared with, every element titled ``Emulation`` - what ``R__CreateEmulatedElement`` makes.
+EMULATED = (
+    ("TStreamerBasicType", "first", "Emulation", 13, 4, 1, 0, (0, 0, 0, 0, 0), "int", ()),
+    ("TStreamerObjectAny", "second", "Emulation", 62, 24, 1, 0, (0, 0, 0, 0, 0), "ProbeRef", ()),
+)
+
+
+def test_a_pair_a_library_s_dictionary_reaches_is_emulated_before_its_files(capfd):
+    """A pair's layouts are the emulation's first when a **library** the session loaded carries a
+    dictionary of a member's type, and the file's first record's when nothing does.
+
+    ``io/stdpair`` states it: ``libtype`` 0 and 1 load a library whose ``cmspair.h`` dictionaries
+    ``edm::Ref`` and not the pair, and print the emulated layout as the current one whichever
+    file is read first; ``kNothing`` and the interpreted ``libtype=2`` print the first record a
+    file holds, which is the mapped layout when ``ab02.root`` comes first.
+    """
+    reflection.note_generated_dictionary("ProbeRef")
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))), (WITH_REF, (0xB5FB752, 2, EMULATED))],
+        "ab02.root",
+    )
+    current = ROOT.TClass.GetClass(WITH_REF)._current_layout()
+    assert current is not None and current[0] == 0xB5FB752
+    assert current[1] == 1  # the class's own version, not the version that record named
+    infos = list(ROOT.TClass.GetClass(WITH_REF).GetStreamerInfos())
+    assert [info.GetCheckSum() for info in infos] == [0xB5FB752, 0xB15D1241]
+
+
+def test_a_pair_a_library_dictionaries_is_not_emulated_before_its_files(capfd):
+    """A load whose LinkDef selected the **pair itself** gives it a dictionary, so there is no
+    emulated layout to build and nothing to adopt: the file's first record is current - which is
+    what ``io/stdpair``'s ``3_*`` families print, their current layout being the file's mapped one.
+    """
+    reflection.note_generated_dictionary(WITH_REF)
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))), (WITH_REF, (0xB5FB752, 2, EMULATED))],
+        "ab02.root",
+    )
+    current = ROOT.TClass.GetClass(WITH_REF)._current_layout()
+    assert current is not None and current[0] == 0xB15D1241
+
+
+def test_a_pair_nothing_describes_is_laid_out_from_the_first_record_a_file_holds(capfd):
+    """The other side: no library, no dictionary - the class is made *from* the file's first
+    record, so that record's layout is the current one and the emulation's is beside it."""
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))), (WITH_REF, (0xB5FB752, 2, EMULATED))],
+        "ab02.root",
+    )
+    current = ROOT.TClass.GetClass(WITH_REF)._current_layout()
+    assert current is not None and current[0] == 0xB15D1241
+
+
 def test_a_file_layout_keeps_the_offsets_the_session_did_not_know_yet(capfd):
     """``TStreamerInfo::BuildOld`` lays a file's members out **as the file is read**, and a class
     the session learns afterwards does not move them.
