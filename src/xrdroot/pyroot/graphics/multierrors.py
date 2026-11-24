@@ -18,6 +18,7 @@ import numpy as np
 
 from ...errors import UnsupportedFeatureError
 from ...graph import Graph, text_delimiter
+from ...graphmath import layer_sum
 from ..core.graphs import TGraph
 from ..core.objects import ATTRIBUTES, TAttFill, TAttLine
 from ..core.wrapping import adopt, register
@@ -79,9 +80,19 @@ class TGraphMultiErrors(TGraph):
     # -- ROOT's constructors ----------------------------------------------------------------
 
     def _construct(self, args: tuple[Any, ...]) -> None:
-        """``(n)``, ``(n, x, y)`` or ``(n, x, y, exl, exh, eyl, eyh[, mode])`` - one layer."""
+        """``(n)``, ``(n, x, y)`` or ``(n, x, y, exl, exh, eyl, eyh[, mode])`` - one layer.
+
+        ROOT declares every one of those again with a ``name`` and a ``title`` in front of it
+        (``hist/hist/inc/TGraphMultiErrors.h``), and ``(name, title)`` alone is a graph of no
+        points; the two strings are the graph's, and what follows them is the constructor above.
+        """
         if not args:
             return
+        if isinstance(args[0], str):
+            self.SetNameTitle(args[0], args[1] if len(args) > 1 else "")
+            args = args[2:]
+            if not args:
+                return
         given = (len(args[0]), *args) if np.ndim(args[0]) > 0 else args
         count = int(given[0])
         rest = [*given[1:], *([None] * 8)]
@@ -153,6 +164,29 @@ class TGraphMultiErrors(TGraph):
     def GetEXhigh(self) -> Any:
         """``GetEXhigh``: the upper x error of each point."""
         return self._ex[1]
+
+    def GetEYlow(self, e: Any = None) -> Any:
+        """``GetEYlow()``: the y low errors the layers sum to, as ROOT's override answers.
+
+        ROOT declares it twice - ``GetEYlow()``, which sums the layers by the graph's sum mode
+        (``CalcYErrorsSum``), and ``GetEYlow(Int_t e)``, which is one layer's own bars and null
+        for a layer the graph has not (``hist/hist/inc/TGraphMultiErrors.h:143``).
+        """
+        return self._y_side(0, e)
+
+    def GetEYhigh(self, e: Any = None) -> Any:
+        """``GetEYhigh()``: the y high errors the layers sum to, or one layer's."""
+        return self._y_side(1, e)
+
+    def _y_side(self, side: int, e: Any) -> Any:
+        """One side of the y bars: a layer's own, or every point's summed over the layers."""
+        if e is not None:
+            layer = int(e)
+            if not 0 <= layer < self.GetNYErrors():
+                return None  # ROOT's own out-of-range answer is a null pointer
+            return self._layers[layer][side]
+        summed = (layer_sum(self._layers, at, self._mode, side) for at in range(self.GetN()))
+        return np.array(list(summed))
 
     def GetNYErrors(self) -> int:
         """``GetNYErrors``: how many layers of y errors the graph keeps."""

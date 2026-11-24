@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import copy
 import re
+import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, cast
 
@@ -640,6 +641,27 @@ class _Vector(_Container):
         """The values, as NumPy asks for them: a copy when it asks for one."""
         made = np.asarray(self.data(), dtype=dtype)
         return made.copy() if copy else made
+
+    @property
+    def __array_interface__(self) -> dict[str, Any]:
+        """The memory this vector holds, as NumPy's array interface describes it.
+
+        ROOT gives a vector of numbers one of these so that ``numpy.asarray`` adopts the
+        storage instead of copying it - ``_rvec.py``'s ``get_array_interface`` - and it is
+        the *vector's* memory the array is a view of, so a write through either is seen by
+        both. An empty vector reports the address 1 rather than its own, which is what ROOT
+        does because *"Numpy breaks for data pointer of 0 even though the array is empty"* -
+        nothing ever reads through it - and the flag beside the address is ``False``, so the
+        array is writable and a write through it lands in the vector, as ROOT's does.
+        """
+        endianness = "<" if sys.byteorder == "little" else ">"
+        pointer = 1 if not self._size else self._data.__array_interface__["data"][0]
+        return {
+            "shape": (self._size,),
+            "typestr": f"{endianness}{self.dtype.kind}{self.dtype.itemsize}",
+            "version": 3,
+            "data": (pointer, False),
+        }
 
     def _checked(self, index: Any) -> int:
         at = int(index)

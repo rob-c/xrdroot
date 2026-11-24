@@ -523,3 +523,40 @@ def test_two_maps_are_equal_when_they_hold_the_same_pairs() -> None:
         [["one", 1], ["one", 2], ["two", 4]]
     )
     assert pairs != 3  # and it is not equal to something that is not a multimap
+
+
+def test_an_empty_vector_reports_the_array_interface_pointer_numpy_needs() -> None:
+    """ROOT gives a vector of numbers NumPy's array interface so ``numpy.asarray`` adopts its
+    storage, and an empty one reports the address 1 rather than its own, because - its own
+    comment in ``bindings/pyroot/pythonizations/python/ROOT/_pythonization/_rvec.py`` - "Numpy
+    breaks for data pointer of 0 even though the array is empty"."""
+    empty = containers.std.vector["float"]()
+    adopted = np.asarray(empty)
+    assert adopted.shape == (0,)
+    assert adopted.__array_interface__["data"] == (1, False)
+    assert empty.__array_interface__ == {
+        "shape": (0,),
+        "typestr": "<f4",
+        "version": 3,
+        "data": (1, False),
+    }
+
+
+def test_a_vector_of_numbers_adopts_its_memory_both_ways() -> None:
+    """The array is the vector's own storage, so a write through either is seen by the other -
+    which is what the interface is for."""
+    vector = containers.std.vector["double"]([1.0, 2.0])
+    adopted = np.asarray(vector)
+    assert adopted.flags.writeable and adopted.shape == (2,)
+    assert adopted.__array_interface__["data"][0] == vector.__array_interface__["data"][0]
+    vector[0] = 42.0
+    assert adopted[0] == 42.0
+    adopted[1] = 7.0
+    assert vector[1] == 7.0
+    assert vector.__array_interface__["typestr"] == "<f8"
+
+
+def test_a_vector_of_anything_but_a_number_has_no_array_interface() -> None:
+    """ROOT adds the interface only where the element type is a fundamental one, so a vector of
+    strings is iterable and not adoptable."""
+    assert not hasattr(containers.std.vector["string"](["a"]), "__array_interface__")

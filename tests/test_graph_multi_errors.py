@@ -271,3 +271,29 @@ def test_the_points_alone_are_a_text_file_that_loses_no_layer():
     graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.3] * 5, *STAT)
     graph.SaveAs("points.csv", "noerrors")
     assert pathlib.Path("points.csv").read_text().splitlines()[0] == "0,0"
+
+
+def test_a_graph_named_and_titled_is_rootes_own_constructor_with_them_in_front():
+    """ROOT declares every constructor of this class again as ``(name, title, ...)``
+    (``hist/hist/inc/TGraphMultiErrors.h:63``), and ``(name, title)`` alone is a graph of no
+    points - the form ``bindings/pyroot/pythonizations/test/tgraph_getters.py`` builds."""
+    graph = ROOT.TGraphMultiErrors("gme", "TGraphMultiErrors Example", 5, X, Y, [0.3] * 5,
+                                   [0.3] * 5, *STAT)  # fmt: skip
+    assert (graph.GetName(), graph.GetTitle()) == ("gme", "TGraphMultiErrors Example")
+    assert list(graph.GetX()) == [float(value) for value in X]
+    bare = ROOT.TGraphMultiErrors("named", "titled")
+    assert (bare.GetName(), bare.GetN()) == ("named", 0)
+
+
+def test_the_y_errors_answer_the_layers_summed_or_one_layer_at_a_time():
+    """``GetEYlow()`` is ROOT's override, which sums the layers by the graph's sum mode
+    (``CalcYErrorsSum``); ``GetEYlow(e)`` is one layer's own bars, and a layer the graph has
+    not answers a null pointer (``TGraphMultiErrors.h:143-146``)."""
+    graph = ROOT.TGraphMultiErrors(5, X, Y, [0.3] * 5, [0.3] * 5, *STAT)
+    graph.AddYError(5, *SYS)
+    assert list(graph.GetEYlow()) == STAT[0]  # kOnlyFirst: the first layer's own bars
+    assert list(graph.GetEYhigh()) == STAT[1]
+    graph.SetSumErrorsMode(ROOT.TGraphMultiErrors.kAbsSum)
+    assert list(graph.GetEYlow()) == [1.5, 0.9, 1.8, 0.8, 2.2]  # 1 + 0.5, 0.5 + 0.4, ...
+    assert list(graph.GetEYlow(1)) == SYS[0]
+    assert graph.GetEYlow(2) is None
