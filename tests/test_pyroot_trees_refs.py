@@ -329,7 +329,14 @@ def test_an_object_a_reference_may_point_at_is_filed_under_the_number_it_carries
 
 
 def test_the_reference_of_a_member_read_back_names_the_process_of_the_file_it_came_from():
-    """``TRef::Streamer`` resolves its process as it reads, through ``gFile``."""
+    """``TRef::Streamer`` resolves its process as it reads, through ``gFile``.
+
+    The process a file's ``ProcessID0`` record names is this session's **own** when this session
+    wrote the file, so the reference read back finds the object it numbered rather than nothing.
+    Measured on the 6.40 oracle (`…/ralph-round-202611241956/probe/tref.py`): a ``TRef`` written to
+    a file, the file closed and the reference read back in the same session answers ``GetPID()``
+    with the same ``ProcessID0`` record and ``GetObject()`` with the ``TNamed`` it was made from.
+    """
     from xrdroot.pyroot.core.references import TProcessID, _tref_from
 
     out = ROOT.TFile("p.root", "RECREATE")
@@ -338,9 +345,12 @@ def test_the_reference_of_a_member_read_back_names_the_process_of_the_file_it_ca
     assert out.WriteProcessID(ref.GetPID()) == 0
     out.Close()
     read = ROOT.TFile("p.root")
-    made = _tref_from({"TObject": {"fUniqueID": 1, "fBits": 0}, "fPID": 0})
+    # the number the reference was made with: the session's count is global, so a member read
+    # beside other tests in one worker is not necessarily number 1 (W0-117's shape).
+    made = _tref_from({"TObject": {"fUniqueID": ref.GetUniqueID(), "fBits": 0}, "fPID": 0})
     assert isinstance(made.GetPID(), TProcessID)
-    assert made.GetObject() is None  # the object itself was never read into this session
+    assert made.GetPID() is ref.GetPID()  # the file's ProcessID0 names this session's process
+    assert made.GetObject() is named  # and that process still numbers the object
     read.Close()
 
 
