@@ -4038,3 +4038,10 @@ components 1 062 modules / 0 undeclared, `mkdocs build --strict` exit 0.
 `## Appendix A` at the end and a second `W0-77` row - an earlier scripted rewrite duplicating the tail
 (`W0-94`'s trap). Rounds append to the first copy; the row is in §5 so a reader does not edit the wrong one.
 | 103 | `57440c96` | **no code: the roottest kind measured whole for the first time since round 17**, and its three biggest buckets priced - `io/stdpair`'s 40 DIFFs are one printer (`offset` 0 vs 4, trailing spaces, a missing `#2 StreamerInfo:` block), 11 tests behind one `class reference at N points nowhere` in a file this kit wrote itself (with the desync trace), and `__PRETTY_FUNCTION__`'s 5 tests (which need a runtime helper, not a literal); the gtest one-case menu re-priced with four of its entries shown to be features | no code | **0 PASS moved, 0 lost, and the kind's whole figure is the round's product: 1318 PASS / 449 FAIL / 157 DIFF / 237 UNSUPPORTED / 10 SKIP / 2 TIMEOUT** of 2173 (`…/ralph-round-202611241234/roottest`, `--jobs 5`, load average 60-98) - 77 more than the ledger's 1241 estimate, which was an estimate. Gate `TOTAL 125967 0 31620 0 100%` unchanged | 4 new: `W0-230` (40 tests, one printer), `W0-231` (5, `__PRETTY_FUNCTION__`), `W0-232` (3, multiple-inheritance MRO), `W0-233` (22, one `Generator.h` `TypeError`); `W0-77` **refreshed to 11 tests** with the trace, `W0-219` re-priced |
+
+**Round 103's addendum, recorded after the close's measurement.** The two TIMEOUTs were rerun **alone** at
+`--jobs 1` once the load average had fallen to 3.7 (`…/ralph-round-202611241234/net`, 180 s of wall clock):
+`roottest/main/RootcpReadRemote` is still `still running after 300 s` and
+`RootcpReadRemoteCheckOutput` is a FAIL for the same reason (`A fixture it requires was not set up`). They are
+the CERN-network copies `W0-43` has recorded since round 9 - the endpoint, not the code - and the kind's
+environmental floor is therefore 1318 PASS with those two never counted as regressions.
