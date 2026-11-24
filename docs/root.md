@@ -3077,6 +3077,15 @@ list are each a branch of their own (`a`, `b` and `c` above), and a
 filled, `Print`, `GetListOfBranches` and `GetBranch` show it as it was
 declared.
 
+`Branch(collection)` is ROOT's other form, and names its branches ROOT's way: one
+branch per object the collection holds, called after the collection and the object - a
+`TList` holding a `TObjArray` named `myobjarray` of `one` and `two` gives
+`myobjarray_one` and `myobjarray_two`; a name ending in `_` takes no second underscore;
+and a split level above 99 ends the name with a dot, which is how ROOT marks a branch it
+will not split further. A `TClonesArray` is refused in ROOT's words, since it is
+branched as the array it is. A collection's objects (`TObjString`) are written whole - one `TBranchElement` per object, what split level 0
+asks ROOT for - and ROOT reads such a branch back into the object.
+
 Reading is `SetBranchAddress` and `GetEntry`, served a thousand entries at a
 time so that the entry-by-entry loop costs a read per branch per thousand;
 `tree.px` after `GetEntry`, `for event in tree`, `TTreeReader` with
