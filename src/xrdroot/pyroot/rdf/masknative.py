@@ -1,4 +1,10 @@
-"""Batch selection retains custom readers, vector constructors and live function lookup."""
+"""Batch selection retains custom readers, vector constructors and live function lookup.
+
+A method whose identity differs from the kit's own - a program that replaced an RVec's
+conversion, its ``data`` or its indexing - refuses the fast path, which is what the
+generator below asks about: the conversion is ``__array_interface__``, because that is
+what ``numpy.asarray`` reads first now that a vector of numbers answers it.
+"""
 from __future__ import annotations
 
 import inspect
@@ -20,14 +26,25 @@ def _compact(column: Any) -> bool:
             and bool((offsets[1:] >= offsets[:-1]).all()))
 
 
+def _conversion() -> bool:
+    """An RVec's conversion is the kit's own property, and not one a program replaced.
+
+    A vector of numbers is adopted through ``__array_interface__``, so that property - not
+    ``__array__``, which ``numpy.asarray`` never reaches once the interface is there - is the
+    conversion the fast path must not go round.
+    """
+    held = inspect.getattr_static(rvec._RVec, '__array_interface__', None)
+    return type(held) is property and _function(held.fget, 'xrdroot.cppstd.containers',
+                                                '_Vector.__array_interface__')
+
+
 def accepts(columns: tuple[Any, ...], maker: Any) -> bool:
     methods = ((rvec._RVec, '__getitem__', 'xrdroot.pyroot.rdf.rvec', '_RVec'),
-               (rvec._RVec, '__array__', 'xrdroot.cppstd.containers', '_Vector'),
                (rvec._RVec, 'data', 'xrdroot.cppstd.containers', '_Vector'),
                (rvec._RVec, '__len__', 'xrdroot.cppstd.containers', '_Vector'),
                (Jagged, '__init__', 'xrdroot.jagged', 'Jagged'))
     return (vars(stl).get('np') is np and vars(rvec).get('np') is np and _mask_kernel()
-            and inspect.getattr_static(Jagged, '__new__') is object.__new__
+            and inspect.getattr_static(Jagged, '__new__') is object.__new__ and _conversion()
             and all(_method(*method) for method in methods)
             and all(vectorrows._prepared(column, maker) is not None and _compact(column)
                     for column in columns))

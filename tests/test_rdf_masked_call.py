@@ -586,12 +586,12 @@ def test_a_replaced_entrywise_maker_keeps_its_per_row_calls(prepared, monkeypatc
 
 def test_a_replaced_rvec_array_conversion_keeps_its_calls(prepared, monkeypatch):
     original, optimized, columns = prepared
-    previous = rvec._RVec.__array__
+    previous = rvec._RVec.__array_interface__
     calls = []
-    def convert(self, *args, **kwargs):
+    def convert(self):
         calls.append(self.dtype)
-        return previous(self, *args, **kwargs)
-    monkeypatch.setattr(rvec._RVec, '__array__', convert)
+        return previous.__get__(self)
+    monkeypatch.setattr(rvec._RVec, '__array_interface__', property(convert))
     expected = entrywise(original)(*columns)
     recorded = calls[:]
     calls.clear()

@@ -637,11 +637,6 @@ class _Vector(_Container):
 
     __hash__ = None  # type: ignore[assignment]
 
-    def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray[Any, Any]:
-        """The values, as NumPy asks for them: a copy when it asks for one."""
-        made = np.asarray(self.data(), dtype=dtype)
-        return made.copy() if copy else made
-
     @property
     def __array_interface__(self) -> dict[str, Any]:
         """The memory this vector holds, as NumPy's array interface describes it.
