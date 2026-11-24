@@ -3496,3 +3496,57 @@ at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 061 file
 33 235 functions in 1 820 files; components 1 061 modules, 0 undeclared imports; `mkdocs build
 --strict` clean.
 | 94 | `3a99abad` | **one one-case program, priced four times before it was believed**: `gtest/hist/hist/testTGraphSorting` - `std::is_sorted` as a `cppstd` range check and a translator name, a dialect's `method_returns` allowed to name a **pointer** so a graph's arrays are ranges, `TGraph::Sort` with ROOT's signature and `kIsSortedX`, and `TGraphMultiErrors::Sort` carrying its layers and x errors | `127f2320` | **gtest 88 -> 89**: all five cases of `testTGraphSorting` PASS (`…/sort5`), and the 57 `gtest/hist/*` + `gtest/graf2d/*` programs move one row and no other (`…/hist-graf`, 40 / 13 / 4) | 2: `W0-216` (`Sort`'s comparator, descending order and sub-range are named refusals), `W0-217` (`kIsSortedX` is set and `Eval` does not read it) |
+
+## Round 95's close
+
+Round 95 took the gtest kind's one-case list - which it first had to *measure*, because the last one
+went with `/tmp` - and closed three queued rows behind two of its entries: **a function's own `using`
+names a type, `CrossValidation` is a `TNamed`, and `TGraph::Sort` takes ROOT's whole signature**.
+Two programs came in, and the kind's whole figure is current again.
+
+**The measurement came first, at the round's base, against a frozen copy of the tree**
+(`…/head-src`, so an edit mid-run cannot move the answer): **90 PASS / 183 FAIL / 75 UNSUPPORTED /
+2 TIMEOUT** of 350 (`…/gtest`, `--jobs 3`). Two things came out of it: `baseline.json` has **one**
+row wrong - `testRooRombergIntegrator` is recorded FAIL and measures UNSUPPORTED, which is `W0-154`
+arriving at the file - and **24 of the 183 FAIL programs are exactly one failing case from a PASS**.
+That list is now `W0-219`, with each program's own words, so the next rounds do not have to pay for
+it again.
+
+**`W0-141` closed, and it is the round's general fix.** ROOT's own cross-validation test times itself
+with `using cv_milli_t = std::chrono::duration<double, std::milli>;` inside `runCrossValidation`,
+then writes `cv_milli_t(EndTime - StartTime)`. C++ makes one of the type the alias stands for, and a
+template instance's constructor is this kit's runtime call of that template - so the alias has to
+reach a *value* position. `Program.local_aliases` holds a function's aliases, kept apart from the
+parser's type table so that no inference about a name changes (`cv_clock_t::now()` is untouched), and
+`emit_calls._alias_call` answers the call in `library_call`. **The first shape of it lived in
+`named_call`, and that was wrong**: `_alias_call` emits its arguments, and inference asks
+`named_call` the same question, so every `auto x = f()` in the program came back a `tuple`. The gate's
+own run named it in one line, and the split is the fix.
+
+**`TMVA::CrossValidation` is a `TNamed`** through its `Envelope` base, so `GetName()` is the
+`jobName` its constructor was given - which is how the test builds the path of the weights its folds
+wrote. One method, and the wall moved from `cv_milli_t` to it, and then the two programs passed.
+
+**`W0-216` closed**: `TGraph::Sort` takes `greaterfunc` (`TGraph::CompareX`, `CompareY`, or any
+callable of `(graph, left, right)`), `ascending`, and a `low`/`high` window; it sorts a stable
+permutation with C++'s own predicate `greaterfunc(this, l, r) != ascending` and hands it to
+`UpdateArrays`, which `TGraph` answers for x and y and `TGraphMultiErrors` overrides for its layers
+and its x errors. `kIsSortedX` is set only by the default whole-graph ascending sort, as ROOT sets it.
+
+**Measured.** `testCrossValidationIntVar` and `testCrossValidationMultiProc` PASS (`…/cv3`), and the
+72 programs of `gtest/tmva/*` + `gtest/hist/*` + `gtest/graf2d/*` move **those two rows and no
+other** (`…/areas`: 44 PASS / 21 FAIL / 7 UNSUPPORTED), the baseline raised by `rootsuite baseline
+--merge`. The kind is **92 / 350**.
+
+**Two traps paid for, both worth writing down.** A slice-based rewrite whose two indices can be in
+the wrong order (`text[:start] + new + text[end:]` with `start` *after* `end`) silently **duplicates**
+the chunk between them - 403 lines here - and only `git diff --stat` after every scripted edit shows
+it. And a predicate that emits into the macro (`self.arguments(node)`) must never sit on a path
+inference also takes.
+
+**Gate.** `TOTAL 125738 0 31556 0 100%` (13 922 + 44, by the two-command decomposition,
+`…/gate1.log` at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 061 files;
+maintainability 33 251 functions in 1 820 files; components 1 061 modules, 0 undeclared imports;
+`mkdocs build --strict` clean. The first part-1 run read 99.76% at a load average of 24 - the
+`W0-109` artefact, and the second read was part 2's own report, which named nothing.
+| 95 | `a88a6128` | **the one-case menu measured first, then three queued rows closed**: the gtest kind whole at the base (90 / 183 / 75 / 2, `…/gtest`) with its 24 one-case programs queued as `W0-219`; `W0-141` (a function's `using` of a template instance in a value position, via `Program.local_aliases` and `emit_calls._alias_call`); `TMVA::CrossValidation.GetName`; `W0-216` (`TGraph::Sort`'s comparator, descending order and window, with `UpdateArrays`) | `5a454e74` | **gtest 90 -> 92**: `testCrossValidationIntVar` and `testCrossValidationMultiProc` PASS (`…/cv3`), and 72 programs of `gtest/tmva` + `gtest/hist` + `gtest/graf2d` move two rows and no other (`…/areas`, 44 / 21 / 7) | 2: `W0-218` (a duration *argument* to such an alias still loses its type), `W0-219` (the 24 one-case programs, each its own feature); `W0-141` and `W0-216` closed |
