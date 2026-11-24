@@ -4211,3 +4211,55 @@ seven commands were run once at the final tree and read: **`TOTAL 125967 0 31620
 ruff clean, mypy 1 062 files, maintainability 33 328 functions, components 1 062 modules / 0 undeclared,
 `mkdocs build --strict` exit 0.
 | 106 | `3355726f` | **no code: round 105's `W0-235` hypothesis withdrawn, and its cause nailed with a per-member log and a six-line reproduction** - `Event`'s reader consumes all 39 members sensibly and `fObjArray` is the first that runs away; `struct O { TObjArray a; }` with two `TNamed`s reads correctly when the 6.40 oracle writes it and fails (`the record ends 4 bytes before it said it would`) when this kit does, because an in-memory collection is written as its *description* (base plus two ints) where ROOT writes `TCollection::Streamer`'s name + count + entries | no code | **0 PASS moved, 0 lost**: `io/bigevent` measured at the base is 3 PASS / 0 FAIL / 1 UNSUPPORTED of 4 (`…/ralph-round-202611241344/base`); the round's product is the log (`…/trace3.py`), the repro (`…/probe/`) and two rows. Gate `TOTAL 125967 0 31620 0 100%` unchanged | 1 new: `W0-236` (**an in-memory `TObjArray`/`TList` member is written as a description where ROOT writes its streamer's shape**, 8 tests); `W0-235` **rewritten** with the evidence |
+| 107 | `4aa28416` | **the bigevent `Event` file reads back: an in-memory `TObjArray` is written by hand, not by its description** - `records.MEMBERS` hands the writer a `Record` of a `TObjArray`'s entries and its name, `wdobjects._streams_itself` routes an in-memory array to `streamed`, which writes `TObjArray::Streamer`'s shape (version, `TObject`, `fName`, count, `fLowerBound`, each entry naming its class) instead of `INFOS["TObjArray"]`'s three elements that name no entry; and `_refilled`'s appender is `_appender`, because `Event`'s `UShortVector` derives from `std::vector<UShort_t>` and leaves a plain list where a C++ container's `insert` was asked for | `4aa28416` | **8 tests gained, none lost**: `io/bigevent/read` and the seven `io/compression/read-*` UNSUPPORTED->PASS, the `roottest/root/io/*` subtree measured either side at **770 tests, +8 PASS, 0 lost**; the three other kinds measured whole at the tip unchanged (pyunittest 87/39/2/1, `test/` 10/6/43, gtest 93/180/75/2); and the 6.40 oracle reads this kit's six-line `struct O { TObjArray a; }` file now. Gate `TOTAL 125976 0 31622 0 100%` (13 964 + 44) | 1 new: `W0-237` (a `TObjArray` as a file **key** is refused, not written); `W0-236` and `W0-235` **closed**, `W0-77` **re-scoped**, `W0-139` refreshed |
+
+## Round 107's close
+
+Round 107 is the first round since 97 to move a harness number, and it moved **eight tests** by fixing one file's
+writer and one member's reader.
+
+**What was wrong, and it was two things.** Round 106 had proved with a six-line reproduction that this kit writes an
+in-memory `TObjArray` as its *description* - the `TSeqCollection` base, `fLowerBound`, `fLast` - where ROOT writes
+`TObjArray::Streamer` by hand: `core/cont/src/TObjArray.cxx:448-497` is `WriteVersion(..., kTRUE)`, `TObject::Streamer`,
+`fName.Streamer`, `nobjects`, `fLowerBound`, then each `b << fCont[i]`. The fix is the one the row named: the pyroot
+layer hands the engine a `Record` of the entries and the array's name (`pyroot/core/records.py`'s
+`MEMBERS["TObjArray"] = _held`, `NAMED_COLLECTIONS`), and `wdobjects` routes an in-memory array to the same `streamed`
+writer a `TObjArray` read out of a file goes back through. The dispatch is `_streams_itself(classname, value)`, a
+function of its own, because folding the `or ... and ...` into `record()` took its **NPath to 576** - the
+maintainability gate caught that in the first gate run of the round, before anything was pushed.
+
+**And reading the file then stopped one wall further on.** `Event`'s `UShortVector` derives from
+`std::vector<UShort_t>`, so a read leaves a plain Python list where the elements go - and `_refilled` asked for
+`push_back`, then `insert`, and a list's `insert` takes a place and an item: `TypeError: insert expected 2 arguments,
+got 1`. `_appender` appends to a list and inserts into a container of C++'s own. With both fixes the generator reads
+the ten events this kit wrote and `io/bigevent/read` PASSES.
+
+**The oracle decides, and it agrees both ways.** The six-line probe (`.../probe/`: `o.h`, `owrite_oracle.C`,
+`owrite_ours.C`, and an `oLinkDef.h` with a `rootcling`-built dictionary against the 6.40 oracle) now prints
+`entries=2 [0] one / for file [1] two / for memory` **reading this kit's file**; before the fix the oracle segfaulted in
+`TAxis::Streamer` on it. This kit reads ROOT's own array file too, both entries right.
+
+**Measured, not assumed.** `io/bigevent` is **3 PASS / 0 FAIL / 1 UNSUPPORTED -> 4 / 0 / 0 / 0** and `io/compression`
+**9 / 0 / 0 / 7 -> 16 / 0 / 0 / 0** (`.../base-run` and `.../base-bigevent` at `8872b7f9` against `.../a2` and `.../a3`
+at the tip). The whole `roottest/root/io/*` subtree - 770 tests - was then measured either side and diffed id by id:
+**+8 PASS, 0 lost**, and the eight are its only moves (`.../loss-io`, its base round 103's whole-kind run at the same
+tree). The other three kinds were measured whole at the tip and are unchanged: pyunittest **87 / 39 / 2 / 1**, `test/`
+**10 / 6 / 43**, gtest **93 / 180 / 75 / 2** - whose diff against round 96's whole-kind run is `testRooHypatia2` alone,
+round 97's gain, and whose two TIMEOUTs are `ntuple_largefile1` and `testBulkApiMultiple`, the latter re-run **alone**
+at `--jobs 1` under a load average of 14 and still `still running after 300 s` (`.../bulk`).
+
+**What is left, and it is honest.** A `TObjArray` handed over as a file **key** (`Write("mine", kSingleKey)`) is now
+*refused* - `a TObjArray here is a list rather than the dict of members writing one starts from` - because
+`writer._record_payload` has no array shape; before this round the same call wrote bytes with no entry in them, so the
+refusal is the better half of the same bug. That is `W0-237`, with the shape it needs named in the row. `W0-77` is
+re-scoped: eight of its tests were this writer bug and pass now, and what remains is `W0-234`'s split branch and
+`W0-233`'s `io/datamodelevolution/00/test1`.
+
+**The gate.** Seven commands at `4aa28416`, each read for its own exit status: **`TOTAL 125976 0 31622 0 100%`**
+(13 964 + 44 passed, `.../gate2.log`), ruff clean, mypy 1 062 files, maintainability 33 333 functions, components 1 062
+modules / 0 undeclared, `mkdocs build --strict` exit 0 (`.../mkdocs.log`).
+
+**Still open, and recorded rather than quietly fixed.** Two earlier rows quote a gate total that cannot both be
+right: round 95's ledger row in `TODO.md` and round 95's close here both say `125738 0 31556` with **13 922 + 44**
+passed, while round 96's rows say the same total with **13 924 + 44**. One total is wrong and only a re-run at round
+95's own tree could say which; this file is append-only, so the correction is this sentence and not an edit.
