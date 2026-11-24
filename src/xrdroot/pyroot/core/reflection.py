@@ -177,6 +177,15 @@ DISAGREED: set[str] = set()
 #: duplicated StreamerInfo".
 RELOADED: set[str] = set()
 
+#: The classes ROOT **built** a layout for rather than taking a file's: ``TClass::GetStreamerInfo``
+#: makes one with ``NewInfo`` and ``TStreamerInfo::Build`` when no record sits at the class's own
+#: version, and ``Build`` warns of each member whose class it has no streamer for. Measured on the
+#: 6.40 oracle: with ``#include "cmspair.h"`` first and ``aa02.root`` read before ``ab02.root``,
+#: the pair's slot 1 holds ``checksum=0xb15d1241`` with ``fOnFileClassVersion`` **0** - built - and
+#: ``Build`` warns; with ``ab02.root`` first that slot holds the same checksum with
+#: ``fOnFileClassVersion`` 1 - a file's copy - and nothing is built. The warning is once per class.
+BUILT: set[str] = set()
+
 #: The flat lists of persistent data members built so far, by class: ``BuildRealData`` builds
 #: one and ``GetListOfRealData`` hands it back, as ROOT caches it with the class.
 REAL_INFOS: dict[str, list[Any]] = {}
@@ -404,18 +413,66 @@ def note_file_infos(infos: list[tuple[str, Layout]], source: Any = None) -> None
         if name not in FILE_INFOS and _undictionaried(name):
             message("Warning", "TClass::Init", "no dictionary for class %s is available", name)
     for name, (checksum, version, elements) in infos:
-        DESCRIBED.setdefault(name, _describable(name, elements))
-        FROZEN_OFFSETS.setdefault(
-            (name, checksum), _accumulated([element_of(e) for e in elements])
-        )
-        met = _met(name, (checksum, version, elements), origin)
-        if met or _in_memory(name, checksum, version):
-            continue
-        held = FILE_INFOS[name]
-        taken = {found[1] for found in held}
-        slot = _free_version(name, version, taken)
-        held.append((checksum, slot, elements))
-        RECORDED.setdefault(name, {})[(slot, checksum)] = version
+        _note_layout(name, checksum, version, elements, origin)
+    for name in dict.fromkeys(name for name, _layout in infos):
+        # Every layout this file describes is noted, so the class's own is looked at once the file
+        # has said all it knows - a record already met still moves which layout sits where.
+        _note_built(name)
+
+
+def _note_layout(
+    name: str, checksum: int, version: int, elements: tuple[Element, ...], origin: str
+) -> None:
+    """Note one layout a file describes, unless it is one met already or the class has it."""
+    DESCRIBED.setdefault(name, _describable(name, elements))
+    FROZEN_OFFSETS.setdefault((name, checksum), _accumulated([element_of(e) for e in elements]))
+    met = _met(name, (checksum, version, elements), origin)
+    if met or _in_memory(name, checksum, version):
+        return
+    held = FILE_INFOS[name]
+    taken = {found[1] for found in held}
+    slot = _free_version(name, version, taken)
+    held.append((checksum, slot, elements))
+    RECORDED.setdefault(name, {})[(slot, checksum)] = version
+
+
+def _note_built(name: str) -> None:
+    """Warn of the members ``TStreamerInfo::Build`` cannot save, where ROOT builds a class's layout.
+
+    A class only an ``#include`` declares has no layout of its own here, so ROOT's is read off the
+    file's spelled copy of it (:meth:`TClass._file_layout`). When no file recorded a layout **at**
+    the class's own version, that copy is ROOT's own ``Build``ed one - the state the 6.40 oracle
+    shows as ``fOnFileClassVersion`` 0 - and ``Build`` warns of every member whose class answers
+    with no streamer: ``pairEnumEvo``'s ``edm::Ref<...>`` member ``second``, which the ``#include``
+    declares and nothing writes (``io/io/src/TStreamerInfo.cxx``). A member whose element is a
+    number's code is no class at all - the pair's enumeration - and is passed over silently.
+    """
+    if name in BUILT or DESCRIBED.get(name) != "declaration":
+        return
+    own = TClass(name)._file_layout()
+    if own is None or _recorded_at(name, own):
+        return
+    BUILT.add(name)
+    for element in own[2]:
+        if element[3] >= _OBJECT_TYPE and not _streams(element[8]):
+            message("Warning", "TStreamerInfo::Build",
+                    '%s: %s has no streamer or dictionary, data member "%s" will not be saved',
+                    name, element[8], element[1])  # fmt: skip
+
+
+def _recorded_at(name: str, own: Layout) -> bool:
+    """Did a file record the class's own layout **at** the version the class gives it?
+
+    The slot a layout is listed at is not the version it recorded (``_free_version`` renumbers),
+    so the question is asked of the records themselves: ``pairEnumEvo``'s ``2_*_0_1`` order has
+    ``aa02.root`` record ``0xb5fb752`` at version 1 and ``ab02.root`` ``0xb15d1241`` at version 2,
+    so no record of the class's own ``0xb15d1241`` at version 1 exists - ROOT built it - while the
+    ``2_*_0_0`` order reads ``ab02.root`` first and does have one.
+    """
+    return any(
+        int(checksum) == int(own[0]) and int(version) == int(own[1])
+        for checksum, version, _elements in FILE_INFOS.get(name, [])
+    )
 
 
 def _as_root_lists_them(infos: list[tuple[str, Layout]]) -> list[str]:
@@ -782,6 +839,23 @@ def _undictionaried(name: str) -> bool:
 
 #: The C++ types whose layout is a number's: a dictionary answers for them without one.
 PLAIN_TYPES = FUNDAMENTAL | NUMBERS
+
+#: ``TVirtualStreamerInfo::kObject``, the lowest code an element that names a **class** has; every
+#: code below it is a number's, so a member spelled with one is no class and no streamer is asked
+#: for it - ``pairEnumEvo``'s enumeration is ``type= 3`` while its ``edm::Ref`` member is ``62``.
+_OBJECT_TYPE = 61
+
+
+def _streams(name: str) -> bool:
+    """Has this session a **streamer** for the class ``name`` - a layout or a model of its own?
+
+    ``TStreamerInfo::Build`` asks ``clm->GetStreamer()`` and ``clm->IsLoaded()``: a class a header
+    only *declares* answers neither, so ROOT warns that the member will not be saved - which is
+    what ``cmspair.h``'s ``edm::Ref<...>`` gets while its own template arguments are still known
+    here. A number needs no streamer and a ``pair`` is never emulated one.
+    """
+    bare = _bare_type(name)
+    return bare in PLAIN_TYPES or bare in INFOS or _modelled(bare) or _synthetic_pair(bare)
 
 
 def _bare_type(name: str) -> str:
@@ -1452,13 +1526,46 @@ class TClass(TNamed):
         """One layout as the class lists it, set against the class in memory where there is one."""
         mine = self._layout() if self._declared() is not None else None
         current = self._current_layout()
-        # An older layout is set against the class's current one, which for a class nothing in
-        # memory describes is the emulated layout its first file gave it: that comparison is what
-        # names a member's ``newtype`` and reads it with an action two hundred above the file's.
-        compared = mine or current
-        memory = compared[2] if compared is not None and layout is not current else None
+        memory = self._compared_with(layout, mine, current)
         return TStreamerInfo(self._name, layout, built=built, versioned=self._versioned(),
                              from_file=not from_memory, memory=memory)  # fmt: skip
+
+    def _compared_with(self, layout: Layout, mine: Layout | None,
+                       current: Layout | None) -> tuple[Element, ...] | None:  # fmt: skip
+        """The elements a layout is set against, which names a member's ``newtype``.
+
+        ROOT compares a layout with the class **as the session knew it when the file was read**,
+        which is what ``DESCRIBED`` keeps. A session that **declared** the class - an ``#include``
+        and no dictionary - has the class in memory from the first read, laid out in the emulated
+        spelling (``R__CreateEmulatedElement``'s), so *every* file layout is set against that,
+        the current one included: ``io/stdpair``'s ``2_*_0_*`` families print the file's mapped
+        layout as ``type= 3 newtype=13`` read with action ``203``. The emulated copies *are* that
+        spelling, so they are set against nothing and print neither.
+
+        A dictionary - and nothing at all, where the class is made from a file's first record -
+        describes no layout of its own here, so only an older layout is set against the class's
+        current one, which is what ``0_*``/``1_*`` and ``4_*`` print.
+        """
+        own = self._own_spelling()
+        if own is not None:
+            return None if _emulated_spelling(layout[2]) else own
+        compared = mine or current
+        return compared[2] if compared is not None and layout is not current else None
+
+    def _own_spelling(self) -> tuple[Element, ...] | None:
+        """The elements of the class's own layout, where the session *declared* it in time.
+
+        A pair is never given a layout of its own here - ``winfo`` models no layout for one - so
+        the class's own layout is read off a file's emulated copy of it, the spelling
+        ``R__CreateEmulatedElement`` makes: that is the one ROOT builds from the declaration, and
+        it is what round 119 measured must be **recognised from the file's own copy** rather than
+        rebuilt, because the checksum of those same elements is not the file's.
+        """
+        if DESCRIBED.get(self._name) != "declaration":
+            return None
+        own = next((info for info in FILE_INFOS.get(self._name, [])
+                    if _emulated_spelling(info[2])), None)
+        return None if own is None else own[2]
 
     def _held(self) -> tuple[Any, list[TStreamerInfo], dict[int, TStreamerInfo]]:
         """Every layout the class knows - its current one, then each a file described it with -

@@ -37,6 +37,7 @@ def _fresh(tmp_path):
     recorded = {name: dict(found) for name, found in reflection.RECORDED.items()}
     frozen = dict(reflection.FROZEN_OFFSETS)
     described = dict(reflection.DESCRIBED)
+    built = set(reflection.BUILT)
     enums = dict(troot._ENUMS)
     troot._ENUMS.clear()
     yield from fresh(tmp_path)
@@ -50,6 +51,8 @@ def _fresh(tmp_path):
     reflection.FROZEN_OFFSETS.update(frozen)
     reflection.DESCRIBED.clear()
     reflection.DESCRIBED.update(described)
+    reflection.BUILT.clear()
+    reflection.BUILT.update(built)
     reflection.DISAGREED.clear()
     reflection.GENERATED.clear()
     reflection.INTERPRETED_METHODS.clear()
@@ -894,6 +897,71 @@ def test_a_pair_a_library_s_dictionary_reaches_is_emulated_before_its_files(capf
     assert current[1] == 1  # the class's own version, not the version that record named
     infos = list(ROOT.TClass.GetClass(WITH_REF).GetStreamerInfos())
     assert [info.GetCheckSum() for info in infos] == [0xB5FB752, 0xB15D1241]
+
+
+def test_a_declared_class_s_file_layout_is_set_against_its_own_emulated_spelling(capfd):
+    """A class only an ``#include`` declares is in memory from the first read, so **every** file
+    layout is set against it - the current one included - and the emulated copies, which *are*
+    that spelling, against nothing.
+
+    ``io/stdpair``'s ``2_*_0_*`` families print the file's mapped layout as ``type= 3
+    newtype=13`` read with action ``203`` and the emulated copies plain. Measured on the 6.40
+    oracle: the declared class's own layout spells the enum ``kInt`` with ``fNewType`` the
+    ``kUInt`` it is today, and ``TStreamerInfo::Compile`` reads a converted member with the
+    action ``kConv`` (200) above its type.
+    """
+    run_source("class ProbeRef { public: int i = 0; }; ", "ref.h", call=False)
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))), (WITH_REF, (0xB5FB752, 2, EMULATED))],
+        "after.root",
+    )
+    assert reflection.DESCRIBED[WITH_REF] == "declaration"
+    ROOT.TClass.GetClass(WITH_REF).GetStreamerInfo().ls()
+    printed = capfd.readouterr().out
+    assert "type= 3 newtype=13" in printed
+    assert "i= 0, first           type=203" in printed
+    assert printed.count("newtype=") == 1  # the emulated copies carry none
+
+
+def test_a_layout_no_file_recorded_at_the_class_s_version_is_one_root_builds(capfd):
+    """``TStreamerInfo::Build`` is what warns of a member no streamer saves, and ROOT builds the
+    layout only where no record of the class sits at the version it gives it.
+
+    ``io/stdpair``'s two ``2_*_0_*`` orders say it with the same two files: reading ``ab02.root``
+    first records the mapped layout at version 1 and nothing is built; reading ``aa02.root`` first
+    records it at version 2, so the class's own version holds no record and the oracle shows the
+    layout there with ``fOnFileClassVersion`` 0 and prints the warning.
+    """
+    run_source("class ProbeRef { public: int i = 0; }; ", "ref.h", call=False)
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))), (WITH_REF, (0xB5FB752, 2, EMULATED))],
+        "ab02.root",
+    )
+    capfd.readouterr()
+    assert WITH_REF not in reflection.BUILT  # a record of it sits at version 1
+    assert reflection._recorded_at(WITH_REF, (0xB15D1241, 1, ()))
+
+    reflection.FILE_INFOS.clear()
+    reflection.RECORDED.clear()
+    reflection.DESCRIBED.clear()
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB5FB752, 1, EMULATED)), (WITH_REF, (0xB15D1241, 2, (FIRST, SECOND)))],
+        "aa02.root",
+    )
+    said = capfd.readouterr().err
+    assert WITH_REF in reflection.BUILT
+    assert not reflection._recorded_at(WITH_REF, (0xB15D1241, 1, ()))
+    assert ('Warning in <TStreamerInfo::Build>: ' + WITH_REF + ": ProbeRef has no streamer or"
+            ' dictionary, data member "second" will not be saved') in said  # fmt: skip
+
+
+def test_a_member_spelled_with_a_number_s_code_asks_for_no_streamer():
+    """The warning is of a member that **names a class**: a pair's enumeration is a number's code
+    and ROOT asks no streamer for it, where its ``edm::Ref`` member is ``kAny`` (62)."""
+    assert reflection._streams("int")  # a number needs no streamer
+    assert not reflection._streams("ProbeRef")  # declared, not loaded: no streamer either way
+    assert reflection._streams("TObject")  # a layout this kit writes
+    assert FIRST[3] < reflection._OBJECT_TYPE <= SECOND[3]
 
 
 def test_a_pair_a_library_dictionaries_is_not_emulated_before_its_files(capfd):
