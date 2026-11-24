@@ -211,9 +211,13 @@ def test_a_layout_a_file_holds_is_listed_beside_the_one_in_memory(capsys):
     printed = capsys.readouterr().out
     assert printed.startswith("OBJ: TObjArray\tTObjArray\tAn array of objects : 0\n")
     assert (
-        "string         second          offset=  0 type=300 stl=365 ctype=365 Emulation" in printed
+        "string         second          offset=  8 type=300 stl=365 ctype=365 Emulation" in printed
     )
-    assert "   i=" not in printed
+    # An emulated class's layouts are all built, so the action each element is read with is
+    # listed: the 6.40 oracle prints both of them for a ``pair<int,string>`` file it wrote
+    # (``probe/lists.C``, "plain immediate"), the int at 0 and the string at 8.
+    assert "   i= 0, first           type=  3, offset=  0, len=1, method=0" in printed
+    assert "   i= 1, second          type=300, offset=  8, len=1, method=0" in printed
 
 
 def test_a_class_only_files_describe_is_built_from_the_first_layout_read(capfd):
@@ -808,7 +812,9 @@ def test_a_versioned_classs_layouts_are_indexed_by_version_and_a_hole_stays_empt
     ]
     gapped = ROOT.TClass("Gapped")
     infos = gapped.GetStreamerInfos()
-    assert infos.GetSize() == 4
+    # The array reports the **room** ROOT's ``fStreamerInfo`` has, not the entries it holds:
+    # the 6.40 oracle answers ``GetSize() 13`` for a class of two layouts (`probe/lists.C`).
+    assert infos.GetSize() == 13
     assert infos.At(1) is None
     assert (infos.At(2).GetClassVersion(), infos.At(3).GetClassVersion()) == (2, 3)
     # A version the class has no layout of answers the class's current one, which for a class
@@ -816,6 +822,20 @@ def test_a_versioned_classs_layouts_are_indexed_by_version_and_a_hole_stays_empt
     assert gapped.GetStreamerInfo(1).GetClassVersion() == 2
     assert [info.GetClassVersion() for info in infos] == [2, 3]
     assert gapped.GetStreamerInfo(2).GetElement(0).GetTypeName() == "int"
+
+
+def test_a_classs_layouts_array_is_the_one_it_keeps():
+    """ROOT keeps the layouts array per class, so asking twice hands back the same one - which is
+    also what makes an entry comparable with ``GetStreamerInfo``'s answer by identity, as
+    ``roottest``'s ``pairEnumEvo`` compares them."""
+    reflection.FILE_INFOS["Kept"] = [
+        (0x21, 2, (("TStreamerBasicType", "x", "", 3, 4, 0, 0, (0, 0, 0, 0, 0), "int", ()),)),
+        (0x22, 3, (("TStreamerBasicType", "x", "", 7, 4, 0, 0, (0, 0, 0, 0, 0), "float", ()),)),
+    ]
+    kept = ROOT.TClass("Kept")
+    first = kept.GetStreamerInfos()
+    assert kept.GetStreamerInfos() is first
+    assert kept.GetStreamerInfo(2) is first.At(2)
 
 
 def test_a_layout_the_class_in_memory_has_is_not_noted_again():
@@ -1387,8 +1407,10 @@ def test_a_member_the_two_layouts_type_alike_names_no_new_type(capsys):
     printed = capsys.readouterr().out
     assert "newtype" not in printed
     assert "   i= 0, first           type=  3, offset=  0, len=1, method=0" in printed
-    # A member the layout in memory does not have is the file's own, new type or no.
-    assert "   i= 1, gone            type=  3, offset=  0, len=1, method=0" in printed
+    # A member the layout in memory does not have is the file's own, new type or no - and its
+    # offset is the one ROOT accumulates, ``AlignUp(offset, GetAlignment())`` then
+    # ``offset += GetSize()`` (``io/io/src/TStreamerInfo.cxx``), so the second int is at 4.
+    assert "   i= 1, gone            type=  3, offset=  4, len=1, method=0" in printed
 
 
 def test_a_files_classes_are_warned_of_in_the_order_root_wrote_them(capfd):

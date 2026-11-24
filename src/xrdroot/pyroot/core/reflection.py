@@ -548,6 +548,20 @@ def _compare_content(name: str, mine: Layout, on_file: Layout) -> None:
             "\n   ".join(_declaration(ours) for _theirs, ours in differ))
 
 
+#: The room ROOT's ``TClass::fStreamerInfo`` has before it grows - measured on the 6.40 oracle,
+#: whose ``GetStreamerInfos()->GetSize()`` is 13 for a class of two layouts and 15 for ``TH1F``.
+STREAMER_INFO_SLOTS = 13
+
+
+def _alignment_of(element: Any, size: int) -> int:
+    """An element's alignment, as ROOT lays it out: eight for a container - a ``std::string`` is at
+    8 in the 6.40 oracle's ``pair<int,string>`` - four for anything else, a one-byte member
+    included at one, which is what puts the oracle's ``edm::Ref`` at 4 after an enum."""
+    if isinstance(element, TStreamerSTL):
+        return 8
+    return 1 if size == 1 else 4
+
+
 def _free_version(name: str, version: int, taken: set[int]) -> int:
     """The version to list ``name``'s next layout at, given the ones already taken.
 
@@ -561,11 +575,6 @@ def _free_version(name: str, version: int, taken: set[int]) -> int:
         taken.add(current[1])
         return next(number for number in range(1, len(taken) + 2) if number not in taken)
     return max(taken) + 1 if version in taken and _emulated(name) else version
-
-
-def _version_of(layout: tuple[Layout, bool]) -> int:
-    """The version a layout is listed at, which is the index ROOT keeps it at."""
-    return layout[0][1]
 
 
 def _in_memory(name: str, checksum: int, version: int) -> bool:
@@ -1174,30 +1183,75 @@ class TClass(TNamed):
         """``GetStreamerInfo``: the layout of the class in memory - or, given a version, the
         layout of that version, from a file read if it is not the one in memory.
 
-        A class nothing in memory describes is emulated from the first layout a file it read
-        gave it, and ROOT builds what it hands back - so its elements are listed with the
-        action each is read with - where a layout it merely lists stays unbuilt.
+        A class nothing in memory describes is emulated from the first layout a file it read gave
+        it, and ROOT builds every layout it holds - the 6.40 oracle lists all of them with
+        ``IsBuilt() 1`` and the action each element is read with - where the layouts of a class in
+        memory are listed as the file described them. The object handed back is the one the
+        layouts array holds, so a program that compares an entry with this answer finds one
+        object, as ``roottest``'s ``pairEnumEvo`` does.
         """
-        mine = self._layout()
-        emulated = mine is None
+        _signature, held, by_version = self._held()
         current = self._current_layout()
-        if current is not None and version in (0, current[1]):
-            return TStreamerInfo(self._name, current, built=True, versioned=self._versioned(),
-                                 from_file=current is not mine)
-        found = [i for i in FILE_INFOS.get(self._name, []) if i[1] == version]
-        if not found:
-            # A version the class has no layout of answers ROOT's current one:
-            # ``TClass::GetStreamerInfo`` is ``At(version)`` with a fall-back to the class's, so a
-            # walk of the versions prints only the layouts there are.
-            return None if current is None else TStreamerInfo(
-                self._name, current, built=True, versioned=self._versioned())  # fmt: skip
-        return TStreamerInfo(self._name, found[0], built=emulated, versioned=self._versioned(),
-                             from_file=True, memory=mine[2] if mine else None)
+        if current is not None and int(version) in (0, int(current[1])):
+            return held[0]
+        found = by_version.get(int(version), held[0] if held else None)
+        # A version the class has no layout of answers its current one:
+        # ``TClass::GetStreamerInfo`` is ``At(version)`` with a fall-back to the class's.
+        return found
+
+    def _entry(self, layout: Layout, built: bool, from_memory: bool) -> TStreamerInfo:
+        """One layout as the class lists it, set against the class in memory where there is one."""
+        mine = self._layout() if self._declared() is not None else None
+        current = self._current_layout()
+        # An older layout is set against the class's current one, which for a class nothing in
+        # memory describes is the emulated layout its first file gave it: that comparison is what
+        # names a member's ``newtype`` and reads it with an action two hundred above the file's.
+        compared = mine or current
+        memory = compared[2] if compared is not None and layout is not current else None
+        return TStreamerInfo(self._name, layout, built=built, versioned=self._versioned(),
+                             from_file=not from_memory, memory=memory)  # fmt: skip
+
+    def _held(self) -> tuple[Any, list[TStreamerInfo], dict[int, TStreamerInfo]]:
+        """Every layout the class knows - its current one, then each a file described it with -
+        and the same layouts by version, kept once so that what a program compares is one object."""
+        mine = self._layout()
+        current = self._current_layout()
+        signature = (tuple(FILE_INFOS.get(self._name, [])), mine, current, self._versioned())
+        kept = self.__dict__.get("_held_kept")
+        if kept is not None and kept[0] == signature:
+            return signature, kept[1], kept[2]
+        held = self._held_layouts(mine, current)
+        by_version: dict[int, TStreamerInfo] = {}
+        for entry in held:
+            by_version.setdefault(int(entry.GetClassVersion()), entry)
+        self.__dict__["_held_kept"] = (signature, held, by_version)
+        return signature, held, by_version
+
+    def _held_layouts(self, mine: Layout | None, current: Layout | None) -> list[TStreamerInfo]:
+        """The current layout, the one in memory where the file's is another, then each a file
+        described the class with - emulated and built where nothing in memory describes it."""
+        held: list[TStreamerInfo] = []
+        if current is not None:
+            held.append(self._entry(current, True, current is mine))
+            if mine is not None and mine[0] != current[0]:
+                held.append(self._entry(mine, True, True))
+        for info in FILE_INFOS.get(self._name, []):
+            if info[0] != (current[0] if current is not None else None):
+                held.append(self._entry(info, mine is None, False))
+        return held
+
+    def _indexed_by_version(self, mine: Layout | None) -> bool:
+        """Is the layouts array indexed by class version? ROOT's is for a versioned class and for
+        an emulated one, whose files numbered the layouts; a class in memory told apart by
+        checksum alone lists as it met them."""
+        return self._versioned() or (
+            mine is None and any(int(info[1]) for info in FILE_INFOS.get(self._name, []))
+        )
 
     def FindStreamerInfo(self, checksum: int) -> TStreamerInfo | None:
         """``FindStreamerInfo``: the layout with that checksum, in memory or read."""
-        current = self._layout()
-        if current is not None and current[0] == checksum:
+        mine = self._layout()
+        if mine is not None and mine[0] == checksum:
             return self.GetStreamerInfo()
         found = [i for i in FILE_INFOS.get(self._name, []) if i[0] == checksum]
         return TStreamerInfo(self._name, found[0], versioned=self._versioned()) if found else None
@@ -1216,25 +1270,31 @@ class TClass(TNamed):
         """
         from .collections import TObjArray
 
+        signature, held, _by_version = self._held()
+        kept = self.__dict__.get("_infos_kept")
+        if kept is not None and kept[0] == signature:
+            return kept[1]
         made = TObjArray()
-        current = self._layout()
-        versioned = self._versioned()
-        held = [(current, True)] if current is not None else []
-        held.extend((info, False) for info in FILE_INFOS.get(self._name, []))
-        if versioned:
-            held.sort(key=_version_of)
-        for info, in_memory in held:
-            entry = TStreamerInfo(self._name, info, built=in_memory, versioned=versioned,
-                                  memory=None if in_memory or current is None
-                                  else current[2])  # fmt: skip
-            if versioned:
-                # ROOT keeps ``fStreamerInfo`` a ``TObjArray`` **indexed by class version**, so a
-                # class whose files recorded 2 and 3 has an empty slot at 1 and ``GetSize()`` 4:
-                # ``TClass::GetStreamerInfo(version)`` is ``At(version)``, and the loop a test
-                # walks prints only the versions there are.
-                made.AddAt(entry, int(info[1]))
-            else:
+        mine = self._layout()
+        if self._indexed_by_version(mine):
+            # A versioned class's layouts, and an emulated class's, are **indexed by class
+            # version**: ``At(n)`` is version ``n``'s, a version the class has no layout of is an
+            # empty slot, and the array reports the room it has rather than the entries it holds -
+            # measured on the 6.40 oracle, a class of two layouts answers ``GetSize() 13`` and
+            # ``GetLast() 2``, which is what lets a walk from ``GetSize() - 1`` down to 1 reach
+            # the highest version.
+            ordered = sorted(held, key=lambda entry: int(entry.GetClassVersion()))
+            taken: set[int] = set()
+            for entry in ordered:
+                version = _free_version(self._name, int(entry.GetClassVersion()), taken)
+                taken.add(version)
+                made.AddAt(entry, version)
+            made.Expand(max(made.GetSize(), STREAMER_INFO_SLOTS))
+        else:
+            # A class in memory lists its own layout first and each file's as it was met.
+            for entry in held:
                 made.Add(entry)
+        self.__dict__["_infos_kept"] = (signature, made)
         return made
 
     # -- members and bases --------------------------------------------------------------------
@@ -1967,21 +2027,39 @@ class TStreamerInfo(TNamed):
             found.append(new_type if spelled_alike and new_type != element.GetType() else 0)
         return found
 
+    def _offsets(self) -> list[int]:
+        """Each element's offset, accumulated as ROOT accumulates it in ``TStreamerInfo::BuildOld``:
+        the offset so far rounded up to the element's alignment, then the element's size added -
+        ``offset = AlignUp(offset, element->GetAlignment()); SetOffset(offset); offset +=
+        element->GetSize()`` (``io/io/src/TStreamerInfo.cxx``). Measured on the 6.40 oracle: the
+        pair's enum is at 0 and the 24-byte ``edm::Ref`` at 4, and ``pair<int,string>``'s string,
+        which this kit models, at 8.
+        """
+        found: list[int] = []
+        offset = 0
+        for element in self._elements:
+            size = element.GetSize()
+            offset += -offset % _alignment_of(element, size)
+            found.append(offset)
+            offset += size
+        return found
+
     def ls(self, option: str = "") -> None:
         """``ls``: ROOT's ``StreamerInfo for class`` line, each element, and - for the layout
         in memory, which ROOT builds - the actions each element is read with."""
         version = f", version={self._version}" if self._versioned else ""
         unmatched = self._unmatched()
         new_types = self._new_types()
+        offsets = self._offsets()
         print(f"\nStreamerInfo for class: {self._name}{version}, checksum={self._checksum:#x}")
-        for element, new_type in zip(self._elements, new_types, strict=True):
-            element.ls(option, unmatched, new_type)
+        for element, new_type, at in zip(self._elements, new_types, offsets, strict=True):
+            element.ls(option, unmatched, new_type, at)
         if not self._built:
             return
-        pairs = zip(self._elements, new_types, strict=True)
-        for index, (element, new_type) in enumerate(pairs):
+        pairs = zip(self._elements, new_types, offsets, strict=True)
+        for index, (element, new_type, at) in enumerate(pairs):
             kind = element.GetType() + (200 if new_type else 100 if unmatched else 0)
-            offset = _MISSING_OFFSET if unmatched else 0
+            offset = _MISSING_OFFSET if unmatched else at
             length = max(1, element.GetArrayLength())
             print(f"   i={index:2d}, {element.GetName():<15} type={kind:3d}, "
                   f"offset={offset:3d}, len={length}, method=0")  # fmt: skip
@@ -2069,14 +2147,14 @@ class TStreamerElement(TNamed):
     def _sequence(self) -> str:
         return ""
 
-    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0) -> None:
+    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0, at: int = 0) -> None:
         """``ls``: the element's line of a ``TStreamerInfo`` listing.
 
         An element of a file's layout the class in memory cannot be set against - one
         ``unmatched`` says so of the whole layout - is listed at ROOT's missing offset, with
         no new type; one the class in memory types another way names that code instead.
         """
-        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={at:3d}"
         new = "newtype=-1 " if unmatched else f"newtype={newtype:2d} " if newtype else ""
         print(f"  {self._typename:<14} {self.GetFullName():<15} {where} "
               f"type={self._stype:2d} {new}{self._sequence()}{self._title:<20}")  # fmt: skip
@@ -2089,8 +2167,8 @@ class TStreamerBase(TStreamerElement):
     def GetBaseVersion(self) -> int:
         return int(str(self._extras[0])) if self._extras else 0
 
-    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0) -> None:
-        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0, at: int = 0) -> None:
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={at:3d}"
         new = "newtype=-1 " if unmatched else f"newtype={newtype:2d} " if newtype else ""
         print(f"  {self._name:<14} {'BASE':<15} {where} "
               f"type={self._stype:2d} {new}{self._title:<20}")  # fmt: skip
@@ -2143,8 +2221,8 @@ class TStreamerSTL(TStreamerElement):
         nodelete = self.GetSTLtype() in (4, 5, 12, 13) or self.GetCtype() == 63
         return " (nodelete) " if nodelete and self._on_file else ""
 
-    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0) -> None:
-        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={0:3d}"
+    def ls(self, option: str = "", unmatched: bool = False, newtype: int = 0, at: int = 0) -> None:
+        where = f"offset={_MISSING_OFFSET}" if unmatched else f"offset={at:3d}"
         new = "newtype=-1 " if unmatched else f"newtype={newtype:2d} " if newtype else ""
         print(f"  {self._typename:<14} {self.GetFullName():<15} {where} "
               f"type={self._stype:2d} {new}stl={self.GetSTLtype()} ctype={self.GetCtype()} "
