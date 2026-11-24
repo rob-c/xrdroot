@@ -4263,3 +4263,49 @@ modules / 0 undeclared, `mkdocs build --strict` exit 0 (`.../mkdocs.log`).
 right: round 95's ledger row in `TODO.md` and round 95's close here both say `125738 0 31556` with **13 922 + 44**
 passed, while round 96's rows say the same total with **13 924 + 44**. One total is wrong and only a re-run at round
 95's own tree could say which; this file is append-only, so the correction is this sentence and not an edit.
+| 108 | `7ed2e7e1` | **two translator gaps the `datamodelevolution` generator walked into**: a name written from `::` is the file's own (`Scope.global_lookup` - `::Print(x)` in `Holder::Print` called the method and recursed), and a dialect's `method_returns` entry is a declaration (`_named_type` canonicalises the typedef, so `Int_t` is `int` and `((char*)obj) + cl->GetBaseClassOffset(b)` is `byte_offset` instead of a string concatenation) | `7ed2e7e1` | **0 harness PASS, 0 lost**: `io/datamodelevolution` measured either side is 22 / 20 / 2 of 44 (`…/dml`, `…/a1`); the 153 programs of `gtest/{hist,graf2d,tree/ntuple,roofit}/*` that use the `method_returns` table are 53 / 65 / 34 / 1 TIMEOUT at the tip (`…/areas`) with none of round 94's 57 PASS rows moved. Gate `TOTAL 125983 0 31624 0 100%` (13 966 + 44) | 1 new: `W0-238` (overload selection by Python kind, with a silent first-candidate fallback); `W0-233` **rewritten** as the four-wall chain it is |
+
+## Round 108's close
+
+Round 108 took the `datamodelevolution` family - the one row (`W0-233`) that promised twenty-two tests behind a
+single `TypeError` - and came back with **no PASS and two real fixes**, which is the honest shape of that row.
+
+**What the row said, and what the first look said.** `W0-233` read "`Generator.h` is the same `TypeError` in 21 of
+the family's 22 non-PASS tests: one operand's type in a generator expression is the whole area". Round 107's work
+had moved the family's first failure, so the round measured it again first: the whole glob is **22 PASS / 20 FAIL /
+2 DIFF** of 44 (`…/dml`, and `…/a1` after the round's fixes - the same rows), and the `TypeError` is at
+`common/Generator.h:223`, `void* basePtr = ((char*)obj) + cl->GetBaseClassOffset(baseCl);` - emitted as
+`obj + cstr(cl.GetBaseClassOffset(baseCl))`, an object plus a string.
+
+**Why it was a string, and it is a general bug of the table.** `infer._named_type` built a `CType` straight from a
+dialect `method_returns` entry, and `CType("Int_t").integral` is false - `INTEGRAL` holds C's canonical names only.
+So `char* + Int_t` was not pointer arithmetic and fell through to the string-concatenation rule. **A table entry is
+a declaration** - `CType`'s own docstring says a `CType` is "with its base name looked through typedefs" - so
+`_named_type` now canonicalises it, and `("TClass", "GetBaseClassOffset"): "Int_t"` in the dialect's table makes the
+sum `byte_offset(obj, (cl.GetBaseClassOffset(baseCl)))`, which is what ROOT's `(char*)obj + offset` means.
+
+**The second fix came from the next wall, and it is wider than the family.** `stl/WriteFile` died with
+`Holder.Print() takes 1 positional argument but 2 were given`, and the generated line was
+`self.Print(self.fSingle)` for C++'s `::Print(fSingle)` - **a name written from `::` was resolved to the enclosing
+class's member**, because `Scope.lookup` walks block, function and class before the file. A leading `::` is C++'s
+global namespace: `Scope.global_lookup` answers from the module's own scope and skips every class and block. Any
+macro that writes `::f(x)` inside a method was calling the wrong function; `Holder::Print` was calling itself.
+
+**And the row is a chain, which is the round's measurement.** With both fixes in, the family stops on
+`'TDataMember' object has no attribute 'GetDataType'` - and behind it the generator needs `GetOffset()`,
+`TClass::New()`, **a write through `(char*)obj + offset`** (which `cppstd.cells.byte_offset` refuses by design:
+"only an offset of 0 - a base at the object's start - is followed"), and `stl/WriteFile`'s wall is now
+**free-function overload selection**: `Overloaded.__call__` matches on Python kinds and, when none match, silently
+calls its *first* candidate - and `std::vector<T>` here is a `_Vector`, not a `list`, so
+`Print(const std::vector<Values>&)` never matched and `Print(const Values&)` ran. `W0-233` now carries those four
+walls in order, and `W0-238` carries the overload one.
+
+**Nothing was lost, and the areas were measured.** The `method_returns` table is read by the graph getters, the
+matrix decompositions, the RNTuple writer factories and `HijackMessageStream`, so the 153 programs of
+`gtest/{hist,graf2d,tree/ntuple,roofit}/*` were run at the tip (`…/areas`: 53 PASS / 65 FAIL / 34 UNSUPPORTED /
+1 TIMEOUT) and diffed against round 94's 57-row `hist-graf` run: **not one PASS moved**. The family itself is
+unchanged at 22 / 20 / 2.
+
+**The gate.** Seven commands at `7ed2e7e1`, each read for its own exit status: **`TOTAL 125983 0 31624 0 100%`**
+(13 966 + 44, `…/gate1.log`), ruff clean, mypy 1 062 files, maintainability 33 337 functions, components 1 062
+modules / 0 undeclared, `mkdocs build --strict` exit 0 (`…/mkdocs.log`).
