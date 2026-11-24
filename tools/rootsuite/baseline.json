@@ -544,7 +544,7 @@
  "pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_tstring_comparisonops": "PASS",
  "pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_tstring_len": "PASS",
  "pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_tstring_str_repr": "PASS",
- "pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_ttree_branch": "FAIL",
+ "pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_ttree_branch": "PASS",
  "pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_ttree_branch_attr": "PASS",
  "pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_ttree_iterable": "PASS",
  "pyunittest/bindings/pyroot/pythonizations/pyroot_pyz_ttree_setbranchaddress": "PASS",

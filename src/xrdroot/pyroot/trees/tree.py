@@ -104,6 +104,37 @@ def _arranged(address: Any, leaflist: Any, bufsize: int, splitlevel: int) -> tup
     return address, leaflist, bufsize, splitlevel
 
 
+def _is_collection(obj: Any) -> bool:
+    """Is this one of ROOT's collections, which ``Branch`` branches member by member?"""
+    from ..core.collections import TCollection
+
+    return isinstance(obj, TCollection)
+
+
+def _splits_into_branches(obj: Any) -> bool:
+    """Is this a collection ROOT walks into branches rather than branching whole?
+
+    Every collection but a ``TClonesArray``, which ROOT branches as the array it is -
+    ``TTree::Branch`` says so in as many words: *"Cannot call this constructor for a
+    TClonesArray"*.
+    """
+    from ..core.collections import TClonesArray
+
+    return _is_collection(obj) and not isinstance(obj, TClonesArray)
+
+
+def _collection_branch_name(obj: Any, name: str, splitlevel: int) -> str:
+    """What ROOT calls the branch of one object of a collection: the name so far, then the
+    object's - with a dot when the split level is above 99, as ``Branch`` counts it down."""
+    if not name:
+        branch = str(obj.GetName())
+    elif name.endswith("_"):
+        branch = f"{name}{obj.GetName()}"
+    else:
+        branch = f"{name}_{obj.GetName()}"
+    return f"{branch}." if splitlevel > 99 else branch
+
+
 class TTree(_Player):
     """``TTree``: see the module's docstring."""
 
@@ -131,27 +162,47 @@ class TTree(_Player):
         leaflist: Any = None,
         bufsize: int = 32000,
         splitlevel: int = 99,
-    ) -> TBranch:
-        """A new branch, read from ``address`` at every ``Fill``: see the module's docstring."""
-        store = self._writable("Branch")
+    ) -> TBranch | int:
+        """A new branch, read from ``address`` at every ``Fill``: see the module's docstring.
+
+        ``Branch(collection)`` is ROOT's other form: one branch for each object the collection
+        holds, named after the collection and the object (:meth:`_collection_branches`).
+        """
+        counted = self._collection_form(name, address, leaflist, bufsize)
+        if counted is not None:
+            return counted
         self._require_new(name)
-        what = f"the branch {name!r}"
         address, leaflist, bufsize, splitlevel = _arranged(address, leaflist, bufsize, splitlevel)
-        made = object_slot(name, address, int(splitlevel), bufsize) if leaflist is None else None
+        return self._branch_from(name, address, leaflist, int(splitlevel), bufsize)
+
+    def _branch_from(
+        self, name: str, address: Any, leaflist: Any, splitlevel: int, bufsize: int
+    ) -> TBranch:
+        """The branch a name and an address make: an object's own, or a leaf list's columns."""
+        store = self._writable("Branch")
+        made = object_slot(name, address, splitlevel, bufsize) if leaflist is None else None
         if made is not None:
             store.add(made)
             return self._added(name)
+        return self._leaf_branch(store, name, address, leaflist, splitlevel, bufsize)
+
+    def _leaf_branch(
+        self, store: Any, name: str, address: Any, leaflist: Any, splitlevel: int, bufsize: int
+    ) -> TBranch:
+        """One branch for the leaves ``leaflist`` names, or for the type the address holds."""
+        what = f"the branch {name!r}"
         if isinstance(leaflist, str):
-            leaves = parse(leaflist)
+            title = leaflist
+            leaves = parse(title)
             addresses = self._addressed(address, leaves, what)
         else:
+            title = name
             addresses = [address_of(address, what)]
             leaves = _declared(addresses[0], name)
-        title = leaflist if isinstance(leaflist, str) else name
         for leaf, one in zip(leaves, addresses, strict=False):
             self._check_counter(leaf, name)
             slot = _slot(name, leaf, one, title if len(leaves) == 1 else None)
-            slot.split, slot.basket_size = int(splitlevel), bufsize
+            slot.split, slot.basket_size = splitlevel, bufsize
             store.add(slot)
         if len(leaves) > 1:
             store.titles[name] = title
@@ -167,7 +218,9 @@ class TTree(_Player):
         ROOT keeps the name for the code that still calls it - roottest's ``io/bigevent``
         does - and it makes the same branch ``Branch`` does from the same arguments.
         """
-        return self.Branch(name, classname, address, bufsize, splitlevel)
+        made = self.Branch(name, classname, address, bufsize, splitlevel)
+        assert isinstance(made, TBranch)  # by a name, a branch and never a count of them
+        return made
 
     def _added(self, name: str) -> TBranch:
         """The branch just added, now that the tree knows of it."""
@@ -380,6 +433,56 @@ class TTree(_Player):
 
     #: ``fBranchRef``: the branch holding the table of referenced objects, made by BranchRef.
     _ref_branch: TBranchRef | None = None
+
+    def _collection_form(self, items: Any, bufsize: Any, splitlevel: Any, name: Any) -> int | None:
+        """The branches ``Branch`` makes when its first argument is a collection, or ``None``.
+
+        ROOT's form is ``Branch(TCollection*, Int_t bufsize, Int_t splitlevel, const char *name)``,
+        so this signature's own second, third and fourth arguments stand where ROOT's sizes and name
+        do; the fourth is a name only when a string was given there.
+        """
+        if not _is_collection(items):
+            return None
+        top = name if isinstance(name, str) else ""
+        return self._collection_branches(items, bufsize, splitlevel, top)
+
+    def _collection_branches(
+        self, items: Any, bufsize: Any, splitlevel: Any, name: str = ""
+    ) -> int:
+        """``TTree::Branch(TCollection*)``: one branch for each object ``items`` holds, and how
+        many that was, as ROOT answers.
+
+        The names are ROOT's own: a collection inside the collection is walked with its own name
+        and an underscore, and each object it reaches is branched under what came before it - so a
+        ``TList`` holding a ``TObjArray`` named ``myobjarray`` of ``one`` and ``two`` gives the
+        branches ``myobjarray_one`` and ``myobjarray_two`` (``TTree.cxx``'s ``Branch``; roottest's
+        ``pyz_ttree_branch``).
+        """
+        from ...errors import UnsupportedFeatureError
+        from ..core.collections import TClonesArray
+
+        if isinstance(items, TClonesArray):
+            raise UnsupportedFeatureError(
+                "TTree::Branch(TCollection*) cannot be called for a TClonesArray - ROOT refuses it "
+                "in as many words - because an array of clones is branched as the array it is: "
+                "give Branch a name and the array, as in Branch('tracks', &clones)"
+            )
+        budget = 32000 if bufsize is None else int(bufsize)
+        level = 99 if splitlevel is None else int(splitlevel)
+        made = 0
+        for obj in items:
+            made += self._collection_element(obj, budget, level, name)
+        return made
+
+    def _collection_element(self, obj: Any, bufsize: int, splitlevel: int, name: str) -> int:
+        """One object of a collection a branch is being made for: a branch, or the branches of
+        the collection it is."""
+        if splitlevel > 1 and _splits_into_branches(obj):
+            inner = f"{name}_{obj.GetName()}_" if name else f"{obj.GetName()}_"
+            return self._collection_branches(obj, bufsize, splitlevel - 1, inner)
+        branch = _collection_branch_name(obj, name, splitlevel)
+        self.Branch(branch, obj, None, bufsize, splitlevel - 1)
+        return 1
 
     def BranchRef(self) -> TBranchRef:
         """``BranchRef``: give the tree the branch that says which entry holds each object

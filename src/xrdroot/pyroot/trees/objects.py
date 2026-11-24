@@ -60,6 +60,9 @@ __all__ = ["ObjectSlot", "object_slot", "row_object"]
 LORENTZ = "ROOT::Math::LorentzVector<ROOT::Math::PxPyPzE4D<double> >"
 #: Histogram classes ROOT streams by their description, and so writes as a TBranchElement.
 DESCRIBED = ("TH1C", "TH1S", "TH1I", "TH1F", "TH1D")
+#: ``TObjString``: a ``TObject`` and the string it wraps, the one class here a branch of holds
+#: whole - a collection of them, as ``TTree::Branch(TCollection*)`` writes, is a branch each.
+OBJSTRING = "TObjString"
 #: A record's byte count and version: what an object streamed by its class has in front.
 RECORD_HEAD = 6
 
@@ -243,6 +246,28 @@ class Lorentz4(_Whole):
         buf = WBuffer()
         stream(buf, "TLorentzVector", members.__getitem__)
         return bytes(buf.data)
+
+
+class Named(_Whole):
+    """A ``TObjString``, unsplit: the one ROOT writes as a ``TBranchElement``.
+
+    ROOT splits a ``TObjString``'s own branch member by member - ``fUniqueID``, ``fBits`` and the
+    ``TString`` it wraps - because the class has a description ROOT can split by. This writer
+    carries no split for a class with a base, so the object is written whole, which is what
+    ``splitlevel`` 0 asks ROOT for: one entry the members the class's description names, without
+    the byte count and version its own streamer puts round them (``TTree::Branch(TCollection*)``
+    of a ``TList`` of them, roottest's ``pyz_ttree_branch``).
+    """
+
+    def spec(self, obj: Any, split: int, bufsize: int | None) -> Spec:
+        return Whole(OBJSTRING, split=0, basket_size=bufsize)
+
+    def entry(self, obj: Any) -> bytes:
+        from ...writer import _record
+
+        buf = WBuffer()
+        _record(buf, OBJSTRING, {"fString": str(obj.GetString())}, {})
+        return bytes(buf.data)[RECORD_HEAD:]
 
 
 class Histogram(_Whole):
@@ -477,6 +502,8 @@ def _held_kind(obj: Any) -> Kind | None:
     what it is: a histogram of the file, four-vectors, or a collection of collections."""
     if _histogram(obj):
         return Histogram()
+    if _named(obj):
+        return Named()
     if _of_lorentz(obj):
         return Lorentzes()
     nested = _nested(obj)
@@ -526,6 +553,11 @@ def _root_layout(obj: Any) -> Layout | None:
 def _histogram(obj: Any) -> bool:
     name = obj.ClassName() if hasattr(obj, "ClassName") else ""
     return getattr(obj, "_xrd", None) is not None and name.startswith(("TH1", "TH2", "TH3", "TPr"))
+
+
+def _named(obj: Any) -> bool:
+    """Is this the ``TObjString`` a branch or a ``TCollection`` of them hands over?"""
+    return getattr(obj, "ClassName", lambda: "")() == OBJSTRING
 
 
 def _of_lorentz(obj: Any) -> bool:
@@ -801,6 +833,9 @@ def row_object(row: dict[str, Any], classname: str) -> Any:
     """
     from ..core.declared import find_class
 
+    kept = BY_ROW.get(classname)
+    if kept is not None:
+        return kept(row)
     cls = find_class(classname)
     if cls is None:
         return None
@@ -812,3 +847,20 @@ def row_object(row: dict[str, Any], classname: str) -> Any:
         if not member.startswith("_"):
             setattr(made, member, value)
     return made
+
+
+def _objstring(row: Any) -> Any:
+    """The ``TObjString`` a row of its members makes.
+
+    A ``TObjString`` is its ``TString``: the class's description names ``fString`` and everything
+    else about the object - ``GetName``, ``GetString``, the text itself - is that string, so a row
+    read out of a file is all a constructor needs.
+    """
+    from ..core.collections import TObjString
+
+    return TObjString(str(row.get("fString", "")))
+
+
+#: The classes of ROOT's own a row of members makes back into an object, and how.  A class a
+#: program declared is made by its declaration's own constructor instead (:func:`row_object`).
+BY_ROW: dict[str, Any] = {OBJSTRING: _objstring}
