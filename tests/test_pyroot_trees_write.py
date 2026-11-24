@@ -105,8 +105,10 @@ def test_a_leaf_list_of_several_leaves_reads_each_member_of_what_it_was_given(tm
         t.Fill()
     got = _written(tmp_path, t)
     assert got["a"].tolist() == [0, 1, 2] and got["b"].tolist() == [0, 0.5, 1.0]
-    assert got["u"].tolist() == [0, 1, 2] and got["z"].tolist() == [0, 3, 6]
-    assert got["z"].dtype == np.float32 and got["x"].tolist() == [0, 1, 2]
+    # A leaf list whose leaves are all one type is one branch, as ROOT writes it, so its leaves
+    # are read as the branch's own columns - ``xyz.u`` - and not as top-level ones.
+    assert got["xyz.u"].tolist() == [0, 1, 2] and got["xyz.z"].tolist() == [0, 3, 6]
+    assert got["xyz.z"].dtype == np.float32 and got["x"].tolist() == [0, 1, 2]
     assert got["y"].tolist() == [0, -1, -2] and got["t"].dtype == np.float64
     assert got["hits"].tolist() == [[0, 0], [1, 1], [2, 2]]
     assert got["q"].tolist() == [0, 10, 20] and got["r"].tolist() == [1, 2, 3]

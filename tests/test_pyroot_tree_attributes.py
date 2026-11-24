@@ -205,3 +205,67 @@ def test_a_leaf_list_names_the_leaf_and_writes_its_own_brackets() -> None:
     back.GetEntry(0)
     assert back.array2Db.shape == (10, 2)  # the dimensions the leaf's title kept
     read.Close()
+
+
+def test_a_leaf_list_of_several_leaves_is_one_branch_of_them() -> None:
+    """ROOT writes `Branch("pairb", &s, "first/I:second/I")` as **one** `TBranch` whose single
+    basket holds a row per entry, each leaf at its own `fOffset` - the oracle answers
+    `branch [pairb] title=[first/I:second/I] leaves=2 baskets=1` - not as a branch per leaf."""
+    ROOT.gInterpreter.Declare("struct Pair99 { int first; int second; };")
+    handle = ROOT.TFile("pair.root", "RECREATE")
+    tree = ROOT.TTree("pair", "pair")
+    held = ROOT.Pair99()
+    tree.Branch("pairb", held, "first/I:second/I")
+    for at in range(3):
+        held.first, held.second = at, 10 * at
+        tree.Fill()
+    handle.Write()
+    handle.Close()
+    read = ROOT.TFile("pair.root")
+    back = read.Get("pair")
+    assert [(b.name, b.title, [leaf.name for leaf in b.leaves]) for b in back._layout()] == [
+        ("pairb", "first/I:second/I", ["first", "second"])
+    ]
+    read.Close()
+
+
+def test_a_branch_of_leaves_fills_the_object_it_is_given_to() -> None:
+    """`SetBranchAddress("pairb", obj)` binds a branch of leaves to the object they are read
+    into, one leaf after another in the list's order - which is how ROOT reads `MyStruct`."""
+    ROOT.gInterpreter.Declare("struct Pair99b { int first; int second; };")
+    handle = ROOT.TFile("pairfill.root", "RECREATE")
+    tree = ROOT.TTree("pairfill", "pairfill")
+    written = ROOT.Pair99b()
+    tree.Branch("pairb", written, "first/I:second/I")
+    for at in range(3):
+        written.first, written.second = at + 10, 10 * at
+        tree.Fill()
+    handle.Write()
+    handle.Close()
+    read = ROOT.TFile("pairfill.root")
+    back = read.Get("pairfill")
+    held = ROOT.Pair99b()
+    assert back.SetBranchAddress("pairb", held) == 0
+    for at in range(3):
+        back.GetEntry(at)
+        assert (held.first, held.second) == (at + 10, 10 * at)
+    read.Close()
+
+
+def test_a_leaf_list_of_mixed_types_is_still_a_leaf_to_a_branch() -> None:
+    """ROOT lays a mixed list out as one branch too, and this writer does not: `mi/I:mf/F` is
+    written a leaf to a branch. Recorded as `W0-228` so the next round prices it - nothing in the
+    suite asks for it, and the two branches hold the same values."""
+    ROOT.gInterpreter.Declare("struct Mixed99 { int i; float f; };")
+    handle = ROOT.TFile("mixed.root", "RECREATE")
+    tree = ROOT.TTree("mixed", "mixed")
+    held = ROOT.Mixed99()
+    tree.Branch("mixb", held, "mi/I:mf/F")
+    held.i, held.f = 3, 1.5
+    tree.Fill()
+    handle.Write()
+    handle.Close()
+    read = ROOT.TFile("mixed.root")
+    back = read.Get("mixed")
+    assert [b.name for b in back._layout()] == ["mi", "mf"]
+    read.Close()

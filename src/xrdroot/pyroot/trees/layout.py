@@ -195,7 +195,10 @@ def _with_record(info: BranchInfo) -> BranchInfo:
 def _stored(name: str, leaves: list[LeafInfo], store: Store, stats: Any) -> BranchInfo:
     title = store.titles.get(name, leaves[0].title)
     classname = leaves[0].typename if leaves[0].vector else ""
-    records = [stats.branches[leaf.name].record for leaf in leaves] if stats is not None else []
+    # One branch is one set of baskets: a leaf list's leaves share the branch's own record, and
+    # only a branch's name is a key in what was written - a leaf's is not.
+    found = stats.branches.get(name) if stats is not None else None
+    records = [found.record] if found is not None else []
     compress = records[0].compress if records else -1
     return BranchInfo(
         name, title, classname, leaves, store.entries, *_sizes(records), compress=compress

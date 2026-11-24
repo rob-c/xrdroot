@@ -269,28 +269,62 @@ class Store:
             slot.chunks.append(columns[slot.name])
         self.entries += count
 
+    def joined(self) -> dict[str, list[Slot]]:
+        """Each branch a leaf list of several leaves made, with the leaves it holds.
+
+        ROOT writes ``Branch(name, &obj, "a/I:b/I")`` as **one** ``TBranch`` whose single basket
+        holds one row per entry, each leaf at its own ``fOffset`` in it - not as a branch per leaf.
+        A leaf list's slots are the only ones whose ``branch`` is not their own name, so they group
+        by it. A leaf list of *mixed* types is not one of these: ROOT lays one out too, and this
+        kit writes that one a leaf to a branch (`W0-228`).
+        """
+        groups: dict[str, list[Slot]] = {}
+        for slot in self.slots.values():
+            if slot.branch != slot.name:
+                groups.setdefault(slot.branch, []).append(slot)
+        return {name: group for name, group in groups.items() if self._one_type(group)}
+
+    @staticmethod
+    def _one_type(group: list[Slot]) -> bool:
+        """Is every leaf of this list of one type, as ROOT's one-basket layout needs?"""
+        return len(group) > 1 and len({(slot.code, slot.kind) for slot in group}) == 1
+
     def columns(self) -> dict[str, Any]:
         """Every column to write: all but the counters, which are written from the rows."""
         counted = self.counters()
+        joined = self.joined()
         found: dict[str, Any] = {}
+        for name, group in joined.items():  # one column for a leaf list: a row of its leaves
+            found[name] = np.column_stack([leaf.column() for leaf in group])
         for name, slot in self.slots.items():
-            if name not in counted:  # a branch of objects fills a column per member
-                found.update(slot.columns())
+            if name in counted or (slot.branch in joined and name != slot.branch):
+                continue  # a leaf of a leaf list is in that list's own column
+            found.update(slot.columns())
         return found
 
     def specs(self) -> dict[str, Any]:
         counted = self.counters()
-        return {name: slot.spec() for name, slot in self.slots.items() if name not in counted}
+        joined = self.joined()
+        found = {
+            name: slot.spec()
+            for name, slot in self.slots.items()
+            if name not in counted and (name in joined or slot.branch not in joined)
+        }
+        for name, group in joined.items():  # one branch of leaves, as ROOT makes it
+            found[name] = (group[0].code, tuple(leaf.name for leaf in group))
+        return found
 
     def leaf_parts(self) -> dict[str, tuple[str, str]]:
         """Each column whose leaf is named by the leaf list it was declared with, and that name
         and title - the two strings ROOT writes into the ``TLeaf``; see :attr:`Slot.own`.
 
         A branch of objects and a branch of clones answer no ``own`` at all: neither is given a
-        leaf list, and each writes the leaf it does have under the branch's own name.
+        leaf list, and each writes the leaf it does have under the branch's own name. Neither does
+        a list of several leaves, which is one branch of leaves and not one leaf of a branch.
         """
+        joined = self.joined()
         found = ((name, getattr(slot, "own", None)) for name, slot in self.slots.items())
-        return {name: own for name, own in found if own is not None}
+        return {name: own for name, own in found if own is not None and name not in joined}
 
     def write(
         self, directory: Any, name: str, title: str, classname: str = "TTree", empty: bool = False
