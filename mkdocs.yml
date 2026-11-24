@@ -47,6 +47,7 @@ nav:
       - Providers and adapters: components/providers.md
       - Boundary checks: components/boundaries.md
   - Project knowledge:
+      - A whole-suite measurement: discoveries/a-whole-suite-measurement-at-e6ea6664-55-7-of-tests-46-7-of.md
       - Auditing for unpushed work: instructions/auditing-for-unpushed-work-detached-worktrees-are-invisible-to.md
       - Closing the gap to 750 tutorials: instructions/closing-the-gap-to-750-tutorials-start-from-a-fresh-run-then.md
       - Where the pass counts live: instructions/where-to-read-xrdroot-s-current-pass-counts-and-which-number-is.md
