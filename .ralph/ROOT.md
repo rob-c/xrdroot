@@ -3550,3 +3550,45 @@ maintainability 33 251 functions in 1 820 files; components 1 061 modules, 0 und
 `mkdocs build --strict` clean. The first part-1 run read 99.76% at a load average of 24 - the
 `W0-109` artefact, and the second read was part 2's own report, which named nothing.
 | 95 | `a88a6128` | **the one-case menu measured first, then three queued rows closed**: the gtest kind whole at the base (90 / 183 / 75 / 2, `…/gtest`) with its 24 one-case programs queued as `W0-219`; `W0-141` (a function's `using` of a template instance in a value position, via `Program.local_aliases` and `emit_calls._alias_call`); `TMVA::CrossValidation.GetName`; `W0-216` (`TGraph::Sort`'s comparator, descending order and window, with `UpdateArrays`) | `5a454e74` | **gtest 90 -> 92**: `testCrossValidationIntVar` and `testCrossValidationMultiProc` PASS (`…/cv3`), and 72 programs of `gtest/tmva` + `gtest/hist` + `gtest/graf2d` move two rows and no other (`…/areas`, 44 / 21 / 7) | 2: `W0-218` (a duration *argument* to such an alias still loses its type), `W0-219` (the 24 one-case programs, each its own feature); `W0-141` and `W0-216` closed |
+
+## Round 96's close
+
+Round 96 closed two queued rows - one of them **by measurement, not by code** - and measured the
+gtest kind whole again at the tip. No program flipped, and the round says so; what it bought is a
+measured **89x** on a hot path, a wrong row removed from the queue, and a current menu.
+
+**`W0-217` closed.** ROOT's `TGraph::Eval` reads `kIsSortedX` and calls `TMath::BinarySearch` for the
+two points around `x`, where an unordered graph is walked point by point. This kit's engine found the
+order itself - `np.all(np.diff(xs) > 0)` on *every* call - which for a graph a fit evaluates again and
+again is the whole cost: on 200 000 descending points one `Eval` costs **18 467 us before `Sort` and
+208 us after it**, the same answer either way (`24691.0`). `graphmath.evaluate` now takes the bit as
+`sorted_x`, `TGraph.Eval` passes it, and a graph nobody sorted keeps the engine's own look, so nothing
+changes for it.
+
+**`W0-218` is closed as a correction, and that is the round's most useful finding.** The row said a
+duration *argument* to a function's `using` alias loses its type (`'tuple' object has no attribute
+'dims'`). It does not: both `cv_milli_t(ms)` and `cv_milli_t(end - start)` translate and run at this
+round's base. The probe that named it was taken **while round 95's own first shape of `_alias_call`
+sat inside `named_call`**, where it emitted arguments during inference - the bug was the round's
+intermediate state, not ROOT's or the kit's behaviour. A probe written against a half-changed tree can
+name a bug that does not exist, and a queue row is only as good as the tree it was measured on.
+
+**The kind, whole, at the tip**: **92 PASS / 181 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350
+(`…/gtest`, `--jobs 3`, `--xrdroot-src` a frozen copy at `…/head-src`) - round 95's two gains still
+there, **none lost**, and no other row moved. `baseline.json` still has the one row `W0-154` names
+wrong (`testRooRombergIntegrator` measures UNSUPPORTED where the baseline says FAIL). And **`W0-219` is
+refreshed to 22** one-case programs - two fewer than round 95's list, because its own two gains were on
+it - each with its own words, so the next round starts from the current menu rather than a stale one.
+
+**Why no program came in, priced honestly.** The round measured three of the menu's entries before
+choosing: `test_boolean_extrusion` wants `LockDefaultUnits` *and* a GDML geometry whose boolean
+composites have **zero** overlaps (a real overlap algorithm), `test_material_units` wants `TGeoUnit`
+plus material radiation/interaction lengths inside PDG tolerances for two unit systems, and
+`testTTreeCluster` asserts ROOT's own basket re-optimisation (`W0-182`). None is a name; each is a
+feature, and the round did not pretend otherwise.
+
+**Gate.** `TOTAL 125738 0 31556 0 100%` (13 924 + 44, by the two-command decomposition,
+`…/gate1.log` at `-n 2` and a `--cov-append` part 2); `ruff` clean; `mypy` clean on 1 061 files;
+maintainability 33 253 functions in 1 820 files; components 1 061 modules, 0 undeclared imports;
+`mkdocs build --strict` clean.
+| 96 | `1a3c7e1d` | **two queued rows closed, one by measurement**: `W0-217` - `TGraph::Eval` reads `kIsSortedX` and one `np.searchsorted` finds the points around `x` (18 467 us -> 208 us on 200 000 points, same answer); `W0-218` - **does not reproduce**, the probe that named it was taken while round 95's own `named_call` wrapper corrupted inference | `b93a1f7f` | **0 gtest PASS, 0 lost, and the kind measured whole again at the tip: 92 PASS / 181 FAIL / 75 UNSUPPORTED / 2 TIMEOUT** of 350 (`…/gtest`), round 95's two gains still there; three menu entries priced and refused as features (`boolean_extrusion`'s overlap check, `material_units`' `TGeoUnit`, `testTTreeCluster`'s basket re-optimisation) | 1: `W0-219` **refreshed to 22** one-case programs, with the list; `W0-217` and `W0-218` closed |
