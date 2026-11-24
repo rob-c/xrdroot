@@ -4353,6 +4353,7 @@ read first, and then the two-line offsets table.
 | 111 | `cee9a211` | **`io/stdpair`'s fix measured to five rules, the fifth tried and the whole attempt reverted**: the room and the entry identity are one change (the room alone prints `#1` as well as `#2`); a class in memory lists as met and only an emulated one is indexed by version (`Evo`: 2 blocks against the ref's 3); building follows the element (an enum carries `newtype=13`, a string element stays `Emulation`); the current entry keeps `from_file` (`offset=99999 type= 3 newtype=-1`); and the pair's dictionary warning needs a known-type predicate first - `stlNoLibTest.ref` warns of `pair<float,int>` where this kit warns of no pair at all | no code | **0 PASS moved, 0 lost**: `io/stdpair` 4 / 40 / 0 / 0 of 44 and `io/emulated` 4 / 1 / 1 / 2 of 8 at the tip, both their predecessors' figures; four attempts reverted, each after the reflection suite named what it broke. Gate unchanged (`TOTAL 125988 0 31626 0 100%`, round 109's) | 1 new: `W0-240` (the dictionary-warning predicate); `W0-239` **rewritten** with the five rules and the seven pinning tests |
 | 112 | `46c791dc` | **the layouts array as ROOT keeps it, and the offsets ROOT accumulates - `io/stdpair` 4 -> 8 PASS**: one array per class (entries are the objects `GetStreamerInfo()` answers), ROOT's **thirteen** slots, indexed by class version for a versioned or emulated class, every emulated layout **built** (`built=1` in every slot of the 6.40 oracle), an older layout compared against the current one (`newtype=`, actions two hundred above the file's type) and `offset = AlignUp(offset, GetAlignment()) + GetSize()` with 8 for a container and 4 otherwise - with three unit tests corrected against that measurement | `3b1d6e89` | **roottest +4**: `io/stdpair` 4 / 40 -> 8 / 36 of 44, the four `pairEnumEvo_{0,1}_{0,1}_0_1` and none lost; `io/emulated` 4 / 1 / 1 / 2 unchanged; baseline raised by `--merge`, its only diff those four rows. Gate `TOTAL 126034 0 31642 0 100%` (13 968 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 3 new: `W0-241` (the eight `kNothing` refs' `offset= 8`), `W0-242` (which file's layout is current), `W0-243` (the `Emulation` title and an enum's `type=13`); `W0-239` and `W0-240` partly closed |
 | 113 | `47e0b444` | **no code: `io/stdpair`'s remaining 36 DIFFs counted to the line with the judge's own list comparison**, and the one state they wait on named - every test is 5-19 lines from PASS; the six nearest differ only by the pair's dictionary warning and `second`'s `offset= 8`; and the 8-vs-4 split is the *loaded-dictionary* state (`kNothing` and interpreted say 8, a loaded dictionary 4), the same state that decides which file layout is current | no code | **0 PASS moved, 0 lost**: `io/stdpair` 8 / 36 of 44 at the base, `io/datamodelevolution` 22 / 20 / 2 of 44 re-measured (`…/base-dml`), its chain still four features. Gate unchanged (`TOTAL 126034 0 31642 0 100%`, round 112's) | 1 new: `W0-244` (**model the dictionary a macro loads** - alignment, current layout and the warning at once); `W0-241`/`W0-242` marked as its halves |
+| 114 | `291a9f05` | **a member's alignment follows the dictionaries the session loaded, and a synthetic pair of unknown classes is warned of** - `TStreamerInfo::BuildOld` aligns at 8 for a class no dictionary has (ROOT's emulated guess) and 4 for one the session knows, a template instance through its template; and `_undictionaried` warns of a `pair<A,B>` nothing answers for | `a60dc3d9` | **roottest +4**: `io/stdpair` 8 / 36 -> **12 / 32** of 44, the four `pairEnumEvo_4_{0,1}_{0,1}_1` and none lost; baseline raised by `--merge`, its only diff those four rows. Gate `TOTAL 126053 0 31650 0 100%` (13 971 + 44), ruff, mypy 1 062 files, maintainability, components, mkdocs | 0 new: `W0-244` **two thirds landed**, `W0-241` **closed**; what is left is the duplicate `StreamerInfo` block and the current-layout choice (`W0-242`) |
 
 ## Round 110's close
 
@@ -4521,3 +4522,52 @@ mypy 1 062 files, maintainability, components, `mkdocs --strict` - is this round
 **The round's own lesson, recorded because it bit twice.** A multiset comparison is not the judge
 (`W0-75`, round 104), and a *list* comparison is - so a bucket table built from counts must be built
 from the list diff, or it will call a swapped pair "one line" when the judge sees a different test.
+
+## Round 114's close
+
+Round 114 is the first round since 107 to move the harness number by **four**, and it moved them on
+the loop's biggest bucket: `roottest/root/io/stdpair` goes **8 PASS / 36 DIFF -> 12 PASS / 32 DIFF**,
+nothing lost.
+
+**What round 113 said was missing, and it was already in the kit.** Round 113 priced the last 36
+DIFFs to the line and proved they wait on one state - *the dictionary a macro loads* - which decides
+a member's `offset=` (8 or 4), which file layout is the class's current one, and whether the pair's
+`TClass::Init` warning is printed. This round found that state already exists: `gSystem->Load` of the
+`.xrdlib` a fixture built reads its manifest and runs the classes it declares, so
+`declared.find_class("edm::Ref")` answers in exactly the families whose run loads a dictionary and
+answers nothing in the twelve that load nothing (`kNothing`, and the interpreted run that reads
+first). A one-line probe over the harness's own working copy showed the split.
+
+**What landed** (`a60dc3d9`). `TStreamerInfo::BuildOld`'s alignment is now the session's own:
+**eight for a class no dictionary has declared** - ROOT's emulated guess, which is the twelve
+families' `offset= 8` - and **four for a class the session knows**: a number, a class `winfo`
+describes, or one a library it **loaded** declared, a template instance through its template
+(`_has_dictionary` / `_answers` / `_bare_type`; a container still aligns at 8, which is where
+`pair<int,string>`'s string sat in round 112's oracle probe). And `_undictionaried` no longer
+silences every synthetic `pair<A,B>`: it warns when nothing in the session answers for it, which is
+ROOT's own `Warning in <TClass::Init>: no dictionary for class pair<...> is available` - silent for
+`pair<int,string>`, printed in the twelve dictionary-less families.
+
+**The four gained** are exactly the `kNothing` quartet, `pairEnumEvo_4_{0,1}_{0,1}_1`: round 113 had
+counted them at **one line** from a PASS - the missing warning - and the alignment finished the rest.
+Three unit tests pin the new rules (the alignment's four cases, a type through its template, and the
+pair warning including a template that is no pair), and the baseline recorded the four rows with
+`rootsuite baseline --merge`. Gate: **`TOTAL 126053 0 31650 0 100%`** (13 971 + 44), ruff, mypy 1 062
+files, maintainability, components, `mkdocs --strict`.
+
+**Two gate cycles, both the gate doing its job.** The first run named `_has_dictionary` at **NPath
+288** against the limit of 200 - split into `_bare_type`/`_has_dictionary`/`_answers` - and ten
+uncovered branches, the last of them the `_template` arm that my first unit test asserted through the
+wrong path (the warning it saw came from the generic fall-through, not the pair rule). Both are fixed
+in the tree that ships.
+
+**A revert, recorded.** The alignment rule's first shape asked only `find_class(bare)`, which does not
+answer a template instance, so every family printed 8 and the four *loaded* tests that had passed
+since round 112 were **lost**; the run that showed it (`…/run1`) is kept, and the rule that answers an
+instance through its template is what replaced it.
+
+**What is left is two causes, both measured.** Six of the remaining families (`0_*_1_1`, `1_*_1_1`,
+`4_*_*_0`) want **a third `StreamerInfo` block** - the duplicate the macro's own comments describe -
+and `2_*_1_1`'s four-line difference is the current-layout choice (`W0-242`). `W0-244` carries both,
+`W0-241` is closed by the alignment rule, and `io/stdpair` is now 12 of 44 with the remaining 32 each
+6 lines or fewer from a PASS.
