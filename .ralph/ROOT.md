@@ -4976,3 +4976,31 @@ Gate after it: part 1 **13 986 passed, 0 failed**, part 2 44, **`TOTAL 126169 0 
 ruff, mypy 1 063 files, maintainability 33 383 functions, components, `mkdocs --strict` exit 0. CI
 on `6211a6ef`: **all eight jobs success** - `lint`, `docs`, `distribution`, and `test` on
 ubuntu 3.10/3.11/3.12/3.13 and macos 3.12 (run 45494267359), the first green run since round 117.
+
+## Round 120's close, continued again: one CI arc lost on a docs-only run, and the load
+
+Two more things the round's last hour taught, both recorded rather than papered over.
+
+**A docs-only push failed CI's coverage gate.** `8fb70a90` changes `mkdocs.yml` and one doc file,
+and the macos-latest 3.12 job reported `Coverage failure: total of 99 is less than fail-under=100`
+with `TOTAL 126169 0 31708 1 99%` - the single partial branch being `reflection.py 285->284`, the
+back edge of `for name in FILE_INFOS:` in `reload_emulated`. `gh run rerun --failed` of that very run
+was **green on all eight jobs**, so one `pytest-xdist` worker's arc went missing rather than a defect
+appearing. The round's answer is
+`test_a_load_re_emulates_every_class_a_file_described_not_only_the_first`, which asserts that *both*
+classes of a two-class `FILE_INFOS` are reloaded - so the edge is taken whenever that test runs - and
+the fixture now restores `RELOADED` beside the other module state. The residual risk no test can pin
+is a worker whose data is dropped; it is `W0-251`, with the first step written down.
+
+**The gate is only measurable under load, and the load was not this round's.** Another session's
+`clang` builds and four stray `xrdroot run` processes took the load average to **78**, and at that
+load part 1 reported `test_tmva_learn_pytorch.py::test_the_real_pytorch_trains_the_users_model_to_tell_signal_from_background`
+failing and the two-command gate did not finish in 1800 s. Waiting five minutes for the load to fall
+to **7.4** and re-running the same two commands gave **13 987 passed, 0 failed** and
+`TOTAL 126169 0 31708 0 100%` with nothing changed in between - `W0-103`/`W0-109` again, and the
+pytorch training test is a load artefact and not a regression.
+
+**Where round 120 ends**: `main` = `52dc57b4`, pushed and verified; CI green on every one of the
+eight jobs (run 45646132861). `io/stdpair` is 32 of 44, the roottest kind 1354 of 2173, all
+non-tutorial 1584 of 2820, the reflection unit tests 105, and the suite's own gate 126 169 statements
+with 0 missed and 0 partial branches.
