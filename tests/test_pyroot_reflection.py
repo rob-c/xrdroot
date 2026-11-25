@@ -1853,3 +1853,57 @@ def test_a_load_duplicates_the_current_layout_of_a_class_the_session_described()
         0xB15D1241,
         0xB5FB752,
     ]
+
+
+def test_a_class_with_its_own_dictionary_is_listed_from_slot_zero(capfd):
+    """A class the session holds a **dictionary of its own** answers for its layout.
+
+    ``io/stdpair``'s ``3_*`` families load the library whose LinkDef selects the pair itself. ROOT
+    lays the class out from that compiled layout - the file's *mapped* spelling - registers it at
+    slot 0, an unversioned class having no class version to file it under, and keeps every record a
+    file holds from slot 1 on: so the macro's walk, which starts at 1, prints the emulation and then
+    the mapped record, and never sees the current layout at all.
+    """
+    reflection.note_generated_dictionary(WITH_REF)
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB5FB752, 1, EMULATED)), (WITH_REF, (0xB15D1241, 2, (FIRST, SECOND)))],
+        "after.root",
+    )
+    pair = ROOT.TClass.GetClass(WITH_REF)
+    assert pair._own_dictionary() and pair._reemulated() is False
+    current = pair._current_layout()
+    assert current is not None and current[0] == 0xB15D1241  # the file's mapped spelling
+    infos = pair.GetStreamerInfos()
+    assert [info.GetCheckSum() for info in infos] == [0xB15D1241, 0xB5FB752, 0xB15D1241]
+    assert pair.GetStreamerInfo(0).GetCheckSum() == 0xB15D1241  # the class's own, at slot 0
+    assert pair.GetStreamerInfo(1).GetCheckSum() == 0xB5FB752  # the emulation, first met
+    assert pair.GetStreamerInfo().GetClassVersion() == current[1]
+    pair.GetStreamerInfo().ls()
+    printed = capfd.readouterr().out
+    assert "type= 3 newtype=13" in printed  # the mapped layout set against the emulation
+    assert "type=203" in printed
+
+
+def test_the_class_s_own_dictionary_outranks_a_load_that_re_emulated_it():
+    """The two states can both hold, and the class's own dictionary wins.
+
+    ``io/stdpair``'s ``3_*_1_*`` families read their files first and load the pair's own library
+    afterwards, so the class is in ``RELOADED`` as well as dictionaried. ROOT still lists the layout
+    its dictionary gives it first and from slot 0, so the mapped spelling stays current and the
+    records keep their order.
+    """
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB5FB752, 1, EMULATED)), (WITH_REF, (0xB15D1241, 2, (FIRST, SECOND)))],
+        "before.root",
+    )
+    reflection.note_generated_dictionary(WITH_REF)
+    reflection.reload_emulated()
+    pair = ROOT.TClass.GetClass(WITH_REF)
+    assert pair._own_dictionary() and pair._reemulated()
+    current = pair._current_layout()
+    assert current is not None and current[0] == 0xB15D1241
+    assert [info.GetCheckSum() for info in pair.GetStreamerInfos()] == [
+        0xB15D1241,
+        0xB5FB752,
+        0xB15D1241,
+    ]

@@ -1463,12 +1463,10 @@ class TClass(TNamed):
         names that version, because it must be **the** object the array holds (round 112).
         """
         described = DESCRIBED.get(self._name)
-        if described == "dictionary" or self._reemulated():
-            own = next((info for info in known if _emulated_spelling(info[2])), None)
-        elif described == "declaration":
-            own = next((info for info in known if not _emulated_spelling(info[2])), None)
-        else:
+        if not self._own_is_mapped() and described != "dictionary" and not self._reemulated():
             return None
+        mapped = self._own_is_mapped()
+        own = next((info for info in known if _emulated_spelling(info[2]) is not mapped), None)
         if own is None:
             return None
         version = int(known[0][1])
@@ -1561,7 +1559,8 @@ class TClass(TNamed):
         it is what round 119 measured must be **recognised from the file's own copy** rather than
         rebuilt, because the checksum of those same elements is not the file's.
         """
-        if DESCRIBED.get(self._name) != "declaration" and not self._reemulated():
+        if (DESCRIBED.get(self._name) != "declaration" and not self._reemulated()
+                and not self._own_dictionary()):  # fmt: skip
             return None
         own = next((info for info in FILE_INFOS.get(self._name, [])
                     if _emulated_spelling(info[2])), None)
@@ -1584,26 +1583,60 @@ class TClass(TNamed):
         self.__dict__["_held_kept"] = (signature, held, by_version)
         return signature, held, by_version
 
+    def _own_is_mapped(self) -> bool:
+        """Is the class's own layout the file's **mapped** spelling rather than the emulation's?
+
+        Two states lay a class out from something that is not an emulation: a library's dictionary
+        of the class **itself** - ROOT files that compiled layout at slot 0 - and an ``#include``
+        that declares it. The other two states, a dictionary of a *member's* type and a load that
+        re-emulated the class, give it the emulation's spelling instead.
+        """
+        return self._own_dictionary() or DESCRIBED.get(self._name) == "declaration"
+
+    def _keeps_records(self) -> bool:
+        """Does every layout a file recorded stand in the array, rather than a copy being dropped?
+
+        A load that re-emulated a class nothing described leaves each record where it was met, and
+        so does a class with a **dictionary of its own**: ROOT lays the class out from that
+        dictionary and keeps the emulation it built beside it. A class spelled one way already - a
+        declaration's, a member's dictionary's - treats a file's copy of that spelling as that
+        layout.
+        """
+        return self._reemulated() or self._own_dictionary()
+
     def _held_layouts(self, mine: Layout | None, current: Layout | None) -> list[TStreamerInfo]:
         """The current layout, the one in memory where the file's is another, then each a file
         described the class with - emulated and built where nothing in memory describes it."""
-        held: list[TStreamerInfo] = []
-        reemulated = self._reemulated()
-        if current is not None:
-            held.append(self._entry(current, True, current is mine))
-            if self._name in RELOADED and not reemulated:
-                # A load re-emulated the class, so its current layout is in the array twice.
-                held.append(self._entry(current, True, current is mine))
-            if mine is not None and mine[0] != current[0]:
-                held.append(self._entry(mine, True, True))
+        keeps = self._keeps_records()
+        held = [] if current is None else self._current_entries(current, mine, keeps)
+        same = current[0] if current is not None else None
         for info in FILE_INFOS.get(self._name, []):
-            # A load that re-emulated a class nothing described leaves every layout a file recorded
-            # where it was met - which is why such a class lists the emulation round its mapped
-            # layout. A class spelled one way already (a declaration's, a dictionary's) treats a
-            # file's copy of that spelling as the same layout.
-            if reemulated or info[0] != (current[0] if current is not None else None):
+            if keeps or info[0] != same:
                 held.append(self._entry(info, mine is None, False))
         return held
+
+    def _current_entries(
+        self, current: Layout, mine: Layout | None, keeps: bool
+    ) -> list[TStreamerInfo]:
+        """The current layout, the duplicate a load makes of it, and the one in memory."""
+        entries = [self._entry(current, True, current is mine)]
+        if self._name in RELOADED and not keeps:
+            # A load re-emulated the class, so its current layout is in the array twice.
+            entries.append(self._entry(current, True, current is mine))
+        if mine is not None and mine[0] != current[0]:
+            entries.append(self._entry(mine, True, True))
+        return entries
+
+    def _own_dictionary(self) -> bool:
+        """Has a **library** the session loaded a dictionary of the class itself?
+
+        That is a different state from a member's dictionary (``DESCRIBED``'s ``"dictionary"``):
+        with the pair's own dictionary loaded ROOT lays the class out **from it** - the file's
+        *mapped* spelling - and the emulation it built sits beside that layout, which is why
+        ``io/stdpair``'s eight ``3_*`` families list the mapped layout as current, the emulation at
+        ``#1`` and the file's own record of the mapped spelling at ``#2``.
+        """
+        return _dictionaried(self._name)
 
     def _reemulated(self) -> bool:
         """Did a **load** re-emulate the class after its files were read, nothing describing it?
@@ -1655,7 +1688,17 @@ class TClass(TNamed):
         made = TObjArray()
         slots: dict[int, TStreamerInfo] = {}
         mine = self._layout()
-        if self._indexed_by_version(mine):
+        if self._own_dictionary():
+            # A class with a dictionary of its **own** is listed from slot 0: ROOT registers the
+            # layout that dictionary gives it there - an unversioned class has no class version to
+            # file it under - and each record a file holds from 1, in the order it was met. That is
+            # why ``io/stdpair``'s ``3_*`` families print ``#1`` and ``#2`` beside a current layout
+            # that is not in the walk at all.
+            for entry in held:
+                made.Add(entry)
+                slots[made.GetSize() - 1] = entry
+            made.Expand(max(made.GetSize(), STREAMER_INFO_SLOTS))
+        elif self._indexed_by_version(mine):
             # A versioned class's layouts, and an emulated class's, are **indexed by class
             # version**: ``At(n)`` is version ``n``'s, a version the class has no layout of is an
             # empty slot, and the array reports the room it has rather than the entries it holds -
