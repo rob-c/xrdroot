@@ -94,6 +94,7 @@ nav:
   - "A file layout's offsets are laid out once": gotchas/a-file-layout-s-member-offsets-are-laid-out-once-as-the-file-is.md
   - "A pair a dictionary reaches is emulated first": gotchas/a-pair-a-library-s-dictionary-reaches-is-emulated-before-a-file.md
   - "A declared class's own layout is the emulated spelling": gotchas/a-declared-class-s-own-layout-is-the-emulated-spelling-and-only.md
+  - "A class's own layout has three answers": gotchas/a-class-s-own-layout-has-three-answers-and-a-library-load-after.md
   - "The local NumPy is 1.26 and CI's is 2": gotchas/the-local-numpy-is-1-26-and-ci-s-is-2-float-of-a-one-element.md
   - Instructions:
       - Triage merge conflicts before delegating: instructions/triage-merge-conflicts-mechanically-before-delegating-and-never.md
