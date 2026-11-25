@@ -38,6 +38,7 @@ def _fresh(tmp_path):
     frozen = dict(reflection.FROZEN_OFFSETS)
     described = dict(reflection.DESCRIBED)
     built = set(reflection.BUILT)
+    reloaded = set(reflection.RELOADED)
     enums = dict(troot._ENUMS)
     troot._ENUMS.clear()
     yield from fresh(tmp_path)
@@ -53,6 +54,8 @@ def _fresh(tmp_path):
     reflection.DESCRIBED.update(described)
     reflection.BUILT.clear()
     reflection.BUILT.update(built)
+    reflection.RELOADED.clear()
+    reflection.RELOADED.update(reloaded)
     reflection.DISAGREED.clear()
     reflection.GENERATED.clear()
     reflection.INTERPRETED_METHODS.clear()
@@ -1775,3 +1778,16 @@ def test_a_pair_base_and_a_pair_instance_are_recognised_by_their_spelling() -> N
     assert reflection._pair_base("pair<int,int>") is False
     assert reflection._synthetic_pair("std::pair<int,int>") is True
     assert reflection._synthetic_pair("std::vector<int>") is False
+
+
+def test_a_load_re_emulates_every_class_a_file_described_not_only_the_first():
+    """``TClass::Update`` walks the whole list, so a load re-emulates each class no description
+    holds - the second and later ones as much as the first, which is what a session that read
+    several files before its library loaded needs (`io/stdpair`'s ``0_*_1_1``/``1_*_1_1``)."""
+    layout = (("TStreamerBasicType", "x", "", 3, 4, 0, 0, (0,) * 5, "int", ()),)
+    reflection.note_file_infos(
+        [("FirstRead", (0x61, 1, layout)), ("SecondRead", (0x62, 1, layout))]
+    )
+    assert {"FirstRead", "SecondRead"} <= set(reflection.FILE_INFOS)
+    reflection.reload_emulated()
+    assert {"FirstRead", "SecondRead"} <= reflection.RELOADED
