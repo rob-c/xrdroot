@@ -5004,3 +5004,62 @@ pytorch training test is a load artefact and not a regression.
 eight jobs (run 45646132861). `io/stdpair` is 32 of 44, the roottest kind 1354 of 2173, all
 non-tutorial 1584 of 2820, the reflection unit tests 105, and the suite's own gate 126 169 statements
 with 0 missed and 0 partial branches.
+
+## Round 121's close
+
+**`io/stdpair` 32 → 36 PASS, none lost: a class's own layout has three answers, and a library load
+*after* the files keeps every layout they recorded.**
+
+**What the refs said, and the round's own first shape was wrong.** The eight DIFFs left in the bucket
+split into two groups: the four `0_*_1_0`/`1_*_1_0` families, whose files are read **before** a
+library load, and the eight `3_*`, where the **pair's own** dictionary is loaded. The first group's
+refs list **four** blocks — the emulation as current, the file's mapped layout with `newtype=13` and
+action `203`, then the emulation twice — where this kit printed the mapped layout as current and a
+synthetic duplicate beside it. The rule: a load that re-emulates a class **nothing described**
+(ROOT's `TClass::Update` through the collection proxy) gives it the **emulation's** spelling as its
+own layout, at its own version, and leaves **every** layout its files recorded at the slot it was
+met at.
+
+The three answers, which is what the round had to keep apart:
+
+| when the session learned the class | the class's own layout | a file's copy of that spelling |
+|---|---|---|
+| a **library**, loaded **before** the reads (`DESCRIBED` `"dictionary"`) | the emulation's | the same layout — dropped |
+| an **`#include`** (`"declaration"`) | the file's **mapped** spelling | the same layout — dropped |
+| **nothing**, then a library loaded **after** the reads (`_reemulated()`) | the emulation's | **kept**, at every slot |
+
+**The first shape cost one run and the suite named it in 2 s.** Round 119's declaration rule and this
+round's third case are one predicate each, and folding them into one branch — "search for the emulated
+spelling whenever a load is involved" — made the four `2_*_0_*` families and the round-119 pinning
+test fail (`…/r121a`, `4 failed, 101 passed`), because a declaration's own layout is the *mapped*
+spelling. `_reemulated()` is that third answer and nothing else: `DESCRIBED is None and name in
+RELOADED`.
+
+**The guards, all five, whole, unchanged** (`…/guard*`): `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2,
+`meta/evolution` 20/7/8/2 of 37, `io/datamodelevolution` 22/20/2 of 44, `io/newstl` 19/11/2 of 32 —
+**83 / 39 / 13 / 6 of 141**, every figure the ledger's.
+
+**The gate found two things in the round's own work.** The coverage gate named `_held_layouts`'
+"duplicate the current layout" line as **dead** once the re-emulated case took the other path — the
+rule is still real for a class the session *described*, so a test now pins it rather than the line
+being deleted (`test_a_load_duplicates_the_current_layout_of_a_class_the_session_described`). And
+ruff named four docstrings written at 101–104 columns, each rewrapped.
+
+Gate: **`TOTAL 126172 0 31708 0 100%`** — part 1 **13 989 passed, 0 failed**, part 2 44 passed —
+ruff, mypy 1 062 files, maintainability 33 387 functions in 1 824 files, components 1 062 /
+0 undeclared, `mkdocs --strict` exit 0. **+2 unit tests** (107 in the reflection file).
+
+**The baseline** was raised from the run at this round's tip (`…/tip`, `--jobs 4`, 36 PASS / 8 DIFF
+of 44); its only movement is those four rows.
+
+**A doc, for the next reader**:
+`docs/gotchas/a-class-s-own-layout-has-three-answers-and-a-library-load-after.md`, with the table
+above, the ROOT mechanism and the three predicates.
+
+**What the last eight need, measured this round.** `pairEnumEvo_3_0_0_1` at the tip differs by
+exactly **one block and one current layout**: ROOT's current is the file's **mapped** spelling with
+an emulated block at `#1` beside it, so the order is `current, emulation, mapped` and the predicate
+is the class's **own** dictionary — `_dictionaried(name)`, true in no other `libtype`, so the
+`0_*`/`1_*`/`2_*`/`4_*` families cannot be disturbed by it. `W0-248` now carries that as its first
+step. `W0-245` is closed; `W0-250` (five `cling/*` `__PRETTY_FUNCTION__` tests) and `W0-251` (the
+`xdist` arc) are untouched.
