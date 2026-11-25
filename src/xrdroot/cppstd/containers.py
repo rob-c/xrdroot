@@ -1795,6 +1795,10 @@ class _Namespace:
     forward_list = TEMPLATES["forward_list"]
     complex = TEMPLATES["complex"]
     atomic = TEMPLATES["atomic"]
+    #: ``std::integral_constant`` and the two types a template picks a branch with.
+    integral_constant = _stdlib.integral_constant
+    true_type = _stdlib.true_type
+    false_type = _stdlib.false_type
     #: ``std::atomic_int`` and its kin: the ``atomic<T>`` of that name.
     atomic_int = _stdlib.atomic_type("int")
     atomic_uint = _stdlib.atomic_type("unsigned int")

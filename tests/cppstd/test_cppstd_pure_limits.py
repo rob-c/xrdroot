@@ -60,3 +60,28 @@ def test_the_limits_are_of_the_types_cpp_gives_them() -> None:
     assert stdlib.limit("std::string", "max") is None
     assert stdlib.limit("int", "nothing") is None
     assert stdlib.numeric_limits["unsigned"].max() == 2**32 - 1
+
+
+def test_a_trait_type_stands_for_a_value_and_compares_with_it() -> None:
+    """``std::true_type`` and ``false_type`` are ``integral_constant<bool, …>``: a ROOT test writes
+    ``struct IsCollectionProxy<X> : std::true_type {}``, so the base is a class whose value is
+    reachable as ``value``, by ``bool``, by calling it, and as what it hashes to."""
+    assert (stdlib.true_type.value, stdlib.false_type.value) == (True, False)
+    assert bool(stdlib.true_type()) is True and bool(stdlib.false_type()) is False
+    assert stdlib.true_type()() is True  # calling the type gives the value it stands for
+    assert hash(stdlib.true_type()) == hash(True)  # and it hashes as that value
+    assert stdlib.integral_constant.value == 0
+
+
+def test_a_trait_type_compares_with_its_value_with_another_trait_and_its_own_type() -> None:
+    """``==`` against the value, against another trait, and against the type itself - the three
+    shapes a template's condition is written with."""
+    assert stdlib.true_type() == True and stdlib.false_type() != True  # noqa: E712 - C++'s
+    assert stdlib.true_type() == stdlib.true_type()
+    assert stdlib.true_type() != stdlib.false_type()
+    assert stdlib.true_type() == stdlib.true_type
+
+    class Marked(stdlib.true_type):
+        """A specialisation, as ``IsCollectionProxy<X> : std::true_type`` is one."""
+
+    assert issubclass(Marked, stdlib.true_type) and Marked.value is True and Marked() == True  # noqa: E712

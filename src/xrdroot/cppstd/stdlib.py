@@ -19,7 +19,7 @@ from typing import Any
 import numpy as np
 
 __all__ = ["numeric_limits", "remove", "smart_pointer", "rand", "srand", "RAND_MAX",
-           "complex_type", "atomic_type"]
+           "complex_type", "atomic_type", "integral_constant", "true_type", "false_type"]
 
 #: ``RAND_MAX``: the largest number ``rand`` gives.
 RAND_MAX = 0x7FFFFFFF
@@ -663,3 +663,41 @@ def remove(path: Any) -> int:
     except OSError:
         return -1
     return 0
+
+
+class integral_constant:
+    """``std::integral_constant``: a type that stands for a value a template chooses on.
+
+    A ROOT test writes ``struct IsCollectionProxy<X> : std::true_type {}`` - the base says the
+    specialisation is the true one - so the base has to be a class here, with the value it stands
+    for reachable as ``value``, by ``bool``, and by calling it, as ``std::integral_constant`` is.
+    """
+
+    #: The value this type is, which a subclass fixes.
+    value: Any = 0
+
+    def __bool__(self) -> bool:
+        return bool(bool(self.value))
+
+    def __call__(self) -> Any:
+        return self.value
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, type) and issubclass(other, integral_constant):
+            return bool(self.value == other.value)
+        return bool(self.value == other)
+
+    def __hash__(self) -> int:
+        return hash(self.value)
+
+
+class true_type(integral_constant):
+    """``std::true_type``: ``integral_constant<bool, true>``."""
+
+    value = True
+
+
+class false_type(integral_constant):
+    """``std::false_type``: ``integral_constant<bool, false>``."""
+
+    value = False
