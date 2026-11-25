@@ -5063,3 +5063,70 @@ is the class's **own** dictionary — `_dictionaried(name)`, true in no other `l
 `0_*`/`1_*`/`2_*`/`4_*` families cannot be disturbed by it. `W0-248` now carries that as its first
 step. `W0-245` is closed; `W0-250` (five `cling/*` `__PRETTY_FUNCTION__` tests) and `W0-251` (the
 `xdist` arc) are untouched.
+
+## Round 122's close
+
+**`io/stdpair` 36 → 44 PASS — every test of the bucket, and it took a class's *fourth* own layout.**
+
+The eight DIFFs round 121 left were the families whose run loads the library whose LinkDef selects
+the **pair itself** (`libCmsPair`). Round 121 had already measured the difference to one block and
+one current layout and predicted the predicate (`_dictionaried(name)`); this round ran the change and
+found the prediction right about the *state* and wrong about the *slot*.
+
+**What ROOT does, and the slot is the part nobody had measured.** With a dictionary of the class's
+own, ROOT answers for its layout with that compiled layout — the file's **mapped** spelling — and
+files it at **slot 0** of `fStreamerInfo`, because an unversioned class has no class version to file
+it under; every record a file holds then stands from slot 1 on. That is why `pairEnumEvo`'s walk
+(`GetStreamerInfo(i)`, `i` from 1) prints `#1` (the emulation) and `#2` (the mapped record) beside a
+current layout it never reaches, and why that current layout prints `newtype=13` / action `203`: it
+is set against the emulation the class built beside it.
+
+**The first shape measured one block number short, and the diff said so in one run.** With
+`_own_is_mapped()` in place and the records kept, the current layout was right — `type= 3
+newtype=13`, action `203` — and the emulated block printed as `#2` where the ref says `#1`: our array
+put the current at slot 1. `…/run1` is that run (36 PASS / 8 DIFF, the same eight, their diffs
+smaller); the slot-0 arm in `GetStreamerInfos` (`…/run2`) is the fix, and it is 44 / 0.
+
+**Three predicates, each a state of its own.** `_own_dictionary()` (the class's own LinkDef selection
+in `GENERATED`), `_own_is_mapped()` — that state, or a declaration, gives the mapped spelling, while
+a *member's* dictionary or a re-emulation gives the emulation's — and `_keeps_records()`, which is
+true of both states that keep every record a file made. **The class's own dictionary outranks a
+re-emulation**: `3_*_1_*` reads its files first and loads afterwards, so the class is in `RELOADED`
+as well, and ROOT still lists the dictionary's layout first. That is the second unit test, because it
+is the kind of ordering a later refactor breaks silently.
+
+**The maintainability gate named the round's own complexity and it was split.** `_pair_own_layout`
+reached ccn 11 and `_held_layouts` ccn 11 / npath 272; the flags became `_own_is_mapped` and
+`_keeps_records`, and the per-entry appends `_current_entries`. No limit was touched, and ruff named
+three docstrings at 101–102 columns which were rewrapped.
+
+**The guards, all five, whole, unchanged** (`…/guard*`): `io/tree` 18/0/0/2, `io/emulated` 4/1/1/2,
+`meta/evolution` 20/7/8/2 of 37, `io/datamodelevolution` 22/20/2 of 44, `io/newstl` 19/11/2 of 32 —
+**83 / 39 / 13 / 6 of 141**, every figure the ledger's.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **13 993 passed, 0 failed**
+(99.75 % by design); part 2 44 passed and `coverage report` **`TOTAL 126203 0 31710 0 100%`** - measured
+at the **rebased** tip, because another session pushed `03ac9b82` (`std::integral_constant`) while this
+round was pushing; the rebase replayed the four commits unchanged, `io/stdpair` was re-run there
+(44 of 44, `…/tip2`) and the two-command gate re-read. ruff
+clean; mypy 1 062 files; maintainability 33 393 functions in 1 824 files; components 1 062 modules /
+0 undeclared; `mkdocs --strict` exit 0. **+2 unit tests** (109 in the reflection file).
+
+**The baseline** was raised from the run at this round's tip (`…/tip`, `--jobs 4`, 44 PASS / 0 of 44);
+its only movement is the eight rows.
+
+**A doc, for the next reader**:
+`docs/gotchas/a-class-with-a-dictionary-of-its-own-is-laid-out-from-it-at.md`, with all four states
+in one table, the `GENERATED` tell and the code path.
+
+**Where this leaves the bucket, and what is left in the run's shape.** `io/stdpair` is finished: the
+four `libtype`s, both `fixed` values, both file orders and both read-before-load orders are 44 of 44,
+so the streamer-info model now answers every configuration `pairEnumEvo` can put it in. `W0-248` is
+closed. What the loop has left on this axis is `W0-250` (five `cling/*` tests that need
+`__PRETTY_FUNCTION__` with its instantiation) and `W0-251` (the `xdist` coverage arc), untouched.
+
+**A measurement note for the next round.** The machine opened at a load average of **118** — another
+project's `ffmpeg`, a geant4 benchmark and Python 3.14 builds — so the round wrote the code first and
+measured the harness **statuses** under it (`W0-103`'s "reasons are quotable, timings are not"), then
+waited for the load to fall to **11.8** before the coverage gate, which is the one command a loaded
+machine makes meaningless.
