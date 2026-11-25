@@ -97,6 +97,7 @@ nav:
   - "A pair a dictionary reaches is emulated first": gotchas/a-pair-a-library-s-dictionary-reaches-is-emulated-before-a-file.md
   - "A declared class's own layout is the emulated spelling": gotchas/a-declared-class-s-own-layout-is-the-emulated-spelling-and-only.md
   - "A class's own layout has three answers": gotchas/a-class-s-own-layout-has-three-answers-and-a-library-load-after.md
+  - "A class with a dictionary of its own is laid out from it": gotchas/a-class-with-a-dictionary-of-its-own-is-laid-out-from-it-at.md
   - "The local NumPy is 1.26 and CI's is 2": gotchas/the-local-numpy-is-1-26-and-ci-s-is-2-float-of-a-one-element.md
   - Instructions:
       - Triage merge conflicts before delegating: instructions/triage-merge-conflicts-mechanically-before-delegating-and-never.md
