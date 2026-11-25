@@ -1463,7 +1463,7 @@ class TClass(TNamed):
         names that version, because it must be **the** object the array holds (round 112).
         """
         described = DESCRIBED.get(self._name)
-        if described == "dictionary":
+        if described == "dictionary" or self._reemulated():
             own = next((info for info in known if _emulated_spelling(info[2])), None)
         elif described == "declaration":
             own = next((info for info in known if not _emulated_spelling(info[2])), None)
@@ -1561,7 +1561,7 @@ class TClass(TNamed):
         it is what round 119 measured must be **recognised from the file's own copy** rather than
         rebuilt, because the checksum of those same elements is not the file's.
         """
-        if DESCRIBED.get(self._name) != "declaration":
+        if DESCRIBED.get(self._name) != "declaration" and not self._reemulated():
             return None
         own = next((info for info in FILE_INFOS.get(self._name, [])
                     if _emulated_spelling(info[2])), None)
@@ -1588,17 +1588,35 @@ class TClass(TNamed):
         """The current layout, the one in memory where the file's is another, then each a file
         described the class with - emulated and built where nothing in memory describes it."""
         held: list[TStreamerInfo] = []
+        reemulated = self._reemulated()
         if current is not None:
             held.append(self._entry(current, True, current is mine))
-            if self._name in RELOADED:
+            if self._name in RELOADED and not reemulated:
                 # A load re-emulated the class, so its current layout is in the array twice.
                 held.append(self._entry(current, True, current is mine))
             if mine is not None and mine[0] != current[0]:
                 held.append(self._entry(mine, True, True))
         for info in FILE_INFOS.get(self._name, []):
-            if info[0] != (current[0] if current is not None else None):
+            # A load that re-emulated a class nothing described leaves every layout a file recorded
+            # where it was met - which is why such a class lists the emulation round its mapped
+            # layout. A class spelled one way already (a declaration's, a dictionary's) treats a
+            # file's copy of that spelling as the same layout.
+            if reemulated or info[0] != (current[0] if current is not None else None):
                 held.append(self._entry(info, mine is None, False))
         return held
+
+    def _reemulated(self) -> bool:
+        """Did a **load** re-emulate the class after its files were read, nothing describing it?
+
+        ROOT's ``TClass::Update`` runs the emulation again through the collection proxy once the
+        types a class's members hold have a dictionary, and a class nothing described gains the
+        layout that emulation makes - while every layout its files recorded stays at the slot it
+        was met at, which is why ``io/stdpair``'s ``0_*_1_0``/``1_*_1_0`` families list the
+        emulation three times round the mapped layout. A load **before** the reads is
+        ``DESCRIBED``'s ``"dictionary"`` instead, and there a file's copy of the emulation is that
+        same layout, dropped when it is met.
+        """
+        return DESCRIBED.get(self._name) is None and self._name in RELOADED
 
     def _indexed_by_version(self, mine: Layout | None) -> bool:
         """Is the layouts array indexed by class version? ROOT's is for a versioned class and for

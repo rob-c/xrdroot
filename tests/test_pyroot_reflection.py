@@ -1791,3 +1791,65 @@ def test_a_load_re_emulates_every_class_a_file_described_not_only_the_first():
     assert {"FirstRead", "SecondRead"} <= set(reflection.FILE_INFOS)
     reflection.reload_emulated()
     assert {"FirstRead", "SecondRead"} <= reflection.RELOADED
+
+
+def test_a_load_re_emulates_a_class_read_before_it_and_keeps_every_record_it_met(capfd):
+    """A load that re-emulates a class nothing described leaves the file layouts where it met them.
+
+    ``io/stdpair``'s ``0_*_1_0``/``1_*_1_0`` families read ``ab02.root`` first - which records the
+    pair twice, the mapped spelling at version 1 and the emulation's at version 2 - then a second
+    file repeating the emulation's, and only then load the library. ROOT lists four blocks there:
+    the emulation as the class's own, then the mapped layout, then the emulation twice. So the class
+    gains the emulation's spelling as its own *and* keeps all three records, where a library loaded
+    before the reads makes a file's copy of that spelling the same layout and nothing more.
+    """
+    reflection.note_file_infos(
+        [
+            (WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))),
+            (WITH_REF, (0xB5FB752, 2, EMULATED)),
+            (WITH_REF, (0xB5FB752, 3, EMULATED)),
+        ],
+        "before.root",
+    )
+    assert reflection.DESCRIBED[WITH_REF] is None
+    pair = ROOT.TClass.GetClass(WITH_REF)
+    assert pair._current_layout() is not None and pair._current_layout()[0] == 0xB15D1241  # as met
+    reflection.reload_emulated()
+    assert pair._reemulated()
+    current = pair._current_layout()
+    assert current is not None and current[0] == 0xB5FB752  # the emulation's spelling
+    assert [info.GetCheckSum() for info in pair.GetStreamerInfos()] == [
+        0xB5FB752,
+        0xB15D1241,
+        0xB5FB752,
+        0xB5FB752,
+    ]
+    capfd.readouterr()
+    pair.GetStreamerInfos().At(2).ls()  # the mapped layout, beside the class's own emulation
+    printed = capfd.readouterr().out
+    assert "type= 3 newtype=13" in printed
+    assert "i= 0, first           type=203" in printed
+
+
+def test_a_load_duplicates_the_current_layout_of_a_class_the_session_described():
+    """A load re-emulates a described class too, and that class gains no new spelling.
+
+    ``io/stdpair``'s ``2_*_1_*`` families read their files before the ``#include`` and then load a
+    library: the class's own layout is the one the declaration gives it, and ROOT's re-emulation
+    adds a second copy of that same layout rather than a differently-spelled one - so the array
+    holds it twice and the file's other layout once.
+    """
+    run_source("class ProbeRef { public: int i = 0; }; ", "ref.h", call=False)
+    reflection.note_file_infos(
+        [(WITH_REF, (0xB15D1241, 1, (FIRST, SECOND))), (WITH_REF, (0xB5FB752, 2, EMULATED))],
+        "before.root",
+    )
+    assert reflection.DESCRIBED[WITH_REF] == "declaration"
+    reflection.reload_emulated()
+    pair = ROOT.TClass.GetClass(WITH_REF)
+    assert not pair._reemulated()  # the session described it, so its own layout is the declared one
+    assert [info.GetCheckSum() for info in pair.GetStreamerInfos()] == [
+        0xB15D1241,
+        0xB15D1241,
+        0xB5FB752,
+    ]
