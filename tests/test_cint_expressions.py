@@ -231,12 +231,16 @@ def test_a_members_bytes_are_written_through_the_offset_it_starts_at() -> None:
         byte_offset(made, 0)[1] = 3
     assert byte_offset(made, 0).n == 7  # another name is the object's own
     assert "ObjectBytes(" in repr(byte_offset(made, 0))
-    # a class whose layout this kit does not work out - an array member, or a member of a class it
-    # has no size for - is the object at an offset of 0, as it always was
+    # an array member and a ``TString`` member are laid out too - ROOT's ``Plain`` puts ``int
+    # arr[3]`` at 72 and its ``TString`` at 128 - so their bytes at 0 are theirs, not the object's
     run_source("struct BytesProbe { int n[2]; };", "t.C", root=ROOT)
     run_source("struct TextProbe { TString s; };", "t.C", root=ROOT)
-    assert isinstance(byte_offset(ROOT.BytesProbe(), 0), ROOT.BytesProbe)
-    assert isinstance(byte_offset(ROOT.TextProbe(), 0), ROOT.TextProbe)
+    assert isinstance(byte_offset(ROOT.BytesProbe(), 0), ObjectBytes)
+    assert isinstance(byte_offset(ROOT.TextProbe(), 0), ObjectBytes)
+    # an offset of 0 that names no member is the object: a base class at its start, which is what
+    # ``TObject`` is in a class of a macro's - its own members begin after the base
+    run_source("class BaseProbe : public TObject { public: int k; };", "t.C", root=ROOT)
+    assert isinstance(byte_offset(ROOT.BaseProbe(), 0), ROOT.BaseProbe)
 
 
 def test_a_pointer_to_an_objects_bytes_is_the_object_stepped_to_its_member() -> None:
@@ -277,4 +281,50 @@ def test_a_members_offset_type_is_declared_so_the_sum_is_no_string() -> None:
     text = translate(source, "t.C")
     assert "byte_offset(obj, (m.GetOffset()))[0] = 7" in text
     assert "cstr(m.GetOffset())" not in text
+
+
+def test_an_address_stepped_twice_names_the_members_member() -> None:
+    """``(char *)&obj.nest + 8`` is ``&obj.nest.y``: a macro walks into a class-typed member's own
+    layout, which is how roottest's generator fills ``ClassAIns m_d`` inside ``ClassA``."""
+    import xrdroot.pyroot as ROOT
+    from xrdroot.cppstd.cells import byte_offset
+    from xrdroot.pycint.execute import run_source
+
+    run_source(
+        "struct StepInner { int x; double y; }; struct StepOuter { int k; StepInner nest; };",
+        "t.C",
+        root=ROOT,
+    )
+    outer = ROOT.StepOuter()
+    inside = byte_offset(outer, 8)  # ``nest``, after ``k``
+    byte_offset(inside, 8)[0] = 2.5  # ``nest.y``, after ``nest.x``
+    assert outer.nest.y == 2.5
+    assert byte_offset(inside, 0)[0] == 0  # ``nest.x`` is still its own
+
+
+def test_a_union_puts_every_member_at_its_start() -> None:
+    """A union's members all begin where the union does, so every one of them starts at 0 - which
+    is ROOT's offset for them too, and what ``(char *)&u + 0`` names."""
+    import xrdroot.pyroot as ROOT
+    from xrdroot.pycint.execute import run_source
+
+    run_source("union Choice { int i; double d; char c; };", "t.C", root=ROOT)
+    offsets = {
+        one.GetName(): one.GetOffset()
+        for one in ROOT.TClass.GetClass("Choice").GetListOfDataMembers()
+    }
+    assert offsets == {"i": 0, "d": 0, "c": 0}
+
+
+def test_an_address_stepped_past_a_member_of_no_known_class_is_the_object_s_own_bytes() -> None:
+    """``(char *)&obj.a + 4`` where ``a`` is an ``int`` is ``(char *)obj + 4``: the sum is the
+    object's own bytes, and a member of the object's class starting there is what it names."""
+    import xrdroot.pyroot as ROOT
+    from xrdroot.cppstd.cells import byte_offset
+    from xrdroot.pycint.execute import run_source
+
+    run_source("struct Flat { int a; int b; int c; };", "t.C", root=ROOT)
+    flat = ROOT.Flat()
+    byte_offset(byte_offset(flat, 0), 4)[0] = 9  # ``(char *)&flat.a + 4`` is ``flat.b``
+    assert flat.b == 9
 

@@ -22,7 +22,7 @@ from .ctype import SIZES, CType
 from .dialect import active
 from .nodes import Binary, EnumDecl, Literal, Name, Unary, VarDecl
 
-__all__ = ["layout", "size_of"]
+__all__ = ["layout", "member_offsets", "size_of"]
 
 #: A size and an alignment, in bytes.
 Layout = tuple[int, int]
@@ -151,6 +151,12 @@ def _sized_template(ctype: CType, program: Any) -> Layout | None:
     return None
 
 
+#: The classes whose placement is being worked out right now: a class that reaches itself - deriving
+#: from itself, or holding one of itself, neither of which a C++ compiler accepts but a macro may
+#: still declare - would otherwise ask for its own layout for ever.
+_LAID_OUT: set[str] = set()
+
+
 def _class(info: Any, program: Any) -> Layout | None:
     """A class of the program's, as the Itanium ABI lays it out: one byte when empty."""
     found = _extent(info, program)
@@ -175,12 +181,48 @@ def _alignment(given: Any, program: Any) -> int | None:
 
 def _extent(info: Any, program: Any) -> Layout | None:
     """Where a class's last member ends - its size before the padding that rounds it to its
-    alignment, which a derived class may reuse - and its alignment."""
-    decl = info.decl
+    alignment, which a derived class may reuse - and its alignment.
+
+    This is where a class's layout is entered, so this is where a class that reaches itself stops:
+    ``class A : public A`` and ``struct Self { Self inner; }`` are declarations no C++ compiler
+    accepts, but a macro may still write one, and following it would never end.
+    """
+    if info.name in _LAID_OUT:
+        return None
+    _LAID_OUT.add(info.name)
+    try:
+        return _measured(info, program)
+    finally:
+        _LAID_OUT.discard(info.name)
+
+
+def _measured(info: Any, program: Any) -> Layout | None:
+    """A class's extent, one level in - :func:`_extent` keeps the walk from reaching itself."""
+    if info.decl.kind == "union":
+        return _union([_member_type(var.ctype) for var in info.fields.values()], program)
+    start = _start(info, program)
+    if start is None:
+        return None
     fields = [_member_type(var.ctype) for var in info.fields.values()]
-    if decl.kind == "union":
-        return _union(fields, program)
-    offset, align = 0, 1
+    return _laid(fields, program, start[0], start[1])
+
+
+def _start(info: Any, program: Any) -> Layout | None:
+    """Where a class's own members begin - after its virtual table's pointer, when it has one of its
+    own, and after its bases - and the alignment they give it."""
+    found = _placement(info, program)
+    return None if found is None else found[:2]
+
+
+#: Where a class's own members begin, their alignment, and where each of its bases sits.
+Placement = tuple[int, int, tuple[tuple[CType, int], ...]]
+
+
+def _placement(info: Any, program: Any) -> Placement | None:
+    """The one walk over a class's virtual table's pointer and its bases, which both ``sizeof``
+    (:func:`_extent`) and the members' offsets (:func:`member_offsets`) read."""
+    decl = info.decl
+    offset, align, bases = 0, 1, []
     if _polymorphic(info, program) and not any(
         _polymorphic_base(base.ctype, program) for base in decl.bases
     ):
@@ -189,9 +231,58 @@ def _extent(info: Any, program: Any) -> Layout | None:
         found = _base(base.ctype, program)
         if found is None:
             return None
-        offset = _aligned(offset, found[1]) + found[0]
+        at = _aligned(offset, found[1])
+        bases.append((base.ctype, at))
+        offset = at + found[0]
         align = max(align, found[1])
-    return _laid(fields, program, offset, align)
+    return offset, align, tuple(bases)
+
+
+def member_offsets(info: Any, program: Any) -> dict[str, int] | None:
+    """Each data member's byte offset by name - the numbers a dictionary hands out through
+    ``TDataMember::GetOffset`` - or ``None`` when this kit does not work the class's layout out.
+
+    This is the one authority for those numbers: the translation writes them on the class it emits
+    (``_cxx_offsets_``), so the reflection layer and ``cppstd.cells.byte_offset`` read the same map
+    and a macro can neither be told one offset and write at another.
+
+    A base's members are in it at the offsets they sit at in a class of this one's, because a macro
+    that walks a class walks its bases too - roottest's ``datamodelevolution`` recurses with
+    ``((char *)obj) + cl->GetBaseClassOffset(baseCl)`` and the base's own ``TClass``, so the object
+    is this one while the member asked for is the base's. A union's members all start where it does;
+    a static member has no offset and is not in ``info.fields``.
+    """
+    found: dict[str, int] = {}
+    if info.decl.kind == "union":
+        return dict.fromkeys(info.fields, 0)
+    placed = _placement(info, program)
+    if placed is None:
+        return None
+    offset = placed[0]
+    for ctype, at in placed[2]:
+        inherited = _base_members(ctype, program, at)
+        if inherited is None:
+            return None
+        found.update(inherited)
+    for name, var in info.fields.items():
+        laid = layout(_member_type(var.ctype), program)
+        if laid is None:
+            return None
+        size, own = laid
+        offset = _aligned(offset, own)
+        found[name] = offset
+        offset += size
+    return found
+
+
+def _base_members(ctype: CType, program: Any, at: int) -> dict[str, int] | None:
+    """A base's members, moved to where the base sits in the class derived from it: none for a base
+    this kit has no layout of, whose members then answer no offset at all."""
+    info = program.classes.get(ctype.name)
+    if info is None:
+        return None
+    own = member_offsets(info, program)
+    return None if own is None else {name: at + offset for name, offset in own.items()}
 
 
 def _member_type(ctype: CType) -> CType:
@@ -284,19 +375,26 @@ def _union(fields: list[CType], program: Any) -> Layout | None:
     return max((item[0] for item in sizes), default=0), max((i[1] for i in sizes), default=1)
 
 
-def _polymorphic(info: Any, program: Any) -> bool:
-    """Has the class, or a class of the program's it derives from, a virtual function?"""
+def _polymorphic(info: Any, program: Any, seen: frozenset[str] = frozenset()) -> bool:
+    """Has the class, or a class of the program's it derives from, a virtual function?
+
+    ``seen`` is the lineage being asked, so a class that reaches itself - ``class A : public A`` -
+    stops there instead of asking for ever."""
+    if info.name in seen:
+        return False
     if any(func.virtual for funcs in info.methods.values() for func in funcs):
         return True
-    return any(_polymorphic_base(base.ctype, program) for base in info.decl.bases)
+    return any(
+        _polymorphic_base(base.ctype, program, seen | {info.name}) for base in info.decl.bases
+    )
 
 
-def _polymorphic_base(ctype: CType, program: Any) -> bool:
+def _polymorphic_base(ctype: CType, program: Any, seen: frozenset[str] = frozenset()) -> bool:
     info = program.classes.get(ctype.name)
     if info is None:
         library = _library(ctype)
         return library is not None and library[3]
-    return _polymorphic(info, program)
+    return _polymorphic(info, program, seen)
 
 
 def _aligned(offset: int, align: int) -> int:

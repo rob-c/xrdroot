@@ -2115,31 +2115,19 @@ class TBaseClass(TNamed):
         return 0
 
 
-def _member_offsets(owner: Any) -> list[int] | None:
-    """Each data member's byte offset in a class a macro declared, or ``None`` when this kit does
-    not work that class's layout out.
+def _member_offsets(owner: Any) -> dict[str, int] | None:
+    """Each data member's byte offset by name in a class a macro declared - a base's members among
+    them - or ``None`` when this kit does not work that class's layout out.
 
-    The Itanium C++ ABI's rule, which :mod:`xrdroot.pycxx.sizes` follows for ``sizeof``: each member
-    starts at the next offset its alignment allows. A member that is a pointer takes a pointer's
-    room, and a class with a base, or a member that is another class, is left to ``None`` rather
-    than given a number that may be wrong.
+    The numbers are the translation's own, written on the class it emitted (``_cxx_offsets_``, from
+    :func:`xrdroot.pycxx.sizes.member_offsets`) - one authority shared with
+    ``cppstd.cells.byte_offset``, so a macro is never told one offset and handed another.
     """
-    declared = owner._cxx_fields()
-    if declared is None:
+    if owner._cxx_fields() is None:
         return None
-    from ...wclasses import TYPES
-
-    offsets: list[int] = []
-    offset = 0
-    for _name, spelled, _title, dims in declared:
-        found = TYPES.get(spelled.rstrip("*")) if not dims else None
-        if found is None:
-            return None
-        size = 8 if spelled.endswith("*") else found[2]
-        offset = -(-offset // size) * size
-        offsets.append(offset)
-        offset += size
-    return offsets
+    cls = owner._declared()
+    found = cls.__dict__.get("_cxx_offsets_") if cls is not None else None
+    return dict(found) if found is not None else None
 
 
 class TDataMember(TNamed):
@@ -2217,13 +2205,11 @@ class TDataMember(TNamed):
         A macro writes into an object by byte offset - ``*(int *)(((char *)obj) +
         member->GetOffset())`` is how roottest's ``datamodelevolution`` fills a class - so this is
         the member's own offset: each member at the next offset its alignment allows, in the order
-        the class declares them. A class whose layout this kit does not work out answers 0, as it
-        always has.
+        the class declares them, and a base's at where the base puts it. A member of a class whose
+        layout this kit does not work out answers 0, as it always has.
         """
-        found = _member_offsets(self._owner)
-        names = [one.GetName() for one in self._owner.GetListOfDataMembers()]
-        index = names.index(self._name) if self._name in names else -1
-        return found[index] if found is not None and 0 <= index < len(found) else 0
+        found = _member_offsets(self._owner) or {}
+        return found.get(self._name, 0)
 
     def GetDataType(self) -> Any:
         """``GetDataType``: the ``TDataType`` a basic member's own type is, ``None`` for a class.

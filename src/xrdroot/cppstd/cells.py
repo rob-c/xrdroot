@@ -197,63 +197,62 @@ def integer_cast(value: Any) -> int:
 def byte_offset(obj: Any, offset: Any) -> Any:
     """``(char*)obj + offset``: the object's bytes at that offset, or the object itself.
 
+    An address already stepped - ``(char *)&obj.member + off`` - is stepped again from the member:
+    into the member's own class when it has one (``&obj.m_d.m_b``), or to the member at the sum
+    (``(char *)obj + 32 + 8`` when a member of the object's class starts at 40).
+
     An offset a member of the object starts at is that member's bytes, which
     :class:`ObjectBytes` reads and writes - a macro fills a class that way. Anything else that is
     an offset of 0 is the object: a base class at the start of it, as single inheritance puts it,
     which ``TClass::GetBaseClassOffset`` answers 0 for. Any other object moved into its middle has
     no address here.
     """
+    if isinstance(obj, ObjectBytes):
+        return _further(obj, int(offset))
     started = _member_starts(type(obj))
-    if started is not None and int(offset) in started:
+    if _member_at(type(obj), int(offset)) is not None:
         return ObjectBytes(obj, int(offset))
     if int(offset) == 0:
         return obj
     raise ValueError(
-        f"an object's address moved by {int(offset)} bytes, into the middle of it, which "
-        "names nothing here: only an offset of 0 - a base at the object's start - is followed"
+        f"an object of {type(obj).__name__} moved by {int(offset)} bytes, into the middle of it, "
+        f"which names nothing here: its members start at {sorted((started or {}).values())}, and "
+        "only an offset of 0 - a base at the object's start - is followed without one"
     )
 
 
-def _layout_of(cls: type) -> tuple[Any, ...] | None:
-    """The members a macro's translation wrote on the class, or ``None`` for any other class."""
-    return cls.__dict__.get("_cxx_layout_")
+def _further(stepped: ObjectBytes, offset: int) -> Any:
+    """``(char *)&obj.member + offset``: the member's own bytes at that offset when it is an object
+    of a class laid out here, and otherwise the object's bytes at the two offsets added."""
+    inner = getattr(stepped._object, stepped._member, None)
+    started = getattr(type(inner), "_cxx_offsets_", None) if inner is not None else None
+    if started is not None and offset in started.values():
+        return ObjectBytes(inner, offset)
+    return byte_offset(stepped._object, stepped._offset + offset)
 
 
-#: A C++ type's size on LP64, as the layout of a macro's class is walked here: the numbers a class
-#: of the program's holds, and a pointer's eight bytes. A class the translation laid out with
-#: anything else is refused rather than guessed at.
-_SIZES = {
-    "char": 1, "signed char": 1, "unsigned char": 1, "bool": 1, "Char_t": 1, "UChar_t": 1,
-    "short": 2, "unsigned short": 2, "Short_t": 2, "UShort_t": 2,
-    "int": 4, "unsigned int": 4, "Int_t": 4, "UInt_t": 4, "float": 4, "Float_t": 4,
-    "long": 8, "unsigned long": 8, "Long_t": 8, "ULong_t": 8,
-    "long long": 8, "unsigned long long": 8, "Long64_t": 8, "ULong64_t": 8,
-    "double": 8, "Double_t": 8, "double32_t": 8, "Double32_t": 8, "float16_t": 4,
-}  # fmt: skip
+def _member_starts(cls: type) -> dict[str, int] | None:
+    """Where each member of a class a macro declared starts, by name, or ``None`` for any other
+    class - and for one whose layout the translation did not work out.
+
+    The numbers are the translation's own (``_cxx_offsets_``, from
+    :func:`xrdroot.pycxx.sizes.member_offsets`) - the very ones ``TDataMember::GetOffset`` answers,
+    a base's members among them - so a macro is never told one offset and handed another. A class
+    without them is not laid out here rather than laid out a second time, differently.
+    """
+    found = getattr(cls, "_cxx_offsets_", None)
+    return dict(found) if found is not None else None
 
 
-def _member_offsets(layout: tuple[Any, ...]) -> list[int] | None:
-    """Each member's byte offset in the class the layout describes, each at the next offset its
-    alignment allows - the Itanium rule ``xrdroot.pycxx.sizes`` follows - or ``None`` when a
-    member's size is not one this table gives."""
-    offsets: list[int] = []
-    at = 0
-    for _name, spelled, _title, dims in layout[2]:
-        if dims:
-            return None
-        size = 8 if spelled.endswith("*") else _SIZES.get(spelled.rstrip("*"))
-        if size is None:
-            return None
-        at = -(-at // size) * size
-        offsets.append(at)
-        at += size
-    return offsets
-
-
-def _member_starts(cls: type) -> list[int] | None:
-    """Where each member of a class a macro declared starts, or ``None`` for any other class."""
-    layout = _layout_of(cls)
-    return _member_offsets(layout) if layout is not None else None
+def _member_at(cls: type, offset: int) -> str | None:
+    """The member of ``cls`` - or of a base it starts with - that starts at ``offset``."""
+    started = _member_starts(cls)
+    if started is None:
+        return None
+    for name, at in started.items():
+        if at == offset:
+            return name
+    return None
 
 
 class ObjectBytes:
@@ -269,17 +268,15 @@ class ObjectBytes:
     __slots__ = ("_object", "_offset", "_member")
 
     def __init__(self, obj: Any, offset: int) -> None:
-        layout = _layout_of(type(obj))
-        assert layout is not None, "an object's bytes are named only for a class laid out here"
-        offsets = _member_offsets(layout)
-        if offsets is None or offset not in offsets:
+        member = _member_at(type(obj), offset)
+        if member is None:
             raise ValueError(
                 f"{offset} is not the start of a member of {type(obj).__name__}, whose members "
-                f"start at the offsets the translation laid out"
+                f"start at {sorted((_member_starts(type(obj)) or {}).values())}"
             )
         self._object = obj
         self._offset = offset
-        self._member = layout[2][offsets.index(offset)][0]
+        self._member = member
 
     def __getitem__(self, index: Any) -> Any:
         if isinstance(index, slice) or index != 0:

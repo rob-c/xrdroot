@@ -21,6 +21,7 @@ from .errors import Refusal
 from .nodes import ClassDecl, EnumDecl, Expr, Function, Literal, Name, Unary, VarDecl
 from .operators import DUNDERS, conversion
 from .program import ClassInfo
+from .sizes import member_offsets
 from .symbols import Scope, Symbol, member_name, python_name
 
 __all__ = ["ClassEmitter"]
@@ -168,6 +169,9 @@ class ClassEmitter(FunctionEmitter):
         spellings = self.program.templates.spellings
         values = _enumerators(self._lineage(info))
         self.out.line(f"_cxx_layout_ = {_layout(info, spellings, values)!r}", info.decl.where)
+        self.out.line(
+            f"_cxx_offsets_ = {member_offsets(info, self.program)!r}", info.decl.where
+        )
         self.out.line(f"_cxx_methods_ = {_methods_layout(info, spellings)!r}", info.decl.where)
         self.out.line("_cxx_destroyed = False", info.decl.where)
         self.out.line("_cxx_released = False", info.decl.where)

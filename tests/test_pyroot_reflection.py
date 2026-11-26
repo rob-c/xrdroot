@@ -134,7 +134,7 @@ def test_data_members_are_described_as_the_dictionary_describes_them():
     expect(
         ((ll.GetTypeName(), ll.GetTrueTypeName(), ll.IsBasic()), ("Long64_t", "Long64_t", True)),
         ((var.GetTypeName(), var.GetFullTypeName(), var.IsaPointer()), ("double", "double*", True)),
-        ((var.GetArrayIndex(), var.GetUnitSize(), var.GetOffset()), ("n", 8, 0)),
+        ((var.GetArrayIndex(), var.GetUnitSize(), var.GetOffset()), ("n", 8, 88)),
         ((trans.IsPersistent(), trans.GetComment()), (False, "!")),
         (
             (mid.GetFullTypeName(), mid.IsSTLContainer(), mid.IsBasic()),
@@ -1922,9 +1922,19 @@ def test_a_members_offset_is_where_the_itanium_layout_puts_it() -> None:
     assert members == {"n": 0, "x": 8, "c": 16, "p": 24}
 
 
-def test_a_members_offset_is_zero_when_the_layout_is_one_this_kit_does_not_work_out() -> None:
-    """A member of an array, of another class, or of a class no macro declared has no offset this
-    kit works out, and answers 0 - as it always did - rather than a number that may be wrong."""
+def test_a_members_offset_is_the_layouts_and_zero_where_no_layout_is_known() -> None:
+    """The offsets are ROOT's own, read off the oracle:
+
+        struct UnableProbe { int n[3]; TObject *o; TString text; };
+        --- UnableProbe (size 48)
+          n        int              offset=   0 unit=4
+          o        TObject*         offset=  16 unit=8
+          text     TString          offset=  24 unit=24
+
+    ``n`` is at 0 because it starts there, not because an array has no offset - ROOT's ``Plain``
+    puts its own ``int arr[3]`` at 72 - and the pointer is at 16 because it needs eight bytes of
+    alignment after twelve.
+    """
     ROOT.gInterpreter.Declare(
         "struct UnableProbe { int n[3]; TObject *o; TString text; };"
     )
@@ -1932,9 +1942,11 @@ def test_a_members_offset_is_zero_when_the_layout_is_one_this_kit_does_not_work_
         one.GetName(): one.GetOffset()
         for one in ROOT.TClass.GetClass("UnableProbe").GetListOfDataMembers()
     }
-    assert offsets == {"n": 0, "o": 0, "text": 0}
-    # a class no macro declared: ``TNamed``'s members are knowledge of ROOT's, not a memory layout
-    # this kit laid out, so they answer 0 - the offset it always answered
+    assert offsets == {"n": 0, "o": 16, "text": 24}
+    # a class no macro declared: this kit has no layout of ``TNamed`` to hand out, so it answers 0
+    # rather than a number it made up. ROOT, whose dictionary carries the number, says 16 and 40
+    # (``TObject`` is sixteen bytes: its virtual table's pointer and two four-byte counters), which
+    # is what a table of ROOT's own layouts would give this - ``W0-266``.
     named = [one.GetOffset() for one in ROOT.TClass.GetClass("TNamed").GetListOfDataMembers()]
     assert named and set(named) == {0}
 
@@ -1949,3 +1961,23 @@ def test_a_basic_members_data_type_is_the_one_its_type_has() -> None:
         for one in ROOT.TClass.GetClass("OffsetsProbe").GetListOfDataMembers()
     }
     assert codes == {"n": 3, "x": 8, "c": 1, "p": None}
+
+
+def test_a_derived_classs_offsets_begin_after_its_base() -> None:
+    """A base is not a member, but it takes room: ``OffDerived``'s own ``c`` starts at 16, where
+    ``OffBase`` - an ``int`` and a ``double`` - ends, which is what ROOT says for the same pair."""
+    ROOT.gInterpreter.Declare(
+        "struct OffBase { int a; double b; };"
+        "struct OffDerived : OffBase { int c; };"
+    )
+    found = {
+        one.GetName(): one.GetOffset()
+        for one in ROOT.TClass.GetClass("OffDerived").GetListOfDataMembers()
+    }
+    assert found == {"c": 16}
+    base = {
+        one.GetName(): one.GetOffset()
+        for one in ROOT.TClass.GetClass("OffBase").GetListOfDataMembers()
+    }
+    assert base == {"a": 0, "b": 8}
+
