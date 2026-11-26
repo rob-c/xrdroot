@@ -40,6 +40,7 @@ FAMILIES = (
     "complexes",
     "timing",
     "system",
+    "tpython",
     "metautils",
     "net",
     "environ",

@@ -656,6 +656,105 @@ class _Tag:
         return f"<{self.__cpp_name__} tag>"
 
 
+#: What an empty ``std::any`` holds: no Python value can be it, so ``has_value`` can tell.
+_EMPTY = object()
+
+
+def kind_of(value: Any) -> str:
+    """The C++ spelling of a Python value's type, as ``std::any::type`` names it."""
+    if isinstance(value, AnyValue):
+        return value.kind or "void"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "double"
+    if isinstance(value, str):
+        return "string"
+    return type(value).__name__
+
+
+class AnyValue:
+    """``std::any``: one value of any type, kept with the type it was made as.
+
+    ``std::any_cast<T>(a)`` is ``std.any_cast['T'](a)`` here, converting what it holds to ``T``
+    as the cast does, and ``std::make_any<T>(args)`` is ``std.make_any['T'](args)``.
+    """
+
+    def __init__(self, value: Any = _EMPTY, kind: str = "") -> None:
+        self._value = value
+        self._kind = kind
+
+    @property
+    def kind(self) -> str:
+        """The C++ spelling of the held type, or ``""`` for an empty any."""
+        return self._kind
+
+    @property
+    def held(self) -> Any:
+        """The value itself, empty or not: what ``TPython::Exec`` reads to fill another any."""
+        return self._value
+
+    def has_value(self) -> bool:
+        return self._value is not _EMPTY
+
+    def reset(self) -> None:
+        self._value, self._kind = _EMPTY, ""
+
+    def type(self) -> Any:
+        """``std::any::type``: the held type's name, or ``void`` when it holds nothing."""
+        return _Tag(self._kind or "void")
+
+    def value(self) -> Any:
+        if not self.has_value():
+            raise RuntimeError("std::any::value: this any holds nothing; give it a value first")
+        return self._value
+
+    def set(self, value: Any, kind: str = "") -> None:
+        """Hold ``value``: what ``TPython::Exec`` writes into the any the C++ side handed it."""
+        self._value, self._kind = value, kind or kind_of(value)
+
+    def __bool__(self) -> bool:
+        return self.has_value()
+
+    def __repr__(self) -> str:
+        held = "empty" if not self.has_value() else f"{self._kind} {self._value!r}"
+        return f"<std::any {held}>"
+
+
+_TYPE_CONVERTERS = {"int": int, "long": int, "double": float, "float": float, "bool": bool,
+                    "string": str, "std::string": str}
+
+
+class _AnyCast:
+    """``std::any_cast<T>(a)``: ``std.any_cast['T'](a)``, giving T's value back."""
+
+    def __getitem__(self, kind: str) -> Callable[..., Any]:
+        def cast(held: Any) -> Any:
+            value = held.value() if isinstance(held, AnyValue) else held
+            converter = _TYPE_CONVERTERS.get(kind)
+            return converter(value) if converter is not None else value
+
+        return cast
+
+
+class _MakeAny:
+    """``std::make_any<T>(args)``: ``std.make_any['T'](args)``, an any holding a T."""
+
+    def __getitem__(self, kind: str) -> Callable[..., Any]:
+        def make(*args: Any) -> AnyValue:
+            value = args[0] if len(args) == 1 else args
+            return AnyValue(value, kind)
+
+        return make
+
+
+#: ``std::any_cast<T>`` and ``std::make_any<T>``: the subscript names ``T``.
+any_cast = _AnyCast()
+make_any = _MakeAny()
+
+
 def remove(path: Any) -> int:
     """C's ``remove``: the file deleted, and 0 - or -1, if there was none to delete."""
     try:

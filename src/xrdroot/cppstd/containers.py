@@ -41,6 +41,7 @@ from typing import Any, cast
 import numpy as np
 
 from . import bitset as _bitset
+from . import filesystem as _filesystem
 from . import random as _random
 from . import span as _span
 from . import stdlib as _stdlib
@@ -1818,6 +1819,12 @@ class _Namespace:
     forward_list = TEMPLATES["forward_list"]
     complex = TEMPLATES["complex"]
     atomic = TEMPLATES["atomic"]
+    #: ``std::filesystem``: ``path`` and the questions a program asks of one.
+    filesystem = _filesystem
+    #: ``std::any``: one value of any type, with ``any_cast<T>`` and ``make_any<T>`` beside it.
+    any = _stdlib.AnyValue
+    any_cast = _stdlib.any_cast
+    make_any = _stdlib.make_any
     #: ``std::integral_constant`` and the two types a template picks a branch with.
     integral_constant = _stdlib.integral_constant
     true_type = _stdlib.true_type
