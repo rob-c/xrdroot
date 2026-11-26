@@ -1907,3 +1907,45 @@ def test_the_class_s_own_dictionary_outranks_a_load_that_re_emulated_it():
         0xB5FB752,
         0xB15D1241,
     ]
+
+
+def test_a_members_offset_is_where_the_itanium_layout_puts_it() -> None:
+    """``TDataMember::GetOffset`` is the member's byte offset in its class, which a macro writes
+    through: roottest's ``datamodelevolution`` sets a member with
+    ``*(int *)(((char *)obj) + member->GetOffset())``, so ``int``, ``double`` and ``char`` members
+    start at 0, 8 and 16, and a pointer takes eight bytes aligned to eight."""
+    ROOT.gInterpreter.Declare("struct OffsetsProbe { int n; double x; char c; int *p; };")
+    members = {
+        one.GetName(): one.GetOffset()
+        for one in ROOT.TClass.GetClass("OffsetsProbe").GetListOfDataMembers()
+    }
+    assert members == {"n": 0, "x": 8, "c": 16, "p": 24}
+
+
+def test_a_members_offset_is_zero_when_the_layout_is_one_this_kit_does_not_work_out() -> None:
+    """A member of an array, of another class, or of a class no macro declared has no offset this
+    kit works out, and answers 0 - as it always did - rather than a number that may be wrong."""
+    ROOT.gInterpreter.Declare(
+        "struct UnableProbe { int n[3]; TObject *o; TString text; };"
+    )
+    offsets = {
+        one.GetName(): one.GetOffset()
+        for one in ROOT.TClass.GetClass("UnableProbe").GetListOfDataMembers()
+    }
+    assert offsets == {"n": 0, "o": 0, "text": 0}
+    # a class no macro declared: ``TNamed``'s members are knowledge of ROOT's, not a memory layout
+    # this kit laid out, so they answer 0 - the offset it always answered
+    named = [one.GetOffset() for one in ROOT.TClass.GetClass("TNamed").GetListOfDataMembers()]
+    assert named and set(named) == {0}
+
+
+def test_a_basic_members_data_type_is_the_one_its_type_has() -> None:
+    """``TDataMember::GetDataType`` answers the ``TDataType`` a basic member's own type is - the
+    code ``Generator.h`` switches on (``kInt_t`` 3, ``kDouble_t`` 8, ``kChar_t`` 1) - and nothing
+    for a member that is a class or a pointer, which ROOT does not call basic either."""
+    ROOT.gInterpreter.Declare("struct OffsetsProbe { int n; double x; char c; int *p; };")
+    codes = {
+        one.GetName(): (None if one.GetDataType() is None else one.GetDataType().GetType())
+        for one in ROOT.TClass.GetClass("OffsetsProbe").GetListOfDataMembers()
+    }
+    assert codes == {"n": 3, "x": 8, "c": 1, "p": None}

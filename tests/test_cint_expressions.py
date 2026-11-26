@@ -206,3 +206,57 @@ def test_a_call_of_something_that_is_no_standard_typedef_stays_a_call(
     source: str, fragment: str
 ) -> None:
     assert fragment in body(source)
+
+
+def test_a_members_bytes_are_written_through_the_offset_it_starts_at() -> None:
+    """``*(int *)(((char *)obj) + off) = v`` writes the member that starts at ``off`` - ROOT's
+    ``datamodelevolution`` fills a class that way, a member at a time - and reading the same bytes
+    gives it back. An offset no member starts at is refused rather than written into the middle of
+    the object."""
+    import xrdroot.pyroot as ROOT
+    from xrdroot.cppstd.cells import ObjectBytes, byte_offset
+    from xrdroot.pycint.execute import run_source
+
+    run_source("struct OffsetsWrite { int n; double x; };", "t.C", root=ROOT)
+    made = ROOT.OffsetsWrite()
+    byte_offset(made, 0)[0] = 7
+    byte_offset(made, 8)[0] = 2.5
+    assert (made.n, made.x) == (7, 2.5)
+    assert byte_offset(made, 0)[0] == 7 and byte_offset(made, 8)[0] == 2.5
+    with pytest.raises(ValueError, match="is not the start of a member"):
+        ObjectBytes(made, 4)
+    with pytest.raises(TypeError, match="read at the member that starts there"):
+        byte_offset(made, 0)[1]
+    with pytest.raises(TypeError, match="written at the member that starts there"):
+        byte_offset(made, 0)[1] = 3
+    assert byte_offset(made, 0).n == 7  # another name is the object's own
+    assert "ObjectBytes(" in repr(byte_offset(made, 0))
+    # a class whose layout this kit does not work out - an array member, or a member of a class it
+    # has no size for - is the object at an offset of 0, as it always was
+    run_source("struct BytesProbe { int n[2]; };", "t.C", root=ROOT)
+    run_source("struct TextProbe { TString s; };", "t.C", root=ROOT)
+    assert isinstance(byte_offset(ROOT.BytesProbe(), 0), ROOT.BytesProbe)
+    assert isinstance(byte_offset(ROOT.TextProbe(), 0), ROOT.TextProbe)
+
+
+def test_a_pointer_to_an_objects_bytes_is_the_object_stepped_to_its_member() -> None:
+    """``(char *)&obj + off`` is the object's bytes at ``off``, and ``(char *)`` of a ``void *`` is
+    the same address - ROOT's ``datamodelevolution`` fills a class through both - while a ``char *``
+    of its own is a C string and stays one."""
+    from xrdroot.pycint import translate
+
+    source = """
+    struct Bytes { int n; double x; };
+    void t(Bytes *p, void *v) {
+      int off = 8;
+      *(int *)(((char *)p) + 0) = 1;
+      *(double *)(((char *)v) + off) = 2.0;
+      const char *s = (const char *)p;
+      char *q = (char *)s + 1;
+      (void)q;
+    }
+    """
+    text = translate(source, "t.C")
+    assert "byte_offset(p, (0))[0] = 1" in text
+    assert "byte_offset(v, (off))[0] = 2.0" in text
+

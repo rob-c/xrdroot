@@ -1736,6 +1736,11 @@ class TClass(TNamed):
         members = [e for e in elements if e[0] != "TStreamerBase"]
         return [(e[1], e[8], e[2], tuple(e[7][: e[6]])) for e in members]
 
+    def _cxx_fields(self) -> list[tuple[str, str, str, tuple[Any, ...]]] | None:
+        """The members a macro's translation wrote for this class, or ``None`` for a class no
+        macro declared - what :func:`_member_offsets` needs and what no other class can answer."""
+        return self._fields() if self._declared() is not None else None
+
     def _base_names(self) -> list[str]:
         cls = self._declared()
         if cls is not None:
@@ -2110,6 +2115,33 @@ class TBaseClass(TNamed):
         return 0
 
 
+def _member_offsets(owner: Any) -> list[int] | None:
+    """Each data member's byte offset in a class a macro declared, or ``None`` when this kit does
+    not work that class's layout out.
+
+    The Itanium C++ ABI's rule, which :mod:`xrdroot.pycxx.sizes` follows for ``sizeof``: each member
+    starts at the next offset its alignment allows. A member that is a pointer takes a pointer's
+    room, and a class with a base, or a member that is another class, is left to ``None`` rather
+    than given a number that may be wrong.
+    """
+    declared = owner._cxx_fields()
+    if declared is None:
+        return None
+    from ...wclasses import TYPES
+
+    offsets: list[int] = []
+    offset = 0
+    for _name, spelled, _title, dims in declared:
+        found = TYPES.get(spelled.rstrip("*")) if not dims else None
+        if found is None:
+            return None
+        size = 8 if spelled.endswith("*") else found[2]
+        offset = -(-offset // size) * size
+        offsets.append(offset)
+        offset += size
+    return offsets
+
+
 class TDataMember(TNamed):
     """``TDataMember``: one data member of a class, as declared - transient ones included."""
 
@@ -2180,7 +2212,31 @@ class TDataMember(TNamed):
         return 8 if self.IsaPointer() or found is None else found[2]
 
     def GetOffset(self) -> int:
-        return 0
+        """``GetOffset``: where the member starts in its class, as the Itanium C++ ABI lays it out.
+
+        A macro writes into an object by byte offset - ``*(int *)(((char *)obj) +
+        member->GetOffset())`` is how roottest's ``datamodelevolution`` fills a class - so this is
+        the member's own offset: each member at the next offset its alignment allows, in the order
+        the class declares them. A class whose layout this kit does not work out answers 0, as it
+        always has.
+        """
+        found = _member_offsets(self._owner)
+        names = [one.GetName() for one in self._owner.GetListOfDataMembers()]
+        index = names.index(self._name) if self._name in names else -1
+        return found[index] if found is not None and 0 <= index < len(found) else 0
+
+    def GetDataType(self) -> Any:
+        """``GetDataType``: the ``TDataType`` a basic member's own type is, ``None`` for a class.
+
+        ``TDataMember::GetDataType`` is how a macro picks a member's filler by kind - roottest's
+        ``datamodelevolution`` switches on ``GetDataType()->GetType()`` inside
+        ``if (member->IsBasic())`` - so the code, the name and the size come from the one table the
+        writer uses for a member's leaf.
+        """
+        from ...wclasses import TYPES
+
+        found = TYPES.get(self.GetTrueTypeName())
+        return None if found is None else TDataType(found[1], found[0], found[2])
 
     def GetComment(self) -> str:
         return self._title

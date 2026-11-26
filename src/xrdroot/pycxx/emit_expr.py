@@ -143,6 +143,15 @@ def _is_null(node: Expr) -> bool:
     )
 
 
+def _an_address(source: CType | None) -> bool:
+    """Is this type one ``(char *)`` may step by bytes: an object's own pointer, or a ``void *``,
+    which is the same address - ``TTree::GetBranchAddress``-style code hands one to a filler that
+    steps it by a member's offset. A ``char *`` of its own is already read as a string."""
+    if source is None or source.is_string:
+        return False
+    return source.is_object_pointer or (source.pointer > 0 and source.is_void)
+
+
 class ExprEmitter(NameEmitter):
     """The emitter's layer for expressions."""
 
@@ -374,7 +383,7 @@ class ExprEmitter(NameEmitter):
         if not (isinstance(cast, Cast) and cast.ctype.is_string and cast.ctype.pointer):
             return None
         source = self.typeof(cast.operand)
-        if source is None or not source.is_object_pointer or source.is_string:
+        if not _an_address(source):
             return None
         sign = "-" if node.op == "-" else ""
         return f"byte_offset({self.value(cast.operand)}, {sign}({self.value(node.right)}))"

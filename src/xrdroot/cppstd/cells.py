@@ -195,15 +195,108 @@ def integer_cast(value: Any) -> int:
 
 
 def byte_offset(obj: Any, offset: Any) -> Any:
-    """``(char*)obj + offset``: the object itself when the offset is none - a base class at
-    the start of the object, as single inheritance puts it; any other offset is the middle
-    of an object, which here has no address of its own."""
+    """``(char*)obj + offset``: the object's bytes at that offset, or the object itself.
+
+    An offset a member of the object starts at is that member's bytes, which
+    :class:`ObjectBytes` reads and writes - a macro fills a class that way. Anything else that is
+    an offset of 0 is the object: a base class at the start of it, as single inheritance puts it,
+    which ``TClass::GetBaseClassOffset`` answers 0 for. Any other object moved into its middle has
+    no address here.
+    """
+    started = _member_starts(type(obj))
+    if started is not None and int(offset) in started:
+        return ObjectBytes(obj, int(offset))
     if int(offset) == 0:
         return obj
     raise ValueError(
         f"an object's address moved by {int(offset)} bytes, into the middle of it, which "
         "names nothing here: only an offset of 0 - a base at the object's start - is followed"
     )
+
+
+def _layout_of(cls: type) -> tuple[Any, ...] | None:
+    """The members a macro's translation wrote on the class, or ``None`` for any other class."""
+    return cls.__dict__.get("_cxx_layout_")
+
+
+#: A C++ type's size on LP64, as the layout of a macro's class is walked here: the numbers a class
+#: of the program's holds, and a pointer's eight bytes. A class the translation laid out with
+#: anything else is refused rather than guessed at.
+_SIZES = {
+    "char": 1, "signed char": 1, "unsigned char": 1, "bool": 1, "Char_t": 1, "UChar_t": 1,
+    "short": 2, "unsigned short": 2, "Short_t": 2, "UShort_t": 2,
+    "int": 4, "unsigned int": 4, "Int_t": 4, "UInt_t": 4, "float": 4, "Float_t": 4,
+    "long": 8, "unsigned long": 8, "Long_t": 8, "ULong_t": 8,
+    "long long": 8, "unsigned long long": 8, "Long64_t": 8, "ULong64_t": 8,
+    "double": 8, "Double_t": 8, "double32_t": 8, "Double32_t": 8, "float16_t": 4,
+}  # fmt: skip
+
+
+def _member_offsets(layout: tuple[Any, ...]) -> list[int] | None:
+    """Each member's byte offset in the class the layout describes, each at the next offset its
+    alignment allows - the Itanium rule ``xrdroot.pycxx.sizes`` follows - or ``None`` when a
+    member's size is not one this table gives."""
+    offsets: list[int] = []
+    at = 0
+    for _name, spelled, _title, dims in layout[2]:
+        if dims:
+            return None
+        size = 8 if spelled.endswith("*") else _SIZES.get(spelled.rstrip("*"))
+        if size is None:
+            return None
+        at = -(-at // size) * size
+        offsets.append(at)
+        at += size
+    return offsets
+
+
+def _member_starts(cls: type) -> list[int] | None:
+    """Where each member of a class a macro declared starts, or ``None`` for any other class."""
+    layout = _layout_of(cls)
+    return _member_offsets(layout) if layout is not None else None
+
+
+class ObjectBytes:
+    """``(char *)obj + off``: the object's bytes there, named by the member that starts at ``off``.
+
+    A macro writes into an object through its own bytes - ``*(int *)(((char *)obj) +
+    member->GetOffset()) = value`` is how roottest's ``datamodelevolution`` fills a class - and
+    Python has no address to hand out. So this answers what such a program does with the address:
+    ``p[0]`` is the member starting at ``off``, read or written, and every other name is the
+    object's own, because ``(T *)((char *)obj + 0)`` cast back is the object itself.
+    """
+
+    __slots__ = ("_object", "_offset", "_member")
+
+    def __init__(self, obj: Any, offset: int) -> None:
+        layout = _layout_of(type(obj))
+        assert layout is not None, "an object's bytes are named only for a class laid out here"
+        offsets = _member_offsets(layout)
+        if offsets is None or offset not in offsets:
+            raise ValueError(
+                f"{offset} is not the start of a member of {type(obj).__name__}, whose members "
+                f"start at the offsets the translation laid out"
+            )
+        self._object = obj
+        self._offset = offset
+        self._member = layout[2][offsets.index(offset)][0]
+
+    def __getitem__(self, index: Any) -> Any:
+        if isinstance(index, slice) or index != 0:
+            raise TypeError("an object's bytes are read at the member that starts there, as p[0]")
+        return getattr(self._object, self._member)
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        if isinstance(index, slice) or index != 0:
+            raise TypeError("an object's bytes are written at the member that starts there, as "
+                            "p[0] = value")
+        setattr(self._object, self._member, value)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._object, name)
+
+    def __repr__(self) -> str:
+        return f"ObjectBytes({self._object!r}, {self._offset})"
 
 
 class ObjectAddress:
