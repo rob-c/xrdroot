@@ -37,6 +37,10 @@ __all__ = [
     "sort_range",
     "sorted_range",
     "reverse_range",
+    "replace_range",
+    "generate_range",
+    "iota_range",
+    "accumulate_op",
     "CppException",
     "throw",
     "pointee",
@@ -284,6 +288,46 @@ def sort_range(
 
         values.sort(key=functools.cmp_to_key(_comparison(less)))
     container[start:end] = values
+
+
+def replace_range(
+    container: Any, start: int, stop: Any, old: Any, new: Any
+) -> None:
+    """``std::replace(begin, end, old, new)`` over ``container[start:stop]``, in place.
+
+    Every element equal to ``old`` becomes ``new``, as the algorithm's loop does; a
+    ``std::string`` cannot be written where it lies, so the translator hands that one back
+    to its variable instead of coming here.
+    """
+    end = len(container) if stop is None else int(stop)
+    for index in range(int(start), end):
+        if container[index] == old:
+            container[index] = new
+
+
+def iota_range(container: Any, start: int, stop: Any, first: Any) -> None:
+    """``std::iota(begin, end, value)`` over ``container[start:stop]``, in place."""
+    end = len(container) if stop is None else int(stop)
+    for index, value in zip(range(int(start), end), _counting(first), strict=False):
+        container[index] = value
+
+
+def _counting(first: Any) -> Iterator[Any]:
+    """``first, first + 1, first + 2`` ... one at a time, as far as they are asked for."""
+    value = first
+    while True:
+        yield value
+        value = value + 1
+
+
+def accumulate_op(
+    values: Iterable[Any], first: Any, operation: Callable[[Any, Any], Any]
+) -> Any:
+    """``std::accumulate(begin, end, init, op)``: ``op`` folded left over the range."""
+    total = first
+    for value in values:
+        total = operation(total, value)
+    return total
 
 
 def _comparison(less: Callable[..., Any]) -> Callable[[Any, Any], int]:

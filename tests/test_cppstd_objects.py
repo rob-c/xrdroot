@@ -91,6 +91,15 @@ objects.sort_range(values, 0, 3, lambda left, right: left > right)
 assert values == [3, 2, 1, 9]
 objects.reverse_range(values, 1, None)
 assert values == [3, 9, 1, 2]
+objects.replace_range(values, 0, None, 9, 4)
+assert values == [3, 4, 1, 2]
+objects.iota_range(values, 1, 3, 7)
+assert values == [3, 7, 8, 2]
+numbers = iter([5, 6])
+objects.generate_range(values, 2, None, lambda: next(numbers))
+assert values == [3, 7, 5, 6]
+assert objects.accumulate_op([1, 2, 3], 0, lambda a, b: a + 2 * b) == 12
+assert objects.accumulate_op([], 4, lambda a, b: a + b) == 4
 assert list(objects.iterate({'key': 7})) == [objects.Pair('key', 7)]
 assert objects.Pair(1, 2) < objects.Pair(2, 1)
 held = SimpleNamespace(value=3)

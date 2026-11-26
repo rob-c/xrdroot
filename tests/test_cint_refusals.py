@@ -43,7 +43,6 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
         ("auto a = alignof(TNone);", "alignof of a type whose size this translator does not know"),
         ("bool b = noexcept(f());", "noexcept is not something"),
         ("int x; auto f = [&n = x]() { return n; };", r"the lambda capture &n = \.\.\."),
-        ("auto f = [n = 1]() mutable { return ++n; };", "the mutable lambda's capture n"),
         ("Point p = {.x = 1};", r"a designated initialiser, \.name = value"),
         ("int x = );", "an expression was expected"),
         ("unknown x y;", "';' was expected"),
@@ -54,6 +53,26 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
         ("struct { int a; };", "an unnamed struct, which has no name"),
         ("int n = sizeof...(args);", "sizeof of a type whose size"),
         ("int x = 10_km;", "10_km is a user-defined literal"),
+        (
+            'std::string s = "ab"; std::replace(s.begin() + 1, s.end(), \'a\', \'b\');',
+            "a range of a std::string that is not the whole of it",
+        ),
+        ('std::string s; std::replace(s.begin(), s.end(), 1);', r"std::replace with 3 arguments"),
+        ('int v[2] = {1, 2}; std::iota(v, v + 1);', r"std::iota with 2 arguments"),
+        (
+            'int v[2] = {1, 2}; std::generate(v, v + 1, f, g);',
+            r"std::generate with 4 arguments",
+        ),
+        ("std::string s; s.erase(1, 2, 3);", r"std::string::erase\(\) over a range of iterators"),
+        (
+            "std::string s; s.insert(1, 2, 3);",
+            r"std::string::insert\(\) over a range of iterators",
+        ),
+        (
+            'std::string s; s.replace(1, 2, "x", "y");',
+            r"std::string::replace\(\) over a range of iterators",
+        ),
+        ('std::string s; s.assign(1, 2, 3);', r"std::string::assign\(\) with 3 arguments"),
     ],
 )
 def test_constructs_with_no_python_are_refused_by_name_at_their_line(source: str, why: str) -> None:

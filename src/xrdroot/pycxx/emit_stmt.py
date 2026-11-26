@@ -20,7 +20,7 @@ from .base import P
 from .ctype import CType
 from .dialect import active
 from .emit_calls import CallEmitter
-from .errors import Where
+from .errors import Refusal, Where
 from .loops import (
     assigned_names,
     bound_of,
@@ -920,7 +920,10 @@ class StmtEmitter(CallEmitter):
         dialect = active().member_statement
         line = dialect(self, owner, target, func.name, args) if dialect is not None else None
         if line is None:
-            line = _changing_statement(owner, target, func.name, args)
+            def refuse(why: str) -> Refusal:
+                return self.refuse(why, expr)
+
+            line = _changing_statement(owner, target, func.name, args, refuse)
         if line is None:
             return False
         if isinstance(func.obj, Name):
@@ -969,28 +972,104 @@ def _is_default(labels: list[Case]) -> bool:
     return any(case.value is None for case in labels)
 
 
-def _changing_statement(owner: CType, target: str, name: str, args: list[str]) -> str | None:
+#: How a changed member refuses the shapes the kit does not write: the reason, and the refusal.
+Refuser = Callable[[str], Refusal]
+
+
+def _changing_statement(
+    owner: CType, target: str, name: str, args: list[str], refuse: Refuser
+) -> str | None:
     """A member call that changes a smart pointer or a string, as an assignment."""
     if owner.is_smart and name == "reset":
         return f"{target} = {args[0] if args else 'None'}"
     if owner.is_string and not owner.dims:
-        return _string_statement(target, name, args)
+        return _string_statement(target, name, args, refuse)
     return None
 
 
-def _string_statement(target: str, name: str, args: list[str]) -> str | None:
+def _string_statement(target: str, name: str, args: list[str], refuse: Refuser) -> str | None:
     """A ``std::string`` member that changes the string, as the assignment it is in Python."""
-    if name in ("append", "operator+="):
-        return f"{target} += cstr({args[0]})"
-    if name == "push_back":
-        return f"{target} += cstr({args[0]})"
-    if name == "clear":
-        return f"{target} = ''"
-    if name == "assign" and len(args) == 1:
-        return f"{target} = cstr({args[0]})"
-    if name == "resize":
-        return f"{target} = resize({', '.join([target, *args])})"
-    return None
+    writer = _STRING_STATEMENTS.get(name)
+    return None if writer is None else writer(target, args, refuse)
+
+
+def _appended(target: str, args: list[str], refuse: Refuser) -> str:
+    """``s.append(t)``, ``s.push_back(c)`` and ``s += t``: the text kept and ``t`` after it."""
+    return f"{target} += cstr({args[0]})"
+
+
+def _cleared(target: str, args: list[str], refuse: Refuser) -> str:
+    """``s.clear()``: no characters left."""
+    return f"{target} = ''"
+
+
+def _popped(target: str, args: list[str], refuse: Refuser) -> str:
+    """``s.pop_back()``: the last character dropped."""
+    return f"{target} = {target}[:-1]"
+
+
+def _assigned(target: str, args: list[str], refuse: Refuser) -> str:
+    """``s.assign(t)``, or ``s.assign(n, c)``: the whole string made that text."""
+    if len(args) == 2:
+        return f"{target} = cstr({args[1]}) * {args[0]}"
+    if len(args) != 1:
+        raise refuse(f"std::string::assign() with {len(args)} arguments")
+    return f"{target} = cstr({args[0]})"
+
+
+def _resized(target: str, args: list[str], refuse: Refuser) -> str:
+    """``s.resize(n[, c])``: the text cut short or filled out to ``n`` characters."""
+    return f"{target} = resize({', '.join([target, *args])})"
+
+
+def _erased(target: str, args: list[str], refuse: Refuser) -> str:
+    """``s.erase()``, ``s.erase(at)`` and ``s.erase(at, count)`` as the text left."""
+    if not args:
+        return _cleared(target, args, refuse)
+    at, rest = _twice(args[0])
+    if len(args) == 1:
+        return f"{target} = {target}[:{at}]"
+    if len(args) == 2:
+        return f"{target} = {target}[:{at}] + {target}[{rest}+{args[1]}:]"
+    raise refuse("std::string::erase() over a range of iterators")
+
+
+def _inserted(target: str, args: list[str], refuse: Refuser) -> str:
+    """``s.insert(at, t)``: the text ``t`` spliced in at ``at``."""
+    if len(args) != 2:
+        raise refuse("std::string::insert() over a range of iterators")
+    at, rest = _twice(args[0])
+    return f"{target} = {target}[:{at}] + cstr({args[1]}) + {target}[{rest}:]"
+
+
+def _replaced(target: str, args: list[str], refuse: Refuser) -> str:
+    """``s.replace(at, count, t)``: ``count`` characters from ``at`` given up for ``t``."""
+    if len(args) != 3:
+        raise refuse("std::string::replace() over a range of iterators")
+    at, rest = _twice(args[0])
+    return f"{target} = {target}[:{at}] + cstr({args[2]}) + {target}[{rest}+{args[1]}:]"
+
+
+#: The ``std::string`` members that change the string, each as the assignment it is.
+_STRING_STATEMENTS: dict[str, Callable[[str, list[str], Refuser], str | None]] = {
+    "append": _appended,
+    "operator+=": _appended,
+    "push_back": _appended,
+    "clear": _cleared,
+    "pop_back": _popped,
+    "assign": _assigned,
+    "resize": _resized,
+    "erase": _erased,
+    "insert": _inserted,
+    "replace": _replaced,
+}
+
+
+def _twice(text: str) -> tuple[str, str]:
+    """An expression written into two places: worked out once, through a name of its own."""
+    if text.isidentifier() or text.isdigit():
+        return text, text
+    return f"(_at := {text})", "_at"
 
 
 def _items(step: Expr | None) -> list[Expr]:

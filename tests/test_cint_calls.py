@@ -65,6 +65,66 @@ def body(source: str) -> str:
             'printf("%g\\n", std::accumulate(v.begin(), v.end(), 0.0));',
             "3.5\n",
         ),
+        (
+            "std::vector<int> v{1, 2, 3};"
+            'printf("%d\\n", std::accumulate(v.begin(), v.end(), 0,'
+            " [](int a, int b) { return a + 2 * b; }));",
+            "12\n",
+        ),
+        (
+            'std::string s = "a b"; std::replace(s.begin(), s.end(), \' \', \'_\');'
+            'printf("%s\\n", s.c_str());',
+            "a_b\n",
+        ),
+        (
+            "std::vector<int> v{1, 2, 1}; std::replace(v.begin(), v.end(), 1, 9);"
+            'printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "9 2 9\n",
+        ),
+        (
+            "double a[3] = {1, 2, 1}; std::replace(a, a + 3, 1.0, 2.0);"
+            'printf("%g %g %g\\n", a[0], a[1], a[2]);',
+            "2 2 2\n",
+        ),
+        (
+            "std::vector<int> v{0, 0, 0}; std::iota(v.begin(), v.end(), 5);"
+            'printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "5 6 7\n",
+        ),
+        (
+            "std::vector<int> v{0, 0, 0};"
+            "std::generate(v.begin(), v.end(), [n = 0]() mutable { n++; return n * 10; });"
+            'printf("%d %d %d\\n", v[0], v[1], v[2]);',
+            "10 20 30\n",
+        ),
+        (
+            'std::string s = "abc:"; s.pop_back(); printf("%s\\n", s.c_str());',
+            "abc\n",
+        ),
+        (
+            'std::string s = "abcdef"; s.erase(1, 2); s.erase(2);'
+            'printf("%s\\n", s.c_str());',
+            "ad\n",
+        ),
+        (
+            'std::string s = "ac"; s.insert(1, "b"); s.replace(1, 1, "xy");'
+            'printf("%s\\n", s.c_str());',
+            "axyc\n",
+        ),
+        (
+            'std::string s = "abc"; s.erase(); printf("[%s]\\n", s.c_str());',
+            "[]\n",
+        ),
+        (
+            'std::string s = "abcdef"; int i = 2; s.erase(i + 1, 2);'
+            'printf("%s\\n", s.c_str());',
+            "abcf\n",
+        ),
+        (
+            'std::string s; s.assign(3, \'x\'); s.assign("yz");'
+            'printf("%s\\n", s.c_str());',
+            "yz\n",
+        ),
         ('double w[3] = {1, 2, 3}; printf("%g\\n", std::accumulate(w, w + 2, 10.0));', "13\n"),
         (
             'double a[4] = {3, 1, 2, 0}; std::sort(&a[0], &a[0] + 3);'
@@ -124,7 +184,7 @@ def test_calls_are_written_as_their_python(source: str, fragment: str) -> None:
     [
         ("auto x = std::numeric_limits<std::string>::max();", r"numeric_limits<std::string>::max"),
         ("std::sort(v.begin());", "std::sort without a range"),
-        ("auto s = std::accumulate(v.begin(), v.end());", "std::accumulate with an operation"),
+        ("auto s = std::accumulate(v.begin());", "std::accumulate with 1 arguments"),
         ("std::sort(v.begin(), w.end());", "a range whose two ends are in different containers"),
         ("std::sort(it, other);", "an iterator this translator cannot follow back"),
         ("std::unique_ptr<TH1F> p; long n = p.use_count();", r"the smart pointer's use_count\(\)"),

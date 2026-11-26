@@ -29,14 +29,18 @@ from ...cppstd.objects import _fits as _fits
 from ...cppstd.objects import _flat as _flat
 from ...cppstd.objects import _object_array as _object_array
 from ...cppstd.objects import _walked as _walked
+from ...cppstd.objects import accumulate_op as accumulate_op
 from ...cppstd.objects import array as array
 from ...cppstd.objects import convertible as convertible
 from ...cppstd.objects import dynamic_cast as dynamic_cast
 from ...cppstd.objects import function_template as function_template
+from ...cppstd.objects import generate_range as generate_range
+from ...cppstd.objects import iota_range as iota_range
 from ...cppstd.objects import iterate as iterate
 from ...cppstd.objects import pointee as pointee
 from ...cppstd.objects import postinc as postinc
 from ...cppstd.objects import preinc as preinc
+from ...cppstd.objects import replace_range as replace_range
 from ...cppstd.objects import reverse_range as reverse_range
 from ...cppstd.objects import set_attr as set_attr
 from ...cppstd.objects import set_item as set_item
@@ -64,6 +68,10 @@ __all__ = [
     "sort_range",
     "sorted_range",
     "reverse_range",
+    "replace_range",
+    "generate_range",
+    "iota_range",
+    "accumulate_op",
     "CppException",
     "throw",
     "deref",

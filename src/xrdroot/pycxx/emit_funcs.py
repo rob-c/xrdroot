@@ -278,6 +278,9 @@ class FunctionEmitter(VariableEmitter):
                 for capture, value in inits:
                     ctype = self.typeof(capture.init) if capture.init is not None else None
                     symbol = self.declare(capture.name, "param", ctype)
+                    if node.mutable:
+                        symbol.cell = True
+                        value = f"Cell({value})"
                     params.append(f"{symbol.py}={value}")
                 self.out.line(f"def {py}({', '.join(params)}):", node.where)
                 with self.out.indented():
@@ -302,12 +305,11 @@ class FunctionEmitter(VariableEmitter):
 
     def _initialised(self, node: Lambda) -> list[tuple[Capture, str]]:
         """``[n = expr]``: each new name and its value, worked out where the lambda is made -
-        bound as a default, as ``[x]`` is. A ``mutable`` lambda would keep a change to one
-        for its next call, which a default does not, and is refused."""
-        inits = [capture for capture in node.captures if capture.init is not None]
-        if inits and node.mutable:
-            raise self.refuse(f"the mutable lambda's capture {inits[0].name} = ...", node)
-        return [(capture, self.value(capture.init)) for capture in inits
+        bound as a default, as ``[x]`` is. A ``mutable`` lambda keeps a change to one for its
+        next call, which a default does not, so a mutable lambda's capture is bound as a
+        :class:`~cppstd.cells.Cell` instead and every use of it goes through ``.value``.
+        """
+        return [(capture, self.value(capture.init)) for capture in node.captures
                 if capture.init is not None]  # fmt: skip
 
     def _captured(self, node: Lambda) -> list[str]:

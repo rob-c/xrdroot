@@ -429,6 +429,62 @@ class CallEmitter(ExprEmitter):
         extra = "".join(f", {self.value(arg)}" for arg in node.args[2:3])
         return f"{helper}({container}, {start}, {stop}{extra})", P.POSTFIX
 
+    def _replace(self, func: Name, node: Call) -> Out | None:
+        """``std::replace(first, last, old, new)``: every ``old`` in the range made ``new``.
+
+        A container's range is written where it lies. A ``std::string`` is Python's
+        ``str``, which no write reaches in place, so the variable keeps the text the call
+        leaves - as it does for a ``strcpy`` into a ``char`` array - and the range has to
+        be the whole of it.
+        """
+        if len(node.args) != 4:
+            raise self.refuse(f"std::{func.last} with {len(node.args)} arguments", node)
+        old, new = self._as_char(node.args[2]), self._as_char(node.args[3])
+        owner = self._whole_string(node.args[0], node.args[1], node)
+        if owner is not None:
+            return f"({owner} := {owner}.replace({old}, {new}))", P.POSTFIX
+        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
+        return f"replace_range({container}, {start}, {stop}, {old}, {new})", P.POSTFIX
+
+    def _as_char(self, expr: Expr) -> str:
+        """A value of ``char`` type as the one-character string a ``str`` takes."""
+        found = self.typeof(expr)
+        if found is not None and found.is_char:
+            return f"chr({self.value(expr)})"
+        return self.value(expr)
+
+    def _whole_string(self, first: Expr, last: Expr, node: Expr) -> str | None:
+        """``s.begin(), s.end()`` of one string variable: its name, which keeps the text.
+
+        Only the whole of a string can be replaced this way - the text the call leaves goes
+        back into the variable - so any other range of one is refused rather than left to
+        fail as a write into a ``str``.
+        """
+        own = self._string_owner(first)
+        if own is None:
+            return None
+        text = self.value(own)
+        if self._container_end(first) != (text, "0") or self._container_end(last) != (text, "None"):
+            raise self.refuse("a range of a std::string that is not the whole of it", node)
+        return text
+
+    def _string_owner(self, first: Expr) -> Expr | None:
+        """The ``std::string`` variable a ``.begin()`` is called on, when that is what it is.
+
+        ``s.begin() + 1`` is still a place in ``s``, so the arithmetic is looked through.
+        """
+        while isinstance(first, Binary) and first.op in ("+", "-"):
+            first = first.left
+        if not isinstance(first, Call) or not isinstance(first.func, Member):
+            return None
+        own = first.func.obj
+        return own if isinstance(own, Name) and self._own_string(own) else None
+
+    def _own_string(self, expr: Expr) -> bool:
+        """Does ``expr`` hold a ``std::string``, which Python's ``str`` stands for?"""
+        kind = self.typeof(expr)
+        return kind is not None and kind.is_string and not kind.pointer and not kind.dims
+
     def _sorted(self, func: Name, node: Call) -> Out | None:
         """``std::is_sorted(begin, end[, less])``: whether the range is in order, as C++ asks it
         - no element less than the one before it - which a range of this kit answers in one pass."""
@@ -439,12 +495,32 @@ class CallEmitter(ExprEmitter):
         return f"sorted_range({container}, {start}, {stop}{extra})", P.POSTFIX
 
     def _accumulate(self, func: Name, node: Call) -> Out | None:
-        if len(node.args) != 3:
-            raise self.refuse("std::accumulate with an operation of its own", node)
+        """``std::accumulate(first, last, init[, op])``: the sum, or the fold ``op`` makes."""
+        if len(node.args) not in (3, 4):
+            raise self.refuse(f"std::{func.last} with {len(node.args)} arguments", node)
         container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
         stop_text = "" if stop == "None" else stop
         items = f"{container}[{start}:{stop_text}]"
-        return f"sum({items}, {self.value(node.args[2])})", P.POSTFIX
+        first = self.value(node.args[2])
+        if len(node.args) == 4:
+            return f"accumulate_op({items}, {first}, {self.value(node.args[3])})", P.POSTFIX
+        return f"sum({items}, {first})", P.POSTFIX
+
+    def _generate(self, func: Name, node: Call) -> Out | None:
+        """``std::generate(first, last, gen)``: each slot given ``gen()``'s next value."""
+        if len(node.args) != 3:
+            raise self.refuse(f"std::{func.last} with {len(node.args)} arguments", node)
+        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
+        return (f"generate_range({container}, {start}, {stop}, {self.value(node.args[2])})",
+                P.POSTFIX)
+
+    def _iota(self, func: Name, node: Call) -> Out | None:
+        """``std::iota(first, last, value)``: the range filled with counting numbers."""
+        if len(node.args) != 3:
+            raise self.refuse(f"std::{func.last} with {len(node.args)} arguments", node)
+        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
+        return (f"iota_range({container}, {start}, {stop}, {self.value(node.args[2])})",
+                P.POSTFIX)
 
     def iterator_range(self, first: Expr, last: Expr, node: Expr) -> tuple[str, str, str]:
         """``v.begin(), v.end()`` or ``a, a + n``: the container, start and stop they mean."""
@@ -513,7 +589,10 @@ class CallEmitter(ExprEmitter):
         "sort": _sort,
         "stable_sort": _sort,
         "reverse": _sort,
+        "replace": _replace,
         "accumulate": _accumulate,
+        "generate": _generate,
+        "iota": _iota,
         "is_sorted": _sorted,
         "sprintf": _unsupported,
         "snprintf": _unsupported,

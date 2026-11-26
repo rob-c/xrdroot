@@ -137,6 +137,24 @@ def test_lambdas_capture_by_value_and_by_reference(capsys: pytest.CaptureFixture
     assert output(capsys, source) == "8 3 2 1\n"
 
 
+def test_a_mutable_lambdas_capture_keeps_what_a_call_did_to_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``[n = 0]() mutable { return n++; }`` counts between calls, as C++'s own copy does.
+
+    A by-value capture bound as a default would start from ``n`` again at every call, so a
+    mutable lambda's captures are cells the lambda writes through.
+    """
+    source = """
+    void t() {
+      auto next = [n = 0]() mutable { return n++; };
+      auto start = [n = 5]() mutable { n += 2; return n; };
+      printf("%d %d %d %d\\n", next(), next(), start(), start());
+    }
+    """
+    assert output(capsys, source) == "0 1 7 9\n"
+
+
 def test_templates_enums_namespaces_and_globals(capsys: pytest.CaptureFixture[str]) -> None:
     source = """
     namespace util { template <typename T> T twice(T x) { return x + x; } }
