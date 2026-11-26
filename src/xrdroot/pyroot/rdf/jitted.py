@@ -22,7 +22,8 @@ from ...errors import UnsupportedFeatureError
 __all__ = ["JIT_METHODS", "jitted", "retried", "translatable"]
 
 #: The frame methods whose string a translation stands in for: where the string is.
-JIT_METHODS = {"Filter": 0, "Define": 1, "Redefine": 1}
+#: ``Vary``'s is its second argument - the expression its variations come from.
+JIT_METHODS = {"Filter": 0, "Define": 1, "Redefine": 1, "Vary": 1}
 
 #: A name a C++ expression uses: a word not after a ``.``, ``->`` or ``::``.
 NAME = re.compile(r"(?<![\w.>])(?<!::)([A-Za-z_]\w*)")
@@ -84,4 +85,17 @@ def _applied(name: str, given: list[Any], at: int, function: Any, used: list[str
     made = getattr(function, "batched", None) or entrywise(function, counted=not used)
     if name == "Filter":  # Filter(expression, name): a function's columns come before its name
         return [made, used or [ENTRY], *given[at + 1:at + 2]]
+    if name == "Vary":  # Vary(column, expression, tags, name): the tags stay as they are
+        return [*given[:at], _Columns(made, used or [ENTRY]), *given[at + 1:]]
     return [*given[:at], made, used or [ENTRY]]
+
+
+class _Columns:
+    """A translated function with the columns it reads beside it, for the method to be told."""
+
+    def __init__(self, function: Any, columns: list[str]) -> None:
+        self.function = function
+        self.columns = list(columns)
+
+    def __call__(self, *given: Any) -> Any:
+        return self.function(*given)

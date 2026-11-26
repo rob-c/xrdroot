@@ -25,7 +25,7 @@ from __future__ import annotations
 import inspect
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 
@@ -327,6 +327,24 @@ def _as_names(columns: Any) -> list[str]:
     return list(columns)
 
 
+class Variation(NamedTuple):
+    """``Vary``'s record of one column: the expression its variations come from, their tags,
+    and the name they go under - ``<column>:<name>:<tag>`` is the branch a ``Snapshot`` writes.
+    """
+
+    #: The definition the variation's expression compiles to: one collection per entry.
+    definition: Any
+    #: The tags, in the order the expression's elements are in.
+    tags: tuple[str, ...]
+    #: ROOT's ``variationName``: groups the variations, and stands in the branch's name.
+    name: str
+
+    def branches(self, column: str) -> list[str]:
+        """The branch name of each tag: ``<column>:<name>:<tag>``, or ``<column>:<tag>`` unnamed."""
+        middle = f":{self.name}" if self.name else ""
+        return [f"{column}{middle}:{tag}" for tag in self.tags]
+
+
 class RDataFrame:
     """ROOT's ``RDataFrame``, over a tree, a chain, an RNTuple, or empty entries.
 
@@ -376,6 +394,8 @@ class RDataFrame:
         self._node = node
         self._columns = columns
         self._defined = defined
+        #: The columns ``Vary`` gave variations to, by column name.
+        self._varied: dict[str, Variation] = {}
 
     def _derived(
         self,
@@ -390,6 +410,7 @@ class RDataFrame:
             self._columns if columns is None else columns,
             self._defined if defined is None else defined,
         )
+        made._varied = dict(self._varied)
         return made
 
     def __repr__(self) -> str:
@@ -502,6 +523,57 @@ class RDataFrame:
             made.joins(self._columns.get(self._defined[-1]))
         defined = self._defined if name in self._defined else [*self._defined, name]
         return self._derived(columns={**self._columns, name: made}, defined=defined)
+
+    def Vary(
+        self,
+        name: str,
+        expression: str,
+        variationTags: Sequence[str] | None = None,
+        variationName: str = "",
+        nVariations: int = 0,
+    ) -> RDataFrame:
+        """Systematic variations of a column: one value per tag, from ``expression``.
+
+        ``expression`` makes a collection per entry with one element per tag, in the tags' order,
+        and the column keeps the values it had as the nominal. A ``Snapshot`` asked to include
+        variations (``RSnapshotOptions.fIncludeVariations``) writes each tag as its own branch,
+        ``<column>:<name>:<tag>``; the tagged results themselves
+        (``ROOT.RDF.Experimental.VariationsFor``) are not this kit's yet and say so.
+        """
+        if name not in self._columns:
+            raise ValueError(
+                f"Vary varies a column this frame has, and it has none called {name!r}: Define "
+                "it before varying it"
+            )
+        tags = (
+            tuple(str(tag) for tag in variationTags)
+            if variationTags
+            else tuple(str(index) for index in range(int(nVariations)))
+        )
+        if not tags:
+            raise ValueError(
+                "Vary needs the tags of its variations - variationTags=['down', 'up'] - or "
+                "nVariations, and it was given neither"
+            )
+        columns = getattr(expression, "columns", None)  # a translated function's, if it is one
+        compute, inputs = self._compute(expression, columns, f"Vary({name!r})")
+        variation = Variation(Defined(name, compute, inputs, self._node), tags, str(variationName))
+        made = self._derived()
+        made._varied = {**self._varied, name: variation}
+        return made
+
+    def _varied_branch(self, name: str, variation: Variation, index: int) -> RDataFrame:
+        """A column a ``Vary`` writes but nobody names: ROOT's ``<column>:<name>:<tag>``.
+
+        Its value is element ``index`` of what the variation's expression makes for that entry -
+        one number for a scalar column, one collection for a collection of them.
+        """
+
+        def picked(collections: Any) -> Any:
+            return [row[index] for row in collections]
+
+        made = Defined(name, picked, {"0": variation.definition}, self._node)
+        return self._derived(columns={**self._columns, name: made})
 
     def Redefine(
         self, name: str, expression: str | Callable[..., Any], columns: Sequence[str] | None = None
@@ -914,6 +986,7 @@ class RDataFrame:
         mode: str = "RECREATE",
         lazy: bool = False,
         auto_flush: int = 0,
+        include_variations: bool = False,
     ) -> Any:
         """Write the entries reaching here, and the columns asked for, to a new file.
 
@@ -923,24 +996,40 @@ class RDataFrame:
         now, with every other result booked, and gives back a frame over what
         it wrote; ``lazy=True`` gives a :class:`Result` of that frame instead.
         ``auto_flush`` - ROOT's ``fAutoFlush`` - ends a cluster of the tree
-        every so many entries.
+        every so many entries. ``include_variations`` - ROOT's
+        ``fIncludeVariations`` - writes a branch for every tag of every column
+        ``Vary`` gave variations to.
         """
         if mode not in MODES:
             raise ValueError(f"Snapshot's mode is one of {', '.join(MODES)}, not {mode!r}")
         names = self._names(columns, None, "Snapshot")
         if not names:
             raise ValueError("Snapshot has no columns to write: name at least one")
-        inputs = [self._column(name, "Snapshot") for name in names]
+        writing, names = self._with_variations(names) if include_variations else (self, names)
+        inputs = [writing._column(name, "Snapshot") for name in names]
         action = Snapshot(
-            self._node, inputs, (tree_name, filename), rntuple, compression, mode, auto_flush
+            writing._node, inputs, (tree_name, filename), rntuple, compression, mode, auto_flush
         )
         result = _Reopened(self._graph.book(action), self._graph, names)
         return result if lazy else result.GetValue()
+
+    def _with_variations(self, names: list[str]) -> tuple[RDataFrame, list[str]]:
+        """This frame with every varied column's tags as columns, and every name to write."""
+        writing, written = self, list(names)
+        for column in names:
+            variation = self._varied.get(column)
+            if variation is None:
+                continue
+            for index, branch in enumerate(variation.branches(column)):
+                writing = writing._varied_branch(branch, variation, index)
+                written.append(branch)
+        return writing, written
 
     # -- the snake_case spellings ----------------------------------------------------
 
     define = Define
     redefine = Redefine
+    vary = Vary
     define_per_sample = DefinePerSample
     alias = Alias
     filter = Filter

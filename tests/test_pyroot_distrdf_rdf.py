@@ -31,12 +31,15 @@ def test_snapshot_options_say_what_xrdroots_snapshot_is_told():
     assert keywords_of(None) == {}
     options = ROOT.RDF.RSnapshotOptions()
     assert keywords_of(options) == {"mode": "RECREATE", "lazy": False, "auto_flush": 0,
-                                    "rntuple": False}  # fmt: skip
+                                    "rntuple": False, "include_variations": False}  # fmt: skip
     assert "lazy=False" in repr(options)
     options = RSnapshotOptions("update", 5, 1, 10, 99, True,
                                outputFormat=ESnapshotOutputFormat.kRNTuple)  # fmt: skip
     assert keywords_of(options) == {"mode": "UPDATE", "lazy": True, "auto_flush": 10,
-                                    "rntuple": True, "compression": "zstd"}  # fmt: skip
+                                    "rntuple": True, "compression": "zstd",
+                                    "include_variations": False}  # fmt: skip
+    options.fIncludeVariations = True  # ROOT's switch for the branches Vary records
+    assert keywords_of(options)["include_variations"] is True
     options.fCompressionLevel = 0
     assert keywords_of(options)["compression"] is None
 

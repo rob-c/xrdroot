@@ -65,6 +65,7 @@ def keywords_of(options: Any) -> dict[str, Any]:
         "lazy": bool(options.fLazy),
         "auto_flush": int(options.fAutoFlush),
         "rntuple": int(options.fOutputFormat) == ESnapshotOutputFormat.kRNTuple,
+        "include_variations": bool(options.fIncludeVariations),
     }
     if int(options.fCompressionLevel) == 0:
         found["compression"] = None
