@@ -16,7 +16,8 @@ import numpy as np
 from .valuecopy import value_copy
 from .vectorassign import assigned as _assigned_vector
 
-__all__ = ["assign_call", "assign_into", "store_through", "assign_vector",
+__all__ = ["assign_call", "assign_into", "store_through", "assign_vector", "Tie", "tie",
+           "IGNORE",
            "store_reference", "increment_reference"]
 
 
@@ -60,6 +61,52 @@ def store_through(pointer: Any, value: Any) -> Any:
         pointer[0] = value
         return value
     return assign_into(pointer, value)
+
+
+class Tie:
+    """``std::tie(a, b)``: the names on one side of an assignment, as tuple unpacking is.
+
+    C++ lets a tuple of references be assigned: ``std::tie(a, b) = pair`` copies into ``a`` and
+    ``b``. The translation keeps the call - ``assign_call(std.tie, (a, b), value)`` - so the
+    distribution happens here, through :func:`assign_into`, which copies a container *into* the
+    object it is given rather than rebinding a name Python cannot rebind.
+    """
+
+    __slots__ = ()
+
+    def __setcall__(self, *given: Any) -> Any:
+        """``std::tie(...) = value``: each target takes its part, in order."""
+        *targets, value = given
+        parts = list(value)
+        if len(parts) != len(targets):
+            raise ValueError(
+                f"std::tie names {len(targets)} targets and the right-hand side gave "
+                f"{len(parts)} values; C++ needs one for each"
+            )
+        for target, part in zip(targets, parts, strict=True):
+            if target is not IGNORE:  # std::ignore takes its part and keeps nothing
+                assign_into(target, part)
+        return value
+
+    def __repr__(self) -> str:
+        return "<std::tie>"
+
+
+#: ``std::tie``: what an assignment target of several names is translated to.
+tie = Tie()
+
+
+class _Ignore:
+    """``std::ignore``: the tie target that takes its value and keeps nothing."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<std::ignore>"
+
+
+#: ``std::ignore``: skipped by :meth:`Tie.__setcall__`, as C++ skips it.
+IGNORE = _Ignore()
 
 
 def assign_into(target: Any, value: Any) -> Any:

@@ -43,6 +43,7 @@ import numpy as np
 from . import bitset as _bitset
 from . import filesystem as _filesystem
 from . import random as _random
+from . import references as _references
 from . import span as _span
 from . import stdlib as _stdlib
 from . import threads as _threads
@@ -1026,6 +1027,10 @@ class _VectorIterator:
     def __add__(self, step: int) -> _VectorIterator:
         return type(self)(self._owner, self._position + int(step))
 
+    def __radd__(self, step: int) -> _VectorIterator:
+        """``n + it``: the same iterator ``it + n`` is, since C++ writes both."""
+        return self.__add__(step)
+
     def __sub__(self, other: Any) -> Any:
         if isinstance(other, _VectorIterator):
             return self._position - other._position
@@ -1907,6 +1912,10 @@ class _Namespace:
     atomic = TEMPLATES["atomic"]
     #: ``std::filesystem``: ``path`` and the questions a program asks of one.
     filesystem = _filesystem
+    #: ``std::tie(a, b)``: an assignment of several names, distributed by the runtime.
+    tie = _references.tie
+    #: ``std::ignore``: the tie target that takes no value, as C++'s does.
+    ignore = _references.IGNORE
     #: ``std::uintptr_t(x)`` and its kin: a conversion to a fixed-width type, as C++ spells it.
     int8_t = _Typedef("int8_t")
     int16_t = _Typedef("int16_t")

@@ -606,3 +606,28 @@ def test_a_fixed_width_typedef_converts_as_cpp_writes_a_conversion():
     assert STD_TYPEDEFS["uintptr_t"] == "unsigned long"  # the translator resolves it too
     assert STD_TYPEDEFS["std::intptr_t"] == "long" and STD_TYPEDEFS["intmax_t"] == "long"
     assert repr(made._Namespace.size_t) == "<std::size_t typedef>"
+
+
+def test_a_tie_assigns_each_name_its_part_and_skips_std_ignore():
+    """``std::tie(a, b) = f()`` copies each part into its target - in place, since a Python name
+    cannot be rebound - and ``std::ignore`` takes its part and keeps nothing."""
+    from xrdroot.cppstd import references
+
+    first, second = containers.TEMPLATES["vector"]["double"](), (
+        containers.TEMPLATES["vector"]["double"]()
+    )
+    given = (containers.TEMPLATES["vector"]["double"]([1.0, 2.0]),
+             containers.TEMPLATES["vector"]["double"]([3.0, 4.0]))
+    assert references.assign_call(references.tie, (first, second), given) == given
+    assert (list(first), list(second)) == ([1.0, 2.0], [3.0, 4.0])
+    kept = references.assign_call(references.tie, (first, references.IGNORE), given)
+    assert kept == given and list(first) == [1.0, 2.0]
+    with pytest.raises(ValueError, match="names 1 targets and the right-hand side gave 2"):
+        references.assign_call(references.tie, (first,), given)
+    assert repr(references.tie) == "<std::tie>" and repr(references.IGNORE) == "<std::ignore>"
+
+
+def test_an_iterator_added_from_the_left_is_the_one_added_from_the_right():
+    """C++ writes ``it + n`` and a translation may write ``n + it``; both are the iterator n on."""
+    made = containers.TEMPLATES["vector"]["int"]([10, 20, 30])
+    assert int(1 + made.begin()) == 20 and int(made.begin() + 1) == 20
