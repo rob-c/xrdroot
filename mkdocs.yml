@@ -54,6 +54,7 @@ nav:
       - "TPython, std::any and std::filesystem": architecture/tpython-std-any-and-std-filesystem-are-three-pieces-of-one-test.md
       - "A vector<char> holds characters, int8 numbers": gotchas/a-std-vector-char-holds-characters-while-int8-holds-numbers.md
       - "Vary compiles its expression where it is given": gotchas/vary-compiles-its-expression-where-it-is-given.md
+      - "A missing typedef reads as a missing ROOT class": discoveries/a-missing-typedef-reads-as-a-missing-root-class.md
       - "A char that is no character is written as its number": gotchas/a-char-that-is-no-character-is-written-as-its-number-not-as-a.md
       - "An enumerator reaches Python signed": discoveries/an-enumerator-reaches-python-as-a-signed-64-bit-int-even-from.md
       - "The 42 non-passing pyunittest programs": discoveries/the-42-non-passing-pyunittest-programs-by-first-failing-case.md
