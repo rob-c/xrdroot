@@ -457,3 +457,18 @@ def test_only_a_macro_the_session_read_is_remembered_for_dot_typedef(tmp_path):
     finally:
         SOURCES.clear()
         SOURCES.update(kept)
+
+
+def test_a_byte_that_is_no_character_is_echoed_as_its_number() -> None:
+    """``char`` values outside printable ASCII have no character to quote - ``-128`` would be
+    ``chr()`` of a negative number - so they are written as the number a compiler assigns to a
+    ``char``, which is what the line is re-parsed as; printable ones and the control escapes keep
+    their quotes."""
+    from xrdroot.pycint.interactive.values import _character
+
+    assert _character(65) == "'A'"
+    assert _character(-128) == "-128" and _character(200) == "200"
+    assert [_character(one) for one in (10, 9, 0, 92, 39)] == [
+        "'\\n'", "'\\t'", "'\\0'", "'\\\\'", "'\\''"
+    ]
+    assert _character("x") == "'x'"

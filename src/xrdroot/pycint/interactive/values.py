@@ -30,6 +30,12 @@ INTEGERS = frozenset(
      "unsigned short", "unsigned int", "unsigned long", "long long", "unsigned long long"}
 )  # fmt: skip
 
+#: How a control character - or a quote, or a backslash - is spelled inside quotes.
+CHARACTER_ESCAPES = {
+    0x00: "\\0", 0x07: "\\a", 0x08: "\\b", 0x09: "\\t", 0x0A: "\\n", 0x0B: "\\v",
+    0x0C: "\\f", 0x0D: "\\r", 0x27: "\\'", 0x5C: "\\\\",
+}  # fmt: skip
+
 #: The character types, whose values cling prints quoted.
 CHARACTERS = frozenset({"char", "signed char", "unsigned char"})
 
@@ -42,7 +48,19 @@ def _integer(value: Any) -> str:
 
 
 def _character(value: Any) -> str:
-    return "'" + (value if isinstance(value, str) else chr(int(value))) + "'"
+    """A ``char`` as object-like text: quoted when it is a character, its number when it is not.
+
+    A byte outside printable ASCII - ``-128``, say - has no character to quote, and a line that
+    is written back has to read as the value it was: ``char a = -128;`` is what a compiler takes,
+    where ``'\\x80'`` reads as +128 in a signed char. The printable range keeps its quotes, so
+    what cling echoes for an ordinary character is what this writes."""
+    if isinstance(value, str):
+        return "'" + value + "'"
+    code = int(value)
+    if code in CHARACTER_ESCAPES:  # a control character has its own spelling
+        return "'" + CHARACTER_ESCAPES[code] + "'"
+    printable = 0x20 <= code <= 0x7E and code not in (0x27, 0x5C)
+    return "'" + chr(code) + "'" if printable else str(code)
 
 
 def _bool(value: Any) -> str:
