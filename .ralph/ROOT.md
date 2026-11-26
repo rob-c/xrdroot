@@ -5540,3 +5540,49 @@ only**. The committed file is fine (`git show HEAD:src/xrdroot/cppstd/cmath.py` 
 `round` body). **A local pytest run in the primary checkout is not evidence about `main`** while
 another session is editing it; measure from a clean worktree, or read the CI.
 
+## Round 130's close
+
+**One authority for a member's byte offset, and the numbers taken from ROOT rather than from us.**
+`TDataMember::GetOffset` and `cppstd.cells.byte_offset` kept two tables, and they disagreed for any
+class only one of them knew a member of: the dictionary said 8, `byte_offset` handed back the object,
+and a macro filling a class died on the class itself. `pycxx/sizes.member_offsets` is now the one
+walk - the Itanium placement of the virtual table's pointer and the bases, then each member at the
+next offset its alignment allows, a union's all at 0 - and it is written on the emitted class as
+`_cxx_offsets_`, which both readers take.
+
+**A base's members are in the map**, at the offsets they sit at. That is not a detail: roottest's
+generator recurses with `((char *)obj) + cl->GetBaseClassOffset(baseCl)` and the **base's** `TClass`
+while the object stays the derived one, so a map of the class's own members alone can never answer
+the offset it asks for.
+
+**The numbers are the oracle's.** `UnableProbe { int n[3]; TObject *o; TString text; }` answers
+**0/16/24**, and `Plain`'s twenty-six members run 0,1,2,4,8,16,24,28,32,40,48,56,64,68,72,84,**88**,
+96,104,128,152,176,200,224,240,264 - this now answers every one of them. Two existing expectations
+said **0** where ROOT says 16 and 88: they were written when "not worked out" was the whole answer,
+and they are corrected **against the oracle's output, not against the new code**. That is the
+difference between this round and round 129, where the same shape was reverted because its 88 had not
+been checked against anything but itself.
+
+**`byte_offset` grew the three steps a `char *` takes**: a base's members, an address already stepped
+(`&obj.m_d.m_b`), and the flat sum when the offset names a member of the object's own class. The walk
+that lays a class out now stops at one that reaches itself - `class A : public A`,
+`struct Self { Self inner; }` - which no C++ compiler accepts but a macro may still declare; the
+first shape of that guard broke `sizeof` of **every** class with a base, because it guarded the
+nested call rather than the re-entrance.
+
+**0 harness PASS moved and none lost**: `io/datamodelevolution` reads 22 / 20 / 2 of 44 before and
+after, but the wall moved **two stages further in** - the fill at `Generator.h:247` now passes and the
+failure is at `Dumper.h:97`, where `ele -= actClass->GetBaseClassOffset(vcl)` is a `char *` moved by
+an offset, which the emitter still refuses.
+
+**The gate**: part 1 **14 153 passed, 0 failed**; part 2 44 passed; **`TOTAL 127296 20 31974 1
+99.99 %`**. The twenty misses are **another session's**, on `main`: `pyroot/roofit/helpers_abs.py`
+(64 %), `rdf/actions.py` (98 %), `rdf/frame.py` (99 %) - none of which this diff touches, and
+`git diff --name-only origin/main` proves it. ruff, mypy, maintainability, components and
+`mkdocs --strict` all exit 0. **`main` arrived red on coverage this round**; that is recorded, not
+fixed, because it is not this round's code.
+
+**Two walls named rather than half-started**: `W0-233` is now `Dumper.h:97` alone, and `W0-266` is
+opened for `TNamed`'s own members - which answer 0 here where ROOT's compiled dictionary says 16 and
+40, because this kit has no table of ROOT's own class layouts.
+
