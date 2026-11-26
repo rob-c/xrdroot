@@ -5484,3 +5484,38 @@ maintainability, components, `mkdocs --strict` — each exit 0.
 **A gotcha, for the next reader**:
 `docs/gotchas/a-member-s-byte-offset-is-the-itanium-layout-s-and-a-char-of-an.md`.
 
+## Round 129's close
+
+**One line of the emitter's road, and a shape reverted rather than shipped on its own answer.**
+`Generator.h:247` emitted `((char *)obj) + member->GetOffset()` as a plain `+` with the offset wrapped
+in `cstr()` — a **string concatenation** — because the dialect declared no return type for
+`TDataMember::GetOffset`: a sum of no known type reads as one. Three declarations
+(`GetOffset` → `Int_t`, `GetDataType` → `TDataType*`, `GetTrueTypeName` → `const char*`) make the
+emitter write `byte_offset(obj, (m.GetOffset()))[0] = v`. That is `cb5ca729`, with a test pinning the
+emitted shape and the absence of `cstr(m.GetOffset())`.
+
+**The second piece was written, measured, and reverted.** Writing `_cxx_offsets_` on the class from
+`pycxx/sizes.member_offsets` — the Itanium walk **with the bases in it** (`struct C : B { int c;
+double d; }` gives `[4, 8]`) — and having reflection and `cppstd` read that one list is the right
+shape, and it fixed the disagreement that stopped `01/test1` (`'ClassA' object does not support item
+assignment`). But it moved an **existing** test: `test_data_members_are_described_as_the_dictionary_
+describes_them` has `Plain::var` at offset **0** and the new walk says **88**. 88 may well be right —
+it is the member's real byte offset — but this round did not check it against the class's own
+declaration, and **a test corrected to whatever the new code answers is how a bug gets recorded as a
+specification** (`W0-218`). So the shape is reverted whole, and that test is the next attempt's
+specification: read `Plain`'s declaration, work the offsets out by hand, and only then change the
+expectation.
+
+**0 harness PASS moved and none lost**: `io/datamodelevolution` reads 22 / 20 / 2 of 44 before and
+after; `01/test1` moved from the emitter's `'ClassA' and 'str'` to `byte_offset`'s view of the class,
+which is one wall further in.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 143 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 127146 0 31938 0
+100%`**. ruff (after one rewrap it named), mypy, maintainability, components, `mkdocs --strict` —
+each exit 0.
+
+**A note on the machine**: it was opened at a **load average of 107** — another project's builds — so
+the code came first and the harness was measured for **statuses** only, as round 122 did. The gate is
+the one thing whose numbers do not depend on load, so it was run in full.
+
