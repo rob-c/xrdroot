@@ -52,6 +52,7 @@ nav:
       - "What a std::set branch target needs": instructions/what-a-std-set-branch-target-needs-three-seams-not-one.md
       - "A tree filled in memory refills its branch object": gotchas/a-tree-filled-in-memory-refills-the-object-its-branch-was.md
       - "TPython, std::any and std::filesystem": architecture/tpython-std-any-and-std-filesystem-are-three-pieces-of-one-test.md
+      - "A vector<char> holds characters, int8 numbers": gotchas/a-std-vector-char-holds-characters-while-int8-holds-numbers.md
       - "A char that is no character is written as its number": gotchas/a-char-that-is-no-character-is-written-as-its-number-not-as-a.md
       - "An enumerator reaches Python signed": discoveries/an-enumerator-reaches-python-as-a-signed-64-bit-int-even-from.md
       - "The 42 non-passing pyunittest programs": discoveries/the-42-non-passing-pyunittest-programs-by-first-failing-case.md
