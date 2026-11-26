@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-import types
-
 import pytest
 
 import xrdroot.pyroot as ROOT
@@ -95,11 +92,11 @@ def test_axes_that_may_grow_and_bars_are_noted():
     )
 
 
-def test_macros_are_loaded_once_by_the_interpreter(monkeypatch):
+def test_macros_are_loaded_once_by_the_interpreter():
+    """``.L m.C`` once and then ``.x n.C``: the line processor is the namespace's own hook, so no
+    macro has to exist on disk - a test that needed one was reading another test's leftover."""
     seen = []
-    execute = types.ModuleType("xrdroot.pycint.execute")
-    execute.process_line = seen.append
-    monkeypatch.setitem(sys.modules, "xrdroot.pycint.execute", execute)
+    troot.set_line_processor(seen.append)
     try:
         assert not ROOT.gInterpreter.IsLoaded("m.C")
         ROOT.gInterpreter.LoadMacro("m.C")
