@@ -20,6 +20,17 @@ def body(source: str) -> str:
     return text
 
 
+def test_the_standard_headers_limits_are_their_numbers(capsys: pytest.CaptureFixture[str]) -> None:
+    """``<climits>`` and ``<cstdint>``'s macros, as LP64 has them."""
+    written = (
+        'printf("%lu %ld %d %d %d %d\\n", UINT64_MAX, LONG_MAX, INT32_MIN, INT_MAX, CHAR_BIT,'
+        " UCHAR_MAX);"
+    )
+    assert printed(capsys, "void t() {\n" + written + "\n}\n") == (
+        "18446744073709551615 9223372036854775807 -2147483648 2147483647 8 255\n"
+    )
+
+
 @pytest.mark.parametrize(
     ("source", "text"),
     [

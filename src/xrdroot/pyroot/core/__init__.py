@@ -49,6 +49,7 @@ FAMILIES = (
     "directories",
     "troot",
     "randoms",
+    "mulmod",
     "vectors",
     "jsonbuffer",
     "axes",

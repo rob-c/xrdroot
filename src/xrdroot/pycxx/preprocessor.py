@@ -40,6 +40,38 @@ PREDEFINED = """
 #define PRIu64 "llu"
 #define PRIx64 "llx"
 #define PRIX64 "llX"
+#define CHAR_BIT 8
+#define SCHAR_MIN (-128)
+#define SCHAR_MAX 127
+#define UCHAR_MAX 255
+#define SHRT_MIN (-32768)
+#define SHRT_MAX 32767
+#define USHRT_MAX 65535
+#define CHAR_MIN (-128)
+#define CHAR_MAX 127
+#define INT8_MIN (-128)
+#define INT8_MAX 127
+#define UINT8_MAX 255
+#define INT16_MIN (-32768)
+#define INT16_MAX 32767
+#define UINT16_MAX 65535
+#define INT32_MIN (-2147483647 - 1)
+#define INT32_MAX 2147483647
+#define UINT32_MAX 4294967295
+#define INT64_MIN (-9223372036854775807 - 1)
+#define INT64_MAX 9223372036854775807
+#define UINT64_MAX 18446744073709551615
+#define INT_MIN (-2147483647 - 1)
+#define INT_MAX 2147483647
+#define UINT_MAX 4294967295
+#define LONG_MIN INT64_MIN
+#define LONG_MAX INT64_MAX
+#define ULONG_MAX UINT64_MAX
+#define LLONG_MIN INT64_MIN
+#define LLONG_MAX INT64_MAX
+#define ULLONG_MAX UINT64_MAX
+#define SIZE_MAX UINT64_MAX
+#define PTRDIFF_MAX INT64_MAX
 """
 
 #: The extensions a local file an ``#include`` names may be read from.
