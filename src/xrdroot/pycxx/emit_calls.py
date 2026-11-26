@@ -763,6 +763,9 @@ class CallEmitter(ExprEmitter):
         """``node`` stored into an object: a string class made of a C string, built to be
         converted, copied - which Python would otherwise share - or shared as it is; a pointer
         to an object set to ``0`` is null, which ``if (p)`` then finds it to be."""
+        streamed = self._rest_of_a_stream(ctype, node)
+        if streamed is not None:
+            return streamed
         built = self._built_from(ctype, node)
         if built is not None:
             return built
@@ -773,6 +776,17 @@ class CallEmitter(ExprEmitter):
             # that follows what is current.
             return f"pointer_now({self.value(node)})"
         return self.value(node)
+
+    def _rest_of_a_stream(self, ctype: CType, node: Expr) -> str | None:
+        """``s = std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>())``:
+        the rest of the stream, which is what the two iterators mean and what the *declaration*
+        form of the same construction already answered (``emit_vars._string_of``)."""
+        if ctype.pointer or not ctype.is_string or not isinstance(node, Call) or not node.args:
+            return None
+        from .emit_vars import _streambuf  # the two emitters are one module apart
+
+        stream = _streambuf(node.args[0])
+        return None if stream is None else f"stream_rest({self.value(stream)})"
 
     def _built_from(self, ctype: CType, node: Expr) -> str | None:
         """``node`` as the object ``ctype`` builds of it, or ``None`` when it builds none."""

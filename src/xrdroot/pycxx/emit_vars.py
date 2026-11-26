@@ -570,4 +570,4 @@ def _streambuf(node: Expr) -> Expr | None:
     """The stream ``std::istreambuf_iterator<char>(f)`` iterates over, if ``node`` is one."""
     if not (isinstance(node, Call) and isinstance(node.func, Name) and len(node.args) == 1):
         return None
-    return node.args[0] if node.func.last == "istreambuf_iterator" else None
+    return node.args[0] if node.func.last.split("<")[0] == "istreambuf_iterator" else None

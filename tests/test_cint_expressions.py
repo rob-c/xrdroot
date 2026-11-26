@@ -358,3 +358,19 @@ def test_only_a_char_pointer_holding_an_address_is_moved_by_bytes() -> None:
     with pytest.raises(Exception, match="pointer arithmetic on a char"):
         translate("void f(TString *s) { char *p = s->Data(); p -= 1; }", "t.C")
 
+
+def test_the_rest_of_a_stream_is_read_the_same_way_wherever_it_is_written() -> None:
+    """``std::string(std::istreambuf_iterator<char>(f), ...)`` is the rest of ``f``, and C++ lets
+    it be written in a declaration or an assignment - roottest's ``Dumper.h`` does the second.
+    """
+    from xrdroot.pycint import translate
+
+    source = (
+        "void f(const char *name) { std::ifstream in(name); std::string s;"
+        " s = std::string(std::istreambuf_iterator<char>(in),"
+        " std::istreambuf_iterator<char>()); }"
+    )
+    text = translate(source, "t.C")
+    assert "stream_rest(in_)" in text
+    assert "istreambuf_iterator" not in text
+
