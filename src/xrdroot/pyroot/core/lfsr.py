@@ -16,7 +16,7 @@ from .messages import message
 __all__ = ["LFSR"]
 
 
-def _sequence(kind: str = "unsigned char") -> Any:
+def _sequence(kind: str = "uint8") -> Any:
     from ..stl import std
 
     return std.vector[kind]()
@@ -42,7 +42,7 @@ class LFSR:
 
     @staticmethod
     def generate(start: Any, taps: Any, left: bool = True, wrapping: bool = False,
-                 oppositeBit: bool = False, kind: str = "unsigned char") -> Any:  # fmt: skip
+                 oppositeBit: bool = False, kind: str = "uint8") -> Any:  # fmt: skip
         """The bits fed in from the seed ``start`` until the register repeats a value."""
         result = _sequence(kind)
         if _refused(start, [int(tap) for tap in taps]):
@@ -70,7 +70,7 @@ class _Sequences:
 
     def __getitem__(self, arguments: Any) -> Any:
         given = arguments if isinstance(arguments, tuple) else (arguments,)
-        kind = str(given[2]) if len(given) > 2 else "unsigned char"
+        kind = str(given[2]) if len(given) > 2 else "uint8"
 
         def generated(start: Any, taps: Any, left: bool = True, wrapping: bool = False,
                       oppositeBit: bool = False) -> Any:  # fmt: skip

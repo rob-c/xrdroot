@@ -505,9 +505,14 @@ class _Template:
                 f"{'' if self._arity == 1 else 's'}, and was given {len(given)}"
             )
         kinds = tuple(element_type(each) for each in given)
-        key = tuple(cpp_name(kind) for kind in kinds)
+        key = _template_key(given, kinds)
         if key not in self._made:
-            self._made[key] = self._build(*(_canonical(kind) for kind in kinds))
+            made = self._build(*(_canonical(kind) for kind in kinds))
+            if key[0].startswith("char:") and isinstance(made, type) and issubclass(made, _Vector):
+                # Set on a character class only: a number's class keeps the attributes it had, so
+                # the exact-shape checks a fast path makes of one (`vectorrows._vector`) hold.
+                made.chars = True
+            self._made[key] = made
         return self._made[key]
 
     def __call__(self, *arguments: Any) -> Any:
@@ -558,6 +563,9 @@ class _Vector(_Container):
     #: The element type, as NumPy calls it.
     dtype: np.dtype[Any] = np.dtype("float64")
     value_type = "double"
+    #: Whether the elements are ``char``s, which PyROOT hands out as one-character strings. Set
+    #: on the class a ``char`` spelling makes, so ``vector['int8']`` keeps its numbers.
+    chars: bool = False
 
     def __init__(self, *arguments: Any) -> None:
         self._data = np.zeros(0, dtype=self.dtype)
@@ -573,6 +581,26 @@ class _Vector(_Container):
         else:
             self.assign(_ranged(first, rest))
 
+    def _stored(self, value: Any) -> Any:
+        """A value as this vector keeps it: for a ``char``, the byte of the character it is."""
+        if self.chars and isinstance(value, str):
+            return ord(value[0]) if value else 0
+        return value
+
+    def _shown(self, value: Any) -> Any:
+        """A stored element as a read of it gives it: a ``char``'s character, else the value."""
+        return chr(int(value) & 0xFF) if self.chars else value
+
+    def _view(self) -> Any:
+        """The elements as a NumPy view of the storage - or what a ``data`` replacement gives.
+
+        A class or a test that replaces ``data`` replaces what a read of an element goes
+        through, so a replaced one is asked rather than the storage read behind it.
+        """
+        if self.chars or type(self).data is _NUMERIC_READERS["data"]:
+            return self._data[: self._size]
+        return self.data()
+
     def __repr__(self) -> str:
         """``repr`` of a vector is PyROOT's: its elements between braces, as C++ prints them.
 
@@ -584,13 +612,15 @@ class _Vector(_Container):
 
     def __str__(self) -> str:
         """The elements between braces, each as C++'s ``<<`` prints it: ``{ 0, 1, 2 }``."""
-        return "{ " + ", ".join(_printed(value) for value in self.data().tolist()) + " }"
+        return "{ " + ", ".join(_printed(value) for value in self) + " }"
 
     def __len__(self) -> int:
         return self._size
 
     def __iter__(self) -> Iterator[Any]:
-        return iter(self.data().tolist())
+        if self.chars:
+            return iter([self._shown(value) for value in self._view().tolist()])
+        return iter(self._view().tolist())
 
     def _fast_int(self, index: Any) -> Any:
         """The plain-int index read by the shortest road, or ``NotImplemented``.
@@ -610,9 +640,9 @@ class _Vector(_Container):
             return NotImplemented
         size = self._size
         if 0 <= index < size:
-            return self._data[index].item()
+            return self._shown(self._data[index].item())
         if -size <= index < 0:
-            return self._data[index + size].item()
+            return self._shown(self._data[index + size].item())
         raise IndexError(f"{index} is outside this {self.__cpp_name__} of {size}")
 
     def __getitem__(self, index: Any) -> Any:
@@ -620,8 +650,8 @@ class _Vector(_Container):
         if found is not NotImplemented:
             return found
         if isinstance(index, slice):
-            return self.data()[index].copy()
-        values = self.data()
+            return self._view()[index].copy()
+        values = self._view()
         at = self._checked(index)
         if (
             type(values) is _ARRAY_TYPE
@@ -630,21 +660,21 @@ class _Vector(_Container):
             and type(at) is int
             and -values.size <= at < values.size
         ):
-            return values.item(at)
-        return values[at].item()
+            return self._shown(values.item(at))
+        return self._shown(values[at].item())
 
     def __setitem__(self, index: Any, value: Any) -> None:
         if isinstance(index, slice):  # std::sort's range, written back where it was
-            self.data()[index] = value
+            self._view()[index] = [self._stored(one) for one in value]
             return
-        self._data[self._checked(index)] = value
+        self._data[self._checked(index)] = self._stored(value)
 
     def __eq__(self, other: object) -> bool:
         try:
             given = np.asarray(list(other))  # type: ignore[call-overload]
         except TypeError:
             return False
-        return bool(len(given) == self._size and np.array_equal(given, self.data()))
+        return bool(len(given) == self._size and np.array_equal(given, self._view()))
 
     __hash__ = None  # type: ignore[assignment]
 
@@ -684,7 +714,7 @@ class _Vector(_Container):
 
     def push_back(self, value: Any) -> None:
         self._room(self._size + 1)
-        self._data[self._size] = value
+        self._data[self._size] = self._stored(value)
         self._size += 1
 
     def __iadd__(self, values: Any) -> Any:
@@ -719,18 +749,28 @@ class _Vector(_Container):
         size = int(size)
         self._room(size)
         if size > self._size:
-            self._data[self._size : size] = value
+            self._data[self._size : size] = self._stored(value)
         self._size = size
 
     def assign(self, values: Iterable[Any]) -> None:
         """Replace everything held with ``values``: any sequence, array or vector."""
         values = _numeric_vector_input(type(self), values, _NUMERIC_READERS, _ARRAY_TYPE)
+        if self.chars and isinstance(values, str):
+            values = [ord(letter) for letter in values]
         given = np.asarray(values if isinstance(values, np.ndarray) else list(values))
+        if self.chars and given.ndim == 1 and given.dtype.kind in "OU":
+            given = np.asarray([self._stored(one) for one in given])
         self._data = given.astype(self.dtype, copy=True).reshape(-1)
         self._size = len(self._data)
 
-    def data(self) -> np.ndarray[Any, Any]:
-        """The elements, as a NumPy view of the vector's own storage."""
+    def data(self) -> Any:
+        """The elements as a NumPy view - or, for a ``char`` vector, the text it holds.
+
+        C++'s ``std::vector<char>::data()`` is a ``char*``, which PyROOT gives back as a
+        ``str``; one of ROOT's own tests reads the text of one back that way.
+        """
+        if self.chars:
+            return "".join(chr(int(value) & 0xFF) for value in self._data[: self._size])
         return self._data[: self._size]
 
     def at(self, index: int) -> Any:
@@ -758,6 +798,24 @@ class _Vector(_Container):
         self.assign(items)
         return _VectorIterator(self, at)
 
+
+#: The ``char`` spellings: PyROOT reads such an element as a one-character string, and
+#: ``data()`` as the text of the whole vector, because C++'s ``data()`` is a ``char*``.
+_CHAR_TYPES = frozenset({"char", "signed char", "unsigned char"})
+
+#: The element types a ``char`` spelling shares with a number: ``int8_t`` *is* ``char`` in C++,
+#: so the spelling decides which of the two a vector of it is here.
+_ONE_BYTE = (np.dtype("int8"), np.dtype("uint8"))
+
+
+def _template_key(given: tuple[Any, ...], kinds: tuple[Any, ...]) -> tuple[str, ...]:
+    """The key a template's one class is cached under: the type's C++ spelling, and - for a
+    one-byte element - whether it was asked for as a character rather than as a number."""
+    spelled = tuple(cpp_name(kind) for kind in kinds)
+    if len(kinds) != 1 or kinds[0] not in _ONE_BYTE:
+        return spelled
+    chary = isinstance(given[0], str) and given[0] in _CHAR_TYPES
+    return (("char:" if chary else "number:") + spelled[0],)
 
 #: Original numeric reading protocols; later user overrides keep the iterable conversion.
 _NUMERIC_READERS = {

@@ -560,3 +560,36 @@ def test_a_vector_of_anything_but_a_number_has_no_array_interface() -> None:
     """ROOT adds the interface only where the element type is a fundamental one, so a vector of
     strings is iterable and not adoptable."""
     assert not hasattr(containers.std.vector["string"](["a"]), "__array_interface__")
+
+
+def test_a_char_vector_holds_characters_where_a_number_vector_of_that_width_does_not():
+    """PyROOT hands a ``char`` out as a one-character string, ``data()`` as the text of the whole
+    vector - C++'s ``data()`` is a ``char*`` - and ``signed char`` is the same class as ``char``;
+    an ``unsigned char`` is its own, since the storage it reads is a different type."""
+    from xrdroot.cppstd import containers as made
+
+    letters = made.TEMPLATES["vector"]["char"](["a", "b"])
+    assert list(letters) == ["a", "b"] and letters[0] == "a" and letters.data() == "ab"
+    assert str(letters) == "{ a, b }"
+    letters.push_back("c")
+    assert letters.data() == "abc"
+    letters[0] = "z"
+    assert letters.data() == "zbc"
+    letters.resize(4, "d")
+    assert letters.data() == "zbcd"
+    assert letters.assign("hey") is None and letters.data() == "hey"  # a str is its characters
+    assert made.TEMPLATES["vector"]["signed char"] is made.TEMPLATES["vector"]["char"]
+
+
+def test_an_unsigned_char_is_its_own_character_class_and_a_float_is_no_character():
+    """A ``vector<unsigned char>`` reads characters too, and is a class of its own since its
+    storage is a different type; a number's class carries no character flag at all."""
+    from xrdroot.cppstd import containers as made
+
+    wide = made.TEMPLATES["vector"]["unsigned char"](["A"])
+    assert list(wide) == ["A"] and wide.data() == "A"
+    assert wide.__class__ is not made.TEMPLATES["vector"]["char"]
+
+    numbers = made.TEMPLATES["vector"]["float"]([1, 2])
+    assert list(numbers) == [1.0, 2.0] and numbers.data().tolist() == [1.0, 2.0]
+    assert numbers.chars is False and "chars" not in vars(type(numbers))  # the base's own no
