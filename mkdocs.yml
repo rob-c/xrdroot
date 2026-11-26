@@ -71,6 +71,7 @@ nav:
       - "A file nobody closed is a ResourceWarning 3.13 attributes": gotchas/a-file-nobody-closed-is-a-resourcewarning-only-3-13-attributes.md
       - "A member's byte offset is the Itanium layout's": gotchas/a-member-s-byte-offset-is-the-itanium-layout-s-and-a-char-of-an.md
       - "A cstr in a translated sum is a missing dialect return type": gotchas/a-cstr-in-a-translated-sum-is-a-missing-dialect-return-type-md.md
+      - "A member's offset must come from one map the translation writes": gotchas/a-members-offset-must-come-from-one-map-the-translation-writes.md
       - "A function's using ends with its block": gotchas/a-functions-using-ends-with-its-block-so-the-alias-table-is-per.md
       - "Working the gtest/pyunittest/other goal: one screen, one feature": instructions/working-the-gtest-pyunittest-other-goal-one-screen-one-feature.md
       - "Goal baseline: gtest, pyunittest, other": discoveries/goal-baseline-gtest-pyunittest-other-at-228-588-none-out-of.md
