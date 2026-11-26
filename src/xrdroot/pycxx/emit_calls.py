@@ -179,14 +179,17 @@ class CallEmitter(ExprEmitter):
         writes (``std::chrono::duration<double, std::milli>`` is ``duration['double',
         'std::milli']``). A smart pointer's alias is the pointer it holds and is
         :meth:`_smart_alias`'s, so it is left alone here. A function's own ``using`` is
-        :attr:`~xrdroot.pycxx.program.Program.local_aliases`.
+        :meth:`~xrdroot.pycxx.program.Program.alias_in`'s, asked for the function whose body
+        this call is written in, since two functions may give one name two types.
 
         This reads the arguments, so it belongs where a *value* is emitted: a type question about
         the same call must not write into the macro being built.
         """
         if len(func.parts) != 1:
             return None
-        alias = self.program.local_aliases.get(func.last) or self.program.aliases.get(func.last)
+        alias = self.program.alias_in(self.scope.function, func.last) or self.program.aliases.get(
+            func.last
+        )
         if alias is None or alias.name in SMART or alias.is_pointer:
             return None
         return f"{self.class_expr(alias)}({self.arguments(node)})"

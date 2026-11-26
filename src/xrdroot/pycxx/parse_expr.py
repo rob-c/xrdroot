@@ -606,7 +606,7 @@ class ExprParser(TypeParser):
         """``generator::max`` after ``using generator = std::mt19937``: the class's member - and
         the template arguments its alias was an instance of, for ``Architecture::SetRandomSeed``
         after ``using Architecture = TCpu<Float_t>``."""
-        alias = self.aliases.get(parts[0]) if len(parts) > 1 else None
+        alias = self.alias_of(parts[0]) if len(parts) > 1 else None
         if alias is None or alias.pointer or alias.enum is not None:
             return parts, None
         if list(alias.args) and alias.name.split("::")[-1] not in active().templates:

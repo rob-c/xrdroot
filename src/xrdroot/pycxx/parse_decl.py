@@ -67,7 +67,6 @@ class Parser(StmtParser):
 
     def __init__(self, tokens: list[Token]) -> None:
         super().__init__(tokens)
-        self.aliases = {}
         self.alias_templates = {}
         self.functions = set()
         self.usings = []
@@ -84,7 +83,7 @@ class Parser(StmtParser):
             if name is not None:
                 self.types.add(name)
                 if token.is_("enum"):
-                    self.aliases[name] = CType("int", enum=name)
+                    self.alias_scopes[0][name] = CType("int", enum=name)
             elif token.kind == "id" and tokens[index + 1].is_("(") and depth == 0:
                 self.functions.add(token.text)
         self._prescan_templates(tokens)
@@ -710,7 +709,7 @@ class Parser(StmtParser):
         underlying = self.type_id() if self.accept(":") else None
         if name is not None:
             self.types.add(name)
-            self.aliases[name] = CType("int", enum=name)
+            self.alias_scopes[0][name] = CType("int", enum=name)
         if self.accept(";"):
             return EnumDecl(where, name, [], scoped, underlying=underlying)
         decl = EnumDecl(where, name, self._enumerators(), scoped, underlying=underlying)

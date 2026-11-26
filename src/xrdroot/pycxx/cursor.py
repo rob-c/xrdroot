@@ -10,12 +10,15 @@ back where it was and says so with ``None``.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from .ctype import BUILTIN_WORDS
 from .dialect import active
 from .errors import Refusal, Where
 from .tokens import Token
+
+if TYPE_CHECKING:
+    from .ctype import CType
 
 __all__ = ["Cursor", "NoParse", "KEYWORDS", "STD_NAMES", "looks_like_type", "is_template"]
 
@@ -123,6 +126,9 @@ class Cursor:
         self.templates: set[str] = set()
         #: The variables in scope, innermost last - a declared variable is never a type.
         self.variables: list[set[str]] = [set()]
+        #: The aliases in scope, innermost last: C++ ends a function's ``using`` with its block,
+        #: so two functions may give one name two types (``contPair_t`` in ``commonUtils.h``).
+        self.alias_scopes: list[dict[str, CType]] = [{}]
         #: Nonzero while ``>`` closes a template argument list rather than comparing.
         self.angle = 0
         #: ``namespace fs = std::filesystem;``: each alias, and the namespace it names.
@@ -238,9 +244,18 @@ class Cursor:
 
     def push(self) -> None:
         self.variables.append(set())
+        self.alias_scopes.append({})
 
     def pop(self) -> None:
         self.variables.pop()
+        self.alias_scopes.pop()
+
+    def alias_of(self, name: str) -> CType | None:
+        """The type an alias in scope stands for, the innermost block's answer first."""
+        for scope in reversed(self.alias_scopes):
+            if name in scope:
+                return scope[name]
+        return None
 
     def is_type(self, parts: list[str]) -> bool:
         if len(parts) == 1 and self.is_variable(parts[0]):

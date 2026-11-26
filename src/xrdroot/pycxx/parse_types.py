@@ -50,8 +50,8 @@ def _typedef(spelled: str, name: str) -> str:
 class TypeParser(Cursor):
     """The part of the parser that reads types."""
 
-    #: The declared aliases, ``typedef`` and ``using``: name to the type it stands for.
-    aliases: dict[str, CType]
+    #: The aliases in scope, innermost last - a function's own ``using`` ends with its block.
+    alias_scopes: list[dict[str, CType]]
     #: The alias templates, ``template <class T> using V = std::vector<T>``: each one's
     #: parameters, their defaults, and the type it names.
     alias_templates: dict[str, tuple[list[str], list[Any], CType]]
@@ -139,7 +139,7 @@ class TypeParser(Cursor):
         template = self.alias_templates.get(parts[-1])
         if template is not None:
             return aliased(template, args)
-        alias = self.aliases.get("::".join(parts)) or self.aliases.get(parts[-1])
+        alias = self.alias_of("::".join(parts)) or self.alias_of(parts[-1])
         return replace(alias) if alias is not None and not args else None
 
     def _standard_type(self, parts: list[str]) -> str:

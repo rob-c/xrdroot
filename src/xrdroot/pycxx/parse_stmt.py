@@ -481,8 +481,12 @@ class StmtParser(ExprParser):
                 return ahead
 
     def alias(self, typedef: Typedef) -> Typedef:
-        """Remember ``typedef``, so that its name is read as the type it stands for."""
-        self.aliases[typedef.name] = typedef.ctype
+        """Remember ``typedef``, so that its name is read as the type it stands for.
+
+        It goes in the block it is written in, as C++ scopes it: a function's own ``using`` is
+        gone when its body ends, so the next function may give the name another type.
+        """
+        self.alias_scopes[-1][typedef.name] = typedef.ctype
         self.types.add(typedef.name)
         return typedef
 

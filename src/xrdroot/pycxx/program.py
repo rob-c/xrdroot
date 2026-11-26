@@ -167,6 +167,9 @@ class Program:
         #: ``X(...)`` makes - and not a type position's, which the parser answered while reading
         #: the declaration. Kept apart so that a body's alias changes no inference about a name.
         self.local_aliases: dict[str, CType] = {}
+        #: The same, per function (by ``id``): C++ ends an alias with the block it is written in,
+        #: so two functions may give one name two types and each call of ``X(...)`` is its own.
+        self.function_aliases: dict[int, dict[str, CType]] = {}
         #: The declarations at namespace scope, namespaces flattened, in the order written.
         self.order: list[Stmt] = []
         #: For each function (by ``id``), the names in it whose address is taken.
@@ -224,22 +227,36 @@ class Program:
     def _local_alias(self, decl: Stmt) -> None:
         """``using cv_milli_t = std::chrono::duration<double, std::milli>;`` inside a function.
 
-        C++ scopes an alias to the block it is written in; this kit keeps one table, because what
-        asks for an alias is a *call* - ``cv_milli_t(end - start)`` - emitted with no view of the
-        block it stands in. So every function's aliases go in that table, and two functions that
-        give one name two different types are refused rather than silently sharing the last one.
+        C++ scopes an alias to the block it is written in, so two functions may give one name two
+        types - ``contPair_t`` is a ``pair`` of the nested container's in ``commonUtils.h`` and a
+        ``pair`` of the associative one's a few lines later. Each function's go in a table of its
+        own, which :meth:`alias_in` asks by the function being written; a name this program's
+        functions agree on is also kept in :attr:`local_aliases` for the calls emitted with no
+        function in view.
         """
         aliases = [one for one in self._aliases_in(decl) if one.ctype.args]
+        if not aliases:
+            return
+        own = self.function_aliases.setdefault(id(decl), {})
         for one in aliases:
-            known = self.local_aliases.get(one.name)
+            known = own.get(one.name)
             if known is not None and known != one.ctype:
                 raise Refusal(
-                    f"the name {one.name} stands for two types in one program - "
-                    f"{known.name} and {one.ctype.name} - and this translator keeps one alias "
-                    "table for a program's functions. Rename one of them",
+                    f"the name {one.name} stands for two types in one function - "
+                    f"{known.name} of {', '.join(arg.name for arg in known.args)} and "
+                    f"{one.ctype.name} of {', '.join(arg.name for arg in one.ctype.args)} - "
+                    "and one body has room for one of them. Rename one of them",
                     one.where,
                 )
-            self.local_aliases[one.name] = one.ctype
+            own[one.name] = one.ctype
+            self.local_aliases.setdefault(one.name, one.ctype)
+
+    def alias_in(self, func: Function | None, name: str) -> CType | None:
+        """What ``name`` stands for where ``func``'s body is written: its own alias, else any."""
+        own = self.function_aliases.get(id(func)) if func is not None else None
+        if own is not None and name in own:
+            return own[name]
+        return self.local_aliases.get(name)
 
     def _aliases_in(self, decl: Stmt) -> list[Typedef]:
         """Every ``typedef`` and ``using X =`` written inside the function ``decl`` defines."""

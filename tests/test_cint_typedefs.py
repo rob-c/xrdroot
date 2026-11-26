@@ -70,12 +70,45 @@ def test_a_using_inside_a_function_names_the_type_its_call_makes() -> None:
     assert "ROOT.cv_milli_t" not in translated
 
 
-def test_a_name_two_functions_give_two_types_is_refused_by_name() -> None:
-    """One alias table serves a program's functions, so two of them giving a name two types is
-    refused with what to do - rather than the last one quietly winning in both."""
+def test_an_alias_written_in_one_function_is_not_in_scope_in_the_next() -> None:
+    """The other half of the same rule: an alias ends with its block, so the function after it
+    does not inherit the name - as C++ refuses to compile ``g`` here."""
     source = """
+    #include <vector>
+    void f() { using L = std::vector<int>; L a; (void)a; }
+    void g() { L b; (void)b; }
+    """
+    translated = translate(source, "t.C")
+    first, second = translated.split("def g():")
+    assert "std.vector['int']" in first
+    assert "ROOT.L" in second
+
+
+def test_two_functions_may_give_one_name_two_types_and_each_body_gets_its_own() -> None:
+    """C++ ends an alias with the block it is written in, so ``Length`` is a different type in
+    each of these bodies - ``std::pair`` of two different containers' in ROOT's own
+    ``commonUtils.h`` - and no refusal is owed."""
+    source = """
+    #include <chrono>
     void f() { using Length = std::chrono::duration<double, std::milli>; Length l(1); (void)l; }
     void g() { using Length = std::chrono::duration<double, std::ratio<1>>; Length l(1); (void)l; }
     """
-    with pytest.raises(Refusal, match="stands for two types in one program"):
+    translated = translate(source, "t.C")
+    first, second = translated.split("def g():")
+    assert "chrono.duration['double', 'std::milli'](1)" in first
+    assert "std::ratio<1>" in second
+    assert "std::ratio<1>" not in first
+
+
+def test_one_body_giving_a_name_two_types_is_refused_by_name() -> None:
+    """One body has room for one ``Length``, so a second, different one is refused with what to
+    do rather than the last quietly winning."""
+    source = """
+    void f() {
+      using Length = std::chrono::duration<double, std::milli>;
+      using Length = std::chrono::duration<double, std::ratio<1>>;
+      Length l(1); (void)l;
+    }
+    """
+    with pytest.raises(Refusal, match="stands for two types in one function"):
         translate(source, "t.C")
