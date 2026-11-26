@@ -34,7 +34,7 @@ from .ctype import CType
 from .errors import Refusal, Where
 from .nodes import Call, ClassDecl, Expr, Function, Literal, Name, Node, Typedef, VarDecl
 from .sizes import constant
-from .substitute import Bindings, as_literal, bound, copied, substituted
+from .substitute import Bindings, TemplateBinding, as_literal, bound, copied, substituted
 
 __all__ = ["ClassTemplate", "Templates", "argument_text", "mangled", "deduce_call"]
 
@@ -268,7 +268,10 @@ class Templates:
         if key in self.functions:
             return key, None
         written = self.specialisations.get(self.spellings[key])
-        made = copied(written, {}) if written is not None else copied(func, self.typed(bindings))
+        if written is not None:
+            made = copied(written, {})
+        else:
+            made = copied(func, self.templated(func, bindings))
         made.name, made.template, made.values, made.defaults = key, None, [], []
         made.specialises = None
         self.functions[key] = made
@@ -383,6 +386,17 @@ class Templates:
         if bindings is None:
             return None
         return [bindings[name] for name in template.parameters]
+
+    def templated(self, func: Function, bindings: Bindings) -> Bindings:
+        """``bindings`` for the copy of ``func``'s body: each *template* parameter's argument wrapped,
+        so that ``Cont<double>`` becomes the class template it stands for written with ``double``.
+        """
+        found = self.typed(bindings)
+        for name in func.class_templates:
+            bound = bindings.get(name)
+            if isinstance(bound, CType):
+                found[name] = TemplateBinding(bound.name)
+        return found
 
     def typed(self, bindings: Bindings) -> Bindings:
         """``bindings`` with the types each class of the program's given for a parameter

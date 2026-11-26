@@ -27,6 +27,48 @@ def test_a_value_parameter_is_a_keyword_the_explicit_template_argument_gives(
     assert output(capsys, source) == "6 2.5\n"
 
 
+def test_a_template_parameter_stands_for_the_class_template_the_call_gives(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``template <template <class T> class Cont>`` gives ``Cont`` a template and not a type, so
+    ``Cont<double>`` in the body is that template written with ``double`` - ROOT's own
+    ``roottest/root/io/cpp11Containers/commonUtils.h`` writes exactly this and passes
+    ``std::forward_list``, ``std::list`` and the rest."""
+    source = """
+    #include <vector>
+    template <template <typename T> class Cont>
+    void fill(const char* name) {
+       Cont<double> c {1., 2.};
+       printf("%s %d\\n", name, (int)c.size());
+    }
+    void t() { fill<std::vector>("vec"); }
+    """
+    assert "std.vector['double']" in translate(source, "t.C")
+    assert output(capsys, source) == "vec 2\n"
+    two = """
+    #include <vector>
+    #include <list>
+    template <template <typename T> class Cont>
+    void fill(const char* name) { Cont<double> c {1., 2.}; printf("%s %d\\n", name, (int)c.size()); }
+    void t() { fill<std::vector>("vec"); fill<std::list>("list"); }
+    """
+    translated = translate(two, "t.C")
+    first, second = translated.split("def fill__std_list")
+    assert "std.vector['double']" in first and "std.list['double']" in second
+
+
+def test_a_value_parameter_naming_a_template_argument_is_the_value_it_was_given() -> None:
+    """``SMatrix<double, Rows, Cols>`` inside ``template <unsigned Rows, unsigned Cols>``: a value
+    parameter is a value in its own body, so the argument is the number the call gives and not a
+    name a library is asked about."""
+    source = """
+    template <unsigned int Rows, unsigned int Cols>
+    void fill() { SMatrix<double, Rows, Cols> m; (void)m; }
+    void t() { fill<3, 5>(); }
+    """
+    assert "SMatrix['double', 3, 5]" in translate(source, "t.C")
+
+
 def test_a_value_parameter_is_deduced_from_the_size_of_an_array_passed_by_reference(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

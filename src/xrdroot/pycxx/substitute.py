@@ -11,23 +11,47 @@ leaving the template itself as it was.
 from __future__ import annotations
 
 import dataclasses
-from typing import Any
+from typing import Any, NamedTuple
 
 from .ctype import CType
 from .dialect import active
 from .errors import Where
 from .nodes import Call, Cast, Literal, Name, Node
 
-__all__ = ["Bindings", "substituted", "copied", "as_literal", "bound", "aliased"]
+__all__ = [
+    "Bindings",
+    "TemplateBinding",
+    "substituted",
+    "copied",
+    "as_literal",
+    "bound",
+    "aliased",
+]
 
 #: What each template parameter stands for: a type, or the expression of a value.
 Bindings = dict[str, Any]
 
 
+class TemplateBinding(NamedTuple):
+    """A *template* parameter's argument: the class template's name, not a type.
+
+    ``template <template <class T> class Cont>`` gives ``Cont`` a template, so ``Cont<double>``
+    is that template written with ``double`` - ``std::vector<double>`` - and the arguments are the
+    body's own, never the argument's: a type parameter's ``T`` in ``T<double>`` means nothing.
+    """
+
+    head: str
+
+
 def substituted(ctype: CType, bindings: Bindings) -> CType:
     """``ctype`` with the parameters ``bindings`` gives arguments for put in."""
     dims = [_dimension(dim, bindings) for dim in ctype.dims]
-    bound = bindings.get(ctype.name) if not ctype.args else None
+    template = bindings.get(ctype.name)
+    if isinstance(template, TemplateBinding):
+        return dataclasses.replace(
+            ctype, name=template.head, args=copied(ctype.args, bindings)
+        )
+    bound = template if not ctype.args else None
     bound = bound if isinstance(bound, CType) else _member_type(ctype.name, bindings)
     if bound is not None:
         return dataclasses.replace(
@@ -145,6 +169,9 @@ def _name(node: Name, bindings: Bindings) -> Node:
 def _named(node: Name, bindings: Bindings) -> Node:
     targs = copied(node.targs, bindings) if node.targs else node.targs
     bound = bindings.get(node.parts[0])
+    if isinstance(bound, TemplateBinding):
+        # ``Cont`` alone is a template, which is no value and resolves to no type here.
+        return Name(node.where, list(node.parts), targs, node.rooted)
     if len(node.parts) == 1 and bound is not None and not isinstance(bound, CType):
         return as_literal(bound, node.where)
     if isinstance(bound, CType) and not bound.pointer:

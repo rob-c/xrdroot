@@ -425,6 +425,9 @@ class Function(Stmt):
     variadic: bool = False
     inits: list[tuple[str, list[Expr]]] = field(default_factory=list)
     template: list[str] | None = None
+    #: The *template* parameters, ``C`` of ``template <template <class T> class C>``: it stands for
+    #: a class template and not a type, so ``C<double>`` is that template with ``double`` given.
+    class_templates: list[str] = field(default_factory=list)
     #: ``= 0``, ``= default``, ``= delete``: declared, and never to be given a body.
     special: str | None = None
     #: The template's value parameters, ``N`` of ``template <unsigned N>``, as parameters.
@@ -455,6 +458,8 @@ class ClassDecl(Stmt):
     bases: list[Base]
     members: list[Stmt]
     template: list[str] | None = None
+    #: The *template* parameters, ``C`` of ``template <template <class T> class C>``.
+    class_templates: list[str] = field(default_factory=list)
     #: Variables declared after the closing brace, ``struct P {...} p;``.
     declarators: list[VarDecl] = field(default_factory=list)
     #: The default of each template parameter, ``None`` where it has none.

@@ -181,18 +181,29 @@ class Parser(StmtParser):
             self.skip_to(";")
             return Empty(where)
         self.template_values = []
+        self.template_class_params = []
         names = self.template_parameters()
         values, defaults = self.template_values, self.template_defaults
+        class_templates = self.template_class_params
         if self.at_("using"):
             return self._alias_template(where, names)
         if self.at_("class", "struct", "union") and self._defines_type():
             decl = self.class_declaration()
             decl.template, decl.values, decl.defaults = names, values, defaults
+            decl.class_templates = class_templates
             return decl
         if self._declared_only() or self.at_("friend"):
             self.skip_to(";")
             return Empty(where)
-        return self._template_rest(where, (names, values, defaults), self.function_or_variable())
+        self.push()
+        try:
+            for parameter in values:
+                self.declare(parameter.name)
+            return self._template_rest(
+                where, (names, values, defaults, class_templates), self.function_or_variable()
+            )
+        finally:
+            self.pop()
 
     def _declared_only(self) -> bool:
         """``template <class T> class Box;`` or ``template <> class Box<int>;``: a class
@@ -203,7 +214,10 @@ class Parser(StmtParser):
         return self.peek(ahead).is_(";")
 
     def _template_rest(
-        self, where: Where, template: tuple[list[str], list[Param], list[Any]], stmt: Stmt
+        self,
+        where: Where,
+        template: tuple[list[str], list[Param], list[Any], list[str]],
+        stmt: Stmt,
     ) -> Stmt:
         """A function template, or a class template's static member defined outside it."""
         names = template[0]
@@ -212,7 +226,12 @@ class Parser(StmtParser):
             return stmt
         if not isinstance(stmt, Function):
             raise self.refuse("a variable template", where)
-        stmt.template, stmt.values, stmt.defaults = template
+        (
+            stmt.template,
+            stmt.values,
+            stmt.defaults,
+            stmt.class_templates,
+        ) = template
         if not names:
             stmt.specialises = self.declared_args
         return stmt
@@ -235,6 +254,7 @@ class Parser(StmtParser):
         self.expect("<")
         self.angle += 1
         self.template_defaults = []
+        self.template_class_params = []
         try:
             names = self.listed(self._template_parameter, ">")
             self.split_shift()
@@ -289,11 +309,15 @@ class Parser(StmtParser):
         self.accept("...")
         name = self.identifier() if self.peek().kind == "id" else "_"
         self.types.add(name)
+        self.template_class_params.append(name)
         self.template_defaults.append(self.type_id() if self.accept("=") else None)
         return name
 
     #: The value parameters of the template being read, ``N`` of ``template <int N>``.
     template_values: list[Param]
+    #: The *template* parameters of the template being read, ``C`` of
+    #: ``template <template <class T> class C>``.
+    template_class_params: list[str]
     #: The default of each parameter of the template being read, or ``None`` where it has none.
     template_defaults: list[Any]
 
