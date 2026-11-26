@@ -48,3 +48,24 @@ def test_pid_t_is_the_int_the_translator_now_knows(capsys: pytest.CaptureFixture
 
     run_source('void t() { pid_t p = 41; printf("%d\\n", int(p) + 1); }', "t.C", root=fake())
     assert capsys.readouterr().out == "42\n"
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="fork is POSIX's")
+def test_exit_in_a_forked_child_ends_the_process_not_just_the_call() -> None:
+    """C's ``exit`` in a child ends that process; unwinding would hand the runner the rest."""
+    from xrdroot.cppstd import arith
+
+    pid = unistd.fork()
+    if pid == 0:  # the child
+        arith.c_exit(3)
+        os._exit(4)  # reached only if exit unwound instead of ending the process
+    status = Cell(0, "int")
+    unistd.waitpid(pid, status, 0)
+    assert os.waitstatus_to_exitcode(status.value) == 3
+
+
+def test_the_stdlib_exit_and_random_macros_are_their_numbers() -> None:
+    from xrdroot import cint
+
+    assert cint.translate("void t() { int a = EXIT_SUCCESS, b = EXIT_FAILURE; }", "t.C")
+    assert "0" in cint.translate("void t() { int a = EXIT_SUCCESS; }", "t.C")

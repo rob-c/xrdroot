@@ -36,13 +36,22 @@ def usleep(microseconds: Any) -> int:
     return 0
 
 
+#: Whether this process is a child made by :func:`fork`. A ``SystemExit`` in one would
+#: unwind back into the runner that called the test, which is not what C's ``exit`` does:
+#: :func:`~cppstd.arith.c_exit` ends the *process* when this is set.
+IN_CHILD = False
+
+
 def fork() -> int:
     """``fork()``: the child's id in the parent, ``0`` in the child, ``-1`` when it failed.
 
     A child here is a real process of the operating system, as C's is: the translation that
     forked runs twice, and only the parent's side keeps the program's own bookkeeping.
     """
+    global IN_CHILD
     pid = os.fork()
+    if pid == 0:
+        IN_CHILD = True
     return int(pid)
 
 

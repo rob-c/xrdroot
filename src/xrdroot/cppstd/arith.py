@@ -11,6 +11,7 @@ and :func:`div` where it cannot tell: that one decides by what it is given.
 from __future__ import annotations
 
 import math
+import os
 from typing import Any
 
 import numpy as np
@@ -149,7 +150,12 @@ def comma(*values: Any) -> Any:
 
 
 def c_exit(code: Any = 0) -> Any:
-    """C's ``exit(code)``: the macro stops, with that status."""
+    """C's ``exit(code)``: the macro stops, with that status - or the process, in a ``fork``'s
+    child, where unwinding would hand control back to whatever ran the test."""
+    from . import unistd
+
+    if unistd.IN_CHILD:
+        os._exit(int(code))
     raise SystemExit(int(code))
 
 
