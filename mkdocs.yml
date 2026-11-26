@@ -47,6 +47,7 @@ nav:
       - Providers and adapters: components/providers.md
       - Boundary checks: components/boundaries.md
   - Project knowledge:
+      - "An in-memory GetEntry never refills a container": discoveries/an-in-memory-getentry-never-refills-a-container-branch-not-even.md
       - "A half-wired container branch reads back the last entry": gotchas/a-half-wired-container-branch-reads-back-the-last-entry-for.md
       - "What a std::set branch target needs": instructions/what-a-std-set-branch-target-needs-three-seams-not-one.md
       - "A char that is no character is written as its number": gotchas/a-char-that-is-no-character-is-written-as-its-number-not-as-a.md
