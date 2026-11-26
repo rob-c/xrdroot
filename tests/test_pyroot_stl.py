@@ -43,7 +43,9 @@ def test_a_vector_of_numbers_is_changed_compared_and_seen_as_an_array():
     v.pop_back()
     assert (v == [1.5, 9.0, 3.5], v != "abc", v == [1.5]) == (True, True, False)
     assert np.asarray(v, dtype=float).tolist() == [1.5, 9.0, 3.5]
-    assert "vector<float>" in repr(v)
+    # PyROOT renders a vector as its elements between braces, and its repr is its str: ROOT's own
+    # pretty-printing test asserts exactly that (`assertEqual(s, r)`), so this is the honest shape.
+    assert repr(v) == str(v) == "{ 1.5, 9, 3.5 }"
 
 
 def test_a_vector_is_made_sized_filled_or_from_values_and_resized_as_cplusplus_does():
@@ -255,3 +257,12 @@ def test_a_vector_of_pairs_takes_a_pair_made_elsewhere_as_its_two_halves():
     coords.push_back((3, 4))
     assert (coords[0].first, coords[0].second, coords[1].first) == (1.5, 2.5, 3.0)
     assert type(coords[1]) is std.pair["double", "double"]
+
+
+def test_an_element_is_printed_as_the_ostream_prints_it() -> None:
+    """A vector's text is C++'s: an integer as it is, a float to six significant digits, a bool as
+    1 or 0, anything else as its own text."""
+    from xrdroot.cppstd.containers import _printed
+
+    assert [_printed(v) for v in (3, 1.5, True, False, "x")] == ["3", "1.5", "1", "0", "x"]
+    assert _printed(0.1 + 0.2) == "0.3"  # six significant digits, as C++'s default is

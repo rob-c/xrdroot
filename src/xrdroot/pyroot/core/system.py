@@ -13,10 +13,15 @@ Python's own modules do, under ROOT's names.
 
 from __future__ import annotations
 
+import ctypes
 import os
+import pathlib
+import resource
 import shutil
 import socket
+import struct
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -34,6 +39,7 @@ def _translator(name: str) -> Any:
 __all__ = [
     "TSystem",
     "gSystem",
+    "ProcInfo_t",
     "kFileExists",
     "kExecutePermission",
     "kWritePermission",
@@ -221,6 +227,14 @@ class TSystem(TNamed):
 
     def GetUserInfo(self, *args: Any) -> None:
         return None
+
+    def GetProcInfo(self, info: Any) -> int:
+        """``GetProcInfo``: fill ``info``, a ``ProcInfo_t``, with this process's figures; ``0``."""
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        info.fCpuUser = int(usage.ru_utime * 1000)
+        info.fCpuSys = int(usage.ru_stime * 1000)
+        info.fMemResident, info.fMemVirtual = _memory_sizes()
+        return 0
 
     def GetBuildArch(self) -> str:
         return os.uname().machine
@@ -449,6 +463,68 @@ def _filled(stat: FileStat_t, info: os.stat_result, link: bool) -> None:
     stat.fDev, stat.fIno, stat.fMode = info.st_dev, info.st_ino, info.st_mode
     stat.fUid, stat.fGid, stat.fSize = info.st_uid, info.st_gid, info.st_size
     stat.fMtime, stat.fIsLink = int(info.st_mtime), link
+
+
+class ProcInfo_t:
+    """``ProcInfo_t``: what ``TSystem::GetProcInfo`` fills in about this process.
+
+    ROOT's own layout, in its own units: two CPU times in milliseconds and two memory sizes in
+    kilobytes - the resident set as it is now, and the address space the process has mapped.
+    """
+
+    __slots__ = ("fCpuUser", "fCpuSys", "fMemResident", "fMemVirtual")
+
+    def __init__(self) -> None:
+        self.fCpuUser, self.fCpuSys = 0, 0
+        self.fMemResident, self.fMemVirtual = 0, 0
+
+    def __repr__(self) -> str:
+        return (
+            f"<ProcInfo_t cpu {self.fCpuUser}ms+{self.fCpuSys}ms rss {self.fMemResident}KB "
+            f"vsz {self.fMemVirtual}KB>"
+        )
+
+
+def _linux_memory() -> tuple[int, int]:  # pragma: no cover - Linux only
+    """``/proc/self/statm``, in pages: the size of the program, then its resident pages."""
+    try:
+        pages = pathlib.Path("/proc/self/statm").read_text().split()
+        size = os.sysconf("SC_PAGE_SIZE") // 1024
+        return int(pages[1]) * size, int(pages[0]) * size
+    except (OSError, IndexError, ValueError):
+        return 0, 0
+
+
+def _darwin_memory() -> tuple[int, int]:  # pragma: no cover - macOS only
+    """``proc_pidinfo``'s task figures: the resident size, then the virtual size, in kilobytes.
+
+    ``proc_taskinfo`` begins with the two 64-bit sizes, so the first sixteen bytes of the record
+    are all this needs; the call itself is in ``libproc``, which no standard module wraps.
+    """
+    libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+    libproc.proc_pidinfo.restype = ctypes.c_int
+    libproc.proc_pidinfo.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint64,
+        ctypes.c_void_p,
+        ctypes.c_int,
+    ]
+    record = ctypes.create_string_buffer(4096)
+    filled = libproc.proc_pidinfo(os.getpid(), 4, 0, record, 4096)  # PROC_PIDTASKINFO
+    if filled < 16:
+        return 0, 0
+    virtual, resident = struct.unpack_from("QQ", record.raw)
+    return int(resident) // 1024, int(virtual) // 1024
+
+
+#: The kernel reader this platform has: ``proc_pidinfo`` on macOS, ``/proc`` elsewhere.
+_MEMORY_SIZES = _darwin_memory if sys.platform == "darwin" else _linux_memory
+
+
+def _memory_sizes() -> tuple[int, int]:
+    """This process's resident and virtual sizes in kilobytes, as the kernel reports them."""
+    return _MEMORY_SIZES()
 
 
 #: ``gSystem``.

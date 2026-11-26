@@ -573,7 +573,17 @@ class _Vector(_Container):
             self.assign(_ranged(first, rest))
 
     def __repr__(self) -> str:
-        return f"<{self.__cpp_name__} {self.data().tolist()!r}>"
+        """``repr`` of a vector is PyROOT's: its elements between braces, as C++ prints them.
+
+        ``python -c "print(ROOT.std.vector['float']([0, 1]))"`` in ROOT prints ``{ 0, 1 }``,
+        and a test in ROOT's own suite asserts exactly that, so the elements are rendered the
+        way the ``<<`` of a vector renders them rather than as a Python list.
+        """
+        return self.__str__()
+
+    def __str__(self) -> str:
+        """The elements between braces, each as C++'s ``<<`` prints it: ``{ 0, 1, 2 }``."""
+        return "{ " + ", ".join(_printed(value) for value in self.data().tolist()) + " }"
 
     def __len__(self) -> int:
         return self._size
@@ -977,6 +987,19 @@ def _ranged(first: Any, rest: Sequence[Any]) -> Any:
     if not (rest and isinstance(first, _VectorIterator) and isinstance(rest[0], _VectorIterator)):
         return first
     return [first._owner[at] for at in range(first._position, rest[0]._position)]
+
+
+def _printed(value: Any) -> str:
+    """``value`` as C++'s ``<<`` prints it: an integer as it is, a float to six significant
+    digits, a bool as ``1``/``0``, a string as its characters - what a PyROOT test reads back
+    from ``str(vector)``."""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return f"{value:g}"
+    return str(value)
 
 
 def _vector_class(kind: Any) -> type:

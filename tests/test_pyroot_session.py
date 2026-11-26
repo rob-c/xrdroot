@@ -305,3 +305,17 @@ def test_gsystem_says_what_a_path_is_and_internal_gives_secure_random_bytes(tmp_
     assert ROOT.Internal.GetCryptoRandom(buffer, 16) == 16 and any(buffer)
     with pytest.raises(AttributeError, match=r"ROOT has Internal\.Other"):
         ROOT.Internal.__getattr__("Other")
+
+
+def test_the_process_info_are_the_kernel_s_own_figures() -> None:
+    """``ProcInfo_t`` is filled by ``gSystem.GetProcInfo``: two CPU times in milliseconds and two
+    sizes in kilobytes, the resident set and the address space - what kDTreeTest and ROOT's own
+    pretty-printing test read to see a process grow."""
+    import xrdroot.pyroot as ROOT
+
+    info = ROOT.ProcInfo_t()
+    assert (info.fCpuUser, info.fCpuSys, info.fMemResident, info.fMemVirtual) == (0, 0, 0, 0)
+    assert ROOT.gSystem.GetProcInfo(info) == 0
+    assert info.fCpuUser >= 0 and info.fCpuSys >= 0
+    assert info.fMemResident > 0 and info.fMemVirtual >= info.fMemResident
+    assert "ProcInfo_t" in repr(info)

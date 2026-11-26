@@ -163,3 +163,18 @@ def test_a_composed_method_is_given_the_original_to_call():
     klass = cppyy.gbl.CppyyComposed
     py.compose_method(klass, "value", lambda self, original: 10 * original(self))
     assert klass().value() == 20
+
+
+def test_a_null_pointer_of_a_named_class_is_false_and_says_what_it_is() -> None:
+    """``ROOT.MakeNullPointer("TTree")`` is PyROOT's typed null: false, equal to another null of
+    the same class, and rendered ``<TTree object at 0x0>`` - the same by ``str`` and by ``repr``,
+    which is what ROOT's own pretty-printing test asserts."""
+    import xrdroot.pyroot as ROOT
+
+    null = ROOT.MakeNullPointer("TTree")
+    assert not null
+    assert str(null) == repr(null) == "<TTree object at 0x0>"
+    assert null == ROOT.MakeNullPointer("TTree") and null != ROOT.MakeNullPointer("TH1F")
+    assert hash(null) == hash("TTree") and null != "TTree"
+    assert ROOT.MakeNullPointer(ROOT.TTree) == null  # the class itself names it too
+    assert "TObject" in repr(ROOT.MakeNullPointer())

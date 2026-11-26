@@ -60,6 +60,7 @@ def _vector_text(values: list[Any]) -> str:
 __all__ = [
     "SAVE_STATE",
     "reset_save_state",
+    "MakeNullPointer",
     "TObject",
     "TNamed",
     "TAttLine",
@@ -175,6 +176,42 @@ class Indent:
 
 def SetOwnership(obj: Any, owned: bool) -> None:
     """``ROOT.SetOwnership``: who deletes an object, which Python's collector decides here."""
+
+
+class _NullPointer:
+    """A pointer to nothing, of the class it was asked for.
+
+    PyROOT hands back a typed null rather than ``None``: it is false, it points nowhere, and it
+    still says what it is - ``<TTree object at 0x0>`` - which a test checks.
+    """
+
+    #: The class the pointer names, which is all it has.
+    _name: str = "TObject"
+
+    def __init__(self, name: str = "TObject") -> None:
+        self._name = str(name)
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _NullPointer) and other._name == self._name
+
+    def __hash__(self) -> int:
+        return hash(self._name)
+
+    def __repr__(self) -> str:
+        return f"<{self._name} object at 0x0>"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+
+def MakeNullPointer(t: Any = None) -> Any:
+    """``ROOT.MakeNullPointer``: a null pointer of the class ``t`` names - its name as a string,
+    which is how the PyROOT test that checks one spells it - or of the class itself."""
+    named = t if isinstance(t, str) else getattr(t, "__name__", "TObject")
+    return _NullPointer(named)
 
 
 def addressof(obj: Any, field: Any = None) -> Any:
