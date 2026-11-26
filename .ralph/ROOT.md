@@ -5670,3 +5670,48 @@ average of 5-12.
 **+1 unit test** pinning all four answers: two address shapes step, and a `TString::Data()`, a
 `(unsigned char *)` cast and the plain string keep refusing.
 
+## Round 133's close
+
+**The rest of a stream, written as an assignment, is the rest of it - and two more walls named.**
+
+Round 132 took the family to `Dumper.h:337`, where ROOT's own dumper reads a file into a
+`std::string`:
+
+```cpp
+str1 = std::string(std::istreambuf_iterator<char>(f1), std::istreambuf_iterator<char>());
+```
+
+The *declaration* form of that construction has emitted `stream_rest(f)` since round 108
+(`emit_vars._string_of`). The assignment form had two holes: `_streambuf` compared the iterator's
+name **exactly**, so `istreambuf_iterator<char>` - the spelling a real program writes - never
+matched, and the assignment path never asked the question at all. `emit_calls._rest_of_a_stream` is
+the second half, and both forms now read `stream_rest(f)`.
+
+**What that bought.** The generator **and its dump** now run: the dump completes (its
+`End of ClassD` line is printed, so `Generator.h`'s own comment about the class it finished is
+ours too), and the wall is **`Generator.h:179`**:
+
+```cpp
+TVirtualCollectionProxy::TPushPop helper( proxy, obj );
+proxy->Allocate( genInt(), false );
+...
+*((int *)proxy->At(i)) = genInt();
+```
+
+Two names and one shape. `TPushPop` is ROOT's RAII guard that makes a proxy work on one object while
+it is in scope - this kit has the stack (`_held`, with `PushProxy`/`PopProxy`) and no nested class.
+Behind it, `Allocate` and an `At` that answers a **cell**: the block fills a base-type collection
+element by element, which is a proxy arena, not a name. That is `W0-268`.
+
+**0 harness PASS moved and none lost**: `io/datamodelevolution` is **22 / 20 / 2** of 44, its twenty
+FAILs being the same tests now stopping two walls further in. The guards were re-measured whole and
+are the ledger's figures: `io/tree` 18/0/0/2, `io/newstl` 19/11/2.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 173 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 127431 0 32014 0
+100%`**; ruff (it named a `noqa` for a rule this project does not enable, which came out), mypy,
+maintainability, components and `mkdocs --strict` each exit 0, at a load average of 7-10.
+
+**+1 unit test**: the assignment form emits `stream_rest(in_)` and no `istreambuf_iterator` at all,
+the local being renamed for Python's keyword.
+
