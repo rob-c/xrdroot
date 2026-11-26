@@ -50,6 +50,7 @@ nav:
       - "An in-memory GetEntry never refills a container": discoveries/an-in-memory-getentry-never-refills-a-container-branch-not-even.md
       - "A half-wired container branch reads back the last entry": gotchas/a-half-wired-container-branch-reads-back-the-last-entry-for.md
       - "What a std::set branch target needs": instructions/what-a-std-set-branch-target-needs-three-seams-not-one.md
+      - "A tree filled in memory refills its branch object": gotchas/a-tree-filled-in-memory-refills-the-object-its-branch-was.md
       - "A char that is no character is written as its number": gotchas/a-char-that-is-no-character-is-written-as-its-number-not-as-a.md
       - "An enumerator reaches Python signed": discoveries/an-enumerator-reaches-python-as-a-signed-64-bit-int-even-from.md
       - "The 42 non-passing pyunittest programs": discoveries/the-42-non-passing-pyunittest-programs-by-first-failing-case.md
