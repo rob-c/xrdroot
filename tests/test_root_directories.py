@@ -254,3 +254,25 @@ def test_a_with_block_that_raises_takes_back_the_directories_too():
             out["a/b/s"] = "x"
             raise RuntimeError("gone wrong")
     assert buf.getvalue() == b""
+
+
+def test_a_file_nobody_closed_lets_go_of_its_handle_quietly(tmp_path):
+    """A frame reads the files it was built from long after the test that built it has ended, and
+    nothing closes them: a dropped ``ROOTFile`` closes its own handle, so Python's finaliser of an
+    open file - a ``ResourceWarning``, which this suite turns into an error - never runs."""
+    import gc
+    import warnings
+
+    import xrdroot
+
+    path = tmp_path / "quiet.root"
+    with xrdroot.create(str(path)) as out:
+        out.tree("t", {"x": float}).extend({"x": [1.0, 2.0]})
+    opened = xrdroot.open_root(str(path))
+    handle = opened._source.handle
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        del opened
+        gc.collect()
+    assert handle.closed
+    assert [one for one in caught if one.category is ResourceWarning] == []

@@ -107,6 +107,20 @@ class Source:
         self._reopen = reopen
         self._inherited: IO[bytes] | None = None
 
+    def __del__(self) -> None:
+        """Close the handle this object opened, so a file nobody closed is still no leak.
+
+        A frame reads the files it was built from long after the test that built one has ended, and
+        nothing closes them: Python's finaliser of an open file is a ``ResourceWarning``, which a
+        suite that turns warnings into errors reports in whichever test happens to be running when
+        the collection answers - Python 3.13 finalises in a different order, so it showed there
+        first. A handle inherited across a fork is the parent's and is left alone, as ``_adopt``
+        says.
+        """
+        handle = getattr(self, "handle", None)
+        if self.owned and handle is not None and handle is not self._inherited:
+            handle.close()
+
     def streamers(self) -> dict[str, Any]:
         """What the file says its classes look like, read once and kept.
 
