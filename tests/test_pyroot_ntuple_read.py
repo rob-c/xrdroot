@@ -183,3 +183,48 @@ def test_a_model_of_every_field_leaves_a_record_to_the_views_of_its_members() ->
             return {"n": "int", "rec": "TLorentzVector", "vs": "std::vector<std::string>"}
 
     assert _model_of(_Written()).GetFieldNames() == ["n"]
+
+
+# -- the descriptor's clusters and pages -----------------------------------------
+
+
+def test_the_descriptor_reports_each_cluster_and_the_pages_of_a_column() -> None:
+    """``GetClusterDescriptor`` and its page ranges, as ``rfield_string.cxx`` asks them."""
+    with xrdroot.create("pages.root") as out:
+        ntuple = out.rntuple("rs", {"st": str})
+        ntuple.extend({"st": ["foooooo"] * 5000})
+    reader = ROOT.RNTupleReader.Open("rs", "pages.root")
+    descriptor = reader.GetDescriptor()
+    assert descriptor.GetNClusters() >= 1
+    cluster = descriptor.GetClusterDescriptor(0)
+    assert cluster.GetFirstEntryIndex() == 0
+    assert cluster.GetNEntries() > 0
+    index = cluster.GetPageRange(0).GetPageInfos()
+    assert index.size() == 1 and index.at(0).GetNElements() == cluster.GetNEntries()
+    chars = cluster.GetPageRange(1).GetPageInfos()
+    assert chars.at(0).GetElementIndex() == 0
+    assert chars.at(0).GetNElements() == 7 * cluster.GetNEntries()  # "foooooo" per entry
+    assert chars.at(0).GetSize() > 0
+    offset, size = chars.at(0).GetLocator()
+    assert offset > 0 and size == chars.at(0).GetSize()
+    assert cluster.GetPageRange(2).GetPageInfos().size() == 0
+
+
+def test_a_page_of_a_column_can_be_named_by_the_field_it_belongs_to() -> None:
+    with xrdroot.create("named.root") as out:
+        ntuple = out.rntuple("rs", {"st": str, "n": "std::int32_t"})
+        ntuple.extend({"st": ["x"] * 10, "n": list(range(10))})
+    cluster = ROOT.RNTupleReader.Open("rs", "named.root").GetDescriptor().GetClusterDescriptor(0)
+    assert cluster.GetPageRange("n").GetPageInfos().at(0).GetNElements() == 10
+    with pytest.raises(KeyError, match="no column called 'nowhere'"):
+        cluster.GetPageRange("nowhere")
+
+
+def test_a_cluster_that_this_rntuple_does_not_have_is_an_index_error() -> None:
+    with xrdroot.create("few.root") as out:
+        ntuple = out.rntuple("rs", {"n": "std::int32_t"})
+        ntuple.extend({"n": [1, 2, 3]})
+    descriptor = ROOT.RNTupleReader.Open("rs", "few.root").GetDescriptor()
+    count = descriptor.GetNClusters()
+    with pytest.raises(IndexError, match=f"there is no cluster {count}"):
+        descriptor.GetClusterDescriptor(count)

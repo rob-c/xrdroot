@@ -23,7 +23,8 @@ from .fields import RFieldPtr, field_type
 from .model import REntry, RField, RNTupleModel
 from .printing import info_text, json_text
 
-__all__ = ["RNTupleReader", "RNTupleView", "ENTupleInfo", "RNTupleDescriptor"]
+__all__ = ["RNTupleReader", "RNTupleView", "ENTupleInfo", "RNTupleDescriptor",
+           "RClusterDescriptor", "RPageRange", "RPageInfo"]
 
 
 class ENTupleInfo:
@@ -62,8 +63,11 @@ def _ntuple(name: Any, place: Any) -> tuple[Any, Any]:
 class RNTupleDescriptor:
     """``RNTupleDescriptor``: the RNTuple's name, description and size, as its header says."""
 
-    def __init__(self, ntuple: Any) -> None:
+    def __init__(self, ntuple: Any, reader: Any = None) -> None:
         self._ntuple = ntuple
+        #: The reader the descriptor came from: it owns the file the pages are read from,
+        #: so a descriptor outliving its reader would otherwise find the file closed.
+        self._reader = reader
 
     def GetName(self) -> str:
         return str(self._ntuple.name)
@@ -80,6 +84,99 @@ class RNTupleDescriptor:
     def GetNFields(self) -> int:
         """Every field, the hidden top one ROOT counts included."""
         return len(self._ntuple._store.schema.fields) + 1
+
+    def GetClusterDescriptor(self, index: int) -> RClusterDescriptor:
+        """The ``index``-th cluster, in the order the groups list them."""
+        cluster = self._cluster(int(index))
+        return RClusterDescriptor(cluster, _columns(self._ntuple._store.schema))
+
+    def _cluster(self, index: int) -> Any:
+        """One cluster by its place in the page lists, reading the groups as it goes."""
+        store = self._ntuple._store
+        seen = 0
+        for group in range(len(store.groups)):
+            for cluster in store.clusters(group):
+                if seen == index:
+                    return cluster
+                seen += 1
+        raise IndexError(f"this RNTuple has {seen} clusters, so there is no cluster {index}")
+
+
+class RClusterDescriptor:
+    """``RNTupleDescriptor::RClusterDescriptor``: one cluster's pages, column by column."""
+
+    def __init__(self, cluster: Any, columns: list[str]) -> None:
+        self._cluster = cluster
+        self._columns = columns
+
+    def GetFirstEntryIndex(self) -> int:
+        return int(self._cluster.first_entry)
+
+    def GetNEntries(self) -> int:
+        return int(self._cluster.entries)
+
+    def GetPageRange(self, column: int) -> RPageRange:
+        """The pages of one column in this cluster, by the column's name as well as its number."""
+        return RPageRange(self._cluster, self._column_id(column))
+
+    def _column_id(self, column: Any) -> int:
+        if isinstance(column, str):
+            if column not in self._columns:
+                raise KeyError(f"this RNTuple has no column called {column!r}")
+            return self._columns.index(column)
+        return int(column)
+
+
+class RPageRange:
+    """``RPageRange``: the pages a column has in one cluster, and where each starts."""
+
+    def __init__(self, cluster: Any, column: int) -> None:
+        self._pages = cluster.columns[column] if column < len(cluster.columns) else None
+
+    def GetPageInfos(self) -> Any:
+        """The pages as ROOT's ``std::vector<RPageInfo>``, which the macro indexes with ``at``."""
+        from ..stl import std
+
+        pages = self._pages
+        found = [] if pages is None or pages.suppressed else [
+            RPageInfo(pages, index) for index in range(len(pages.counts))
+        ]
+        return std.vector["ROOT::RNTupleDescriptor::RPageRange::RPageInfo"](found)
+
+
+class RPageInfo:
+    """``RPageInfo``: one page's elements, bytes and place in the file."""
+
+    def __init__(self, pages: Any, index: int) -> None:
+        self._pages = pages
+        self._index = index
+
+    def GetNElements(self) -> int:
+        return int(self._pages.counts[self._index])
+
+    def GetElementIndex(self) -> int:
+        """How many elements of the column come before this page."""
+        return int(self._pages.first) + int(self._pages.starts[self._index])
+
+    def GetSize(self) -> int:
+        return int(self._pages.sizes[self._index])
+
+    def GetLocator(self) -> tuple[int, int]:
+        """Where the page lies: its byte offset in the file and its size."""
+        return int(self._pages.offsets[self._index]), self.GetSize()
+
+
+def _columns(schema: Any) -> list[str]:
+    """A name for every column, in column-id order: the field it belongs to.
+
+    A field with several representations has one column per representation, so the name is
+    the field's and the page range is picked by number when that matters.
+    """
+    names: list[str] = []
+    for column in schema.columns:
+        field = schema.fields[column.field] if column.field < len(schema.fields) else None
+        names.append(field.name if field is not None else f"column {column.id}")
+    return names
 
 
 def _model_of(ntuple: Any) -> RNTupleModel:
@@ -147,7 +244,7 @@ class RNTupleReader(Guarded):
         return self._model.CreateEntry()
 
     def GetDescriptor(self) -> RNTupleDescriptor:
-        return RNTupleDescriptor(self._ntuple)
+        return RNTupleDescriptor(self._ntuple, self)
 
     def get(self) -> RNTupleReader:
         return self

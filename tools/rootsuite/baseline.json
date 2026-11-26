@@ -305,7 +305,7 @@
  "gtest/tree/ntuple/rfield_basics": "FAIL",
  "gtest/tree/ntuple/rfield_class": "UNSUPPORTED",
  "gtest/tree/ntuple/rfield_streamer": "FAIL",
- "gtest/tree/ntuple/rfield_string": "FAIL",
+ "gtest/tree/ntuple/rfield_string": "PASS",
  "gtest/tree/ntuple/rfield_variant": "FAIL",
  "gtest/tree/ntuple/rfield_vector": "FAIL",
  "gtest/tree/ntuplebrowse/ntuple_browse": "UNSUPPORTED",
