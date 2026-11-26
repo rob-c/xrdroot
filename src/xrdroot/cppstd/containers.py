@@ -1974,6 +1974,7 @@ class _Namespace:
     default_random_engine = _random.default_random_engine
     normal_distribution = _random.normal_distribution
     uniform_real_distribution = _random.uniform_real_distribution
+    uniform_int_distribution = _random.uniform_int_distribution
     string = string
     #: ``std::thread``: ``std.thread(f, args...)``, and ``std.thread.hardware_concurrency()``.
     thread = _threads.thread

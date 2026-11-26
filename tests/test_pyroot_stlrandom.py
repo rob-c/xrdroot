@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 import xrdroot.pyroot as ROOT
 from pyrootsupport import expect
 from refmachine import roots
@@ -57,3 +59,20 @@ def test_a_vector_of_threads_starts_each_from_its_function(capsys: Any) -> None:
     words = ROOT.std.vector["std::string"]()
     words.emplace_back("a")
     assert list(words) == ["a"]
+
+
+def test_a_uniform_int_distribution_draws_inside_its_bounds() -> None:
+    """``std::uniform_int_distribution<T>(a, b)``, which ``ntuple_extended`` asks for."""
+    engine = ROOT.std.default_random_engine(42)
+    spread = ROOT.std.uniform_int_distribution["unsigned int"](3, 7)
+    assert (spread.a(), spread.b(), spread.min(), spread.max()) == (3, 7, 3, 7)
+    drawn = [spread(engine) for _ in range(200)]
+    assert set(drawn) <= set(range(3, 8)) and len(set(drawn)) > 1
+    spread.reset()
+
+
+def test_a_uniform_int_distribution_wider_than_its_engine_is_refused() -> None:
+    engine = ROOT.std.default_random_engine(1)
+    too_wide = ROOT.std.uniform_int_distribution(0, 2**70)
+    with pytest.raises(ValueError, match="wider than the engine"):
+        too_wide(engine)

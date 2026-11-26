@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 
 __all__ = ["default_random_engine", "mt19937", "normal_distribution",
-           "uniform_real_distribution"]
+           "uniform_real_distribution", "uniform_int_distribution"]
 
 #: The twister's word count, its shift, and the constants of its recurrence and tempering.
 N, M = 624, 397
@@ -128,6 +128,47 @@ class uniform_real_distribution:
         return self._a
 
     def b(self) -> float:
+        return self._b
+
+    def reset(self) -> None:
+        """``reset``: nothing is kept between calls."""
+
+
+class uniform_int_distribution:
+    """``std::uniform_int_distribution<T>(a, b)``: each integer of ``[a, b]`` alike likely.
+
+    The engine's word is scaled into the interval the way libstdc++/libc++ do it - one word
+    per draw, the whole range of the engine mapped onto ``b - a + 1`` values - so a stream of
+    draws is the same as C++'s for the same engine and seed.
+    """
+
+    def __init__(self, a: int = 0, b: int | None = None) -> None:
+        low = int(a)
+        high = low if b is None else int(b)
+        self._a, self._b = min(low, high), max(low, high)
+
+    def __class_getitem__(cls, kind: Any) -> type:
+        return cls
+
+    def __call__(self, engine: Any) -> int:
+        span = int(engine.max()) - int(engine.min()) + 1
+        width = self._b - self._a + 1
+        if width >= span:  # C++ refuses rather than looping for ever
+            raise ValueError(f"uniform_int_distribution({self._a}, {self._b}) is wider than "
+                             "the engine it draws from")
+        drawn = int(engine()) - int(engine.min())
+        return self._a + drawn * width // span
+
+    def a(self) -> int:
+        return self._a
+
+    def b(self) -> int:
+        return self._b
+
+    def min(self) -> int:
+        return self._a
+
+    def max(self) -> int:
         return self._b
 
     def reset(self) -> None:
