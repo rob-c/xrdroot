@@ -136,3 +136,83 @@ def test_a_state_and_its_carry_are_the_residue_root_keeps(
     out = [0] * 9
     ROOT.to_lcg(limbs(state), carry, out)
     assert number(out) == residue
+
+
+@pytest.mark.parametrize(
+    ("residue", "state", "carry"),
+    [
+        # ROOT's own vectors from ranlux_lcg.cxx, in both directions.
+        (0, [0] * 9, 0),
+        (1, [1] + [0] * 8, 0),
+        (
+            number([1, 0, 0, 0x0001000000000000, 0x0100000100000100, 0x0000010000010000,
+                    0x0001000001000001, 0x0100000100000100, 0x0000010000010000]),
+            [2 + (1 << 24) + (1 << 48), (1 << 8) + (1 << 32) + (1 << 56), (1 << 16) + (1 << 40)]
+            + [1 + (1 << 24) + (1 << 48), (1 << 8) + (1 << 32) + (1 << 56),
+               (1 << 16) + (1 << 40)] * 2,
+            0,
+        ),
+        (
+            number([0, 0, 0, 0x0001000000000000, 0x0100000100000100, 0x0000010000010000,
+                    0x0001000001000001, 0x0100000100000100, 0x0000010000010000]),
+            [(1 << 24) + (1 << 48), (1 << 8) + (1 << 32) + (1 << 56), (1 << 16) + (1 << 40)]
+            + [1 + (1 << 24) + (1 << 48), (1 << 8) + (1 << 32) + (1 << 56),
+               (1 << 16) + (1 << 40)] * 2,
+            1,
+        ),
+        (MODULUS - 1, [MAX - 1] + [MAX] * 8, 1),
+    ],
+)
+def test_the_state_a_residue_came_from_is_the_one_root_finds(
+    residue: int, state: list[int], carry: int
+) -> None:
+    """``to_ranlux``: ROOT's own seven vectors, four of them here.
+
+    The carry is not "prefer the carried state": it is the carry out of the additions
+    ``compute_r``'s correction makes, and ``MODULUS - 1`` is where that differs from the
+    plain sum.
+    """
+    out = [0] * 9
+    written = [0] * 1
+    ROOT.to_ranlux(limbs(residue), out, _Cell(written))
+    assert out == state
+    assert written[0] == carry
+
+
+def test_a_state_goes_back_to_the_residue_it_was_taken_from() -> None:
+    for residue in (0, 1, 2, MODULUS - 2, MODULUS - 1, (1 << 576) - (1 << 300)):
+        out, written = [0] * 9, [0]
+        ROOT.to_ranlux(limbs(residue), out, _Cell(written))
+        back = [0] * 9
+        ROOT.to_lcg(out, written[0], back)
+        assert number(back) == residue % MODULUS
+
+
+def test_root_leaves_the_limbs_after_the_first_alone_when_the_correction_subtracts() -> None:
+    """ROOT's ``to_ranlux`` updates ``ranlux[i]`` in a local and never stores it back.
+
+    For a correction of ``-1`` that is one taken from every limb, so the state ROOT returns
+    differs from the exact inverse by the borrow it did not write - one limb - and that is
+    what the oracle answers too. Pinned here so nobody "fixes" it into a different answer.
+    """
+    residue = 1 << 400
+    out, written = [0] * 9, [0]
+    ROOT.to_ranlux(limbs(residue), out, _Cell(written))
+    back = [0] * 9
+    ROOT.to_lcg(out, written[0], back)
+    assert number(back) == residue + (1 << 64)
+
+
+class _Cell:
+    """The ``unsigned &`` a translated call hands a function: a value written back."""
+
+    def __init__(self, holder: list[int]) -> None:
+        self._holder = holder
+
+    @property
+    def value(self) -> int:
+        return self._holder[0]
+
+    @value.setter
+    def value(self, written: int) -> None:
+        self._holder[0] = written

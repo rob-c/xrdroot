@@ -118,7 +118,7 @@
  "gtest/math/mathcore/GradientUnit": "UNSUPPORTED",
  "gtest/math/mathcore/MulmodUnitNoInt128": "PASS",
  "gtest/math/mathcore/MulmodUnitOpt": "PASS",
- "gtest/math/mathcore/RanluxLCGUnit": "FAIL",
+ "gtest/math/mathcore/RanluxLCGUnit": "PASS",
  "gtest/math/mathcore/RanluxppEngineTests": "FAIL",
  "gtest/math/mathcore/stressMathCoreUnit": "UNSUPPORTED",
  "gtest/math/mathcore/testDelaunay2D": "PASS",

@@ -166,6 +166,9 @@ OUT_PARAMETERS: dict[tuple[str, int], tuple[int, ...]] = {
     ("GetParameter", 3): (1, 2),
     ("GetBinXYZ", 4): (1, 2, 3),
     ("GetObject", 2): (1,),
+    # ``ranluxpp``'s ``to_ranlux(lcg, ranlux, unsigned &c)`` fills the carry the macro hands
+    # it, which is how ``to_lcg(ranlux, c, lcg)`` names the state a residue came from.
+    ("to_ranlux", 3): (2,),
     # ``TBufferJSON::FromJSON(T*& obj, json)`` fills the pointer the macro hands it, so the
     # local is a cell - which is what makes ``arr2`` hold the array the JSON described.
     ("FromJSON", 2): (0,),
