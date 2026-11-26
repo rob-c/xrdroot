@@ -5154,3 +5154,73 @@ partial arc being `reflection.py 285->284`: the back edge of `for name in FILE_I
 `reload_emulated`, which is nowhere near this round's change (lines 1400-1700) and which round 120
 already recorded as an xdist worker losing one arc. `gh run rerun --failed` of that same run was
 **green on every job**, so the trunk is certified green at `a74f4bf0` with the round inside it.
+## Round 123's close
+
+**What landed.** A function's `using` ends with its block, so the translator now keeps one alias
+table per function instead of refusing a program whose functions disagree. C++ scopes an alias to
+the block it is written in; this kit kept **one** table for a program's functions and raised
+`the name contPair_t stands for two types in one program` on the second definition. ROOT's own
+`roottest/root/io/cpp11Containers/commonUtils.h` writes `contPair_t` twice with different `pair`s -
+once for the nested container's key/mapped types, once for the associative one's - and
+`roottest/root/math/smatrix/testOperations.cxx` gives `MnMatrix` three meanings in three functions.
+That refusal blocked all six `io/cpp11Containers` tests and both `smatrix` ones.
+
+Two tables answer the two questions C++ asks separately, and they were already separate questions in
+the code: a **type position** is answered while the declaration is read (`parse_types._alias`
+replaces the alias with the `CType` and the node keeps it), so `Cursor.alias_scopes` is a stack laid
+on the `variables` scopes - `push`/`pop` open and close a layer, `alias_of` asks the innermost first,
+and `parse_stmt.alias` writes into the layer it is standing in. A **value position**, the call
+`X(...)`, is answered at emit time, so `Program.function_aliases[id(func)]` keeps each function's own
+and `Program.alias_in(self.scope.function, name)` is what `emit_calls._alias_call` asks; the names a
+program's functions agree on stay in `local_aliases` for a call emitted with no function in view. The
+refusal survives for the one case C++ also rejects: one body giving one name two types.
+
+**The gain, and the loss that was not one.** `io/cpp11Containers` 1 PASS / 6 UNSUPPORTED ->
+**3 PASS / 4 UNSUPPORTED**, the two `-libgen-build` rows being baseline promises back, and **no PASS
+lost** across the whole kind run before and after (`…/roottest` 1360 / 445 / 127 / 230 / 10 / 1,
+`…/roottest2` 1362 / 446 / 127 / 227 / 10 / 1). The only other move is `math/smatrix/Operations`
+UNSUPPORTED -> FAIL: the lifted refusal surfacing at its next wall, which `W0-63` says is not
+progress in itself and `W0-254` records. The four `io/cpp11Containers` runtime tests now stop at a
+**template template parameter** (`W0-252`), which is a translator feature, not a test's size.
+
+**The round's other half is a measurement the project did not have.** A whole-kind run of roottest
+had not been made since round 103, and a whole run of all five kinds not since round 107. Doing it
+found that `main`'s `tools/rootsuite/baseline.json` claimed PASS for eleven rows that no commit has
+produced since round 111: the nine `io/evolution/versions/AddVersion-*`, whose committed refs say
+`offset=na` where ROOT 6.40 prints `offset=  0`. That is **not** a regression from rounds 112-122 and
+not a code bug — `TStreamerInfo::ls` and `TStreamerElement::ls` both print `offset=%3d`
+(`io/io/src/TStreamerInfo.cxx`, `core/meta/src/TStreamerElement.cxx`), `%3d` cannot render `na`, and
+the 6.40 oracle on this machine prints `offset=  0` (`…/probe/pf.C`). Round 112 laid a file layout's
+members out at ROOT's own offsets, which is what moved this kit's output from the stale form to the
+true one, and nothing wrote the change down. The bisect that establishes it: `46c791dc` (round 111)
+30 PASS / 2 DIFF, `47e0b444` (round 112) 21 PASS / 11 DIFF, and the same at every commit since. So
+the round **corrects** those nine rows to DIFF and raises fifteen more to PASS from these runs —
+`ratchet` now reads **0 regressions** on each of the five kind runs where it read 9 on roottest.
+`W0-253` asks the question the correction cannot answer: what a stale upstream ref should be *called*
+in roottest's vocabulary.
+
+All five kinds measured whole at this round's tip:
+roottest **1362** / 446 / 127 / 227 / 10 / 1 of 2173, gtest **93** / 182 / 73 / 2 of 350,
+pyunittest **88** / 38 / 2 / 1 of 129, `test/` **10** / 6 / 43 of 59, `other` **49** / 0 / 59 / 1 of
+109 — **1602 of 2820 (56.8 %)** non-tutorial.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 000 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126275 0 31728 0
+100%`**. ruff clean (it named a `TYPE_CHECKING` import for `cursor.py`'s new annotations); mypy 1 062
+files; maintainability 33 424 functions in 1 824 files; components 1 062 modules / 0 undeclared;
+`mkdocs --strict` exit 0. **+3 unit tests**: each function gets its own type, an alias does not
+outlive its function, one body still refuses a second type - and one more pins the
+`_type_scope` guard the round's own change stopped reaching (a function-local `TypeParam` no longer
+leaks into the generated GoogleTest class; the emitted GoogleTest program reads the same).
+
+**A gotcha, for the next reader**:
+`docs/gotchas/a-functions-using-ends-with-its-block-so-the-alias-table-is-per.md`, with the two
+tables, the mermaid of the two questions, and what the four remaining `cpp11Containers` tests need.
+
+**What this says about the next round.** The queue's shape has changed: the biggest measurable thing
+left is no longer a code wall but a **measurement discipline** — a whole run of all five kinds is
+what finds a stale baseline row, and it takes about fifty minutes of wall time across the five. The
+code walls the round named: `W0-252` (template template parameters, 4 tests), `W0-253` (stale refs,
+9 tests, needs a decision not a fix), `W0-254` (`SMatrix` dimensions that are named constants, 2),
+`W0-233` (the `datamodelevolution` chain), `W0-250` (`__PRETTY_FUNCTION__`), `W0-251` (the `xdist`
+arc).
