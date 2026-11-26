@@ -5224,3 +5224,65 @@ code walls the round named: `W0-252` (template template parameters, 4 tests), `W
 9 tests, needs a decision not a fix), `W0-254` (`SMatrix` dimensions that are named constants, 2),
 `W0-233` (the `datamodelevolution` chain), `W0-250` (`__PRETTY_FUNCTION__`), `W0-251` (the `xdist`
 arc).
+
+## Round 124's close
+
+**What landed.** Two facts C++ states plainly and this translator had lost.
+
+`template <template <class T> class Cont>` gives `Cont` a **class template**, not a type, so
+`Cont<double>` in the body is that template written with `double`. ROOT's own
+`roottest/root/io/cpp11Containers/commonUtils.h` writes exactly that - `contPair_t` as a pair of the
+nested container's key/mapped types in one function template and of the associative container's
+eighty lines later - and passes `std::forward_list`, `std::list`, `std::unordered_set`,
+`std::unordered_map`. The parser read the parameter but recorded it as one more *type* parameter, and
+`substitute.substituted` applies a binding only to a `CType` with **no** template arguments, so
+`Cont<double>` stayed whole and the emitter wrote `ROOT.Cont['double']` - the harness's
+`AttributeError: ROOT has Cont`. `substitute.TemplateBinding(head)` now says what such a parameter's
+argument is: a template's name. `substituted` replaces the head and keeps the arguments;
+`parse_decl._class_template_parameter` records the name in `Function.class_templates` and
+`ClassDecl.class_templates`; `instantiate.Templates.templated` wraps the binding before the body is
+copied; and `substitute._named` gives an *expression* position (`C<int> make() { return C<int>(); }`)
+the same rule as a type position.
+
+The second fact: `template <unsigned Rows, unsigned Cols>` makes `Rows` a **value** inside its own
+body, so `SMatrix<double, Rows, Cols>` names a matrix by two numbers the call gives and not by two
+names a library is asked about. `_template` declares each value parameter as a variable while the
+body is read; the maintainability gate named `_template` at npath 256, so that is
+`_body_with_values`.
+
+**The round gains no PASS and loses none, and says so.** The four `io/cpp11Containers` runtime tests
+went UNSUPPORTED -> FAIL because they now *run*: they stop at the **writer**, which refuses a
+`std::list<double>` handed to `WriteObject` (`a list<double> is not something this writer puts in a
+ROOT file`) - a real missing capability, `W0-255`. `math/smatrix/Operations` went from
+`testOperations.cxx:95` to `matrix_op.h:202`, `'SMatrix_5_5_0' object has no attribute 'Inverse'` -
+ROOT's `SMatrix::Inverse(ifail)`, `W0-256`. `W0-63` asks that a refusal which merely moves further be
+called that, and both walls are now library work with names instead of a translator refusal.
+`W0-252` is closed by the round; `W0-254`'s fold landed and what remains of it is `Inverse`.
+
+**The measurement.** A whole `roottest` run at `87552801` + the round's rules
+(`…/ralph-round-202611261038/roottest`, `--jobs 5`, a machine rising through load 17 -> 45):
+**1362 PASS / 450 FAIL / 127 DIFF / 222 UNSUPPORTED / 10 SKIP / 2 TIMEOUT** of 2173 - exactly the
+round-123 figures with the four `cpp11Containers` moved from UNSUPPORTED to FAIL. `ratchet` reads
+**0 regressions**, so `tools/rootsuite/baseline.json` needs no row touched: an UNSUPPORTED row
+becoming FAIL loses no promise. The two TIMEOUTs are the load and were re-measured alone:
+`math/smatrix/Kalman` reads UNSUPPORTED at `testKalman.cxx:403` in 219 s (it is near the 300 s cap -
+recorded in `W0-255`'s row), and `tree/cloning/runtreeCloneTest2` times out at the base too.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 029 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126519 0 31770 0
+100%`**. ruff (after two docstring and test-string rewraps it named), mypy 1 062 files (it named an
+unnamed value parameter's `None` name, which the parser names `_` everywhere else), maintainability
+33 432 functions in 1 824 files, components 1 062 / 0 undeclared, `mkdocs --strict` exit 0. **+3 unit
+tests** in `tests/test_cint_templates.py` (10 there now).
+
+**A gotcha, for the next reader**:
+`docs/gotchas/a-template-parameter-that-stands-for-a-template-keeps-the.md`, with the two rules, a
+mermaid of each, and the two walls the six tests now sit at.
+
+**What this says about the next round.** The translator's template story is now complete for both
+shapes ROOT's own tests use; what the round exposed is that the *writer* is where the next several
+tests stop - an STL container cannot be written as a file key at all (`W0-255`), and the reader
+already has the layouts. `W0-256` is the small library addition `SMatrix::Inverse`/`InverseFast`.
+The queue's shape after this round: four writer tests, two smatrix tests, `W0-233`'s
+`datamodelevolution` chain, `W0-250`'s `__PRETTY_FUNCTION__`, `W0-251`'s `xdist` arc, `W0-253`'s
+stale refs (a decision, not a fix).
