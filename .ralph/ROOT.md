@@ -5586,3 +5586,48 @@ fixed, because it is not this round's code.
 opened for `TNamed`'s own members - which answer 0 here where ROOT's compiled dictionary says 16 and
 40, because this kit has no table of ROOT's own class layouts.
 
+## Round 131's close
+
+**Two walls mapped, one attempt measured and reverted on its own tests' word - and a broken ledger
+repaired.**
+
+Round 130 left `W0-233` at `Generator.h:247`. This round began one step further on: `Dumper.h:97`
+refuses `ele -= actClass->GetBaseClassOffset(vcl)`, a `char *` a program keeps moved by an offset.
+
+**What the provisional change showed.** Emitting `byte_offset(ele, -(n))` for a `char *` minus an
+integer, and letting `byte_offset` answer a `str` by its characters, makes the **generator complete**
+for the first time: `io/datamodelevolution/01` goes from **7 PASS / 6 FAIL** to **7 PASS / 0 FAIL /
+6 UNSUPPORTED** (`…/k2`), and the wall moves to `Dumper.h:337` -
+`str1 = std::string(std::istreambuf_iterator<char>(f1), std::istreambuf_iterator<char>())` in an
+**assignment**, where the *declaration* form already emits `stream_rest(f)` (round 108's
+`emit_vars._string_of`) and the expression form emits
+`str(ROOT.std.istreambuf_iterator['char'](f1), …)`. That is the round's product: the next two walls,
+with the file and line each sits at.
+
+**And it was reverted, because two existing tests are the specification.** They pin the refusal for
+`char *p = text(); p = p - 1;` and `char *c = ((char *)d) - 8;`, and they are right: a `str` has no
+address to move back to, so refusing at translation time is honest and a run-time error would be a
+later, weaker diagnosis. Loosening them to make the change pass is what the loop forbids.
+
+**What a safe fix needs, recorded so it is not re-derived.** The distinction is **provenance**, not
+type: `char *ele = (char *)obj` holds an object's address, `char *p = text()` holds text, and the
+emitter knows which at the *initialiser* - `_an_address` already answers for it. A `char *` local
+that carries that mark could move by an offset, and only it. That is a `Symbol` flag.
+
+**The ledger was broken and is repaired.** `main` at `2ba1f008` carried
+`<<<<<<<`/`=======`/`>>>>>>>` conflict markers in `TODO.md`, with round 130's row written twice - the
+residue of that round's amend-and-rebase dance. No gate reads `TODO.md`, so nothing caught it; the
+markers and the duplicate are removed here, and the round's own row added. **A rebase that conflicts
+in a ledger file is silent to every gate**, which is why `git diff --stat` before a commit is not
+enough on its own after an amend - `grep` for markers in the shipped files is.
+
+**0 harness PASS moved and none lost**: `io/datamodelevolution` is **22 / 20 / 2** of 44.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 161 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 127339 0 31980 0
+100%`** - green on every file, another session's `helpers_abs`/`rdf` gaps having been closed since
+round 130. ruff, mypy, maintainability, components, `mkdocs --strict` each exit 0, at load average 12.
+
+**Evidence kept**: `…/k1` (the flat-sum `_further` mistake at `Generator.h:254`), `…/k2` (generation
+completing, the wall at `Dumper.h:337`), and the probes that priced each step.
+
