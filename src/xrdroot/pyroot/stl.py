@@ -53,6 +53,7 @@ from ..cppstd.containers import _vector_class as _vector_class
 from ..cppstd.containers import _VectorIterator as _VectorIterator
 from ..cppstd.containers import cpp_name as cpp_name
 from ..cppstd.containers import element_type as element_type
+from ..cppstd.containers import is_set as is_set
 from ..cppstd.containers import is_vector as is_vector
 from ..cppstd.containers import std as std
 from ..cppstd.containers import string as string

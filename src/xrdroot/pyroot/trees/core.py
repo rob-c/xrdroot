@@ -111,7 +111,8 @@ class _TreeCore(_TObjectLike):
         #: The key the tree was read from, if whoever read it said: what ``Print`` counts.
         self._tree_key: Any = None
         self._layout_cache: list[BranchInfo] | None = None
-        self._addresses: dict[str, Address] = {}
+        self._addresses: dict[str, Address] = {}  # SetBranchAddress's, which a clone reads through
+        self._own_addresses: dict[str, Address] = {}  # the branch's own object, for this tree
         self._disabled: set[str] = set()
         self._read_entry = -1
         self._reader_buffers: dict[str, Any] = {}

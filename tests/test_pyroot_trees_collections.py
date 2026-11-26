@@ -124,3 +124,34 @@ def test_a_row_of_a_tobjstring_makes_the_object_that_answers_its_name():
 
 def test_a_row_of_a_class_no_declaration_makes_answers_nothing():
     assert row_object({"fString": "one"}, "TNothingOfOurs") is None
+
+
+def test_a_tree_filled_in_memory_reads_each_entry_back_into_its_branch_object() -> None:
+    """ROOT's own pattern: a branch declared with an object, filled, then ``GetEntry`` puts each
+    entry back into that same object - a ``std::vector`` and a ``std::set`` alike, the set keeping
+    its own order. Its own address is kept apart from ``SetBranchAddress``'s, which is what a
+    clone reads through, so a clone still says it has read nothing yet."""
+    for made, fill, shown in (
+        (lambda: ROOT.std.vector("int")(), lambda one, value: one.assign(value), list),
+        (lambda: ROOT.std.set("int")(), _filled_with, sorted),
+    ):
+        tree = ROOT.TTree("t", "t")
+        held = made()
+        tree.Branch("held", held)
+        entries = ([], [1], [1, 2])
+        for entry in entries:
+            fill(held, entry)
+            tree.Fill()
+        read = []
+        for at in range(tree.GetEntries()):
+            tree.GetEntry(at)
+            read.append(shown(held))
+        assert read == [sorted(entry) if shown is sorted else entry for entry in entries]
+        assert bool(held) is True
+
+
+def _filled_with(given, values):
+    """A ``std::set`` made to hold ``values``, as a macro fills one."""
+    given.clear()
+    for one in values:
+        given.insert(one)

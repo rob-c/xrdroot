@@ -27,6 +27,7 @@ import numpy as np
 
 from ...cppstd.buffers import CharBuffer
 from ...cppstd.objects import DTYPES as CPP_DTYPES
+from ..stl import is_set as _is_set
 from ..stl import is_vector as _is_vector
 from ..stl import string
 
@@ -141,6 +142,26 @@ class Vector(Address):
         self.vector.assign(value)
 
 
+class Collection(Address):
+    """A ``std::set``: read as its elements in order, and made to hold the entry's."""
+
+    room = None
+    sized = True
+
+    def __init__(self, given: Any) -> None:
+        self.given = given
+        self.dtype = given.kind if isinstance(given.kind, np.dtype) else None
+        self.text = not isinstance(given.kind, np.dtype)
+
+    def get(self, count: int | None = None) -> Any:
+        return list(self.given)
+
+    def put(self, value: Any) -> None:
+        self.given.clear()
+        for one in value:
+            self.given.insert(one)
+
+
 class Text(Address):
     """Text in place: a ``std.string``, a ``bytearray``, or a ``new char[n]`` buffer.
 
@@ -232,6 +253,8 @@ def address_of(given: Any, what: str = "the branch") -> Address:
         return made
     if _is_vector(given):
         return Vector(given)
+    if _is_set(given):
+        return Collection(given)
     if isinstance(given, (string, bytearray)):
         return Text(given)
     held = _held(given)

@@ -204,6 +204,9 @@ class TTree(_Player):
             slot = _slot(name, leaf, one, title if len(leaves) == 1 else None)
             slot.split, slot.basket_size = splitlevel, bufsize
             store.add(slot)
+            # A tree filled in memory is read back into the same address it was filled from, as
+            # ROOT's is: the object a macro handed ``Branch`` is what ``GetEntry`` fills.
+            self._own(slot.name, one)
         if len(leaves) > 1:
             store.titles[name] = title
         return self._added(name)

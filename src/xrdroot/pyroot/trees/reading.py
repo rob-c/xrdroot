@@ -146,6 +146,16 @@ class _Reading(_TreeCore):
             ptr.value = self.GetBranch(name)
         return MATCH
 
+    def _own(self, column: str, address: Any) -> None:
+        """Keep ``address`` for this tree's own reads: the object a branch was declared with.
+
+        A tree filled in memory is read back into the same address it was filled from, as ROOT's
+        is. It is kept apart from :attr:`_addresses`, which is what ``SetBranchAddress`` binds and
+        what a clone reads through - a clone must not see its source's fill buffer, or the entry
+        it has not read yet would look like one.
+        """
+        self._own_addresses[column] = address
+
     def _rebind(self, column: str, address: Any) -> None:
         """A tree being filled reads the same address it is read into, as ROOT's does."""
         if self._store is not None and column in self._store.slots:
@@ -199,7 +209,7 @@ class _Reading(_TreeCore):
         held = self._reader_buffers.get(column)
         if held is not None:
             held.reload(entry)
-        address = self._addresses.get(column)
+        address = self._addresses.get(column) or self._own_addresses.get(column)
         if address is None:
             return 4
         value = self._batch.value(column, entry)

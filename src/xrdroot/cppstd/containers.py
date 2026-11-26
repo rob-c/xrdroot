@@ -1900,3 +1900,8 @@ std = _Namespace()
 def is_vector(value: Any) -> bool:
     """Is this one of the ``std::vector`` classes here?"""
     return isinstance(value, (_Vector, _ObjectVector))
+
+
+def is_set(value: Any) -> bool:
+    """Is this one of the ``std::set`` classes here?"""
+    return isinstance(value, _Set)
