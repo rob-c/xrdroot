@@ -34,6 +34,19 @@ def test_a_type_alias_names_the_class_whose_members_it_reaches() -> None:
     assert "ROOT.TH1F.Class()" in text and "ROOT.P.Class()" in text
 
 
+def test_an_alias_of_a_template_this_kit_cannot_name_keeps_its_name() -> None:
+    """``Arch`` is ``ROOT::Math::SMatrix<double, 3, 3>``, an instance of a template this kit cannot
+    name: the member is looked up on the name as written, so the dialect refuses
+    ``ROOT.Math.SMatrix`` by name rather than a member being read off a class whose arguments the
+    alias was the only record of."""
+    text = translate(
+        "using Arch = ROOT::Math::SMatrix<double, 3, 3>;"
+        "void t() { double d = Arch::kRows; (void)d; }",
+        "t.C",
+    )
+    assert "d = ROOT.Arch.kRows" in text
+
+
 def test_a_class_and_the_function_of_its_name_are_both_there(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
