@@ -104,6 +104,18 @@ def _arranged(address: Any, leaflist: Any, bufsize: int, splitlevel: int) -> tup
     return address, leaflist, bufsize, splitlevel
 
 
+def _text(value: Any) -> Any:
+    """ROOT's implicit ``const char*``: a ``TString`` is the characters it holds.
+
+    ``tree->Branch(lname, &var, lname)`` with a ``TString`` is ROOT's own idiom - the C++ layer
+    converts it - and a macro that writes one must not be refused for it. Anything else is left as
+    it is, for the layer that refuses it to name.
+    """
+    from ..core.strings import TString
+
+    return str(value) if isinstance(value, TString) else value
+
+
 def _is_collection(obj: Any) -> bool:
     """Is this one of ROOT's collections, which ``Branch`` branches member by member?"""
     from ..core.collections import TCollection
@@ -168,6 +180,7 @@ class TTree(_Player):
         ``Branch(collection)`` is ROOT's other form: one branch for each object the collection
         holds, named after the collection and the object (:meth:`_collection_branches`).
         """
+        name, leaflist = _text(name), _text(leaflist)
         counted = self._collection_form(name, address, leaflist, bufsize)
         if counted is not None:
             return counted

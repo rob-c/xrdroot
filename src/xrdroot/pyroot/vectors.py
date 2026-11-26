@@ -18,6 +18,7 @@ from ..errors import UnsupportedFeatureError
 from .core.objects import TObject
 
 __all__ = [
+    "TArray",
     "TArrayD", "TArrayF", "TArrayI", "TArrayL", "TArrayS", "TArrayC", "TVectorD", "TVectorT"
 ]
 
@@ -180,7 +181,7 @@ class TVectorD(TObject):
         print()
 
 
-class _TArray(TObject):
+class TArray(TObject):
     """``TArray``: a fixed number of values of one type, read and written by index."""
 
     #: The values' type, as NumPy names it.
@@ -263,35 +264,35 @@ class _TArray(TObject):
         return made.copy() if copy else made
 
 
-class TArrayD(_TArray):
+class TArrayD(TArray):
     """``TArrayD``: an array of doubles."""
 
 
-class TArrayF(_TArray):
+class TArrayF(TArray):
     """``TArrayF``: an array of floats."""
 
     DTYPE = np.dtype(np.float32)
 
 
-class TArrayI(_TArray):
+class TArrayI(TArray):
     """``TArrayI``: an array of ints."""
 
     DTYPE = np.dtype(np.int32)
 
 
-class TArrayL(_TArray):
+class TArrayL(TArray):
     """``TArrayL``: an array of longs."""
 
     DTYPE = np.dtype(np.int64)
 
 
-class TArrayS(_TArray):
+class TArrayS(TArray):
     """``TArrayS``: an array of shorts."""
 
     DTYPE = np.dtype(np.int16)
 
 
-class TArrayC(_TArray):
+class TArrayC(TArray):
     """``TArrayC``: an array of chars, as small numbers."""
 
     DTYPE = np.dtype(np.int8)
