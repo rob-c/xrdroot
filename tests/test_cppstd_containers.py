@@ -593,3 +593,16 @@ def test_an_unsigned_char_is_its_own_character_class_and_a_float_is_no_character
     numbers = made.TEMPLATES["vector"]["float"]([1, 2])
     assert list(numbers) == [1.0, 2.0] and numbers.data().tolist() == [1.0, 2.0]
     assert numbers.chars is False and "chars" not in vars(type(numbers))  # the base's own no
+
+
+def test_a_fixed_width_typedef_converts_as_cpp_writes_a_conversion():
+    """``std::int8_t(300)`` wraps to 44 and ``std::int8_t('a')`` is 97, as C++'s conversions do;
+    the name is a type a container can hold, and ``uintptr_t`` is one a program may write."""
+    from xrdroot.cppstd import containers as made
+    from xrdroot.pycxx.ctype import STD_TYPEDEFS
+
+    assert (made._Namespace.int8_t(300), made._Namespace.int8_t("a")) == (44, 97)
+    assert made._Namespace.uintptr_t(300) == 300 and made._Namespace.uintmax_t(-1) > 0
+    assert STD_TYPEDEFS["uintptr_t"] == "unsigned long"  # the translator resolves it too
+    assert STD_TYPEDEFS["std::intptr_t"] == "long" and STD_TYPEDEFS["intmax_t"] == "long"
+    assert repr(made._Namespace.size_t) == "<std::size_t typedef>"

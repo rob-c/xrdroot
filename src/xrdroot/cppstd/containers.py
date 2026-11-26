@@ -87,6 +87,12 @@ NUMBERS: dict[str, str] = {
     "unsigned long long": "uint64",
     "uint64_t": "uint64",
     "size_t": "uint64",
+    "ssize_t": "int64",
+    "ptrdiff_t": "int64",
+    "intptr_t": "int64",
+    "uintptr_t": "uint64",
+    "intmax_t": "int64",
+    "uintmax_t": "uint64",
     "bool": "bool",
 }
 
@@ -465,6 +471,28 @@ class _DeclaredIterator:
         if name.startswith("__"):
             raise AttributeError(name)
         return getattr(self.__deref__(), name)
+
+
+class _Typedef:
+    """``std::uintptr_t(x)``: the value as that typedef's own type keeps it.
+
+    C++ writes a conversion to a fixed-width type as a call - ``std::int8_t(n)`` - so the
+    name is called here too, and the value wrapped to the width and sign the typedef stands for.
+    """
+
+    __slots__ = ("dtype", "__cpp_name__")
+
+    def __init__(self, name: str) -> None:
+        self.dtype = np.dtype(NUMBERS[name])
+        self.__cpp_name__ = name
+
+    def __call__(self, value: Any = 0) -> Any:
+        if isinstance(value, str):  # a character, as ``std::int8_t('a')`` converts one
+            value = ord(value[0]) if value else 0
+        return self.dtype.type(value).item()
+
+    def __repr__(self) -> str:
+        return f"<std::{self.__cpp_name__} typedef>"
 
 
 class _Template:
@@ -1879,6 +1907,22 @@ class _Namespace:
     atomic = TEMPLATES["atomic"]
     #: ``std::filesystem``: ``path`` and the questions a program asks of one.
     filesystem = _filesystem
+    #: ``std::uintptr_t(x)`` and its kin: a conversion to a fixed-width type, as C++ spells it.
+    int8_t = _Typedef("int8_t")
+    int16_t = _Typedef("int16_t")
+    int32_t = _Typedef("int32_t")
+    int64_t = _Typedef("int64_t")
+    uint8_t = _Typedef("uint8_t")
+    uint16_t = _Typedef("uint16_t")
+    uint32_t = _Typedef("uint32_t")
+    uint64_t = _Typedef("uint64_t")
+    size_t = _Typedef("size_t")
+    ssize_t = _Typedef("ssize_t")
+    ptrdiff_t = _Typedef("ptrdiff_t")
+    intptr_t = _Typedef("intptr_t")
+    uintptr_t = _Typedef("uintptr_t")
+    intmax_t = _Typedef("intmax_t")
+    uintmax_t = _Typedef("uintmax_t")
     #: ``std::any``: one value of any type, with ``any_cast<T>`` and ``make_any<T>`` beside it.
     any = _stdlib.AnyValue
     any_cast = _stdlib.any_cast

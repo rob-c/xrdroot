@@ -57,6 +57,10 @@ STD_TYPEDEFS = {
     "size_t": "unsigned long",
     "ssize_t": "long",
     "ptrdiff_t": "long",
+    "intptr_t": "long",
+    "uintptr_t": "unsigned long",
+    "intmax_t": "long",
+    "uintmax_t": "unsigned long",
     "time_t": "long",
     "std::time_t": "long",
     "clock_t": "long",
@@ -78,6 +82,10 @@ STD_TYPEDEFS = {
     "std::int16_t": "short",
     "std::uint16_t": "unsigned short",
     "std::ptrdiff_t": "long",
+    "std::intptr_t": "long",
+    "std::uintptr_t": "unsigned long",
+    "std::intmax_t": "long",
+    "std::uintmax_t": "unsigned long",
     "std::byte": "unsigned char",
 }
 
