@@ -11,7 +11,6 @@ and :func:`div` where it cannot tell: that one decides by what it is given.
 from __future__ import annotations
 
 import math
-import os
 from typing import Any
 
 import numpy as np
@@ -154,9 +153,7 @@ def c_exit(code: Any = 0) -> Any:
     child, where unwinding would hand control back to whatever ran the test."""
     from . import unistd
 
-    if unistd.IN_CHILD:
-        os._exit(int(code))
-    raise SystemExit(int(code))
+    unistd.exit_process(code)
 
 
 def cassert(condition: Any, *message: Any) -> None:

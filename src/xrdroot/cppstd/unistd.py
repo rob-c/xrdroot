@@ -12,7 +12,8 @@ import os
 import time
 from typing import Any
 
-__all__ = ["symlink", "getpid", "usleep", "fork", "waitpid", "mkstemp", "mkstemp_name"]
+__all__ = ["symlink", "getpid", "usleep", "fork", "waitpid", "mkstemp", "mkstemp_name",
+           "mark_child", "exit_process"]
 
 
 def symlink(target: Any, link: Any) -> int:
@@ -42,16 +43,36 @@ def usleep(microseconds: Any) -> int:
 IN_CHILD = False
 
 
+def mark_child() -> None:
+    """Note that this process is a ``fork``'s child, so :func:`exit_process` ends it."""
+    global IN_CHILD
+    IN_CHILD = True
+
+
+def exit_process(code: Any = 0, child: bool | None = None) -> None:
+    """``exit(code)``: the child's *process* ends, or the caller's macro stops.
+
+    C's ``exit`` ends a process, and in a child ``fork`` made that is the whole point of the
+    idiom - ``if (pid == 0) { work(); exit(EXIT_SUCCESS); }``. A ``SystemExit`` there would
+    unwind into whatever ran the test, so the child would go on running. ``child`` says which
+    of the two this is, ``None`` meaning "ask the flag ``fork`` set".
+    """
+    in_child = IN_CHILD if child is None else child
+    if in_child:
+        os._exit(int(code))
+        return  # ``os._exit`` never returns; one patched by a test does
+    raise SystemExit(int(code))
+
+
 def fork() -> int:
     """``fork()``: the child's id in the parent, ``0`` in the child, ``-1`` when it failed.
 
     A child here is a real process of the operating system, as C's is: the translation that
     forked runs twice, and only the parent's side keeps the program's own bookkeeping.
     """
-    global IN_CHILD
     pid = os.fork()
     if pid == 0:
-        IN_CHILD = True
+        mark_child()
     return int(pid)
 
 
