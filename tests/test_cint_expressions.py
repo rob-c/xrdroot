@@ -260,3 +260,21 @@ def test_a_pointer_to_an_objects_bytes_is_the_object_stepped_to_its_member() -> 
     assert "byte_offset(p, (0))[0] = 1" in text
     assert "byte_offset(v, (off))[0] = 2.0" in text
 
+
+def test_a_members_offset_type_is_declared_so_the_sum_is_no_string() -> None:
+    """``*(int *)(((char *)obj) + member->GetOffset()) = v`` is how a macro fills a class a member
+    at a time, and the offset's type is what keeps that sum an address: with no type the emitter
+    reads ``+`` as a string concatenation and wraps the offset in ``cstr``."""
+    from xrdroot.pycint import translate
+
+    source = """
+    void fill(void *obj, TDataMember *m) {
+      *(int *)(((char *)obj) + m->GetOffset()) = 7;
+      Int_t kind = m->GetDataType()->GetType();
+      const char *name = m->GetTrueTypeName();
+    }
+    """
+    text = translate(source, "t.C")
+    assert "byte_offset(obj, (m.GetOffset()))[0] = 7" in text
+    assert "cstr(m.GetOffset())" not in text
+

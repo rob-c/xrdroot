@@ -231,6 +231,14 @@ RETURNED = {
     #: the base's address, which is how roottest's ``datamodelevolution`` generator walks a
     #: class's bases. Without the type the sum reads as a string concatenation.
     ("TClass", "GetBaseClassOffset"): "Int_t",
+    #: The same for a member of a class a macro declares: ``*(int *)(((char *)obj) +
+    #: member->GetOffset()) = v`` is how roottest's ``datamodelevolution`` fills one, and a sum of
+    #: no known type reads as a string concatenation there too.
+    ("TDataMember", "GetOffset"): "Int_t",
+    #: A member's own type, which a filler switches on: ``member->GetDataType()->GetType()``, and
+    #: ``GetDataType`` is null for a member that is no basic type.
+    ("TDataMember", "GetDataType"): "TDataType*",
+    ("TDataMember", "GetTrueTypeName"): "const char*",
     #: A graph's points and bars are pointers into storage the graph owns, so a program hands one
     #: to an algorithm: ``std::is_sorted(graph.GetX(), graph.GetX() + n)`` is a range of the
     #: points, and every kind of bar the family has answers with its own array.
