@@ -34,6 +34,7 @@ EAGER = (
     "core",
     "stl",
     "classes",
+    "stringutils",
     "trees",
     "graphics",
 )

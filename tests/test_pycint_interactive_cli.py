@@ -246,6 +246,7 @@ def test_dot_Class_reads_a_class_out_of_a_library_s_sources_and_skips_ones_it_ca
     gone = tmp_path / "gone.hh"
     kept = write("kept.hh", "class Kept { public: void f(); };\n")
     refused = write("refused.hh", "struct S { int bits : 3; };\n")
+    other = write("other.hh", "class Other { public: int a; };\n")
     monkeypatch.setattr(
         loading, "LOADED",
         {
@@ -253,6 +254,8 @@ def test_dot_Class_reads_a_class_out_of_a_library_s_sources_and_skips_ones_it_ca
                                            classes=["Kept", "S"]), {}),
             "kept": loading.Loaded(Library("libkept", "dictionary", "", str(refused),
                                            sources=[str(refused)], classes=["Kept"]), {}),
+            "other": loading.Loaded(Library("libother", "dictionary", "", str(other),
+                                            sources=[str(other)], classes=["Kept"]), {}),
             "third": loading.Loaded(Library("libthird", "dictionary", "", str(kept),
                                             classes=["Kept"]), {}),
         },
