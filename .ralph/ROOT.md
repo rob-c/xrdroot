@@ -5426,10 +5426,17 @@ and eleven named ones.
   it raise would be refusing a capability we have**, which is not what the suite is for. The honest
   row is "ROOT's limit, this kit's advantage", recorded, not emulated.
 
-**The gate, seven commands, each read for its own exit status.** The round changes `TODO.md` and this
-file only - no code and no test - so the counts are the pushed tip's. Part 1 **14 103 passed, 0
-failed** (99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126925 0 31888 0 100%`**.
-ruff, mypy, maintainability, components, `mkdocs --strict` - each exit 0.
+**The gate, seven commands, each read for its own exit status - and one of them was red.**
+Part 1 **14 103 passed, 0 failed** (99.75 % by design, `W0-112`) and part 2 44 passed, but
+`coverage report` read **`TOTAL 126976 27 31902 1 99%`**, 24 of the 27 in another session's
+`pyroot/core/compressions.py`. Nothing in this round is uncovered; the module reads **100 %** when
+its own test file runs alone, and the same file run alone *once* gave eight `array("char", ...)`
+failures - so the gap is order- or worker-dependent in someone else's tests, recorded as
+**`W0-265`** rather than guessed at. Two fixes were made on the way and are this round's only code:
+`ROOTFile.__del__` closes the handle a dropped file leaves (Python 3.13's finalisation order surfaced
+it as a `ResourceWarning` that failed CI's 3.13 job, and a unit test pins it), and `compressions.py`'s
+two `no-any-return`s - `main` arrived red on mypy. ruff, mypy, maintainability, components and
+`mkdocs --strict` each exit 0 after them.
 
 **What this says about the next round.** The queue's two biggest roottest causes are `W0-233`'s
 byte-offset chain (10 tests) and `W0-261`'s class-column `Snapshot` (5); the pyunittest kind's
