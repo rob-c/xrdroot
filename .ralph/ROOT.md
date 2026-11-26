@@ -5448,7 +5448,7 @@ advice.
 
 **`W0-233`'s three foundations, and the wall the fourth piece is at.** `roottest/root/io/
 datamodelevolution` fills a class through `TDataMember` and a `char *` of the object. `GetOffset`
-answered **0 for every member** and `GetDataType` did not exist. Three pieces landed (`798806cf`):
+answered **0 for every member** and `GetDataType` did not exist. Three pieces landed (`2bf24844`):
 
 - **`TDataMember.GetOffset`** answers where the member starts by the **Itanium rule** `pycxx/sizes`
   already follows for `sizeof` — each member at the next offset its alignment allows, a pointer
