@@ -5631,3 +5631,42 @@ round 130. ruff, mypy, maintainability, components, `mkdocs --strict` each exit 
 **Evidence kept**: `…/k1` (the flat-sum `_further` mistake at `Generator.h:254`), `…/k2` (generation
 completing, the wall at `Dumper.h:337`), and the probes that priced each step.
 
+## Round 132's close
+
+**A `char *` that holds an object's address is moved by bytes - and only that one.**
+
+Round 131 mapped two walls and could not land the first: `char *ele -= n` has to be byte arithmetic
+for `Dumper.h`, and two existing tests pin its refusal because `char *p = text(); p - 1` is a string
+being stepped back into nothing. The distinction C++ makes is **provenance**, and this round put it
+where the emitter can read it: `Symbol.address`, set when the *initialiser* is an object's address,
+asked by the pointer arithmetic.
+
+**Two initialiser shapes are an address, and both were measured before they were believed.**
+`(char *)obj` - of an object, a member's pointer or a `void *` - and `*(char **)cell`, a pointer read
+out of a cell, which is how ROOT's own walkers hand an object over. The second needed the cast's
+**own** type rather than `typeof(operand)`'s, which is what a `Cast` node's operand answers; with
+that, `char *ele = *(char **)it; ele -= 8;` emits `byte_offset(ele, -(8))` while
+`char *p = s->Data(); p -= 1;` still refuses.
+
+**Measured.** The `io/datamodelevolution` family goes **22 / 20 / 2 / 0 -> 22 / 14 / 2 / 6**: the
+generator *and* its dump now run, the six tests that failed behind `test1` are its fixture
+dependants, and the wall is **`Dumper.h:337`** - exactly what round 131 predicted:
+`str1 = std::string(std::istreambuf_iterator<char>(f1), std::istreambuf_iterator<char>())` in an
+**assignment**, where the declaration form already emits `stream_rest(f)`. That is `W0-267`.
+
+**Nothing lost, and the guards were measured whole**: `io/tree` 18/0/0/2, **`io/stdpair` 44/0/0/0**,
+`io/newstl` 19/11/2 - the three areas that lean hardest on a written tree and a translated pointer.
+
+**The gate named the round's own complexity**: `_offset` reached ccn 12 / npath 648, so the text
+handling became `_text_offset` and the address arithmetic `_addressed_offset` - no limit touched.
+Two uncovered branches followed the split (`_cast_type`'s fallback and the non-string cast in
+`addressing`), and each got a case rather than a waiver.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 168 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 127387 0 31998 0
+100%`**; ruff, mypy, maintainability, components and `mkdocs --strict` each exit 0, at a load
+average of 5-12.
+
+**+1 unit test** pinning all four answers: two address shapes step, and a `TString::Data()`, a
+`(unsigned char *)` cast and the plain string keep refusing.
+
