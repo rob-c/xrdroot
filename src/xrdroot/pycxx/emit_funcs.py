@@ -317,9 +317,19 @@ class FunctionEmitter(VariableEmitter):
                 if capture.init is not None]  # fmt: skip
 
     def _shared_cell(self, capture: Any) -> str | None:
-        """The Python name of the cell a ``[&i = name]`` capture shares, when it shares one."""
-        found = self.symbol(capture.init) if isinstance(capture.init, Name) else None
-        return found.py if found is not None and found.cell else None
+        """What a ``[&i = name]`` capture shares, when it shares something.
+
+        A local of the macro's is shared through the cell it became. A name written with a
+        namespace - ``ROOT::Internal::RDF::Testing::myInt`` - is the kit's own global, which
+        the namespace holds as a cell already, so the expression itself is what is bound.
+        """
+        init = capture.init
+        if not isinstance(init, Name):
+            return None
+        found = self.symbol(init)
+        if found is not None:
+            return found.py if found.cell else None
+        return self.value(init) if len(init.parts) > 1 else None
 
     def _captured(self, node: Lambda) -> list[str]:
         """``[x]`` captures ``x`` by value: bound now, as a default, not looked up later."""

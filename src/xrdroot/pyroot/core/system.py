@@ -79,8 +79,37 @@ class FileStat_t:
         self.fUrl = ""
 
 
+class _TestingNamespace:
+    """``ROOT::Internal::RDF::Testing``: the globals ROOT's own tests ``Declare`` in it.
+
+    ``gtest/tree/dataframe/dataframe_compgraph`` declares ``int myInt{42}`` here and then
+    captures it by reference in two ``Define``s, so a change made through the first must be
+    what the second reads. Each value is therefore kept as a :class:`~cppstd.cells.Cell`,
+    which is the one storage two lambdas can share.
+    """
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        from ...cppstd.cells import Cell
+
+        object.__setattr__(self, name, value if isinstance(value, Cell) else Cell(value))
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(f"ROOT has Internal.RDF.Testing.{name}; xrdroot.pyroot does not yet")
+
+
+class _RDFNamespace:
+    """``ROOT::Internal::RDF``: its ``Testing`` globals, and nothing else yet."""
+
+    Testing = _TestingNamespace()
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(f"ROOT has Internal.RDF.{name}; xrdroot.pyroot does not yet")
+
+
 class _Internal:
     """``ROOT::Internal``: the one of its functions a program calls directly here."""
+
+    RDF = _RDFNamespace()
 
     @staticmethod
     def GetCryptoRandom(buffer: Any, length: Any) -> int:
