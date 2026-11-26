@@ -5519,3 +5519,24 @@ each exit 0.
 the code came first and the harness was measured for **statuses** only, as round 122 did. The gate is
 the one thing whose numbers do not depend on load, so it was run in full.
 
+### Round 129's CI, and whose red it is
+
+The close commit `a1e139df` was **green on all eight jobs** (run 45890062224). The doc commit
+`e0ddd0b3` that followed is docs-only; its own run was **cancelled** by another session's push
+("Canceling since a higher priority waiting request for CI-refs/heads/main exists"), but every job it
+reached had passed — `lint`, `docs`, `distribution`, and the component contract / fresh imports / pure
+C++ / translator / core / histogram steps — and only `pytest` was still in flight.
+
+The tip that contains it, another session's `d9071013` ("RDataFrame::Book with a
+Detail::RDF::RActionImpl helper"), is **red in `pytest` on four of five platforms**, and that is
+**their** commit, not this round's: it touched `rdf/actions.py`, `rdf/frame.py`,
+`pyroot/core/rangecast.py` and rewrote 104 lines of `tests/test_rdf_book.py`. Nothing in round 129
+touches those files.
+
+Chasing it locally hit the **shared-worktree hazard again** (`W0-38`, R127): the primary checkout is
+another session's live workspace — ten files uncommitted, and `src/xrdroot/cppstd/cmath.py:297` is
+mid-edit with an `IndentationError`, so *any* import of `xrdroot.pyroot` fails **in that checkout
+only**. The committed file is fine (`git show HEAD:src/xrdroot/cppstd/cmath.py` line 297 is the
+`round` body). **A local pytest run in the primary checkout is not evidence about `main`** while
+another session is editing it; measure from a clean worktree, or read the CI.
+
