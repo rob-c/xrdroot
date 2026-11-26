@@ -5104,11 +5104,12 @@ three docstrings at 101–102 columns which were rewrapped.
 `meta/evolution` 20/7/8/2 of 37, `io/datamodelevolution` 22/20/2 of 44, `io/newstl` 19/11/2 of 32 —
 **83 / 39 / 13 / 6 of 141**, every figure the ledger's.
 
-**The gate, seven commands, each read for its own exit status.** Part 1 **13 993 passed, 0 failed**
-(99.75 % by design); part 2 44 passed and `coverage report` **`TOTAL 126203 0 31710 0 100%`** - measured
-at the **rebased** tip, because another session pushed `03ac9b82` (`std::integral_constant`) while this
-round was pushing; the rebase replayed the four commits unchanged, `io/stdpair` was re-run there
-(44 of 44, `…/tip2`) and the two-command gate re-read. ruff
+**The gate, seven commands, each read for its own exit status.** Part 1 **13 996 passed, 0 failed**
+(99.75 % by design); part 2 44 passed and `coverage report` **`TOTAL 126251 0 31716 0 100%`** - measured
+at the **pushed** tip. Another session pushed twice while this round was pushing (`03ac9b82`
+`std::integral_constant`, then `7e4d761b` `ProcInfo_t` and a docs commit), and each rebase replayed the
+four commits unchanged; `io/stdpair` was re-run after the first (44 of 44, `…/tip2`) and the whole gate
+re-read after the second, so the shas and the figure above are the same tree's. ruff
 clean; mypy 1 062 files; maintainability 33 393 functions in 1 824 files; components 1 062 modules /
 0 undeclared; `mkdocs --strict` exit 0. **+2 unit tests** (109 in the reflection file).
 
