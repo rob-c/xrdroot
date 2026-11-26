@@ -87,6 +87,15 @@ STD_TYPEDEFS = {
     "std::intmax_t": "long",
     "std::uintmax_t": "unsigned long",
     "std::byte": "unsigned char",
+    # POSIX's <sys/types.h>, which a C++ program includes and then names:
+    "pid_t": "int",
+    "uid_t": "unsigned int",
+    "gid_t": "unsigned int",
+    "mode_t": "unsigned int",
+    "off_t": "long",
+    "dev_t": "unsigned long",
+    "ino_t": "unsigned long",
+    "nlink_t": "unsigned long",
 }
 
 #: The keywords a built-in type is spelled with, in any order C++ allows.
