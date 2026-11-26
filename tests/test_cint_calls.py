@@ -87,6 +87,11 @@ def body(source: str) -> str:
             "2 2 2\n",
         ),
         (
+            "std::unique_ptr<char[]> buf(new char[4]); buf[2] = 7;"
+            'char *p = buf.get() + 2; printf("%d\\n", p[0]);',
+            "7\n",
+        ),
+        (
             "std::vector<int> v{0, 0, 0}; std::iota(v.begin(), v.end(), 5);"
             'printf("%d %d %d\\n", v[0], v[1], v[2]);',
             "5 6 7\n",

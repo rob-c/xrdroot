@@ -389,12 +389,28 @@ class Inference(EmitterBase):
         return self._class_method_type(owner, func)
 
     def _class_method_type(self, owner: CType | None, func: Member) -> CType | None:
+        held = self._smart_pointer(owner, func.name)
+        if held is not None:
+            return held
         info = self.program.classes.get(owner.name) if owner is not None else None
         if info is None:
             kept = active().method_returns.get((owner.name, func.name)) if owner else None
             return _named_type(kept) if kept is not None else _made_field(func)
         methods = info.methods.get(func.name, [])
         return methods[0].returns if methods else None
+
+    def _smart_pointer(self, owner: CType | None, name: str) -> CType | None:
+        """``p.get()`` and ``p.release()``: the pointer to what a smart pointer holds.
+
+        The type matters where the answer is used as a pointer - ``buf.get() + n`` is the
+        buffer from ``n`` on, not ``n`` added to every element of it - so it is the held
+        type with one more level of pointer.
+        """
+        if owner is None or not owner.is_smart or name not in ("get", "release"):
+            return None
+        held = next(iter(owner.args), None)
+        assert isinstance(held, CType), "a smart pointer's argument is the type it holds"
+        return replace(held, pointer=held.pointer + 1, dims=[])
 
     def _type_member(self, node: Member) -> CType | None:
         owner = self.typeof(node.obj)

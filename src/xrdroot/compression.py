@@ -31,7 +31,7 @@ from collections.abc import Callable
 
 from .errors import FormatError, UnsupportedFeatureError
 
-__all__ = ["decompress", "compress", "algorithm", "spelled", "CODES"]
+__all__ = ["decompress", "compress", "algorithm", "spelled", "CODES", "old_block"]
 
 HEADER = 9
 #: The most a single block may hold: its lengths are three-byte fields.
@@ -439,6 +439,18 @@ def compress(data: bytes, algorithm: str = "zlib", level: int | None = None) -> 
         out += len(chunk).to_bytes(3, "little")
         out += packed
     return bytes(out)
+
+
+def old_block(data: bytes, level: int = 9) -> bytes:
+    """A pre-2005 ROOT block's body: the bare deflate stream, with nothing wrapped round it.
+
+    ROOT of that age wrote ``CS``, the method byte and then what its own PKZIP compression
+    produced - the same deflate zlib makes when the two-byte header and the trailing
+    checksum are left off, which a negative window size asks it for. Only
+    ``R__zipMultipleAlgorithm`` writes one; a file this kit writes never does.
+    """
+    packer = zlib.compressobj(min(level, 9), zlib.DEFLATED, -zlib.MAX_WBITS)
+    return packer.compress(data) + packer.flush()
 
 
 def _old(block: bytes, size: int) -> bytes:
