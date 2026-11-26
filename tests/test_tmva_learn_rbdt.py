@@ -63,3 +63,17 @@ def test_the_base_scores_are_a_list_of_one_per_class_or_a_single_number():
     assert rbdt._base_scores(config) == [0.5, 0.2]
     assert rbdt._base_scores({"learner": {"learner_model_param": {"base_score": "3"}}}) == [3.0]
     assert rbdt._base_scores({"learner": {"learner_model_param": {}}}) == [0.5]
+
+
+def test_a_split_names_its_feature_by_a_number_however_the_booster_was_trained() -> None:
+    """A booster trained on a plain matrix dumps ``"split": "f6"``, one trained with named
+    columns dumps ``"split": "myfeature_6"``; both end in the feature's number, and a saved tree
+    stores that number - what a name with no number at all is refused for."""
+    import pytest
+
+    from xrdroot.tmva.rbdt import _feature_index
+
+    assert _feature_index("f6") == 6 and _feature_index("myfeature_6") == 6
+    assert _feature_index(3) == 3
+    with pytest.raises(ValueError, match=r"which has no number"):
+        _feature_index("myfeature")

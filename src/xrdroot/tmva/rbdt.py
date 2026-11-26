@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 import numpy as np
@@ -51,7 +52,20 @@ def _row(node: dict[str, Any], ids: dict[int, int]) -> tuple[Any, ...]:
     if "leaf" in node:
         return -1, 0.0, -1, -1, -1, float(node["leaf"])
     children = (ids[int(node[side])] for side in ("yes", "no", "missing"))
-    return (int(str(node["split"]).lstrip("f")), float(node["split_condition"]), *children, 0.0)
+    return (_feature_index(node["split"]), float(node["split_condition"]), *children, 0.0)
+
+
+def _feature_index(split: Any) -> int:
+    """The feature a split tests, by its number in the training matrix.
+
+    A booster trained on a plain matrix dumps ``"split": "f6"``; one trained with named
+    columns dumps ``"split": "myfeature_6"``. Both end in the feature's number, which is what
+    a saved tree stores - the name itself is the caller's to keep.
+    """
+    found = re.search(r"(\d+)$", str(split))
+    if found is None:
+        raise ValueError(f"a split names feature {str(split)!r}, which has no number to give it")
+    return int(found.group(1))
 
 
 def _nodes(dump: list[str]) -> dict[str, list[Any]]:
