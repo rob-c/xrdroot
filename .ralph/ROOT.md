@@ -5443,3 +5443,44 @@ byte-offset chain (10 tests) and `W0-261`'s class-column `Snapshot` (5); the pyu
 cheapest remaining work is plumbing (`dataframe_merge_results`' `RMergeableValue` family over results
 this kit already computes). A whole run of a kind before trusting its column is now twice-proven
 advice.
+
+## Round 128's close
+
+**`W0-233`'s three foundations, and the wall the fourth piece is at.** `roottest/root/io/
+datamodelevolution` fills a class through `TDataMember` and a `char *` of the object. `GetOffset`
+answered **0 for every member** and `GetDataType` did not exist. Three pieces landed (`798806cf`):
+
+- **`TDataMember.GetOffset`** answers where the member starts by the **Itanium rule** `pycxx/sizes`
+  already follows for `sizeof` — each member at the next offset its alignment allows, a pointer
+  eight bytes — read from the members the translation wrote on the class (`_cxx_layout_`, through
+  `TClass._cxx_fields`). A class this kit does not work out (an array member, a member of another
+  class, a class no macro declared) answers 0 as it always did: a wrong number is worse than none.
+- **`TDataMember.GetDataType`** answers the `TDataType` its spelled type is — `int` 3, `double` 8,
+  `char` 1 — and **`None`** for a class or a pointer, which ROOT does not call basic either.
+- **`cppstd.cells.byte_offset(obj, off)`** gives an `ObjectBytes` for an offset a member starts at:
+  `p[0]` reads it, `p[0] = v` writes it, every other name forwards to the object, and an offset of 0
+  that starts no member stays the object — the base class at the object's start, whose
+  `GetBaseClassOffset` is 0. `emit_expr._an_address` follows `(char *)` of a **`void *`**, the same
+  address in C++.
+
+**The family still does not pass, and the round says where it stops.** `Generator.h` moves from
+line 242 (`GetDataType`) to line **247** — `((char *)obj) + member->GetOffset()` emitted as a plain
+`+`, because the `void *` parameter's declared type is not known at that operand, so a `str` meets
+the object. The fix is the emitter's binary handler: a `+` whose left side is an object's bytes must
+go through `byte_offset`. That is `W0-233`'s re-stated wall and the next round's work.
+
+**What is verified rather than assumed**: `int`/`double`/`char` members at 0/8/16 and a pointer at 24
+in one class; the data-type codes 3/8/1 and `None` for a pointer; `p[0] = 2.5` setting the member
+inline and through a runtime offset; and 0 for a class whose layout is not worked out. **+5 unit
+tests.** Two bugs were caught by the gate on the way: `_cxx_fields` was never *called* (so the
+"no layout" arm could not fire, and `TNamed` crashed), and the two `_member_offsets` refusals and
+`ObjectBytes.__repr__` were uncovered until probes named them.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 118 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 127050 0 31922 0
+100%`**. ruff (after four docstring rewraps it named at 101 columns), mypy 1 066 files,
+maintainability, components, `mkdocs --strict` — each exit 0.
+
+**A gotcha, for the next reader**:
+`docs/gotchas/a-member-s-byte-offset-is-the-itanium-layout-s-and-a-char-of-an.md`.
+
