@@ -47,6 +47,7 @@ nav:
       - Providers and adapters: components/providers.md
       - Boundary checks: components/boundaries.md
   - Project knowledge:
+      - "A char that is no character is written as its number": gotchas/a-char-that-is-no-character-is-written-as-its-number-not-as-a.md
       - "An enumerator reaches Python signed": discoveries/an-enumerator-reaches-python-as-a-signed-64-bit-int-even-from.md
       - "The 42 non-passing pyunittest programs": discoveries/the-42-non-passing-pyunittest-programs-by-first-failing-case.md
       - "A function-scope alias is one alias by spelling": gotchas/a-function-scope-alias-is-one-alias-by-spelling-not-by-ctype.md
