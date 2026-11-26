@@ -275,6 +275,9 @@ class VarDecl(Stmt):
     style: str | None = None
     args: list[Expr] = field(default_factory=list)
     static: bool = False
+    #: The namespace path the variable is declared inside, empty for one at module scope:
+    #: a name in ``ROOT::Internal::RDF::Testing`` is that namespace object's attribute.
+    namespace: tuple[str, ...] = ()
     #: The names of a structured binding, ``auto [a, b] = ...``.
     binding: list[str] | None = None
     #: A data member's trailing ``//`` comment, which a library may keep as the member's title.

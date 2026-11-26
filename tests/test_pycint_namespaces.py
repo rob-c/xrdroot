@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+import xrdroot.pycint as pycint
 import xrdroot.pyroot as ROOT
 from xrdroot.pycint.library import loading
 from xrdroot.pycxx.runtime.namespace import DECLARED
@@ -120,3 +121,37 @@ def test_an_included_header_s_namespace_is_an_object_too(tmp_path, monkeypatch):
     ROOT.gInterpreter.Declare('#include "namespace99.h"')
     assert ROOT.Included99.Inner().v() == 4
     assert repr(ROOT.Included99) == "<namespace Included99>"
+
+
+def test_a_global_in_the_hosts_own_namespace_is_that_namespaces_attribute():
+    ROOT.gInterpreter.Declare("namespace ROOT::Internal::RDF::Testing { int myInt{42}; }")
+    assert ROOT.Internal.RDF.Testing.myInt.value == 42
+
+
+def test_the_globals_of_a_host_namespace_are_cells_two_defines_can_share():
+    """A ``Define`` captures the global by reference, so a write through one is read by the next."""
+    ROOT.gInterpreter.Declare("namespace ROOT::Internal::RDF::Testing { int shared{1}; }")
+    python = pycint.translate(
+        "void f() { auto a = [&i = ROOT::Internal::RDF::Testing::shared]() { i = 2; }; a(); }"
+    )
+    assert "i=ROOT.Internal.RDF.Testing.shared" in python
+    assert "i.value = 2" in python
+
+
+def test_a_qualified_name_the_namespace_does_not_hold_is_a_missing_name():
+    with pytest.raises(AttributeError, match=r"ROOT has Internal\.RDF\.Testing\.absent"):
+        ROOT.Internal.RDF.Testing.absent  # noqa: B018 - reading it is the assertion
+    with pytest.raises(AttributeError, match=r"ROOT has Internal\.RDF\.Other"):
+        ROOT.Internal.RDF.Other  # noqa: B018 - reading it is the assertion
+
+
+def test_a_namespace_the_host_does_not_own_keeps_its_globals_flat_name():
+    """Only the host's own namespaces are objects one reads a name back from by path."""
+    python = pycint.translate(
+        "namespace mine { int other{7}; }\n"
+        "namespace ROOT::Internal::RDF::Testing { int myInt{42}; }\n"
+        "int plain = 3;\n"
+    )
+    assert "other = 7\n" in python
+    assert "ROOT.Internal.RDF.Testing.myInt = 42\n" in python
+    assert "plain = 3\n" in python

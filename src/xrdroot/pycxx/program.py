@@ -210,10 +210,18 @@ class Program:
 
     # -- collecting ---------------------------------------------------------
 
-    def _flatten(self, decls: list[Stmt]) -> None:
+    def _flatten(self, decls: list[Stmt], where: tuple[str, ...] = ()) -> None:
+        """``where`` is the namespace path the declarations in ``decls`` are written inside.
+
+        C++ flattens the namespaces' bodies into one scope, and so does this - but a name
+        declared in ``ROOT::Internal::RDF::Testing`` is that namespace's *attribute*, not a
+        module-level one, so the path is kept on the variable and the emitter decides what
+        to do with it.
+        """
         for decl in decls:
             if isinstance(decl, Namespace):
-                self._flatten(decl.body)
+                inner = (*where, *decl.name.split("::")) if decl.name else where
+                self._flatten(decl.body, inner)
                 continue
             if isinstance(decl, ClassDecl) and decl.specialises is not None and not decl.template:
                 decl = self.templates.explicit(decl)
@@ -222,7 +230,7 @@ class Program:
                 continue
             self.templates.current = len(self.order)
             self.order.append(decl)
-            self._collect(decl)
+            self._collect(decl, where)
 
     def _local_alias(self, decl: Stmt) -> None:
         """``using cv_milli_t = std::chrono::duration<double, std::milli>;`` inside a function.
@@ -277,7 +285,7 @@ class Program:
                 todo.extend(item for item in nested if isinstance(item, Stmt))
         return found
 
-    def _collect(self, decl: Stmt) -> None:
+    def _collect(self, decl: Stmt, where: tuple[str, ...] = ()) -> None:
         if isinstance(decl, (Function, DeclStmt)):
             self._local_alias(decl)
         if isinstance(decl, ClassDecl):
@@ -288,11 +296,11 @@ class Program:
             for var in decl.decls:
                 if decl.template is not None:
                     self.templates.static(decl.template, var, decl.where)
-                self._global(var)
+                self._global(var, where)
         elif isinstance(decl, Typedef):
             self.aliases[decl.name] = decl.ctype
 
-    def _global(self, var: VarDecl) -> None:
+    def _global(self, var: VarDecl, where: tuple[str, ...] = ()) -> None:
         """A variable at namespace scope - or ``int Foo::n = 3;``, a static member's definition.
 
         An ``extern`` declaration gives way to the definition, before or after
@@ -300,6 +308,7 @@ class Program:
         {1, 2}`` is the one array of two.
         """
         var.ctype = sized(var.ctype, var)
+        var.namespace = where
         if "::" not in var.name:
             if not (_declared_only(var) and var.name in self.globals):
                 self.globals[var.name] = var

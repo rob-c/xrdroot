@@ -133,7 +133,21 @@ class Translator(TemplateEmitter):
         cells = self.program.global_cells
         for name, var in self.program.globals.items():
             cell = name in cells and addressable(var.ctype)
-            add(Symbol(name, "global", python_name(name), var.ctype, cell=cell))
+            add(Symbol(name, "global", self._global_python(name, var), var.ctype, cell=cell))
+
+    def _global_python(self, name: str, var: VarDecl) -> str:
+        """What a namespace-scope variable is called in Python.
+
+        A name the host owns - ``ROOT::Internal::RDF::Testing::myInt`` - is that
+        namespace's *attribute*: the host object is a plain Python object, so the
+        declaration has to assign ``ROOT.Internal.RDF.Testing.myInt`` and not a bare
+        module-level ``myInt``, which nothing reads back under the qualified name.
+        Any other namespace keeps the flat name: no one addresses it by path.
+        """
+        where = var.namespace
+        if where and where[0] == active().host_namespace:
+            return ".".join([*where, python_name(name)])
+        return python_name(name)
 
     def top(self, decl: object) -> None:
         """One declaration at namespace scope, the static locals in it made just before it."""
