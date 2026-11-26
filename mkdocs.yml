@@ -47,6 +47,7 @@ nav:
       - Providers and adapters: components/providers.md
       - Boundary checks: components/boundaries.md
   - Project knowledge:
+      - "The 42 non-passing pyunittest programs": discoveries/the-42-non-passing-pyunittest-programs-by-first-failing-case.md
       - "A function-scope alias is one alias by spelling": gotchas/a-function-scope-alias-is-one-alias-by-spelling-not-by-ctype.md
       - "Working the gtest/pyunittest/other goal: one screen, one feature": instructions/working-the-gtest-pyunittest-other-goal-one-screen-one-feature.md
       - "Goal baseline: gtest, pyunittest, other": discoveries/goal-baseline-gtest-pyunittest-other-at-228-588-none-out-of.md
