@@ -151,6 +151,14 @@ def _merged(declared: Function, defined: Function) -> Function:
     return defined
 
 
+def _type_text(ctype: CType) -> str:
+    """``ctype`` as C++ spells it: two functions naming one alias the same way agree on this,
+    where two CType objects' template arguments may be distinct objects for one type."""
+    from .emit_names import type_text
+
+    return type_text(ctype)
+
+
 class Program:
     """A macro's classes, functions, globals and enumerators, and its variables held in cells."""
 
@@ -226,13 +234,16 @@ class Program:
 
         C++ scopes an alias to the block it is written in; this kit keeps one table, because what
         asks for an alias is a *call* - ``cv_milli_t(end - start)`` - emitted with no view of the
-        block it stands in. So every function's aliases go in that table, and two functions that
-        give one name two different types are refused rather than silently sharing the last one.
+        block it stands in. So every function's aliases go in that table. Two functions spelling
+        the same name the *same* type - ``using Net_t = TDeepNet<Architecture>;`` in each of a
+        header's test functions - are one alias and are kept; two *spellings* under one name are
+        refused rather than silently sharing the last one, since the table cannot tell which block
+        a call stands in.
         """
         aliases = [one for one in self._aliases_in(decl) if one.ctype.args]
         for one in aliases:
             known = self.local_aliases.get(one.name)
-            if known is not None and known != one.ctype:
+            if known is not None and _type_text(known) != _type_text(one.ctype):
                 raise Refusal(
                     f"the name {one.name} stands for two types in one program - "
                     f"{known.name} and {one.ctype.name} - and this translator keeps one alias "

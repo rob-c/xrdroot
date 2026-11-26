@@ -79,3 +79,15 @@ def test_a_name_two_functions_give_two_types_is_refused_by_name() -> None:
     """
     with pytest.raises(Refusal, match="stands for two types in one program"):
         translate(source, "t.C")
+
+
+def test_a_name_two_functions_spell_the_same_way_is_one_alias() -> None:
+    """ROOT's own TMVA ConvNet tests declare ``using Net_t = TDeepNet<Architecture>;`` in each of
+    their functions: the name, the type and the spelling are the same, so one table holds one
+    alias - what is refused is one name given two *spellings*."""
+    source = """
+    template <typename A> void f() { using Net_t = TDeepNet<A>; Net_t n; (void)n; }
+    template <typename A> void g() { using Net_t = TDeepNet<A>; Net_t n; (void)n; }
+    """
+    translated = translate(source, "t.C")
+    assert translated.count("TDeepNet") >= 2
