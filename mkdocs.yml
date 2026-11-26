@@ -56,6 +56,7 @@ nav:
       - "Vary compiles its expression where it is given": gotchas/vary-compiles-its-expression-where-it-is-given.md
       - "A missing typedef reads as a missing ROOT class": discoveries/a-missing-typedef-reads-as-a-missing-root-class.md
       - "std::tie translates but needs a runtime target": discoveries/std-tie-translates-but-needs-a-runtime-target.md
+      - "KahanSum is one class for every template spelling": architecture/kahan-sum-is-one-class-for-every-template-spelling.md
       - "A char that is no character is written as its number": gotchas/a-char-that-is-no-character-is-written-as-its-number-not-as-a.md
       - "An enumerator reaches Python signed": discoveries/an-enumerator-reaches-python-as-a-signed-64-bit-int-even-from.md
       - "The 42 non-passing pyunittest programs": discoveries/the-42-non-passing-pyunittest-programs-by-first-failing-case.md
