@@ -123,3 +123,17 @@ def test_the_autoflush_of_zero_leaves_the_basket_size_to_decide() -> None:
     holder.Write()
     expect((branch.GetWriteBasket(), 1))  # fmt: skip
     holder.Close()
+
+
+def test_a_tstring_names_a_branch_as_the_characters_it_holds() -> None:
+    """ROOT's C++ layer converts a ``TString`` to ``const char*``, so a branch named with one is
+    named by its text - ``tree->Branch(lname, &var, lname)`` with a ``TString`` is ROOT's own idiom
+    in ``roottest/root/tree/cache/runmultiTree.C``."""
+    import ctypes
+
+    import xrdroot.pyroot as ROOT
+
+    tree = ROOT.TTree("tstring", "")
+    value = ctypes.c_int()
+    tree.Branch(ROOT.TString("v"), value, ROOT.TString("v/I"))
+    assert [branch.GetName() for branch in tree.GetListOfBranches()] == ["v"]

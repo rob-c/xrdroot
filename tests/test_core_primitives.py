@@ -122,3 +122,13 @@ def test_shared_primitives_histograms_and_formulas_work_with_io_imports_blocked(
         check=True,
         timeout=30,
     )
+
+
+def test_the_fixed_arrays_share_roots_own_abstract_base() -> None:
+    """``TArray`` is ROOT's base of the fixed arrays, and a file's streamer list names it, so the
+    namespace answers for it - which is what silences ``TClass::Init``'s "no dictionary" warning -
+    and every ``TArrayX`` derives from it."""
+    import xrdroot.pyroot as ROOT
+
+    assert isinstance(ROOT.TArrayD(2), ROOT.TArray)
+    assert ROOT.TClass("TArray")._class() is ROOT.TArray

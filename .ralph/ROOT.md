@@ -5329,7 +5329,7 @@ right and the wall is the library's, `W0-256`.
 
 **The gate, seven commands, each read for its own exit status.** Part 1 **14 048 passed, 0 failed**
 (99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126753 0 31832 0 100%`**. ruff
-(after one docstring rewrap), mypy 1 062 files, maintainability 33 568 functions in 1 831 files,
+(after one docstring rewrap), mypy 1 062 files, maintainability 33 572 functions in 1 831 files,
 components 1 062 / 0 undeclared, `mkdocs --strict` exit 0. **+3 unit tests**: the constexpr, the
 const, a plain variable (not folded), both enumerator shapes, and `New` answering `ConstructedAt`.
 
@@ -5347,3 +5347,49 @@ and `TObjArray::ls`'s `size=` — the array's *room*, which ROOT prints and this
 (`W0-259`). The flat bucket table is itself the finding: the largest single cause in the kind now
 blocks **1-3** tests except the enumerated chains, so the next rounds should take one chain each and
 say which test it buys.
+
+## Round 126's close
+
+**What landed.** Two ROOT classes were missing from the namespace in ways only a *file* reveals.
+
+`TArray` is ROOT's abstract base of the fixed arrays, and a file's streamer list names it.
+`pyroot/core/reflection.py::_undictionaried` decides whether to print ROOT's
+`Warning in <TClass::Init>: no dictionary for class TArray is available` by asking
+`TClass(name)._class()` - the namespace's own answer - and the array family lived under a
+**private** `_TArray`, so the namespace answered no. Exporting the base as `TArray` (what ROOT calls
+it, and what `TArrayD` and its kin derive from) is the whole fix: `io/evolution/ClonesArrayEvo`,
+`io/fakeClass/forwardDeclAndFake` and `treeformula/formulaio/old-formula` each differed from their ref
+by that one line and now pass. It is round 119's rule (a declared class) and round 122's (a class with
+its own dictionary) once more: **the namespace's answer decides, not a list of names**.
+
+`roottest/root/tree/cache/runmultiTree.C` writes ROOT's own idiom
+`tree->Branch(lname, &var[i], lname, 512)` with a `TString`, which the C++ layer converts to
+`const char*`; this kit's writer takes a `str` and refused. `pyroot/trees/tree.py::_text` answers a
+`TString`'s characters at `TTree::Branch` and leaves anything else for the layer that refuses it to
+name - a convenience belongs in the wrapper, not in the engine.
+
+**The measurement.** A whole `roottest` run at `72f2f66c` + the round's fixes (`…/roottest`,
+`--jobs 5`): **1366 PASS / 450 FAIL / 125 DIFF / 220 UNSUPPORTED / 10 SKIP / 2 TIMEOUT** of 2173,
+against round 125's 1363 / 450 / 128 / 221 / 10 / 1. The moves: three DIFF -> PASS
+(`io/evolution/ClonesArrayEvo`, `io/fakeClass/forwardDeclAndFake`, `treeformula/formulaio/old-formula`),
+`tree/cache/multiTree` FAIL -> UNSUPPORTED (the `TString` fix carried it to `TTreeCache`),
+`meta/runInterpClassDef-auto` UNSUPPORTED -> FAIL (a wall moved, not a lost PASS), and
+`smatrix/Kalman` UNSUPPORTED -> TIMEOUT, which is the load: it reads UNSUPPORTED alone at 219 s and
+the whole run was five jobs on a machine at 12-39. `ratchet` names no lost PASS.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 050 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126757 0 31832 0 100%`**. ruff, mypy,
+maintainability, components, `mkdocs --strict` - each exit 0. **+2 unit tests**: the fixed arrays
+share `TArray` and `TClass("TArray")` answers for it, and a `TString` name at `Branch` is its
+characters.
+
+**A gotcha, for the next reader**:
+`docs/gotchas/a-file-names-a-class-the-namespace-must-answer-for-tarray-and-md.md`.
+
+**The pricing that chose this round, and what it left.** The flat tail is the finding: the largest
+single own-refusal now blocks **6** tests (`io/vararyobj`'s `B*[fM]` of varying-length arrays) and
+every other is 2-5 with a chain behind it. Four walls were priced and recorded instead of chased:
+`TTreeCache` (3 tests, whose refs pin cache sizes, buffer sizes and pointer identity),
+`Snapshot` of a class column (5), `TBufferFile` through a custom `Streamer(TBuffer&)` (3), and
+`TGeoPatternFinder` (1). A round that prices four walls and lands three passes is worth more than one
+that starts four chains.

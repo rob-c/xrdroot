@@ -64,6 +64,7 @@ nav:
       - "A function-scope alias is one alias by spelling": gotchas/a-function-scope-alias-is-one-alias-by-spelling-not-by-ctype.md
       - "A template parameter that stands for a template": gotchas/a-template-parameter-that-stands-for-a-template-keeps-the.md
       - "A template argument naming a constant is its number": gotchas/a-template-argument-that-names-an-integral-constant-is-its.md
+      - "A file names a class the namespace must answer for": gotchas/a-file-names-a-class-the-namespace-must-answer-for-tarray-and-md.md
       - "A function's using ends with its block": gotchas/a-functions-using-ends-with-its-block-so-the-alias-table-is-per.md
       - "Working the gtest/pyunittest/other goal: one screen, one feature": instructions/working-the-gtest-pyunittest-other-goal-one-screen-one-feature.md
       - "Goal baseline: gtest, pyunittest, other": discoveries/goal-baseline-gtest-pyunittest-other-at-228-588-none-out-of.md
