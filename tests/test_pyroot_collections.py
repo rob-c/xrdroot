@@ -620,6 +620,15 @@ def test_a_clones_array_is_told_the_class_its_slots_hold():
     assert clones.GetClass().GetName() == "TH1F"
 
 
+def test_a_clones_array_slot_asked_for_by_new_is_constructed_at_it() -> None:
+    """``TClonesArray::New(index)`` is ``ConstructedAt(index)`` - ROOT's own spelling unless
+    ``fgAlwaysReorder`` was asked for - so the slot is made once and handed back again."""
+    clones = ROOT.TClonesArray("TBox", 3)
+    made = clones.New(1)
+    assert made is clones.ConstructedAt(1)
+    assert made is clones.New(1)
+
+
 def test_a_bare_std_name_is_the_std_template_pyroot_gives():
     """PyROOT resolves a bare ``list``, ``map`` and their kin to the ``std::`` template of
     that name, which is how a translated macro's ``list<Track>`` reaches the namespace."""

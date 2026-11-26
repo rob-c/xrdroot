@@ -732,6 +732,14 @@ class TClonesArray(TObjArray):
             self.AddAt(found, index)
         return found
 
+    def New(self, index: int) -> Any:
+        """``New(index)``: ROOT's name for the slot made if it is empty - ``ConstructedAt``.
+
+        ``TClonesArray::New`` is ``ConstructedAt`` unless ``fgAlwaysReorder`` was asked for, which
+        no ROOT test does.
+        """
+        return self.ConstructedAt(index)
+
 
 class TObjLink:
     """``TObjLink``: one place in a :class:`TList`, and the ones either side of it."""

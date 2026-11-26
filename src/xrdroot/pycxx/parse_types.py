@@ -14,6 +14,7 @@ from typing import Any
 from .ctype import BUILTIN_WORDS, CType, builtin_name, canonical
 from .cursor import KEYWORDS, STD_NAMES, Cursor, NoParse
 from .dialect import active
+from .nodes import Literal
 from .substitute import aliased
 
 __all__ = ["TypeParser", "Specifiers"]
@@ -185,6 +186,13 @@ class TypeParser(Cursor):
         return args
 
     def _template_arg(self) -> Any:
+        """One template argument: a type, or a value - and a name the program declared an integral
+        constant *is* the number it stands for, ``SMatrix<double, N, N>`` with ``constexpr int N = 5``
+        as much as an enumerator, which C++ folds here."""
+        if self.peek().kind == "id" and self.peek(1).is_(",", ">", ">>"):
+            known = self.integer_constants.get(self.peek().text)
+            if known is not None:
+                return Literal(self.take().where, "int", known, "int")
         found = self.trial(self._typed_arg)
         if found is not None:
             return found

@@ -26,6 +26,7 @@ from .nodes import (
     Expr,
     ExprStmt,
     Function,
+    Literal,
     Member,
     Namespace,
     Param,
@@ -50,6 +51,27 @@ CONSTRUCTOR_WORDS = frozenset({"explicit", "inline", "virtual", "constexpr"})
 
 #: The access labels in a class body.
 ACCESS = frozenset({"public", "private", "protected", "signals", "slots"})
+
+
+def _enumerator_values(items: list[tuple[str, Expr | None]]) -> dict[str, int]:
+    """Each enumerator's number, where this kit can work it out.
+
+    A literal is that number; one written without a value is the one before plus one, the first
+    zero; and an expression the parser does not fold leaves itself - and the ones after it -
+    without a number rather than guessing one.
+    """
+    found: dict[str, int] = {}
+    value: int | None = -1
+    for name, written in items:
+        if isinstance(written, Literal) and written.kind == "int":
+            value = int(written.value)
+        elif written is not None:
+            value = None
+        elif value is not None:
+            value += 1
+        if value is not None:
+            found[name] = value
+    return found
 
 
 def _reached(member: Stmt, hidden: bool) -> None:
@@ -397,6 +419,7 @@ class Parser(StmtParser):
         first = VarDecl(where, name, ctype, static=spec.static,
                         storage=frozenset(spec.words & {"static", "thread_local", "extern"}))
         self.initializer(first)
+        self._note_constant(first, spec)
         if self.at_(":"):
             raise self.refuse(f"the bit-field {name}, a member narrower than its type")
         self.declare(name)
@@ -729,10 +752,17 @@ class Parser(StmtParser):
     }
 
     def _enumerators(self) -> list[tuple[str, Expr | None]]:
-        """``{ kA, kB = 5 }``: each enumerator, and its value if one is written."""
+        """``{ kA, kB = 5 }``: each enumerator, and its value if one is written.
+
+        Each is also registered as the number it stands for, so a template argument naming it folds
+        to that number: one written as a literal is that number, one without is the one before plus
+        one, and an expression this kit does not work out leaves itself and the ones after it
+        unnamed.
+        """
         self.expect("{")
         items = self.listed(self._enumerator, "}")
         self.expect("}")
+        self.integer_constants.update(_enumerator_values(items))
         return items
 
     def _enumerator(self) -> tuple[str, Expr | None]:

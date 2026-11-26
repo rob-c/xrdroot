@@ -33,6 +33,7 @@ from .nodes import (
     Handler,
     If,
     Label,
+    Literal,
     Param,
     RangeFor,
     Return,
@@ -149,10 +150,25 @@ class StmtParser(ExprParser):
             decl = VarDecl(where, name, ctype, static=spec.static,
                            storage=frozenset(spec.words & {"static", "thread_local", "extern"}))
             self.initializer(decl)
+            self._note_constant(decl, spec)
             self.declare(name)
             decls.append(decl)
             if not self.accept(","):
                 return decls
+
+    def _note_constant(self, decl: VarDecl, spec: Specifiers) -> None:
+        """Register ``constexpr int N = 5;`` and ``const int N = 5;``: a name whose value is known.
+
+        C++ folds an integral constant into whatever reads it - ``SMatrix<double, N, N>`` is
+        ``SMatrix<double, 5, 5>`` - so a template argument naming one is that number and not a name
+        a library is asked about. Only a declaration whose initialiser *is* an integer literal
+        counts: anything else is a value this kit does not work out at translate time.
+        """
+        constant = "constexpr" in spec.words or "const" in spec.words or decl.ctype.const
+        if not constant or not isinstance(decl.init, Literal):
+            return
+        if decl.init.kind == "int" and decl.ctype.value().integral:
+            self.integer_constants[decl.name] = int(decl.init.value)
 
     def initializer(self, decl: VarDecl) -> None:
         """What a declared variable starts as: ``= value``, ``(arguments)`` or ``{items}``."""

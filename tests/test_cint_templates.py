@@ -72,6 +72,27 @@ def test_a_template_parameter_written_as_an_expression_is_the_template_it_stands
     assert instance.startswith("def make__Box():\n    return Box__int()")
 
 
+def test_a_template_argument_naming_a_constexpr_is_the_number_it_stands_for() -> None:
+    """``constexpr int N = 5;`` then ``SMatrix<double, N, N>``: C++ folds an integral constant into
+    the argument, so the matrix is named by 5 and 5 - and a plain ``int N = 5`` is no constant
+    expression, so a value the translator does not work out stays the name it was written as."""
+    fold = "constexpr int N = 5;\nvoid t(){ SMatrix<double, N, N> m; (void)m; }"
+    const = "const int N = 5;\nvoid t(){ SMatrix<double, N, N> m; (void)m; }"
+    plain = "int N = 5;\nvoid t(){ SMatrix<double, N, N> m; (void)m; }"
+    assert "SMatrix['double', 5, 5]" in translate(fold, "t.C")
+    assert "SMatrix['double', 5, 5]" in translate(const, "t.C")
+    assert "SMatrix['double', N, N]" in translate(plain, "t.C")
+
+
+def test_a_template_argument_naming_an_enumerator_is_its_number() -> None:
+    """An enumerator is a constant too: one written as a number is that number, and one without is
+    the one before it plus one - the first is zero."""
+    written = "enum { kA = 3, kB };\nvoid t(){ SMatrix<double, kA, kB> m; (void)m; }"
+    counted = "enum Color { kRed, kGreen };\nvoid t(){ SMatrix<double, kRed, kGreen> m; (void)m; }"
+    assert "SMatrix['double', 3, 4]" in translate(written, "t.C")
+    assert "SMatrix['double', 0, 1]" in translate(counted, "t.C")
+
+
 def test_a_value_parameter_naming_a_template_argument_is_the_value_it_was_given() -> None:
     """``SMatrix<double, Rows, Cols>`` inside ``template <unsigned Rows, unsigned Cols>``: a value
     parameter is a value in its own body, so the argument is the number the call gives and not a

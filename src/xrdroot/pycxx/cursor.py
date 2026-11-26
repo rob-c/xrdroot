@@ -129,6 +129,9 @@ class Cursor:
         #: The aliases in scope, innermost last: C++ ends a function's ``using`` with its block,
         #: so two functions may give one name two types (``contPair_t`` in ``commonUtils.h``).
         self.alias_scopes: list[dict[str, CType]] = [{}]
+        #: Each integral constant the program declares with a number, ``constexpr int N = 5;`` or
+        #: ``enum { kN = 3 }``: a template argument naming one *is* that number, as C++ folds it.
+        self.integer_constants: dict[str, int] = {}
         #: Nonzero while ``>`` closes a template argument list rather than comparing.
         self.angle = 0
         #: ``namespace fs = std::filesystem;``: each alias, and the namespace it names.
