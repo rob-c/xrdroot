@@ -278,7 +278,11 @@ class FunctionEmitter(VariableEmitter):
                 for capture, value in inits:
                     ctype = self.typeof(capture.init) if capture.init is not None else None
                     symbol = self.declare(capture.name, "param", ctype)
-                    if node.mutable:
+                    shared = self._shared_cell(capture)
+                    if shared is not None:  # ``[&i = n]``: the *same* cell ``n`` is
+                        symbol.cell = True
+                        value = shared
+                    elif node.mutable or capture.byref:
                         symbol.cell = True
                         value = f"Cell({value})"
                     params.append(f"{symbol.py}={value}")
@@ -311,6 +315,11 @@ class FunctionEmitter(VariableEmitter):
         """
         return [(capture, self.value(capture.init)) for capture in node.captures
                 if capture.init is not None]  # fmt: skip
+
+    def _shared_cell(self, capture: Any) -> str | None:
+        """The Python name of the cell a ``[&i = name]`` capture shares, when it shares one."""
+        found = self.symbol(capture.init) if isinstance(capture.init, Name) else None
+        return found.py if found is not None and found.cell else None
 
     def _captured(self, node: Lambda) -> list[str]:
         """``[x]`` captures ``x`` by value: bound now, as a default, not looked up later."""

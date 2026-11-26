@@ -509,9 +509,9 @@ class ExprParser(TypeParser):
             return Capture(where, "&", True)
         name = self.identifier()
         if self.accept("="):
-            if byref:
-                raise self.refuse(f"the lambda capture &{name} = ..., a new reference")
-            return Capture(where, name, False, self.initializer_value())
+            # ``[&i = expr]``: a new name that *refers* to ``expr``, so a change through it
+            # is a change to ``expr`` - a cell here, shared with the enclosing variable.
+            return Capture(where, name, byref, self.initializer_value())
         return Capture(where, name, byref)
 
     def braced(self) -> InitList:

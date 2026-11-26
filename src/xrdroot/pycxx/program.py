@@ -451,6 +451,8 @@ class Program:
         for node in walk(body):
             if isinstance(node, Unary) and node.op == "&" and isinstance(node.operand, Name):
                 yield node.operand.last
+            if isinstance(node, Lambda):
+                yield from _referring(node)
             elif isinstance(node, Call):
                 yield from _written(node.args, self.reference_positions(node))
             elif isinstance(node, Binary):
@@ -543,6 +545,17 @@ def by_reference(ctype: CType) -> bool:
     if not ctype.reference or ctype.const:
         return False
     return ctype.scalar or ctype.is_string or ctype.is_pointer
+
+
+def _referring(lambda_: Any) -> Iterator[str]:
+    """The names a ``[&i = name]`` capture refers to, which must be cells of their own.
+
+    ``i`` is another name for ``name``, so ``i = 10`` inside the lambda changes ``name`` -
+    which only works when both are the *same* cell.
+    """
+    for capture in lambda_.captures:
+        if capture.byref and isinstance(capture.init, Name):
+            yield capture.init.last
 
 
 def _declared(body: Node) -> set[str]:

@@ -155,6 +155,22 @@ def test_a_mutable_lambdas_capture_keeps_what_a_call_did_to_it(
     assert output(capsys, source) == "0 1 7 9\n"
 
 
+def test_a_reference_init_capture_is_another_name_for_the_variable_it_names(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``[&i = n]``: ``i`` and ``n`` are the same storage, so a write through ``i`` is one to
+    ``n`` - which is a ``Cell`` here, shared rather than copied."""
+    source = """
+    void t() {
+      int n = 5;
+      auto take = [&i = n]() { auto ret = i; i = 10; return ret; };
+      auto read = [&j = n]() { return j; };
+      printf("%d %d %d\\n", take(), n, read());
+    }
+    """
+    assert output(capsys, source) == "5 10 10\n"
+
+
 def test_templates_enums_namespaces_and_globals(capsys: pytest.CaptureFixture[str]) -> None:
     source = """
     namespace util { template <typename T> T twice(T x) { return x + x; } }

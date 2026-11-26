@@ -42,7 +42,6 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
         ("char buf[8]; TH1F *h = new (buf) TH1F();", "placement new"),
         ("auto a = alignof(TNone);", "alignof of a type whose size this translator does not know"),
         ("bool b = noexcept(f());", "noexcept is not something"),
-        ("int x; auto f = [&n = x]() { return n; };", r"the lambda capture &n = \.\.\."),
         ("Point p = {.x = 1};", r"a designated initialiser, \.name = value"),
         ("int x = );", "an expression was expected"),
         ("unknown x y;", "';' was expected"),
