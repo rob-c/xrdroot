@@ -5131,3 +5131,26 @@ project's `ffmpeg`, a geant4 benchmark and Python 3.14 builds — so the round w
 measured the harness **statuses** under it (`W0-103`'s "reasons are quotable, timings are not"), then
 waited for the load to fall to **11.8** before the coverage gate, which is the one command a loaded
 machine makes meaningless.
+
+### Round 122's CI, recorded rather than assumed
+
+Two things happened to this round's CI, and neither was a defect of its own.
+
+**Two runs were cancelled, not failed.** Another session pushed while this round was pushing (`03ac9b82`
+then `7e4d761b` `ProcInfo_t`, then `9d82ce95`, then `a74f4bf0`), and each push cancels the previous
+run's in-flight jobs through the workflow's concurrency group. The round's commits were rebased over
+each in turn - every rebase replayed the four commits unchanged, `io/stdpair` was re-run at the first
+rebased tip (44 of 44) and the two-command gate at the second and the last:
+
+| tree | the round's gate |
+|---|---|
+| `03ac9b82` + round (13 991 + 44) | `TOTAL 126184 0 31708 0 100%` |
+| `7e4d761b` + round (13 996 + 44) | `TOTAL 126251 0 31716 0 100%` |
+
+**The one completed run failed on coverage, and it is `W0-251`'s known flake.** On `a74f4bf0` - which
+contains all of the round's commits - the macos-latest 3.12 job reported
+`Coverage failure: total of 99 is less than fail-under=100`, `TOTAL 126251 0 31716 1 99%`, the single
+partial arc being `reflection.py 285->284`: the back edge of `for name in FILE_INFOS:` in
+`reload_emulated`, which is nowhere near this round's change (lines 1400-1700) and which round 120
+already recorded as an xdist worker losing one arc. `gh run rerun --failed` of that same run was
+**green on every job**, so the trunk is certified green at `a74f4bf0` with the round inside it.
