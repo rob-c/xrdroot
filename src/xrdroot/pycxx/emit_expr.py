@@ -143,6 +143,19 @@ def _is_null(node: Expr) -> bool:
     )
 
 
+def _cast_type(node: Expr) -> CType | None:
+    """The type a ``(T *)`` cast names, which is the type of the value it makes - the operand's own
+    type is what went in."""
+    return node.ctype if isinstance(node, Cast) else None
+
+
+def _a_cells_address(source: CType | None) -> bool:
+    """Is this the type of a **cell holding a pointer** - ``char **`` - whose value read out is an
+    address? ``*(char **)proxy->At(i)`` is how a walker hands an object over, and the value is the
+    object's address however the declaration spells it."""
+    return source is not None and source.name == "char" and source.pointer > 1
+
+
 def _an_address(source: CType | None) -> bool:
     """Is this type one ``(char *)`` may step by bytes: an object's own pointer, or a ``void *``,
     which is the same address - ``TTree::GetBranchAddress``-style code hands one to a filler that
@@ -154,6 +167,27 @@ def _an_address(source: CType | None) -> bool:
 
 class ExprEmitter(NameEmitter):
     """The emitter's layer for expressions."""
+
+    def _holding_an_address(self, expr: Expr) -> bool:
+        """Does this ``char *`` hold an object's address, as the declaration that made it knew?"""
+        found = self.symbol(expr) if isinstance(expr, Name) else None
+        return found is not None and found.address
+
+    def addressing(self, init: Expr) -> bool:
+        """Does this initialiser give an object's **address** rather than text?
+
+        Three shapes are an address: ``(char *)obj`` - of the object itself, a ``void *``, a
+        member's pointer - a pointer read out of a cell (``*(char **)cell``, which is how ROOT's own
+        ``TBuffer``-style walkers hand an object over), and a pointer that is already one. A call's
+        answer, or a literal, is text and is not.
+        """
+        while isinstance(init, Cast):
+            if not (init.ctype.is_string and init.ctype.pointer):
+                return False
+            init = init.operand
+        if isinstance(init, Unary) and init.op == "*":
+            return _a_cells_address(_cast_type(init.operand) or self.typeof(init.operand))
+        return _an_address(self.typeof(init))
 
     def call(self, node: Call) -> Out:
         raise NotImplementedError
@@ -368,12 +402,35 @@ class ExprEmitter(NameEmitter):
         moved = self._object_bytes(node)
         if moved is not None:
             return moved, P.POSTFIX
-        if left.is_string and node.op == "+" and not left.dims:
-            # ``slash + 1``: the C string from there on, which is what reading it gives.
-            return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
+        text = self._text_offset(node, left)
+        if text is not None:
+            return text, P.POSTFIX
         if node.op == "-" or left.is_string or not left.element().scalar:
             raise self.refuse(f"pointer arithmetic on a {_spelled(left)}", node)
         return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]", P.POSTFIX
+
+    def _text_offset(self, node: Binary, left: CType) -> str | None:
+        """A ``char *`` moved by a number: the bytes, when it holds an object's address; the
+        characters from there on, when it holds text and moves forward; ``None`` when it is
+        neither, which is what the caller refuses.
+
+        C++ keeps the two in one type. roottest's ``Dumper.h`` steps an address back to the base
+        class's part, and a ``str`` has nothing behind it to step to, so that one is refused rather
+        than guessed at.
+        """
+        if not left.is_string or left.dims:
+            return None
+        if self._holding_an_address(node.left):
+            return self._addressed_offset(node)
+        if node.op == "+":
+            return f"{self.at(node.left, P.POSTFIX)}[{self.value(node.right)}:]"
+        return None
+
+    def _addressed_offset(self, node: Binary) -> str:
+        """``ele -= offset`` on a ``char *`` holding an object's address: the bytes it lands on."""
+        sign = "-" if node.op == "-" else ""
+        right = self.value(node.right)
+        return f"byte_offset({self.value(node.left)}, {sign}({right}))"
 
     def _object_bytes(self, node: Binary) -> str | None:
         """``(char*)obj - offset``: an object's address moved by bytes - to a base class's

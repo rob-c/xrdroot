@@ -12,6 +12,7 @@ for it.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -132,12 +133,19 @@ class VariableEmitter(StmtEmitter):
         destructs = self._destructible(decl, ctype)
         value = self.initial(decl, ctype)
         cell = decl.name in self.cell_names() and addressable(ctype)
-        symbol = self.declare(decl.name, "local", ctype, cell=cell)
+        symbol = self.declare(
+            decl.name, "local", ctype, cell=cell, address=self._holds_an_address(decl, ctype)
+        )
         self.write_variable(symbol, value, decl)
         self._remember_return(decl, symbol, destructs)
         if destructs:
             assert self.destructed is not None
             self.destructed.append(symbol.py)
+
+    def _holds_an_address(self, decl: VarDecl, ctype: CType | None) -> bool:
+        """Is a ``char *`` local given an object's address - ``char *ele = (char *)obj`` - rather
+        than text? Only that one may be moved by bytes, because a ``str`` has nothing behind it."""
+        return _holds_an_address(decl, ctype, self.addressing)
 
     def _borrowed_variable(self, decl: VarDecl, ctype: CType | None) -> bool:
         if not decl.ctype.reference or ctype is None or not ctype.scalar or decl.init is None:
@@ -544,6 +552,18 @@ def _initialiser(decl: VarDecl) -> Expr | None:
     if ctype.name == "decltype" and ctype.args:
         return Name(decl.where, [str(ctype.args[0])])
     return decl.init if decl.init is not None else (decl.args[0] if decl.args else None)
+
+
+def _holds_an_address(decl: VarDecl, ctype: CType | None, address: Callable[[Expr], bool]) -> bool:
+    """Is this declaration a ``char *`` given an object's address?
+
+    C++ keeps the two in one type: ``char *ele = (char *)obj`` is an address and ``char *name =
+    text()`` is a string. What tells them apart is the **initialiser**, which ``address`` answers
+    for, so the mark goes on the symbol and the emitter's pointer arithmetic asks it.
+    """
+    if ctype is None or not ctype.is_string or not ctype.pointer or ctype.dims:
+        return False
+    return decl.init is not None and address(decl.init)
 
 
 def _streambuf(node: Expr) -> Expr | None:

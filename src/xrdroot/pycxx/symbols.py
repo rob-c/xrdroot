@@ -122,6 +122,10 @@ class Symbol:
     cell: bool = False
     alias: Any = None
     owner: str | None = None
+    #: A ``char *`` holding an object's **address** rather than text - ``char *ele = (char *)obj``
+    #: - so moving it by bytes is arithmetic. A ``str`` has no address to move back, which is why
+    #: every other ``char *`` is still read as the string it is.
+    address: bool = False
 
 
 @dataclass(eq=False)

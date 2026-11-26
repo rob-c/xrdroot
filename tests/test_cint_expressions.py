@@ -328,3 +328,33 @@ def test_an_address_stepped_past_a_member_of_no_known_class_is_the_object_s_own_
     byte_offset(byte_offset(flat, 0), 4)[0] = 9  # ``(char *)&flat.a + 4`` is ``flat.b``
     assert flat.b == 9
 
+
+def test_only_a_char_pointer_holding_an_address_is_moved_by_bytes() -> None:
+    """C++ keeps an address and a string in one type; what tells them apart is the initialiser.
+
+    ``char *ele = (char *)obj`` and ``char *ele = *(char **)cell`` hold an object's address, so
+    ``ele -= n`` is byte arithmetic - roottest's ``Dumper.h`` steps one back to the base class's
+    part before it dumps the object there - while ``char *p = text()`` holds the characters, which
+    have nothing behind them and stay refused.
+    """
+    import pytest
+
+    from xrdroot.pycint import translate
+
+    of_object = translate(
+        "void f(void *obj) { char *ele = (char *)obj; ele -= 8; }", "t.C"
+    )
+    assert "byte_offset(ele, -(8))" in of_object
+    of_cell = translate(
+        "void f(TIter *it) { char *ele = *(char **)it; ele -= 8; }", "t.C"
+    )
+    assert "byte_offset(ele, -(8))" in of_cell
+    without_a_cast = translate(
+        "void f(char **pp) { char *ele = *pp; ele -= 8; }", "t.C"
+    )
+    assert "byte_offset(ele, -(8))" in without_a_cast
+    unsigned = translate("void f(unsigned char *b) { char *c = (unsigned char *)b; }", "t.C")
+    assert "byte_offset" not in unsigned  # bytes are not text and not an object's address
+    with pytest.raises(Exception, match="pointer arithmetic on a char"):
+        translate("void f(TString *s) { char *p = s->Data(); p -= 1; }", "t.C")
+
