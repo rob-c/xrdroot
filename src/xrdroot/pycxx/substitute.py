@@ -170,8 +170,10 @@ def _named(node: Name, bindings: Bindings) -> Node:
     targs = copied(node.targs, bindings) if node.targs else node.targs
     bound = bindings.get(node.parts[0])
     if isinstance(bound, TemplateBinding):
-        # ``Cont`` alone is a template, which is no value and resolves to no type here.
-        return Name(node.where, list(node.parts), targs, node.rooted)
+        # ``C<int>`` written as an expression: the template the parameter stands for, with the
+        # arguments kept - the same rule :func:`substituted` gives a type.
+        parts = [*bound.head.split("::"), *node.parts[1:]]
+        return Name(node.where, parts, targs, node.rooted)
     if len(node.parts) == 1 and bound is not None and not isinstance(bound, CType):
         return as_literal(bound, node.where)
     if isinstance(bound, CType) and not bound.pointer:

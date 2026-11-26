@@ -49,12 +49,27 @@ def test_a_template_parameter_stands_for_the_class_template_the_call_gives(
     #include <vector>
     #include <list>
     template <template <typename T> class Cont>
-    void fill(const char* name) { Cont<double> c {1., 2.}; printf("%s %d\\n", name, (int)c.size()); }
+    void fill(const char* name) {
+      Cont<double> c {1., 2.}; printf("%s %d\\n", name, (int)c.size());
+    }
     void t() { fill<std::vector>("vec"); fill<std::list>("list"); }
     """
     translated = translate(two, "t.C")
     first, second = translated.split("def fill__std_list")
     assert "std.vector['double']" in first and "std.list['double']" in second
+
+
+def test_a_template_parameter_written_as_an_expression_is_the_template_it_stands_for() -> None:
+    """``C<int> make() { return C<int>(); }`` with ``C`` a template parameter: the return type and
+    the expression both name the template the call gave, so the instance answers ``Box<int>``."""
+    source = """
+    template <class T> struct Box { int v = 1; };
+    template <template <class T> class C> C<int> make() { return C<int>(); }
+    void t() { Box<int> b = make<Box>(); (void)b; }
+    """
+    translated = translate(source, "t.C")
+    instance = translated[translated.index("def make__Box") :]
+    assert instance.startswith("def make__Box():\n    return Box__int()")
 
 
 def test_a_value_parameter_naming_a_template_argument_is_the_value_it_was_given() -> None:

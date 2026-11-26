@@ -195,13 +195,27 @@ class Parser(StmtParser):
         if self._declared_only() or self.at_("friend"):
             self.skip_to(";")
             return Empty(where)
+        return self._body_with_values(
+            where, (names, values, defaults, class_templates), values
+        )
+
+    def _body_with_values(
+        self,
+        where: Where,
+        template: tuple[list[str], list[Param], list[Any], list[str]],
+        values: list[Param],
+    ) -> Stmt:
+        """A function template's declaration read with each **value** parameter a value in it.
+
+        ``template <unsigned Rows>`` then ``SMatrix<double, Rows>``: C++ makes ``Rows`` a value
+        inside its own body, which is what tells a template argument naming it from a type.
+        """
         self.push()
         try:
             for parameter in values:
-                self.declare(parameter.name)
-            return self._template_rest(
-                where, (names, values, defaults, class_templates), self.function_or_variable()
-            )
+                # an unnamed value parameter is named as the parser names any other
+                self.declare(parameter.name or "_")
+            return self._template_rest(where, template, self.function_or_variable())
         finally:
             self.pop()
 

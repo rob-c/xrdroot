@@ -388,14 +388,13 @@ class Templates:
         return [bindings[name] for name in template.parameters]
 
     def templated(self, func: Function, bindings: Bindings) -> Bindings:
-        """``bindings`` for the copy of ``func``'s body: each *template* parameter's argument wrapped,
-        so that ``Cont<double>`` becomes the class template it stands for written with ``double``.
+        """``bindings`` for the copy of ``func``'s body: each *template* parameter's argument
+        wrapped, so that ``Cont<double>`` becomes the class template it stands for written with
+        ``double``.
         """
         found = self.typed(bindings)
         for name in func.class_templates:
-            bound = bindings.get(name)
-            if isinstance(bound, CType):
-                found[name] = TemplateBinding(bound.name)
+            found[name] = TemplateBinding(bindings[name].name)
         return found
 
     def typed(self, bindings: Bindings) -> Bindings:
