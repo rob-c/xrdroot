@@ -217,7 +217,7 @@
  "gtest/tree/dataframe/dataframe_callbacks": "UNSUPPORTED",
  "gtest/tree/dataframe/dataframe_cloning": "FAIL",
  "gtest/tree/dataframe/dataframe_colnames": "PASS",
- "gtest/tree/dataframe/dataframe_compgraph": "FAIL",
+ "gtest/tree/dataframe/dataframe_compgraph": "PASS",
  "gtest/tree/dataframe/dataframe_concurrency": "FAIL",
  "gtest/tree/dataframe/dataframe_datasetspec": "FAIL",
  "gtest/tree/dataframe/dataframe_definepersample": "FAIL",
