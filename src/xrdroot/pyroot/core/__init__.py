@@ -34,6 +34,7 @@ FAMILIES = (
     "collections",
     "rangecast",
     "strings",
+    "kahan",
     "principal",
     "regexp",
     "urls",

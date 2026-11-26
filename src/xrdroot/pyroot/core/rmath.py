@@ -29,6 +29,7 @@ from .legendres import (  # noqa: F401 - ROOT::Math's Legendre polynomials, by n
     legendre,
     sph_legendre,
 )
+from .kahan import KahanSum  # noqa: F401 - ROOT::Math::KahanSum, by name
 from .lfsr import LFSR  # noqa: F401 - ROOT::Math::LFSR, by name
 from .mathtools import (  # noqa: F401 - ROOT::Math's function objects and tools, by name
     Factory,
