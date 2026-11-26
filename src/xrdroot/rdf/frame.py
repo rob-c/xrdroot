@@ -755,6 +755,7 @@ class RDataFrame:
         """How many entries reach here."""
         return self._book(actions.Count(self._node, []))
 
+
     def Sum(self, column: str | None = None) -> Result:
         """Every value of a column added up; every element, of a collection."""
         return self._book(actions.Sum(self._node, self._single(column, "Sum")))
@@ -934,13 +935,18 @@ class RDataFrame:
         return self._book(actions.Aggregate(self._node, inputs, aggregator, merger, init))
 
     def Book(self, target: Any, columns: Sequence[str]) -> Result:
-        """Fill ``target`` - a RooFit helper - with the entries of ``columns``, lazily.
+        """Fill ``target`` with the entries of ``columns``, lazily.
 
-        The object is filled a batch at a time, in the order of the entries,
-        as the loop reads them; the booked result is what it holds once the
-        loop is done, so several ``Book``s of one frame cost one loop.
+        A RooFit helper is filled a batch at a time, in the order of the entries, as the
+        loop reads them; a ``Detail::RDF::RActionImpl`` - one that has an ``Exec`` - is
+        told each entry in turn, between its own ``Initialize`` and ``Finalize``. Either
+        way the booked result is what the object holds once the loop is done, so several
+        ``Book``s of one frame cost one loop.
         """
         inputs = [self._column(name, "Book") for name in _as_names(columns)]
+        helper = hasattr(target, "Exec")
+        if helper:  # a ``Detail::RDF::RActionImpl``: told each entry, as ROOT tells it
+            return self._book(actions.Custom(self._node, inputs, target))
         return self._book(actions.Book(self._node, inputs, target))
 
     def _foreach(self, function: Callable[..., Any], columns: Any, slot: bool) -> None:

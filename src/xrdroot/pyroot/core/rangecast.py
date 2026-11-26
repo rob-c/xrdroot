@@ -146,8 +146,34 @@ RangeStaticCast = _RangeCast(checked=False)
 RangeDynCast = _RangeCast(checked=True)
 
 
+class RActionImpl:
+    """``ROOT::Detail::RDF::RActionImpl<T>``: the base a custom RDataFrame action is written on.
+
+    A program's helper derives from it - ``class Helper : public RActionImpl<Helper>`` - and
+    defines ``Exec``, ``Initialize``, ``Finalize`` and ``GetResultPtr`` itself;
+    ``RDataFrame::Book`` then calls them. Written as ``RActionImpl<Helper>`` with the
+    helper's own name, as ``KahanSum<float>`` is one class for every spelling.
+    """
+
+    def __class_getitem__(cls, helper: Any) -> type[RActionImpl]:
+        return cls
+
+    def __init__(self, *arguments: Any, **options: Any) -> None:
+        pass
+
+
+class _DetailRDF:
+    """``ROOT::Detail::RDF::``: the one class of it a program derives from here."""
+
+    RActionImpl = RActionImpl
+
+    def __getattr__(self, name: str) -> Any:
+        raise AttributeError(f"ROOT has Detail.RDF.{name}; xrdroot.pyroot does not yet")
+
+
 class Detail:
-    """``ROOT::Detail::``: the namespace the range casts are ROOT's under."""
+    """``ROOT::Detail::``: the namespace the range casts and RDF's action base are ROOT's under."""
 
     TRangeStaticCast = TRangeStaticCast
     TRangeDynCast = TRangeDynCast
+    RDF = _DetailRDF()

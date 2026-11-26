@@ -127,6 +127,44 @@ class Count(Action):
         return acc + part
 
 
+class Custom(Action):
+    """``Book``: an action the program writes itself, told each entry as it goes past.
+
+    ROOT hands a helper's ``Exec`` the booked columns one entry at a time and calls its
+    ``Initialize`` before the loop and ``Finalize`` after it; the result is what the
+    helper's ``GetResultPtr`` points at once ``Finalize`` has put it there. A helper keeps
+    state of its own, so this action is never split across workers.
+    """
+
+    kind = "Book"
+    parallel = False
+
+    def __init__(self, node: Selector, inputs: Sequence[Definition], helper: Any) -> None:
+        super().__init__(node, inputs)
+        self.helper = helper
+
+    def start(self) -> Any:
+        self.helper.Initialize()
+        return None
+
+    def partial(self, batch: Batch) -> Any:
+        columns = self.columns(batch)
+        slot = int(getattr(batch.slot, "value", batch.slot))
+        for row in range(batch.size(self.node)):
+            self.helper.Exec(slot, *[column[row] for column in columns])
+        return None
+
+    def add(self, acc: Any, part: Any) -> Any:
+        return None
+
+    def finish(self, acc: Any, flow: dict[int, tuple[int, int]]) -> Any:
+        self.helper.Finalize()
+        # A helper's result is a ``shared_ptr<T>``, which a translated member holds as a
+        # cell because ``Finalize`` writes through it: the value is what the cell carries.
+        result = self.helper.GetResultPtr()
+        return getattr(result, "value", result)  # a cell, or the value itself
+
+
 def _exact_sum(data: Array) -> int | float:
     """A batch's sum: exactly, of integers; in ``double``, of anything else."""
     if data.dtype.kind in "biu":
