@@ -474,6 +474,18 @@ class _DeclaredIterator:
         return getattr(self.__deref__(), name)
 
 
+def _wrapped(value: int, dtype: Any) -> int:
+    """``value`` as C++ converts one to ``dtype``: modulo its width, then signed.
+
+    ``std::int8_t(300)`` is 44 and ``std::uint8_t(-1)`` is 255, which is what the standard says a
+    conversion to a fixed-width type is. NumPy 2 refuses an out-of-range integer instead of wrapping
+    it, so the arithmetic is done here rather than left to it.
+    """
+    bits = dtype.itemsize * 8
+    value &= (1 << bits) - 1
+    return value - (1 << bits) if dtype.kind == "i" and value >> (bits - 1) else value
+
+
 class _Typedef:
     """``std::uintptr_t(x)``: the value as that typedef's own type keeps it.
 
@@ -490,7 +502,7 @@ class _Typedef:
     def __call__(self, value: Any = 0) -> Any:
         if isinstance(value, str):  # a character, as ``std::int8_t('a')`` converts one
             value = ord(value[0]) if value else 0
-        return self.dtype.type(value).item()
+        return self.dtype.type(_wrapped(int(value), self.dtype)).item()
 
     def __repr__(self) -> str:
         return f"<std::{self.__cpp_name__} typedef>"

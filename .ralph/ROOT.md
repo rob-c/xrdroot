@@ -5328,7 +5328,7 @@ and onto `SMatrix<double,5,5,MatRepSym<double,5>>` refused by the pythonization:
 right and the wall is the library's, `W0-256`.
 
 **The gate, seven commands, each read for its own exit status.** Part 1 **14 048 passed, 0 failed**
-(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126749 0 31832 0 100%`**. ruff
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126753 0 31832 0 100%`**. ruff
 (after one docstring rewrap), mypy 1 062 files, maintainability 33 568 functions in 1 831 files,
 components 1 062 / 0 undeclared, `mkdocs --strict` exit 0. **+3 unit tests**: the constexpr, the
 const, a plain variable (not folded), both enumerator shapes, and `New` answering `ConstructedAt`.

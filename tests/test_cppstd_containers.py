@@ -602,6 +602,7 @@ def test_a_fixed_width_typedef_converts_as_cpp_writes_a_conversion():
     from xrdroot.pycxx.ctype import STD_TYPEDEFS
 
     assert (made._Namespace.int8_t(300), made._Namespace.int8_t("a")) == (44, 97)
+    assert (made._Namespace.int8_t(200), made._Namespace.int8_t(-129)) == (-56, 127)
     assert made._Namespace.uintptr_t(300) == 300 and made._Namespace.uintmax_t(-1) > 0
     assert STD_TYPEDEFS["uintptr_t"] == "unsigned long"  # the translator resolves it too
     assert STD_TYPEDEFS["std::intptr_t"] == "long" and STD_TYPEDEFS["intmax_t"] == "long"
