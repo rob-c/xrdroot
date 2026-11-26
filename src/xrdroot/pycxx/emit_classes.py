@@ -38,7 +38,13 @@ class ClassEmitter(FunctionEmitter):
     # -- enums -------------------------------------------------------------------
 
     def enum_values(self, decl: EnumDecl) -> list[tuple[str, str]]:
-        """Each enumerator and its value: counted on from the last, as C++ counts."""
+        """Each enumerator and its value: counted on from the last, as C++ counts.
+
+        The enum's own arithmetic is unsigned when its underlying type is, but what a script
+        receives is a signed 64-bit integer: ``enum E : unsigned long long { BIG = 1ULL << 63 }``
+        arrives as ``-9223372036854775808``, which is what the library whose names this kit takes
+        answers as well.
+        """
         values: list[tuple[str, str]] = []
         last: int | str = -1
         for name, value in decl.items:
@@ -49,7 +55,7 @@ class ClassEmitter(FunctionEmitter):
                 last += 1
             else:
                 last = f"{values[-1][0]} + 1"
-            values.append((name, str(last)))
+            values.append((name, _exposed(last, decl.underlying)))
         return values
 
     def enum_def(self, decl: EnumDecl) -> None:
@@ -430,6 +436,25 @@ def _constant(value: Expr) -> int | None:
         inner = _constant(value.operand)
         return -inner if inner is not None else None
     return None
+
+
+#: The names a 64-bit unsigned integer type is written with, as ``enum E : <this>`` spells it.
+UNSIGNED_64 = frozenset(
+    {"unsigned long long", "unsigned long", "size_t", "uint64_t", "unsigned __int64"}
+)
+
+
+def _exposed(value: int | str, underlying: Any) -> str:
+    """``value`` as a script receives it, as text: the top half of an unsigned 64-bit enum reads
+    signed, since what reaches a script is a signed 64-bit integer whatever the enum's own type is.
+
+    A value already folded is wrapped here; one the emitter left as text - ``1 << 63`` from
+    ``((unsigned long long)1) << 63`` - is wrapped in the expression Python evaluates."""
+    if underlying is None or getattr(underlying, "name", "") not in UNSIGNED_64:
+        return str(value)
+    if isinstance(value, int):
+        return str(value - 2**64 if value >= 2**63 else value)
+    return f"((({value}) + 2**63) % 2**64 - 2**63)"
 
 
 #: What a class tells a tree about itself: its C++ name, its bases', and each data member's

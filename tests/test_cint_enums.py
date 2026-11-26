@@ -204,3 +204,18 @@ def test_an_enumerator_of_a_global_enumeration_is_a_global_the_session_lists() -
     process_line("enum EGlobal {kFirst = 2, kSecond};")
     listed = {one.GetName(): one.GetAddress().value for one in ROOT.gROOT.GetListOfGlobals()}
     assert (listed["kFirst"], listed["kSecond"]) == (2, 3)
+
+
+def test_an_unsigned_enum_s_top_half_reads_signed_in_python() -> None:
+    """ROOT's ``enum E : unsigned long long { BIG = ((unsigned long long)1) << 63 }`` reaches a
+    script as an ``int64``: PyROOT hands over ``-9223372036854775808``, never ``2**63`` - what
+    MetaClingTests' ``test_GH_20925`` asserts. The enum's own arithmetic stays unsigned, so a value
+    below ``2**63`` keeps its own."""
+    source = """
+    struct Foo { enum E: unsigned long long { BIG = ((unsigned long long)1)<<63, SMALL = 3 }; };
+    """
+    from xrdroot.pycint.execute import run_source
+
+    namespace = run_source(source, "t.C", call=False)
+    foo = namespace["Foo"]
+    assert foo.BIG == -(2**63) and foo.SMALL == 3
