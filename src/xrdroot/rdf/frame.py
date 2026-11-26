@@ -944,10 +944,13 @@ class RDataFrame:
         ``Book``s of one frame cost one loop.
         """
         inputs = [self._column(name, "Book") for name in _as_names(columns)]
-        helper = hasattr(target, "Exec")
-        if helper:  # a ``Detail::RDF::RActionImpl``: told each entry, as ROOT tells it
-            return self._book(actions.Custom(self._node, inputs, target))
-        return self._book(actions.Book(self._node, inputs, target))
+        # A program's own ``RActionImpl`` is told each entry (``Exec``); anything else is
+        # filled a whole column at a time, as RooFit's helpers are (``fill_columns``). The
+        # batch path is asked first, since a RooFit helper may inherit an ``Exec`` it never
+        # uses.
+        told_each_entry = hasattr(target, "Exec") and not hasattr(target, "fill_columns")
+        chosen = actions.Custom if told_each_entry else actions.Book
+        return self._book(chosen(self._node, inputs, target))
 
     def _foreach(self, function: Callable[..., Any], columns: Any, slot: bool) -> None:
         what = "ForeachSlot" if slot else "Foreach"

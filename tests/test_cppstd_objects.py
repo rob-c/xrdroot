@@ -115,3 +115,15 @@ assert objects.pointee(held, 'get') is held
 assert objects.pointee(SimpleNamespace(get=lambda: held), 'get') is held
 assert not {'delete', 'construct_at', 'deref'} & set(objects.__all__)
 """)
+
+
+def test_size_and_equal_answer_as_the_algorithms_do() -> None:
+    from xrdroot.cppstd import objects
+
+    assert objects.size_of([1, 2, 3]) == 3 and objects.size_of("ab") == 2
+    assert objects.equal_ranges([1, 2, 3], 0, None, [1, 2, 3], 0) is True
+    assert objects.equal_ranges([1, 2, 3], 0, 2, [9, 1, 2], 1) is True
+    assert objects.equal_ranges([1, 2, 3], 1, None, [1, 2, 3], 0) is False
+    square = lambda a, b: a * a == b  # noqa: E731 - a C++ predicate in one line
+    assert objects.equal_ranges([1, 2], 0, None, [2, 2], 0, square) is False
+    assert objects.equal_ranges([2, 1], 0, None, [4, 1], 0, square) is True

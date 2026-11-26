@@ -33,6 +33,7 @@ from ...cppstd.objects import accumulate_op as accumulate_op
 from ...cppstd.objects import array as array
 from ...cppstd.objects import convertible as convertible
 from ...cppstd.objects import dynamic_cast as dynamic_cast
+from ...cppstd.objects import equal_ranges as equal_ranges
 from ...cppstd.objects import function_template as function_template
 from ...cppstd.objects import generate_range as generate_range
 from ...cppstd.objects import iota_range as iota_range
@@ -44,6 +45,7 @@ from ...cppstd.objects import replace_range as replace_range
 from ...cppstd.objects import reverse_range as reverse_range
 from ...cppstd.objects import set_attr as set_attr
 from ...cppstd.objects import set_item as set_item
+from ...cppstd.objects import size_of as size_of
 from ...cppstd.objects import sort_range as sort_range
 from ...cppstd.objects import sorted_range as sorted_range
 from ...cppstd.objects import throw as throw
@@ -72,6 +74,8 @@ __all__ = [
     "generate_range",
     "iota_range",
     "accumulate_op",
+    "equal_ranges",
+    "size_of",
     "CppException",
     "throw",
     "deref",

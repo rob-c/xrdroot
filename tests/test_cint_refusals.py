@@ -63,6 +63,11 @@ def test_the_corners_of_the_grammar_are_read(source: str, fragment: str) -> None
             'int v[2] = {1, 2}; std::generate(v, v + 1, f, g);',
             r"std::generate with 4 arguments",
         ),
+        ("double a[2]; auto n = std::size(a, a + 1);", r"std::size with 2 arguments"),
+        (
+            "double a[2], b[2]; auto e = std::equal(a, a + 1);",
+            r"std::equal with 2 arguments",
+        ),
         ("std::string s; s.erase(1, 2, 3);", r"std::string::erase\(\) over a range of iterators"),
         (
             "std::string s; s.insert(1, 2, 3);",

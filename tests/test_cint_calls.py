@@ -20,6 +20,16 @@ def body(source: str) -> str:
     return text
 
 
+def test_std_size_and_equal_are_written_as_the_helpers_that_do_them() -> None:
+    """``std::size`` and ``std::equal`` have no Python of their own, so they are rewritten."""
+    assert "size_of(a)" in body("double a[3] = {1, 2, 3}; int n = (int)std::size(a);")
+    written = body(
+        "double a[3] = {1, 2, 3}; double b[3] = {1, 2, 4};"
+        " bool e = std::equal(a, a + 3, b);"
+    )
+    assert "equal_ranges(a, 0, 3, b, 0)" in written
+
+
 def test_the_standard_headers_limits_are_their_numbers(capsys: pytest.CaptureFixture[str]) -> None:
     """``<climits>`` and ``<cstdint>``'s macros, as LP64 has them."""
     written = (

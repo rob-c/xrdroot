@@ -38,6 +38,8 @@ __all__ = [
     "sorted_range",
     "reverse_range",
     "replace_range",
+    "equal_ranges",
+    "size_of",
     "generate_range",
     "iota_range",
     "accumulate_op",
@@ -362,6 +364,28 @@ def reverse_range(container: Any, start: int, stop: Any) -> None:
     """``std::reverse(begin, end)``, in place."""
     end = len(container) if stop is None else int(stop)
     container[start:end] = list(container[start:end])[::-1]
+
+
+def equal_ranges(
+    first: Any, start: int, stop: Any, other: Any, begin: int,
+    equal: Callable[[Any, Any], bool] | None = None,
+) -> bool:
+    """``std::equal(first1, last1, first2[, pred])``: the two ranges element by element.
+
+    The first range says how many elements there are; the second is read from ``begin`` for
+    that many, as C++ does - `std::equal` never asks where the second range ends.
+    """
+    end = len(first) if stop is None else int(stop)
+    count = end - int(start)
+    left, right = list(first[start:end]), list(other[begin : begin + count])
+    if equal is None:
+        return left == right
+    return all(equal(one, two) for one, two in zip(left, right, strict=False))
+
+
+def size_of(container: Any) -> int:
+    """``std::size(x)``: how many elements a container, an array or a string holds."""
+    return len(container)
 
 
 def generate_range(container: Any, start: int, stop: Any, generate: Callable[[], Any]) -> None:

@@ -494,6 +494,21 @@ class CallEmitter(ExprEmitter):
         extra = "".join(f", {self.value(arg)}" for arg in node.args[2:3])
         return f"sorted_range({container}, {start}, {stop}{extra})", P.POSTFIX
 
+    def _size(self, func: Name, node: Call) -> Out | None:
+        """``std::size(x)``: how many elements ``x`` holds - a container, an array, a string."""
+        if len(node.args) != 1:
+            raise self.refuse(f"std::{func.last} with {len(node.args)} arguments", node)
+        return f"size_of({self.value(node.args[0])})", P.POSTFIX
+
+    def _equal(self, func: Name, node: Call) -> Out | None:
+        """``std::equal(first1, last1, first2[, pred])``: two ranges compared element by element."""
+        if len(node.args) not in (3, 4):
+            raise self.refuse(f"std::{func.last} with {len(node.args)} arguments", node)
+        container, start, stop = self.iterator_range(node.args[0], node.args[1], node)
+        other, begin = self._iterator(node.args[2], node, "first")
+        extra = "".join(f", {self.value(arg)}" for arg in node.args[3:4])
+        return f"equal_ranges({container}, {start}, {stop}, {other}, {begin}{extra})", P.POSTFIX
+
     def _accumulate(self, func: Name, node: Call) -> Out | None:
         """``std::accumulate(first, last, init[, op])``: the sum, or the fold ``op`` makes."""
         if len(node.args) not in (3, 4):
@@ -590,6 +605,8 @@ class CallEmitter(ExprEmitter):
         "stable_sort": _sort,
         "reverse": _sort,
         "replace": _replace,
+        "size": _size,
+        "equal": _equal,
         "accumulate": _accumulate,
         "generate": _generate,
         "iota": _iota,

@@ -94,3 +94,42 @@ def test_a_frame_booked_twice_with_helpers_runs_one_loop_for_both() -> None:
     one = frame.Book(first, {"x"})
     two = frame.Book(second, {"x"})
     assert one.GetValue() == 3.0 and two.GetValue() == 3.0
+
+
+def test_an_object_without_exec_is_filled_a_batch_at_a_time() -> None:
+    """RooFit's helpers take a whole column at once, and are filled that way."""
+
+    class Filler:
+        def __init__(self) -> None:
+            self.rows = 0
+            self.names: set[str] = set()
+
+        def fill_columns(self, columns: dict[str, object]) -> None:
+            self.names |= set(columns)
+            self.rows += len(next(iter(columns.values())))
+
+        def result(self) -> int:
+            return self.rows
+
+    frame = ROOT.RDataFrame(7).Define("x", "rdfentry_ * 1.0")
+    filled = Filler()
+    booked = frame.Book(filled, {"x"})
+    assert booked.GetValue() == 7
+    assert filled.names == {"x"}
+
+
+def test_a_frames_book_fills_a_roofit_dataset_helper() -> None:
+    """ROOT's own ``RooDataSetHelper``/``RooDataHistHelper`` are ``Book``'s sinks.
+
+    The columns are matched to the helper's variables by position, and the booked value is
+    the data object the loop filled.
+    """
+    x = ROOT.RooRealVar("x", "x", 0, 10)
+    y = ROOT.RooRealVar("y", "y", 0, 10)
+    frame = ROOT.RDataFrame(4).Define("x", "rdfentry_ * 1.0").Define("y", "rdfentry_ * 2.0")
+    data = frame.Book(ROOT.RooDataSetHelper("d", "d", ROOT.RooArgSet(x, y)), {"x", "y"}).GetValue()
+    assert data.numEntries() == 4
+    helper = ROOT.RooDataHistHelper("h", "h", ROOT.RooArgSet(x, y))
+    helper.Fill(1.0, 2.0)  # a macro may fill one entry itself
+    hist = frame.Book(helper, {"x", "y"}).GetValue()
+    assert hist.sumEntries() == 5.0  # a binned helper counts its bins, not its events

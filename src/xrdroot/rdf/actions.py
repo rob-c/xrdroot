@@ -154,9 +154,6 @@ class Custom(Action):
             self.helper.Exec(slot, *[column[row] for column in columns])
         return None
 
-    def add(self, acc: Any, part: Any) -> Any:
-        return None
-
     def finish(self, acc: Any, flow: dict[int, tuple[int, int]]) -> Any:
         self.helper.Finalize()
         # A helper's result is a ``shared_ptr<T>``, which a translated member holds as a
