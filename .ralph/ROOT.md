@@ -5286,3 +5286,64 @@ already has the layouts. `W0-256` is the small library addition `SMatrix::Invers
 The queue's shape after this round: four writer tests, two smatrix tests, `W0-233`'s
 `datamodelevolution` chain, `W0-250`'s `__PRETTY_FUNCTION__`, `W0-251`'s `xdist` arc, `W0-253`'s
 stale refs (a decision, not a fix).
+
+## Round 125's close
+
+**What landed.** An integral constant's name in a template argument is its number. C++ folds it
+before anything is instantiated, so `SMatrix<double, N, N>` with `constexpr int N = 5` is
+`SMatrix<double, 5, 5>`; three of the four spellings were read as *names* instead. `#define N 5`
+already worked, because the preprocessor had replaced it. `constexpr int N = 5;` and
+`const int N = 5;` emitted an undefined Python name. `enum { N = 5 };` emitted `'N'` — the parser
+lists an enumerator's name as a *type*, so `_typed_arg` won and the emitter spelled a string — and
+`roottest/root/math/smatrix/testInversion` died with `TypeError: "SMatrix<double,Name(...)`.
+
+`Cursor.integer_constants` is the table. `parse_stmt.declarators` and `parse_decl._variables` both
+register a `const`/`constexpr` declaration whose initialiser is an integer `Literal` — **both paths,
+because a statement's declaration and a file-scope one are read by different functions**, which the
+first shape got wrong. `parse_decl._enumerators` registers each enumerator through
+`_enumerator_values`: a literal is its number, one without a value steps from the one before, and an
+expression leaves itself and the ones after it unnamed. `parse_types._template_arg` asks the table
+**first** — before `_typed_arg`, because that reading wins otherwise.
+
+The second, unrelated piece: `TClonesArray::New(index)` is ROOT's own spelling of
+`ConstructedAt(index)` — `TClonesArray::New` *is* `ConstructedAt` unless `fgAlwaysReorder` was asked
+for, which no ROOT test does.
+
+**The crash the round shipped and the whole run caught.** The first shape read
+`value = None if written is not None else value + 1`, so an enumerator written as an *expression*
+(`kB = kSomeOther`) left `None`, the next implicit one did `None + 1`, and
+`meta/autoloading/headerParsingOnDemand/scopedEnums-libgen-build` went **PASS -> UNSUPPORTED** —
+a lost PASS that only a whole run of the kind shows, exactly what the run is for. `_enumerator_values`
+keeps the `None` state explicit and the area was re-measured to PASS before the round closed.
+
+**The measurement.** A whole `roottest` run at `440e03d1` + the round's changes (`…/roottest2`,
+`--jobs 5`, load average 13-39): **1363 PASS / 450 FAIL / 128 DIFF / 221 UNSUPPORTED / 10 SKIP /
+1 TIMEOUT** of 2173. Against round 124's run the moves are: `io/references/execWriteRefArrayCompress`
+**FAIL -> PASS** (the round's one gain, from `TClonesArray::New`), `treeformula/references/clones`
+FAIL -> DIFF (a smaller diff), `math/smatrix/Kalman` TIMEOUT -> UNSUPPORTED (the load), and
+`python/cling/api` and `python/tpython/execscript` UNSUPPORTED -> FAIL — **another session's**
+TPython/`std::any`/`std::filesystem` work between the two runs lifting their refusals, not this
+round's. `ratchet` names no lost PASS. `math/smatrix/Inversion` moved off the `Name(...)` TypeError
+and onto `SMatrix<double,5,5,MatRepSym<double,5>>` refused by the pythonization: the constants are
+right and the wall is the library's, `W0-256`.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 048 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126749 0 31832 0 100%`**. ruff
+(after one docstring rewrap), mypy 1 062 files, maintainability 33 568 functions in 1 831 files,
+components 1 062 / 0 undeclared, `mkdocs --strict` exit 0. **+3 unit tests**: the constexpr, the
+const, a plain variable (not folded), both enumerator shapes, and `New` answering `ConstructedAt`.
+
+**A gotcha, for the next reader**:
+`docs/gotchas/a-template-argument-that-names-an-integral-constant-is-its.md` — the four spellings in
+one table, the two declaration paths, and the `None` that must not reach the next enumerator.
+
+**What the run cost and what the queue says.** This round measured six candidate targets before
+committing to one, and every big one is a chain: `TDataMember.GetDataType` blocks **10** tests but
+needs byte offsets *and* a write through `(char*)obj + offset` (`byte_offset` refuses any non-zero
+offset today); `TXMLEngine`'s three tests need a whole XML DOM; `io/cpp11Containers`' four need an
+STL container written as a file key (`W0-255`); `io/references`' last two need `TTree::Write()` of a
+tree read from a file (`W0-258`); the `datamodelevolution` `00` family differs by two streamed values
+and `TObjArray::ls`'s `size=` — the array's *room*, which ROOT prints and this kit does not
+(`W0-259`). The flat bucket table is itself the finding: the largest single cause in the kind now
+blocks **1-3** tests except the enumerated chains, so the next rounds should take one chain each and
+say which test it buys.

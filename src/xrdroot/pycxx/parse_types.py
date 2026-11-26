@@ -186,9 +186,9 @@ class TypeParser(Cursor):
         return args
 
     def _template_arg(self) -> Any:
-        """One template argument: a type, or a value - and a name the program declared an integral
-        constant *is* the number it stands for, ``SMatrix<double, N, N>`` with ``constexpr int N = 5``
-        as much as an enumerator, which C++ folds here."""
+        """One template argument: a type, or a value - and a name the program declared an
+        integral constant *is* the number it stands for: ``SMatrix<double, N, N>`` with
+        ``constexpr int N = 5`` as much as an enumerator, which C++ folds here."""
         if self.peek().kind == "id" and self.peek(1).is_(",", ">", ">>"):
             known = self.integer_constants.get(self.peek().text)
             if known is not None:
