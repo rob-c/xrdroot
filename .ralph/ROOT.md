@@ -5393,3 +5393,46 @@ every other is 2-5 with a chain behind it. Four walls were priced and recorded i
 `Snapshot` of a class column (5), `TBufferFile` through a custom `Streamer(TBuffer&)` (3), and
 `TGeoPatternFinder` (1). A round that prices four walls and lands three passes is worth more than one
 that starts four chains.
+
+## Round 127's close
+
+**No code, and a row corrected from a real run.** The `pyunittest` kind was measured **whole** for
+the first time since round 123 (`…/ralph-round-202611261618/pyuni`, `--jobs 4`, at `feedae90`, load
+average 34 - statuses quotable, timings not, `W0-103`): **96 PASS / 30 FAIL / 2 UNSUPPORTED / 1 SKIP**
+of 129. `TODO.md`'s own row said **88 / 38 / 2 / 1**, so it was **eight stale**: another session's
+TPython, `std::any` and `std::filesystem` work had landed those gains and no whole run had recorded
+them. That is the same failure mode round 123 found in the roottest baseline, in a different column -
+a "now" figure that is only as good as the last whole run of its kind.
+
+**The triage document is finished, not a queue.** `docs/discoveries/the-42-non-passing-pyunittest-
+programs-by-first-failing-case.md` called eight programs *cheap, one behaviour each*. **All eight
+pass now**: `test_tpython`, `pyroot_array_numpy_views`, `rbdt_xgboost`, `pyroot_pyz_stl_set`,
+`dataframe_snapshot_py`, `MetaClingTests` and `root_no_implicit_cppyy` outright, `pyroot_numbadeclare`
+apart from one case. What is left in the kind is 17 `cppyy/*` programs - each a cppyy semantic
+(templates, cross-inheritance, operators, overloads, a class's own `operator new`), one feature each -
+and eleven named ones.
+
+**Three priced and not chased**, which is the round's other product:
+
+- **`Snapshot` of a class column** (5 roottest tests, `W0-261`): `wbranch.DeclaredWhole` already
+  exists - a described class, its checksum and version, streaming whole objects - so what is missing
+  is the *object-column path* through `Snapshot._declare` and `extend`, not a serialiser. That is a
+  real piece of work with the passing snapshot tests at risk; not a half-start.
+- **`dataframe_datasetspec`** (1 program): needs `REntryRange` **and** `DefinePerSample` **and**
+  `rdfsampleinfo_` - `RDatasetSpec`'s range machinery (`WithGlobalRange`, `frame()`'s window) is
+  already here, the metadata column is not.
+- **`pyroot_numbadeclare`**'s one case (1 program): ROOT raises a `TypeError` because cling cannot
+  infer a Python callable's return type; this kit evaluates the callable and gets an answer. **Making
+  it raise would be refusing a capability we have**, which is not what the suite is for. The honest
+  row is "ROOT's limit, this kit's advantage", recorded, not emulated.
+
+**The gate, seven commands, each read for its own exit status.** The round changes `TODO.md` and this
+file only - no code and no test - so the counts are the pushed tip's. Part 1 **14 103 passed, 0
+failed** (99.75 % by design, `W0-112`); part 2 44 passed and `coverage report` **`TOTAL 126925 0 31888 0 100%`**.
+ruff, mypy, maintainability, components, `mkdocs --strict` - each exit 0.
+
+**What this says about the next round.** The queue's two biggest roottest causes are `W0-233`'s
+byte-offset chain (10 tests) and `W0-261`'s class-column `Snapshot` (5); the pyunittest kind's
+cheapest remaining work is plumbing (`dataframe_merge_results`' `RMergeableValue` family over results
+this kit already computes). A whole run of a kind before trusting its column is now twice-proven
+advice.
