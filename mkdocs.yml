@@ -27,9 +27,12 @@ theme:
         icon: material/weather-sunny
         name: Light mode
 
-# Superseded instructions and plans, kept in the repository as a record only.
+# Superseded instructions and plans, kept in the repository as a record only; and the
+# docs folder's own README, which the knowledge tooling rewrites and which would
+# otherwise collide with index.md.
 exclude_docs: |
   history/
+  README.md
 
 nav:
   - Home: index.md
