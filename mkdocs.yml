@@ -50,6 +50,7 @@ nav:
       - "An enumerator reaches Python signed": discoveries/an-enumerator-reaches-python-as-a-signed-64-bit-int-even-from.md
       - "The 42 non-passing pyunittest programs": discoveries/the-42-non-passing-pyunittest-programs-by-first-failing-case.md
       - "A function-scope alias is one alias by spelling": gotchas/a-function-scope-alias-is-one-alias-by-spelling-not-by-ctype.md
+      - "A function's using ends with its block": gotchas/a-functions-using-ends-with-its-block-so-the-alias-table-is-per.md
       - "Working the gtest/pyunittest/other goal: one screen, one feature": instructions/working-the-gtest-pyunittest-other-goal-one-screen-one-feature.md
       - "Goal baseline: gtest, pyunittest, other": discoveries/goal-baseline-gtest-pyunittest-other-at-228-588-none-out-of.md
       - A whole-suite measurement: discoveries/a-whole-suite-measurement-at-e6ea6664-55-7-of-tests-46-7-of.md
