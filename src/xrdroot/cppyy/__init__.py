@@ -26,6 +26,15 @@ from typing import Any
 from . import ll, py
 from .pointers import addressof, bind_object, nullptr
 
+
+def binding() -> Any:
+    """This module, for the namespace that must hand ``import cppyy`` what ROOT's interpreter
+    brings in - declared as a provider, since a lower component may not import this one."""
+    import sys
+
+    return sys.modules[__name__]
+
+
 __all__ = [
     "gbl",
     "cppdef",

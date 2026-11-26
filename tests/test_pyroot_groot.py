@@ -445,3 +445,33 @@ def test_the_memory_policy_is_reached_by_root_s_name_as_well(monkeypatch):
     monkeypatch.setattr(cxx_objects, "HEURISTIC", False)
     with pytest.warns(FutureWarning):
         assert ROOT.SetHeuristicMemoryPolicy(False) is False
+
+
+def test_the_interpreter_is_gathered_when_a_script_first_touches_it() -> None:
+    """ROOT initialises its C++ side - and cppyy with it - on the first touch of
+    ``gInterpreter``, not on ``import ROOT``; a name read afterwards is the same interpreter."""
+    import sys
+
+    interpreter = ROOT.gInterpreter
+    assert type(interpreter).__name__ == "TInterpreter"
+    assert ROOT.gInterpreter is interpreter
+    assert "cppyy" in sys.modules and sys.modules["cppyy"].__name__ == "xrdroot.cppyy"
+
+
+def test_a_kit_without_the_binding_still_answers_with_its_interpreter(monkeypatch) -> None:
+    """The namespace asks its registry for cppyy; a kit that has no such provider still gets an
+    interpreter, and nothing is registered that is not there."""
+    import sys
+
+    from xrdroot import plugins
+
+    monkeypatch.setattr(plugins, "lookup", lambda point, key="default": None)
+    monkeypatch.delitem(sys.modules, "gInterpreter-probe", raising=False)
+    import importlib
+
+    import xrdroot.pyroot as namespace
+
+    monkeypatch.setitem(namespace.__dict__, "gInterpreter", None)  # so __getattr__ runs
+    monkeypatch.delitem(namespace.__dict__, "gInterpreter")
+    monkeypatch.delitem(sys.modules, "cppyy", raising=False)
+    assert type(importlib.import_module("xrdroot.pyroot").gInterpreter).__name__ == "TInterpreter"

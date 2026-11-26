@@ -125,6 +125,28 @@ def _gather_later() -> None:
         _gathered_all = True
         _gather(modules=LATER)
 
+#: The names a script's first touch of the interpreter brings in: ROOT initialises its C++ side
+#: then, and cppyy with it, which is why ``import ROOT`` alone does not.
+_LAZY = {"gInterpreter"}
+globals().pop("gInterpreter", None)
+
+
+def _interpreter() -> _typing.Any:
+    """``ROOT.gInterpreter``: the interpreter, and - as ROOT does on first use - cppyy loaded
+    with it, under the name a script's ``sys.modules`` check looks for."""
+    import sys
+
+    from .. import plugins
+
+    offered = plugins.lookup("root.cppyy")
+    if offered is not None:  # a kit without the binding still has the interpreter
+        sys.modules.setdefault("cppyy", offered())
+    from .core.troot import gInterpreter
+
+    globals()["gInterpreter"] = gInterpreter  # bound now, as ROOT initialises it once
+    return gInterpreter
+
+
 #: ``ROOT.__version__``: the release this namespace follows, as ``gROOT.GetVersion()`` has it.
 __version__: str = globals()["gROOT"].GetVersion()
 
@@ -133,6 +155,8 @@ def __getattr__(name: str) -> _typing.Any:
     """A name one of the modules the namespace has not gathered yet exports; an object
     ``gROOT`` finds by that name, as PyROOT falls back to - ``ROOT.h1``, a geometry's
     ``ROOT.YK01`` - or else a name ROOT has and this namespace does not yet."""
+    if name in _LAZY:
+        return _interpreter()
     if name == "__all__":
         _gather_later()
         globals()["__all__"] = _EXPORTED  # asked for once, and an attribute from now on

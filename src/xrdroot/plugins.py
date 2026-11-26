@@ -213,6 +213,8 @@ PROVIDERS: dict[tuple[str, str], tuple[str, str, str]] = {
     ('tmva.result_roc_graph', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'result_graph'),
     ('tmva.factory_roc_graph', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'factory_graph'),
     ('tmva.roc_canvas', 'default'): ('pyroot', 'xrdroot.pyroot.tmvaplot', 'roc_canvas'),
+    # The namespace brings in this binding on the first touch of the interpreter, as ROOT does.
+    ('root.cppyy', 'default'): ('cppyy', 'xrdroot.cppyy', 'binding'),
     ('interpreter.process_line', 'default'): ('pycint', 'xrdroot.pycint.execute', 'process_line'),
     ('interpreter.process_line_fast', 'default'): (
         'pycint', 'xrdroot.pycint.execute', 'process_line_fast',
