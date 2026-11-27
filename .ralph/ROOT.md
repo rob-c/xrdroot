@@ -6092,3 +6092,42 @@ ask), and a class whose base is not a container.
 **What leads the queue now**: `W0-253`'s eleven stale refs (a decision, not a fix), `W0-271`'s six
 (the pair-vector branch), and a fresh whole-kind ranking to find the next wide cause.
 
+## Round 142's close
+
+**The `hist` component is tested in isolation over fifteen files and 418 tests, not two and eleven - and
+the component's own coverage is now a measured number instead of a guess.**
+
+The isolation scope in `pyproject.toml` declared **two** test files for a component owning **21
+modules**. The contract's checker is the authority on what *can* be there: run over every
+`tests/test_*.py`, `_check_source` admits **34** files into a `hist`-only scope - fifteen are hist's, the
+rest are core's or cppstd's - and those fifteen are the scope now. `python tools/components.py isolate
+hist --tests hist` goes from **11 passed** to **418 passed**.
+
+**The round's real find is a module-resolution leak.** `Jagged` is **core's** class
+(`src/xrdroot/jagged.py`), but the top-level export reached it through `xrdroot.tree` (io), so
+`from xrdroot import Jagged` dragged the whole io tree in - and four scope files died at import with
+*Component isolation blocked xrdroot.file*. The export now names `jagged`, the tree keeps re-exporting
+the same class, and a unit test pins the module the export loads. **A class the top level re-exports
+should be reached from the module that defines it**; a re-export through a higher component is a leak
+the component graph is meant to prevent.
+
+**What stays out, by design.** Files that call `open_root`/`create` are io+hist integration tests: a
+component test must not read a fixture file. That is five of the twenty.
+
+**The next target is measured, not guessed**: running the isolated scope with coverage gives **43
+hist-owned modules and 2 003 unexercised statements** - entirely uncovered `formula.select` (186),
+`function.ndtri` (35), `sparse` (102), `scatterplot` (101), `fit.fraction` (106),
+`formula.together` (25), and low `formula.objects` (15 %), `graphmath` (15 %),
+`function.distributions` (21 %), `slicing` (43 %), `moments` (47 %). "Ultra completed" is that list.
+
+**A tool limitation found and recorded (`W0-273`)**: the checker admits a test helper only as a
+*scope-named* module (`component_tests.*`), so `tests/support.py` cannot be declared at all and
+`test_hist_fill.py` - which only needs a helper - stays out.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 217 passed, 0 failed**;
+part 2 44 passed and `coverage report` **`TOTAL 127776 0 32100 0 100%`**; ruff, mypy, maintainability,
+components (**0 undeclared**), `mkdocs --strict` each exit 0. **A scripted slice of `pyproject.toml`
+deleted 55 lines** (the `module_aliases`/`private_imports` tables) before the commit - `git diff --stat`
+and a `components check` that named the two imports caught it, and the file was restored from `HEAD`
+and the scope re-applied by exact text.
+
