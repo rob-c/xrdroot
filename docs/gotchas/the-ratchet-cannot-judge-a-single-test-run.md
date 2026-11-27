@@ -34,6 +34,13 @@ Banking one program's PASS needs two separate things, and they are not interchan
 
 So: bank the row when the single program passes, then confirm with the whole kind before believing the count. Never rewrite a baseline from a loaded run, and never quote a `--only` run's ratchet output as a regression figure.
 
+## Where the baseline lives
+
+`tools/rootsuite/baseline.json` covers **all five kinds** (2820 rows, 1619 PASS - see
+`docs/architecture/the-baseline-covers-all-five-kinds-read-it-before-claiming.md`), so a
+`--kind pyunittest` run is judged the same way and will also report the gtest rows MISSING.
+Compare like with like: one kind's run against its own rows.
+
 ## Why it matters
 
 A partial run's ratchet output looks exactly like a catastrophic regression, and it arrives right when you are trying to prove a change was safe. Reading it as one costs a debugging round; reading it as "fine, no regressions" hides the truth that the check was never performed.

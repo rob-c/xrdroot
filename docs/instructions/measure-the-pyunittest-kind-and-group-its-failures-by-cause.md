@@ -6,7 +6,7 @@ tags: [pyunittest, rootsuite, measurement, baseline, cppyy]
 created: "2026-11-27T00:01:09.469Z"
 updated: "2026-11-27T00:01:09.469Z"
 ---
-The `pyunittest` kind had never been measured in this loop; it now reads **96 PASS / 30 FAIL / 2 UNSUPPORTED / 1 SKIP of 129** in 129 s at `--jobs 4`, and its 30 failures fall into three causes rather than thirty. Measure a kind before touching code in it, and bank its PASSes as a baseline, because `tools/rootsuite/baseline.json` holds gtest rows only — a regression in pyunittest would otherwise go unseen.
+The `pyunittest` kind had never been measured in this loop; it now reads **96 PASS / 30 FAIL / 2 UNSUPPORTED / 1 SKIP of 129** in 129 s at `--jobs 4`, and its 30 failures fall into three causes rather than thirty. `tools/rootsuite/baseline.json` already carries rows for every kind (2820 of them), so the run was ratcheted against it: **0 regressions, and eight rows had gone stale FAIL -> PASS** — work from earlier sessions that was never banked.
 
 ```bash
 python -m tools.rootsuite run --root "$HOME/src/.xrdroot-scratch/rootsrc" --kind pyunittest \
@@ -25,7 +25,7 @@ jq -r '.tests[] | select(.status!="PASS") | "\(.status) \(.id)"' "$OUT/results.j
 
 ## What to do
 
-Pick by cause, not by program. The eighteen cppyy modules are the biggest single cause and will take several rounds; the pythonization names are individually smaller and share `AsNumpy`. Bank the 96 PASSes first, so the work has a regression guard.
+Pick by cause, not by program. The eighteen cppyy modules are the biggest single cause and will take several rounds; the pythonization names are individually smaller and share `AsNumpy`. Bank what passes first — `tools/rootsuite/baseline.json` covers every kind (2820 rows), so this run could be compared with it directly and eight rows had gone stale the *good* way: `pyroot_array_numpy_views`, `pyroot_pyz_stl_set`, `pyroot_pyz_stl_vector`, `pyroot_root_no_implicit_cppyy`, `tpython/test_tpython`, `core/metacling/MetaClingTests`, `tmva/rbdt_xgboost`, `dataframe_snapshot_py` were FAIL and stand at PASS, +8 banked.
 
 ```mermaid
 flowchart TD
