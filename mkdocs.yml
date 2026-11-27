@@ -75,6 +75,7 @@ nav:
       - "A conflicted file in the ledger passes every gate": gotchas/a-conflicted-file-in-the-ledger-passes-every-gate-md.md
       - "A char* that holds an address is decided by its initialiser": gotchas/a-char-that-holds-an-address-is-decided-by-its-initialiser-md.md
       - "A construction recognised in a declaration is not recognised in an assignment": gotchas/a-construction-is-recognised-on-the-declaration-path-not-the.md
+      - "A proxy's element is a cell, and its New is the container": gotchas/a-proxys-element-is-a-cell-and-its-new-is-the-container-md.md
       - "A function's using ends with its block": gotchas/a-functions-using-ends-with-its-block-so-the-alias-table-is-per.md
       - "Working the gtest/pyunittest/other goal: one screen, one feature": instructions/working-the-gtest-pyunittest-other-goal-one-screen-one-feature.md
       - "Goal baseline: gtest, pyunittest, other": discoveries/goal-baseline-gtest-pyunittest-other-at-228-588-none-out-of.md
