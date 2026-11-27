@@ -2587,7 +2587,8 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
             (
                 "TStreamerBasicType",
                 "fUseBinsNEvents",
-                "If the algorithm may use automatic (relaxed) binning this is the minimum "
+                "If the algorithm is allowed to use automatic (relaxed) binning this is the "
+                "minimum "
                 "number of events to do so",
                 13,
                 4,
@@ -2661,7 +2662,8 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
             (
                 "TStreamerBasicType",
                 "fAdaptiveBandwidthFactor",
-                "Geometric mean of the kernel density estimate used for adaptive iteration",
+                "Geometric mean of the kernel density estimation from the data for adaptive "
+                "iteration",
                 8,
                 8,
                 0,
@@ -2763,7 +2765,8 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
             (
                 "TStreamerBasicType",
                 "fSumErrorsMode",
-                "How y errors are summed: kOnlyFirst, kSquareSum, kSum or kSum2",
+                "How y errors are summed: kOnlyFirst = Only First; kSquareSum = Squared Sum; "
+                "kSum =",
                 3,
                 4,
                 0,
@@ -3147,7 +3150,8 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
             (
                 "TStreamerBasicType",
                 "fAutoSave",
-                "Autosave tree after fAutoSave entries or -fAutoSave compressed bytes",
+                "Autosave tree when fAutoSave entries written or -fAutoSave (compressed) "
+                "bytes produced",
                 16,
                 8,
                 0,

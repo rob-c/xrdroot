@@ -49,6 +49,18 @@ class TString:
         held = "" if text is None else _text(text)
         self._s = held[: int(length)] if length is not None else held
 
+    # -- the ROOT object it is ----------------------------------------------------
+
+    def ClassName(self) -> str:
+        """``TString``, which ROOT asks of anything it writes."""
+        return "TString"
+
+    def GetName(self) -> str:
+        """A ``TString`` holds no name of its own: ROOT answers nothing."""
+        return ""
+
+    GetTitle = GetName
+
     # -- as Python's string ------------------------------------------------------
 
     def __str__(self) -> str:

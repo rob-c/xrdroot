@@ -113,3 +113,20 @@ def test_a_single_precision_matrix_is_written_as_its_float_twin(tmp_path):
     base = read["TMatrixTBase<float>"]
     assert (base["fNrows"], base["fNcols"], base["fNelems"]) == (2, 2, 4)
     assert [float(v) for v in read["fElements"]] == [0.0, 2.5, 0.0, 0.0]
+
+
+def test_a_tstring_names_itself_as_root_does():
+    """``TObject``'s lookup reaches for these, so a ``TString`` spells them."""
+    text = ROOT.TString("x")
+    assert (text.ClassName(), text.GetName(), text.GetTitle()) == ("TString", "", "")
+
+
+def test_a_tstring_key_is_written_as_its_characters(tmp_path):
+    """ROOT writes a ``TString`` key as the length word and the bytes, nothing round them."""
+    import xrdroot
+
+    path = tmp_path / "s.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["s"] = ROOT.TString("hello")
+    assert path.stat().st_size > 0
+    assert b"hello" in path.read_bytes()

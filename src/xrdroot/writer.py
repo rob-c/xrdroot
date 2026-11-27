@@ -1271,6 +1271,8 @@ def _shaped_payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
     An array and a vector are the two the writer carries a layout for without a ``pyroot``
     object behind them, so they are recognised by their names and their accessors.
     """
+    if _is_tstring(obj):
+        return _tstring_payload(obj)
     if _is_tarray(obj):
         return _tarray_payload(obj)
     if _is_vector(obj):
@@ -1334,6 +1336,11 @@ def _matrix_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
     used: dict[str, None] = {classname: None}
     _record(buf, classname, row, used)
     return classname, bytes(buf.data), tuple(used)
+
+
+def _is_tstring(obj: Any) -> bool:
+    """Whether this is ROOT's ``TString``, which the writer puts in as text."""
+    return _tarray_name(obj) == "TString"
 
 
 def _is_vector(obj: Any) -> bool:
@@ -1412,6 +1419,17 @@ def _string_payload(value: str) -> tuple[str, bytes, tuple[str, ...]]:
     buf = WBuffer()
     buf.string(value)
     return "string", bytes(buf.data), ()
+
+
+def _tstring_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """A ``TString`` key: ROOT writes just the characters - no version round them.
+
+    Read from a file ROOT wrote: the key's payload is the length word and the bytes, which is
+    the same shape a plain ``str`` key has, under a class the file need not describe.
+    """
+    buf = WBuffer()
+    buf.string(str(value))
+    return "TString", bytes(buf.data), ()
 
 
 def _array_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
