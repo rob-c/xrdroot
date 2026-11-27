@@ -221,3 +221,15 @@ def test_a_tlatex_is_written_through_its_pyroot_object_too(tmp_path):
     with xrdroot.create(str(path)) as handle:
         handle["t"] = ROOT.TLatex(0.0, 0.0, "x")
     assert path.stat().st_size > 0
+
+
+def test_an_empty_tobjarray_is_written_and_read_back_with_no_entries(tmp_path):
+    """A collection comes back as its entries, so an empty one is a list of nothing."""
+    import xrdroot
+
+    path = tmp_path / "oa.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["a"] = ROOT.TObjArray()
+    assert path.stat().st_size > 0
+    with xrdroot.open_root(str(path)) as handle:
+        assert list(handle["a"]) == []

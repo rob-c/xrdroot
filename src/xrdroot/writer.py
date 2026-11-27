@@ -141,7 +141,7 @@ ARRAY_CLASSES = {
 
 #: The lists this writer will write - empty, because what a list holds could
 #: be anything at all, and only nothing is nothing in every layout.
-LISTS = ("TList", "THashList")
+LISTS = ("TList", "THashList", "TObjArray")
 
 #: Members the layouts this writer carries have and an object read from an
 #: older file lacks, with what ROOT gives a freshly made object: a histogram
@@ -486,6 +486,9 @@ def _list(
     buf.tobject(bits)
     buf.string(name)
     buf.i32(len(held))
+    if classname == "TObjArray":  #: ``TObjArray`` keeps where its entries start and end
+        buf.i32(0)
+        buf.i32(len(held) - 1)
     for entry in held:
         _listed(buf, entry, used)
         buf.string("")
@@ -1293,6 +1296,8 @@ def _drawing_shaped(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
         return _colour_payload(obj)
     if _is_graph2d(obj):
         return _graph2d_payload(obj)
+    if _is_collection(obj):
+        return _collection_payload(obj)
     if _is_matrix(obj):
         return _matrix_payload(obj)
     if _is_random(obj):
@@ -1321,6 +1326,24 @@ def _random_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
     used: dict[str, None] = {"TRandom3": None}
     _record(buf, "TRandom3", row, used)
     return "TRandom3", bytes(buf.data), tuple(used)
+
+
+def _is_collection(obj: Any) -> bool:
+    """Whether this is ROOT's ``TObjArray``, which keeps entries where others keep members."""
+    return _tarray_name(obj) in ("TObjArray", "ObjArray") and getattr(obj, "members", None) is None
+
+
+def _collection_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """A ``TObjArray``: its entries, written by the list writer its layout is.
+
+    Its engine hands back the entries rather than a dict of fields, so the row is built here:
+    the writer's list shape already writes the collection's name and size, and this adds the
+    ``fLowerBound`` and ``fLast`` a ``TObjArray`` keeps before its entries.
+    """
+    buf = WBuffer()
+    used: dict[str, None] = {"TObjArray": None}
+    _list(buf, "TObjArray", list(value), used, name=str(getattr(value, "fName", "") or ""))
+    return "TObjArray", bytes(buf.data), tuple(used)
 
 
 def _is_matrix(obj: Any) -> bool:
