@@ -5885,3 +5885,14 @@ walked one wall further - `Generator.h:242`, `:247`, `Dumper.h:97`, `:337`, `tes
 `:123`. The remaining work is named: `At` as an address (with its tests' permission), and a branch of
 a `vector<pair<...>>`.
 
+### Round 136's gate, corrected
+
+The close above said *"the gate is round 135's, the tree being byte-identical"*. **That was wrong**: round
+135 closed at `f55bfb45`, another session landed `d725f5e4` on top, and round 136 opened there - so the
+tree was not byte-identical and round 135's figure said nothing about it.
+
+The gate was run at this round's own tip (`2d43dd67`, in `…/verify`): part 1 **14 187 passed, 0 failed**
+(99.75 % by design), part 2 44 passed, `coverage report` **`TOTAL 127519 0 32038 0 100%`**. The ledger
+row now quotes that figure instead. **A round's gate must be run at the round's own tree** - "the tree
+did not change" is a claim about a sha, and the sha had changed.
+
