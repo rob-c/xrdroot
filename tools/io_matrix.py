@@ -45,7 +45,9 @@ try:
     if mode == "write":
         obj = getattr(ROOT, name)()
         handle = ROOT.TFile.Open(path, "RECREATE")
-        obj.Write("obj")
+        #: Written through the file itself: ``obj.Write`` goes to ``gDirectory``, which under
+        #: PyROOT is not the file just opened, and the key never lands anywhere.
+        handle.WriteObject(obj, "obj")
         handle.Close()
     else:
         handle = ROOT.TFile.Open(path, "READ")
