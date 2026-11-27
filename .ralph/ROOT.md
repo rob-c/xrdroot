@@ -5715,3 +5715,21 @@ maintainability, components and `mkdocs --strict` each exit 0, at a load average
 **+1 unit test**: the assignment form emits `stream_rest(in_)` and no `istreambuf_iterator` at all,
 the local being renamed for Python's keyword.
 
+### Round 133's CI, recorded rather than assumed
+
+Every run containing round 133's commits was **cancelled**, not failed: another session pushed at
+23:59, 00:01 and 00:07, and the workflow's concurrency group cancels the run in flight. The
+annotation on the four `pytest` steps of run 45914282194 is literally *"The operation was
+canceled."*, so those `X`s are cancellation, not a test result.
+
+The newest tip that contains the round (`556d230b`) did show two red steps **before** being
+cancelled - `maintainability burn-down (must reach zero)` and `pure C++ component tests` - and both
+of those pass here at the round's own commit: `python tools/maintainability.py check` exits 0, and
+`python tools/components.py isolate cppstd --tests cppstd` reports **133 passed**. They are another
+session's commits' business (`556d230b` is a `tests:` commit landing on top), and the next round
+should confirm them green in a quiet window rather than assume either way.
+
+What can be stated for round 133: its own gate is green locally at `7fee362d` - part 1
+**14 173 passed, 0 failed**, part 2 44, `TOTAL 127431 0 32014 0 100%` - and both component scopes
+the CI runs failed on are green on this machine at the same commit.
+
