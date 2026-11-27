@@ -729,3 +729,39 @@ def test_an_obj_strings_string_is_a_tstring_that_adds_and_answers_data():
     relies on: ``(osBranch->String() + "*").Data()`` is the branch-status wildcard."""
     text = ROOT.TObjString("r1")
     assert (text.String() + "*").Data() == "r1*"
+
+
+def test_a_proxy_allocates_cells_and_a_guard_points_it_at_one_collection() -> None:
+    """ROOT fills a collection of a basic type by writing through the address ``At`` gives, inside
+    a ``TVirtualCollectionProxy::TPushPop`` - roottest's generator does both - so ``Allocate``
+    leaves a cell per element and the guard is what makes the proxy see that collection while it
+    lives.
+    """
+    import xrdroot.pyroot as ROOT
+
+    proxy = ROOT.TVirtualCollectionProxy(ROOT.TClass("vector<int>"))
+    made: list[int] = []
+    with_proxy = ROOT.TVirtualCollectionProxy.TPushPop(proxy, made)
+    proxy.Allocate(3, False)
+    assert proxy.Size() == 3
+    for index in range(proxy.Size()):
+        proxy.At(index)[0] = index + 1
+    with_proxy._destruct()
+    assert [cell[0] for cell in made] == [1, 2, 3]
+    assert proxy.Size() == 0  # the guard restored what the proxy held, which is nothing
+    with_proxy._destruct()  # a second end is nothing: the guard has already restored it
+    assert proxy.Size() == 0
+    # a proxy holding nothing allocates nothing, and the guard of a null collection pushes no scope
+    proxy.Allocate(2, True)
+    assert proxy.Size() == 0
+    nothing = ROOT.TVirtualCollectionProxy.TPushPop(proxy, None)
+    nothing._destruct()
+    assert proxy.Size() == 0
+    # a class's proxy makes its own objects - ROOT hands back the objects a collection holds
+    named = ROOT.TVirtualCollectionProxy(ROOT.TClass("vector<TNamed>"))
+    objects: list[object] = []
+    guard = ROOT.TVirtualCollectionProxy.TPushPop(named, objects)
+    named.Allocate(2, False)
+    guard._destruct()
+    assert [type(one).__name__ for one in objects] == ["TNamed", "TNamed"]
+

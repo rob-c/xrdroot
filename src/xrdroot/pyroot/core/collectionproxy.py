@@ -44,6 +44,9 @@ class TVirtualCollectionProxy(TObject):
 
     #: How many bytes an iterator's arena holds, which a derived proxy checks its own against.
     fgIteratorArenaSize = 16
+    #: ``TPushPop``: ROOT's guard that points a proxy at one collection for a block, defined below
+    #: the class because it names the proxy as its argument.
+    TPushPop: Any
     kIsInitialized, kIsAssociative, kIsEmulated, kNeedDelete, kCustomAlloc = 1, 2, 4, 8, 16
 
     def __init__(self, cl: Any = None) -> None:
@@ -125,9 +128,60 @@ class TVirtualCollectionProxy(TObject):
         items = self._items()
         return items[index] if 0 <= index < len(items) else None
 
+    def Allocate(self, n: Any, force: bool = False) -> None:
+        """``Allocate``: room for ``n`` elements of what the container holds, which ``At`` answers
+        afterwards.
+
+        A basic type gets a :class:`~xrdroot.cppstd.cells.Cell` per element, because ROOT fills such
+        a collection by writing through the address ``At`` gives - ``*((int *)proxy->At(i)) = v`` in
+        roottest's generator - and a cell is what Python has to write a number through. A class gets
+        the objects the proxy's own class makes.
+        """
+        del force  # ROOT's flag asks for the arena's memory to be grown; a Python list grows itself
+        made = [self._element() for _ in range(int(n))]
+        held = self._held[-1] if self._held else None
+        if isinstance(held, list):
+            held[:] = made
+
+    def _element(self) -> Any:
+        """One fresh element: a number's cell, or the class's own default object."""
+        from ...cppstd.cells import Cell
+
+        if self.GetType() == EDataType.kOther_t:
+            # the *value* class, not the container's: ``New`` makes a container, and an element is
+            # what the container holds
+            from .reflection import TClass
+
+            return TClass(self._parts()[1][0]).New()
+        return Cell(0, self._parts()[1][0] if self._parts()[1] else "int")
+
     def Clear(self, opt: str = "") -> None:
         if self._held and hasattr(self._held[-1], "clear"):
             self._held[-1].clear()
 
     def New(self) -> Any:
         return self._class.New() if self._class is not None else None
+
+
+class _TPushPop:
+    """``TVirtualCollectionProxy::TPushPop``: the proxy works on ``object`` while this is in scope.
+
+    ROOT's guard makes a proxy point at one collection for the length of a block - roottest's
+    generator wraps a fill in it - and restores what the proxy held as its scope ends.
+    """
+
+    __slots__ = ("_proxy", "_pushed")
+
+    def __init__(self, proxy: TVirtualCollectionProxy, object: Any) -> None:
+        self._proxy = proxy
+        self._pushed = object is not None
+        if self._pushed:
+            proxy.PushProxy(object)
+
+    def _destruct(self) -> None:
+        if self._pushed:
+            self._proxy.PopProxy()
+            self._pushed = False
+
+
+TVirtualCollectionProxy.TPushPop = _TPushPop
