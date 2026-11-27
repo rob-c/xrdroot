@@ -97,3 +97,19 @@ def test_a_random_engine_is_written_with_its_mersenne_state(tmp_path):
     assert engine["TNamed"]["fName"] == "Random3"
     assert len(read["fMt"]) == 624
     assert 0 <= read["fCount624"] <= 624
+
+
+def test_a_single_precision_matrix_is_written_as_its_float_twin(tmp_path):
+    """``TMatrixF`` streams as ``TMatrixT<float>``: the same shape, four-byte members."""
+    import xrdroot
+
+    path = tmp_path / "mf.root"
+    matrix = ROOT.TMatrixF(2, 2)
+    matrix[0][1] = 2.5
+    with xrdroot.create(str(path)) as handle:
+        handle["m"] = matrix
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["m"]
+    base = read["TMatrixTBase<float>"]
+    assert (base["fNrows"], base["fNcols"], base["fNelems"]) == (2, 2, 4)
+    assert [float(v) for v in read["fElements"]] == [0.0, 2.5, 0.0, 0.0]

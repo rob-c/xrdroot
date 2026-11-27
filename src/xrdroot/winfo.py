@@ -1344,3 +1344,25 @@ INFOS.update({
         ('TStreamerBasicType', 'fCount624', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
     )),
 })
+
+#: The single-precision matrix, harvested from a donor holding one ``TMatrixF`` - the same
+#: shape as the double one with four-byte members and streamer type 45 for its elements.
+INFOS.update({
+    "TMatrixTBase<float>": (2142390597, 5, (
+        ('TStreamerBase', 'TObject', 'Basic ROOT object',
+         66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBasicType', 'fNrows', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNcols', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fRowLwb', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fColLwb', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNelems', '', 6, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNrowIndex', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fTol', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
+    )),
+    "TMatrixT<float>": (3272986191, 4, (
+        ('TStreamerBase', 'TMatrixTBase<float>', 'Matrix base class',
+         0, 0, 0, 0, (0, 2142390597, 0, 0, 0), 'BASE', (5,)),
+        ('TStreamerBasicPointer', 'fElements', '[fNelems] elements', 45, 4, 0, 0,
+         (0, 0, 0, 0, 0), 'float*', (4, 'fNelems', 'TMatrixTBase<float>')),
+    )),
+})
