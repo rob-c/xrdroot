@@ -6131,3 +6131,37 @@ deleted 55 lines** (the `module_aliases`/`private_imports` tables) before the co
 and a `components check` that named the two imports caught it, and the file was restored from `HEAD`
 and the scope re-applied by exact text.
 
+## Round 143's close
+
+**`sparse` covered from the isolated scope: the `hist` component's unexercised statements go 2 003 ->
+1 901, and the scope is 16 files / 425 tests.**
+
+The programme round 142 measured is a list of modules the component owns and its own scope never runs.
+The first one is done. `THnSparse` is streamed as **plain dictionaries** - its axes, and its
+`THnSparseArrayChunk`s of packed coordinates - so `SparseHistogram` can be exercised **without a file**,
+and that is exactly the line a `hist`-component test must stay on: the five files that read a fixture
+with `open_root` are io+hist integration tests, and this is not one.
+
+`tests/test_sparse_engine.py` is seven tests over real ROOT semantics: `coordinates()` is each stored
+coordinate **less the underflow** (so a stored 1 is bin 0); `to_dense()` returns the axes' bins without
+the ends while `flow=True` gains two per axis, and a bin in the overflow appears only in the latter; a
+grid past `DENSE_LIMIT` is refused with the sentence that says to read `coordinates()` instead; a
+weighted histogram's `variances()` are its squared weights where an unweighted one's are its counts;
+and the three `FormatError`s - no axes, a chunk whose coordinate size does not fit the axes, contents
+short of its bins - are each pinned.
+
+**Measured**: `xrdroot.sparse` is **100 % covered from the isolated scope alone** (`coverage report`
+says *1 file skipped due to complete coverage*), the component's unexercised statements fall **2 003 ->
+1 901** over 42 modules, and `isolate hist --tests hist` is **425 passed** (418 before). Five modules
+are still at zero: `formula.select` (186), `fit.fraction` (106), `scatterplot` (101), `function.ndtri`
+(35), `formula.together` (25). **`scatterplot` is the next one** - it has a test file already, but that
+file imports `xrdroot.canvas` (graphics) and so cannot enter the scope; like `sparse` it needs an
+engine-level test of its own.
+
+**The full gate is deferred, and the reason is measured**: the machine went to a **load average of
+41-55** mid-round (another session's work), the two-command coverage gate was killed at 88 % after
+5 400 s, and a coverage figure taken there would mean nothing (`W0-103`). What was measured and is
+quoted: `isolate hist --tests hist` 425 passed exit 0, the file's own 100 %, ruff clean, mypy,
+maintainability, components **0 undeclared**. The gate is the standing two-command decomposition from
+`TODO.md`'s `W0-106`, to be run at a load under ~20.
+
