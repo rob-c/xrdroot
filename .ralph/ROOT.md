@@ -5833,3 +5833,55 @@ commands, and the next round that finds a quiet window should confirm CI rather 
 `gh api .../check-runs/<job>/annotations` read is the cheapest way to tell a cancellation from a
 failure (see `docs/gotchas/a-construction-is-recognised-on-the-declaration-path-not-the.md`).
 
+## Round 136's close
+
+**`W0-270` measured to the line, four shapes built, and the whole attempt reverted on its own tests'
+word.**
+
+The base-type fill writes *through* the address `At` gives:
+
+```cpp
+*((int *)proxy->At(i)) = genInt();
+```
+
+`At` here answers the **value**, so the write has nothing to land in. Four shapes were built and
+measured together, each one a real defect found on the way:
+
+1. **`Allocate` filled nothing.** It asked `isinstance(held, list)`, and the guard pushes the macro's
+   own `vector<int>`, so no element was ever allocated and `At(i)` was `None`. `_refill` now knows a
+   C++ container's protocol (`clear` + `push_back`).
+2. **`At` answered an `ItemRef`** for a basic type's or a pointer's slot, which is the address a
+   write needs.
+3. **`TClass::GetCollectionProxy` built a proxy for a `pair`.** ROOT's answers **null** for a
+   `pair`, an `array` and a `bitset` - they are containers of a kind and not *collections* - and the
+   generator was filling a `pair<int,double>` element by element as if it were a vector.
+4. **`byte_offset` now steps an `ObjectAddress`** as the object it holds, which is what
+   `char_pointer(rcl.New())` is.
+
+**What the four bought.** `io/datamodelevolution` goes **22 / 20 / 2 -> 22 / 14 / 2 / 6**: the six
+children of `01/test1` are its fixture dependants (`UNSUPPORTED`) rather than failures, and the family
+walks the **whole base-type fill** to stop at `test1.cxx:123`:
+
+```cpp
+tree->Branch( "TestVectorP", &vP );     // std::vector<std::pair<int, double>>
+```
+
+**And it was reverted, because three existing tests are the specification.** Two of them pin `At`'s
+**value** - `(1, ItemRef({ 4 }, 0)) != (1, 4)`, `(3, ItemRef(<map…>, 0)) != (3, (1, 2.0))` - and the
+round did not measure ROOT's own `At` against the oracle before changing it, so the tests stand. What
+they say is worth writing down, because it is the shape of the fix: **`At` must serve a reader its
+value and a writer an address**, and that is one accessor answering two questions - an `ItemRef` that
+equals its value, or a separate `AtAddress`, chosen by measuring ROOT's `TVirtualCollectionProxy::At`
+first.
+
+**0 harness PASS moved and none lost** at the tree: `io/datamodelevolution` is 22 / 20 / 2 of 44,
+and the reverted run (`…/q5`) is kept as the evidence for all four shapes and the four walls they
+walked.
+
+**The gate** is round 135's, the tree being byte-identical: **`TOTAL 127485 0 32032 0 100%`**.
+
+**The story so far, for whoever takes the next round**: this family has taken six rounds and each one
+walked one wall further - `Generator.h:242`, `:247`, `Dumper.h:97`, `:337`, `test1.cxx:120`, and now
+`:123`. The remaining work is named: `At` as an address (with its tests' permission), and a branch of
+a `vector<pair<...>>`.
+
