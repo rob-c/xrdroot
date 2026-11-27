@@ -6165,3 +6165,12 @@ quoted: `isolate hist --tests hist` 425 passed exit 0, the file's own 100 %, ruf
 maintainability, components **0 undeclared**. The gate is the standing two-command decomposition from
 `TODO.md`'s `W0-106`, to be run at a load under ~20.
 
+### Round 143's gate, measured after all
+
+The close above deferred the gate on a load average of 41-55, where the two-command run was killed at
+88 % with no summary. The load fell to 25-28 and the same commands, at the round's own tip
+(`2adcb3f2`, in a clean `…/verify` worktree), give: part 1 **14 224 passed, 0 failed**, part 2 44,
+`coverage report` **`TOTAL 127776 0 32100 0 100%`** - green, and the ledger row now quotes it instead
+of the deferral. **A deferred gate is worth one more attempt when the load falls**: the figure was
+obtainable twenty minutes later.
+
