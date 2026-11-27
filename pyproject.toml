@@ -574,7 +574,23 @@ confcutdir = "tests"
 # graph's drawing and a canvas full of paves must work with nothing above hist.
 [tool.xrdroot.components.tests.hist]
 components = ["hist"]
-paths = ["tests/test_graph2d.py", "tests/test_roofit_branch_defaults.py"]
+paths = [
+    "tests/test_fit_graphs.py",
+    "tests/test_fit_histograms.py",
+    "tests/test_fit_unbinned.py",
+    "tests/test_formula_language.py",
+    "tests/test_formula_loops.py",
+    "tests/test_function_literal_square.py",
+    "tests/test_function_methods.py",
+    "tests/test_graph2d.py",
+    "tests/test_hist_arithmetic.py",
+    "tests/test_hist_compare.py",
+    "tests/test_hist_distribution.py",
+    "tests/test_hist_fill_one.py",
+    "tests/test_hist_reshape.py",
+    "tests/test_roofit_branch_defaults.py",
+    "tests/test_statistical_engine_isolation.py",
+]
 support = ["tests/conftest.py", "tests/refmachine.py", "tests/rootrandom.py"]
 confcutdir = "tests"
 

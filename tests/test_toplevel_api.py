@@ -236,3 +236,17 @@ def test_scalar_beta_import_order_keeps_shared_functions_and_mutable_terms(modul
         """.replace("FIRST_MODULE", repr(module)),
         tmp_path,
     )
+
+
+def test_a_row_list_is_resolved_from_the_module_that_defines_it_not_from_tree():
+    """``Jagged`` is ``core``'s class, so the top level reaches ``xrdroot.jagged`` and not
+    ``xrdroot.tree``: the tree module re-exports it, which put an ``io`` import in the way of a
+    component test that only wanted a row list. The class is the same either way; the module the
+    export loads is what a component's isolation sees."""
+    import xrdroot
+
+    assert xrdroot._EXPORTS["Jagged"] == ("jagged", "Jagged")
+    assert xrdroot.Jagged is importlib.import_module("xrdroot.jagged").Jagged
+    tree = importlib.import_module("xrdroot.tree")
+    assert tree.Jagged is xrdroot.Jagged  # the tree keeps re-exporting the same class
+
