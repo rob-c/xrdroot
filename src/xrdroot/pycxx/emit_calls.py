@@ -137,14 +137,12 @@ class CallEmitter(ExprEmitter):
         if instance is not None:
             return instance, P.POSTFIX
         if symbol is not None:
-            # A member function named through its class is called on the object C++ gives it
-            # implicitly, ``Base::Init()`` in a method being ``Base.Init(self)``: the plain
-            # function is not bound to anything, so the call has to hand ``self`` over.
-            own = ["self"] if symbol.kind == "member" else []
-            given = [*own, self.arguments(node), self._template_values(func, symbol)]
-            return f"{self.use(symbol)[0]}({', '.join(filter(None, given))})", P.POSTFIX
+            return self._named_symbol_call(func, node, symbol), P.POSTFIX
         if is_limit(func.parts, func.targs) and func.last in LIMIT_FUNCTIONS:
             return self.limit(func, node, "()"), P.ATOM
+        member = self._own_member_call(func, node)
+        if member is not None:
+            return member, P.POSTFIX
         if self._smart_alias(func):
             return self._pointer_held(node)
         special = self._special(func)
@@ -153,6 +151,22 @@ class CallEmitter(ExprEmitter):
             if found is not None:
                 return found
         return self.library_call(func, node)
+
+    def _named_symbol_call(self, func: Name, node: Call, symbol: Symbol) -> str:
+        """A call of a name the program declared: a member function named through its class is
+        called on the object C++ gives it implicitly, ``Base::Init()`` in a method being
+        ``Base.Init(self)``, because the plain function is bound to nothing."""
+        own = ["self"] if symbol.kind == "member" else []
+        given = [*own, self.arguments(node), self._template_values(func, symbol)]
+        return f"{self.use(symbol)[0]}({', '.join(filter(None, given))})"
+
+    def _own_member_call(self, func: Name, node: Call) -> str | None:
+        """``size()`` in a method of a class derived from a standard container: the object's own
+        member, which C++ finds in the class before the namespace. The predicate that decides is
+        pure, so nothing is emitted while inference is asking for a type."""
+        if not self.is_sequence_member(func):
+            return None
+        return f"getattr(self, {func.last!r})({self.arguments(node)})"
 
     def library_call(self, func: Name, node: Call) -> Out:
         """A function the program did not declare: an inherited member's, a C text writer's

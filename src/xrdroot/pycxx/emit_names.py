@@ -75,6 +75,20 @@ C_NAMES = {
 INHERITED = frozenset({"GetParam", "HasFailure", "HasFatalFailure", "HasNonfatalFailure",
                        "IsSkipped", "RecordProperty"})  # fmt: skip
 
+#: The standard's containers a macro's class may derive from - ``class Ex : public vector<int>``.
+SEQUENCE_BASES = frozenset({
+    "vector", "list", "deque", "forward_list", "array", "set", "multiset", "map", "multimap",
+    "unordered_set", "unordered_multiset", "unordered_map", "unordered_multimap",
+})
+
+#: What such a base gives the class it derives from, which C++ looks in the class for before the
+#: namespace: ``size()`` in a method is the object's own, never ``std::size(...)``, which wants an
+#: argument.
+SEQUENCE_MEMBERS = frozenset({
+    "size", "empty", "clear", "push_back", "pop_back", "push_front", "pop_front", "front", "back",
+    "at", "resize", "reserve", "capacity", "assign", "insert", "erase", "count", "find",
+})
+
 
 def _known_plain(name: str) -> str | None:
     """An unqualified name C, the dialect or the runtime itself gives a Python for."""
@@ -352,6 +366,24 @@ class NameEmitter(Inference):
         if not isinstance(owner, Function) or owner.static:
             return False
         return self.derives_from_library()
+
+    def is_sequence_member(self, func: Name) -> bool:
+        """Is ``func`` a member a **standard container base** gives the class this method is in?
+
+        C++ looks in the class and its bases before the namespace, so ``size()`` written in a
+        method of a class deriving from ``std::vector`` is the object's own - never the library's
+        ``std::size``, which takes one argument and cannot be the call a program writes with none.
+
+        This is a **predicate and nothing else**: it must not emit, because inference asks the same
+        questions while it is working out a type, and an argument emitted there lands in the macro
+        being built (round 95's lesson). The emission belongs to the caller.
+        """
+        if len(func.parts) != 1 or func.targs or func.last not in SEQUENCE_MEMBERS:
+            return False
+        function = self.scope.function
+        if not self.scope.klass or function is None or getattr(function, "static", False):
+            return False
+        return any(name.split("::")[-1] in SEQUENCE_BASES for name in self.library_bases())
 
     def inherited_call(self, func: Name) -> str | None:
         """What ``f`` names, called in a method of a class derived from a library's class: as

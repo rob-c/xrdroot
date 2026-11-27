@@ -368,3 +368,29 @@ def test_strftime_gives_its_character_array_the_time_it_formatted(
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tt);
     printf("%s %d\n", buf, tt->tm_year + 1900);"""
     assert printed(capsys, "void t() {" + source + "}") == "1970-01-01 00:00:00 1970\n"
+
+
+def test_a_container_base_s_member_is_the_object_s_own_not_the_library_s() -> None:
+    """C++ looks in the class and its bases before the namespace, so ``size()`` in a method of a
+    class derived from ``std::vector`` is the object's own - not ``std::size(x)``, which takes an
+    argument, and not a refusal. roottest's ``io/json`` classes derive from it and call it.
+    """
+    from xrdroot.pycint import translate
+
+    text = translate(
+        "class Ex : public std::vector<int> { public: void show() { cout << size() << endl; } };",
+        "t.C",
+    )
+    assert "getattr(self, 'size')()" in text
+    assert "std::size" not in text
+    # outside a class there is no object to ask, and a name no container gives is left alone
+    plain = translate("void f(TVectorD *v) { int n = v->GetNoElements(); }", "t.C")
+    assert "getattr(self" not in plain
+    free = translate("void g() { bool e = empty(); }", "t.C")
+    assert "getattr(self" not in free
+    other = translate(
+        "class Own : public TObject { public: void show() { cout << GetUniqueID() << endl; } };",
+        "t.C",
+    )
+    assert "getattr(self" not in other
+
