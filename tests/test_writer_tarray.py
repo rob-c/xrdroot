@@ -130,3 +130,41 @@ def test_a_tstring_key_is_written_as_its_characters(tmp_path):
         handle["s"] = ROOT.TString("hello")
     assert path.stat().st_size > 0
     assert b"hello" in path.read_bytes()
+
+
+def test_a_colour_is_written_with_its_channels_and_its_hls(tmp_path):
+    """``TColor`` streams the number, the RGB, and the HLS ROOT computes from them."""
+    import xrdroot
+
+    path = tmp_path / "c.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["c"] = ROOT.TColor(2, 1.0, 0.5, 0.25)
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["c"]
+    assert read["fNumber"] == 2
+    assert (read["fRed"], read["fGreen"], read["fBlue"]) == (1.0, 0.5, 0.25)
+    assert read["fLight"] == pytest.approx(0.625)
+
+
+@pytest.mark.parametrize(
+    ("rgb", "hue", "light", "saturation"),
+    [
+        ((1.0, 0.0, 0.0), 0.0, 0.5, 1.0),          # red is the highest channel
+        ((0.0, 1.0, 0.0), 120.0, 0.5, 1.0),        # green is
+        ((0.0, 0.0, 1.0), 240.0, 0.5, 1.0),        # blue is
+        ((0.5, 0.5, 0.5), 0.0, 0.5, 0.0),          # no span: grey
+        ((1.0, 0.9, 0.8), 30.0, 0.9, 1.0),         # light above one half
+    ],
+)
+def test_a_colours_hls_follows_from_its_channels(tmp_path, rgb, hue, light, saturation):
+    """ROOT keeps the HLS beside the RGB as 32-bit floats, so the tolerance is theirs."""
+    import xrdroot
+
+    path = tmp_path / "hls.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["c"] = ROOT.TColor(2, *rgb)
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["c"]
+    assert read["fHue"] == pytest.approx(hue, abs=1e-6)
+    assert read["fLight"] == pytest.approx(light, abs=1e-6)
+    assert read["fSaturation"] == pytest.approx(saturation, abs=1e-6)

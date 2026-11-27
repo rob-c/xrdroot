@@ -1273,6 +1273,8 @@ def _shaped_payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
     """
     if _is_tstring(obj):
         return _tstring_payload(obj)
+    if _is_colour(obj):
+        return _colour_payload(obj)
     if _is_tarray(obj):
         return _tarray_payload(obj)
     if _is_vector(obj):
@@ -1336,6 +1338,53 @@ def _matrix_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
     used: dict[str, None] = {classname: None}
     _record(buf, classname, row, used)
     return classname, bytes(buf.data), tuple(used)
+
+
+def _is_colour(obj: Any) -> bool:
+    """Whether this is ROOT's ``TColor``, by name and by the channels it answers."""
+    return _tarray_name(obj) == "TColor" and callable(getattr(obj, "GetRed", None))
+
+
+def _colour_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """A ``TColor``: its name and title, then the number and the seven channels."""
+    red = float(value.GetRed())
+    green = float(value.GetGreen())
+    blue = float(value.GetBlue())
+    #: ROOT keeps the HLS of every colour beside its RGB; ``TColor`` computes it from the
+    #: channels with the classic conversion, which is what a file carries.
+    high, low = max(red, green, blue), min(red, green, blue)
+    light = (high + low) / 2.0
+    span = high - low
+    if not span:
+        saturation = 0.0
+    elif light <= 0.5:
+        saturation = span / (high + low)
+    else:
+        saturation = span / (2.0 - high - low)
+    if not span:
+        hue = 0.0
+    elif high == red:
+        hue = 60.0 * ((green - blue) / span % 6.0)
+    elif high == green:
+        hue = 60.0 * ((blue - red) / span + 2.0)
+    else:
+        hue = 60.0 * ((red - green) / span + 4.0)
+    row = {
+        "fName": str(value.GetName()),
+        "fTitle": str(value.GetTitle()),
+        "fNumber": int(value.GetNumber()),
+        "fRed": float(value.GetRed()),
+        "fGreen": float(value.GetGreen()),
+        "fBlue": float(value.GetBlue()),
+        "fHue": hue,
+        "fLight": light,
+        "fSaturation": saturation,
+        "fAlpha": float(value.GetAlpha()),
+    }
+    buf = WBuffer()
+    used: dict[str, None] = {"TColor": None}
+    _record(buf, "TColor", row, used)
+    return "TColor", bytes(buf.data), tuple(used)
 
 
 def _is_tstring(obj: Any) -> bool:

@@ -6179,3 +6179,19 @@ INFOS.update(
         ),
     }
 )
+
+#: One colour, harvested from a donor written by ROOT 6.40.04 - a ``TColor`` at index 2.
+INFOS.update({
+    "TColor": (3541594740, 2, (
+        ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',
+         67, 0, 0, 0, (0, -541636036, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBasicType', 'fNumber', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fRed', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
+        ('TStreamerBasicType', 'fGreen', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
+        ('TStreamerBasicType', 'fBlue', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
+        ('TStreamerBasicType', 'fHue', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
+        ('TStreamerBasicType', 'fLight', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
+        ('TStreamerBasicType', 'fSaturation', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
+        ('TStreamerBasicType', 'fAlpha', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
+    )),
+})

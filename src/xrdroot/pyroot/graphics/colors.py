@@ -232,6 +232,11 @@ class TColor:
     (2, 2)
     """
 
+    def ClassName(self) -> str:
+        """``TColor``, which ROOT asks of anything it writes."""
+        return "TColor"
+
+
     def __init__(
         self, index: int = -1, r: float = 0.0, g: float = 0.0, b: float = 0.0,
         name: str = "", a: float = 1.0,
