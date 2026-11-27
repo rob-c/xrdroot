@@ -93,6 +93,22 @@ class ItemRef:
     def __repr__(self) -> str:
         return f"ItemRef({self.container!r}, {self.key!r})"
 
+    def __eq__(self, other: object) -> bool:
+        """A pointer at an element is the element when it is asked what it holds.
+
+        C++ compares a pointer with a pointer; a program here compares what a runtime call answers
+        with the value a reader expects - ``proxy.At(0) == 4`` - so an item reference answers for
+        the value it points at, and a pair compares as the two it holds.
+        """
+        value = self.value
+        if value == other:
+            return True
+        from .objects import Pair
+
+        return isinstance(value, Pair) and tuple(value) == other
+
+    __hash__ = None  # type: ignore[assignment]
+
     @property
     def value(self) -> Any:
         return self.container[self.key]
@@ -207,6 +223,9 @@ def byte_offset(obj: Any, offset: Any) -> Any:
     which ``TClass::GetBaseClassOffset`` answers 0 for. Any other object moved into its middle has
     no address here.
     """
+    if isinstance(obj, ObjectAddress):
+        # ``(char *)obj`` of an object is that object's address: stepping it steps the object
+        return byte_offset(obj._object, offset)
     if isinstance(obj, ObjectBytes):
         return _further(obj, int(offset))
     started = _member_starts(type(obj))

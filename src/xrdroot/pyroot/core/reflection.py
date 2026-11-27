@@ -229,6 +229,14 @@ CONTAINERS = ("vector", "list", "deque", "map", "multimap", "set", "multiset",
               "unordered_map", "unordered_set", "pair", "array", "forward_list",
               "unordered_multimap", "unordered_multiset", "bitset")  # fmt: skip
 
+#: The standard templates a collection proxy iterates. A ``pair``, an ``array`` and a ``bitset``
+#: are containers of a kind but not *collections*: ROOT's ``TClass::GetCollectionProxy`` answers
+#: null for them, and a proxy for one has a program fill it element by element as a vector.
+COLLECTIONS = (
+    "vector", "list", "deque", "map", "multimap", "set", "multiset", "unordered_map",
+    "unordered_set", "forward_list", "unordered_multimap", "unordered_multiset",
+)  # fmt: skip
+
 #: The members every standard container declares with no argument, which are the functions a
 #: lookup in a container - a class only the interpreter describes here - can be answered with:
 #: nothing here knows a container's C++ signatures, so a function that takes one is ``nullptr``.
@@ -1396,8 +1404,10 @@ class TClass(TNamed):
         return True
 
     def GetCollectionProxy(self) -> Any:
-        """``GetCollectionProxy``: for a standard container, what iterates it."""
-        if not _template(self._name):
+        """``GetCollectionProxy``: for a standard container, what iterates it - and null for a
+        ``pair``, an ``array`` or a ``bitset``, which ROOT does not call collections."""
+        head = self._name.removeprefix("std::").split("<", 1)[0]
+        if not _template(self._name) or head not in COLLECTIONS:
             return None
         from .collectionproxy import TVirtualCollectionProxy
 

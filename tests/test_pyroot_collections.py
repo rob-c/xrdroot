@@ -731,11 +731,11 @@ def test_an_obj_strings_string_is_a_tstring_that_adds_and_answers_data():
     assert (text.String() + "*").Data() == "r1*"
 
 
-def test_a_proxy_allocates_cells_and_a_guard_points_it_at_one_collection() -> None:
-    """ROOT fills a collection of a basic type by writing through the address ``At`` gives, inside
-    a ``TVirtualCollectionProxy::TPushPop`` - roottest's generator does both - so ``Allocate``
-    leaves a cell per element and the guard is what makes the proxy see that collection while it
-    lives.
+def test_a_proxy_allocates_and_a_guard_points_it_at_one_collection() -> None:
+    """ROOT fills a collection of a basic type through the address ``At`` gives, inside a
+    ``TVirtualCollectionProxy::TPushPop`` - roottest's generator does both - so ``Allocate`` leaves
+    the container holding zeros, ``At`` answers a slot a write lands in, and the guard is what makes
+    the proxy see that collection while it lives.
     """
     import xrdroot.pyroot as ROOT
 
@@ -747,7 +747,7 @@ def test_a_proxy_allocates_cells_and_a_guard_points_it_at_one_collection() -> No
     for index in range(proxy.Size()):
         proxy.At(index)[0] = index + 1
     with_proxy._destruct()
-    assert [cell[0] for cell in made] == [1, 2, 3]
+    assert list(made) == [1, 2, 3]  # the container keeps the numbers, not cells
     assert proxy.Size() == 0  # the guard restored what the proxy held, which is nothing
     with_proxy._destruct()  # a second end is nothing: the guard has already restored it
     assert proxy.Size() == 0
@@ -757,17 +757,37 @@ def test_a_proxy_allocates_cells_and_a_guard_points_it_at_one_collection() -> No
     nothing = ROOT.TVirtualCollectionProxy.TPushPop(proxy, None)
     nothing._destruct()
     assert proxy.Size() == 0
-    # a class's proxy makes its own objects - ROOT hands back the objects a collection holds
+
+
+def test_a_proxy_allocates_a_pointers_slot_a_class_object_and_a_keyed_item() -> None:
+    """A collection of pointers holds addresses, a class's proxy makes its value class's objects,
+    and a keyed container answers its n-th item rather than indexing by key."""
+    import xrdroot.pyroot as ROOT
+
     pointers = ROOT.TVirtualCollectionProxy(ROOT.TClass("vector<TNamed*>"))
-    pointed: list[object] = []
+    pointed = ROOT.std.vector["TNamed*"]()
     pointed_guard = ROOT.TVirtualCollectionProxy.TPushPop(pointers, pointed)
     pointers.Allocate(1, False)
     pointed_guard._destruct()
-    assert len(pointed) == 1 and pointed[0][0] is None  # an address's cell, empty until filled
+    assert len(pointed) == 1 and pointed[0] is None  # a pointer slot, empty until filled
+    # a keyed container answers its n-th item, which is the pair it holds
+    mapped = ROOT.TVirtualCollectionProxy(ROOT.TClass("map<int,double>"))
+    table = ROOT.std.map["int", "double"]()
+    table[1] = 2.0
+    mapped.PushProxy(table)
+    assert mapped.At(0) == (1, 2.0)
+    mapped.PopProxy()
+    # a collection of objects answers the object itself, which is what a walker fills member by
+    # member; an item reference answers the value it points at, a pair as the two it holds
     named = ROOT.TVirtualCollectionProxy(ROOT.TClass("vector<TNamed>"))
     objects: list[object] = []
     guard = ROOT.TVirtualCollectionProxy.TPushPop(named, objects)
     named.Allocate(2, False)
+    assert named.At(0) is objects[0]  # a collection of objects answers the object itself
     guard._destruct()
     assert [type(one).__name__ for one in objects] == ["TNamed", "TNamed"]
+    from xrdroot.cppstd.cells import ItemRef
+    from xrdroot.cppstd.objects import Pair
+
+    assert ItemRef([Pair(1, 2.0)], 0) == (1, 2.0)
 

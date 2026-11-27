@@ -374,3 +374,16 @@ def test_the_rest_of_a_stream_is_read_the_same_way_wherever_it_is_written() -> N
     assert "stream_rest(in_)" in text
     assert "istreambuf_iterator" not in text
 
+
+def test_an_objects_address_is_stepped_as_the_object() -> None:
+    """``char_pointer(obj)`` is ``(char *)obj``: stepping it by a member's offset steps the object,
+    which is what a walker that hands an address on expects."""
+    import xrdroot.pyroot as ROOT
+    from xrdroot.cppstd.cells import ObjectAddress, byte_offset
+    from xrdroot.pycint.execute import run_source
+
+    run_source("struct StepMe { int a; double b; };", "t.C", root=ROOT)
+    made = ROOT.StepMe()
+    byte_offset(ObjectAddress(made), 8)[0] = 2.5
+    assert made.b == 2.5
+

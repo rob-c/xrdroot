@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...cppstd.cells import ItemRef
 from .objects import TObject
 
 __all__ = ["TVirtualCollectionProxy", "EDataType"]
@@ -125,8 +126,19 @@ class TVirtualCollectionProxy(TObject):
         return len(self._items())
 
     def At(self, index: int) -> Any:
-        items = self._items()
-        return items[index] if 0 <= index < len(items) else None
+        """``At``: element ``index`` - a number's or a pointer's own slot, which a program writes
+        through (``*((int *)proxy->At(i)) = v``), and the object itself for a class."""
+        held = _unwrapped(self._held[-1]) if self._held else None
+        if held is None or not 0 <= index < len(held):
+            return None
+        if self._parts()[0] in ASSOCIATIVE:
+            # a map or a set is keyed: its n-th element is the pair it holds, not ``held[n]``
+            items = self._items()
+            return items[index] if index < len(items) else None
+        value = self._parts()[1][0] if self._parts()[1] else ""
+        if self.GetType() == EDataType.kOther_t and not value.endswith("*"):
+            return held[index]  # a collection of objects: the object itself
+        return ItemRef(held, index)  # a number's, or a pointer's, own slot
 
     def Allocate(self, n: Any, force: bool = False) -> None:
         """``Allocate``: room for ``n`` elements of what the container holds, which ``At`` answers
@@ -140,25 +152,20 @@ class TVirtualCollectionProxy(TObject):
         del force  # ROOT's flag asks for the arena's memory to be grown; a Python list grows itself
         made = [self._element() for _ in range(int(n))]
         held = _unwrapped(self._held[-1]) if self._held else None
-        if isinstance(held, list):
-            held[:] = made
+        _refill(held, made)
 
     def _element(self) -> Any:
-        """One fresh element: a number's cell, or the class's own default object."""
-        from ...cppstd.cells import Cell
-
+        """One fresh element: a basic type's zero, a pointer's null, or the class's own object."""
         value = self._parts()[1][0] if self._parts()[1] else "int"
         if value.endswith("*"):
-            # a collection of pointers holds *addresses*: a cell per element, which
-            # ``*((void **)proxy->At(i)) = 0`` and ``= newObj`` both write through
-            return Cell(None, value.rstrip("*").strip())
+            return None
         if self.GetType() == EDataType.kOther_t:
             # the *value* class, not the container's: ``New`` makes a container, and an element is
             # what the container holds
             from .reflection import TClass
 
             return TClass(value).New()
-        return Cell(0, value)
+        return 0.0 if value in ("double", "float") else 0
 
     def Clear(self, opt: str = "") -> None:
         if self._held and hasattr(self._held[-1], "clear"):
@@ -175,6 +182,24 @@ def _unwrapped(held: Any) -> Any:
     ROOT's own ``GetObject()``-style unwrapping at the boundary of a runtime call.
     """
     return getattr(held, "value", held)
+
+
+#: The containers a proxy indexes by key rather than by position.
+ASSOCIATIVE = frozenset({
+    "map", "multimap", "set", "multiset", "unordered_map", "unordered_multimap", "unordered_set",
+    "unordered_multiset",
+})
+
+
+def _refill(held: Any, made: list[Any]) -> None:
+    """Give the container ``held`` the elements ``made``: a list becomes them, a C++ container is
+    cleared and pushed into - the protocol ROOT's own ``Allocate`` asks a collection for."""
+    if isinstance(held, list):
+        held[:] = made
+    elif hasattr(held, "clear") and hasattr(held, "push_back"):
+        held.clear()
+        for one in made:
+            held.push_back(one)
 
 
 class _TPushPop:
