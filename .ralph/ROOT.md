@@ -5733,3 +5733,49 @@ What can be stated for round 133: its own gate is green locally at `7fee362d` - 
 **14 173 passed, 0 failed**, part 2 44, `TOTAL 127431 0 32014 0 100%` - and both component scopes
 the CI runs failed on are green on this machine at the same commit.
 
+## Round 134's close
+
+**A collection proxy allocates a cell per element, and `TPushPop` points it at one collection - so the
+whole `datamodelevolution` generator and its dump now run to the end.**
+
+Round 133 left the family at `Generator.h:179`, three names short:
+
+```cpp
+TVirtualCollectionProxy::TPushPop helper( proxy, obj );
+proxy->Allocate( genInt(), false );
+...
+*((int *)proxy->At(i)) = genInt();
+```
+
+`Allocate(n, force)` now gives the pushed container `n` fresh elements - a `cppstd.cells.Cell` per
+element for a **basic** type, because ROOT fills such a collection by writing *through* the address
+`At` gives, and a cell is what Python has to write a number through; the **value** class's own object
+for a class (`TClass(<value>).New()` - not the container's `New`, which makes another container). And
+`TVirtualCollectionProxy::TPushPop` is the guard ROOT has: it pushes the collection on the proxy's
+own `_held` stack, which is the stack `Size`/`At`/`Clear` already read, and restores it at the
+guard's scope end, so a second end is nothing.
+
+**What it bought.** The generator runs, the dump runs, and the dump prints its own
+`End of vector<ClassD*>` line - the phase it had never reached. The family is now in its
+**tree-writing** block and stops at `test1.cxx:120`:
+
+```cpp
+tree->Branch( "TestPair", &pr );        // a std::pair with no leaf list
+```
+
+ROOT writes that as its two members; this kit refuses to name a branch whose address it cannot type.
+That is **`W0-269`**, and it is the last few metres of a family that has taken six rounds.
+
+**0 harness PASS moved and none lost**: `io/datamodelevolution` is **22 / 20 / 2** of 44, its twenty
+FAILs now stopping four walls deeper than round 131 found them. Guards re-measured whole and are the
+ledger's figures: `io/tree` 18/0/0/2, `io/newstl` 19/11/2.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 174 passed, 0 failed**
+(99.75 % by design); part 2 44 passed and `coverage report` **`TOTAL 127456 0 32022 0 100%`**; ruff,
+mypy (1 067 files), maintainability, components and `mkdocs --strict` each exit 0, at a load average
+of 3-9.
+
+**The gate named the round's own uncovered arms and each got a case, not a waiver**: an `Allocate` on
+a proxy holding nothing, a guard of a null collection (which pushes no scope), a second `_destruct`,
+and a class's proxy making its value class's objects.
+
