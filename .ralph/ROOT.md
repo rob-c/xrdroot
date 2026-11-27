@@ -6055,3 +6055,40 @@ acceptance check. Ten tests for one predicate is the best-priced item in the sui
 **The gate at the round's own tree**: part 1 **14 197 passed, 0 failed**, part 2 44, `coverage report`
 **`TOTAL 127672 0 32062 0 100%`**; ruff, mypy, maintainability and components each exit 0.
 
+## Round 141's close
+
+**`Q-140` done: a member a standard container base gives the class is the object's own - roottest
+1358 -> 1368.**
+
+Round 140 measured this win and refused it: the guard that answered `getattr(self, 'size')()` made
+`libJsonTestClasses-build` and its nine dependants pass and broke `fitsparts`'s smart-pointer test,
+because the arm **emitted** inside `named_call`, which inference also walks. This round is the same
+ten tests with the shape that measurement prescribed - **a pure predicate and an emission**:
+
+- `pycxx/emit_names.py::is_sequence_member(func)` answers *only* a question: a single-part name, in
+  `SEQUENCE_MEMBERS`, in a non-static method, of a class whose base is one of `SEQUENCE_BASES`. It
+  emits nothing, so inference can ask it safely.
+- `emit_calls._own_member_call(func, node)` is where the arguments are written, on the path that
+  produces the call's text.
+
+**Measured.** `io/json` goes from 10 UNSUPPORTED to **11 PASS / 0 FAIL / 0 DIFF / 1 UNSUPPORTED**:
+`libJsonTestClasses-build` and its nine dependants PASS (`…/json1`), and
+`tests/test_pyroot_fitsparts.py::test_a_name_given_a_smart_pointer_is_a_cast_to_the_pointer` still
+passes - the acceptance check round 140 named. **roottest 1358 -> 1368.**
+
+**The gate named the round's own complexity and it was split rather than excused**: `named_call`
+reached **npath 288** with the new branch, so the symbol arm became `_named_symbol_call` - no limit
+touched. The coverage gate then named `is_sequence_member`'s no-class arm, which got a case (a free
+function calling `empty()`).
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 209 passed, 0 failed**;
+part 2 44 passed and `coverage report` **`TOTAL 127774 0 32100 0 100%`**; ruff, mypy, maintainability,
+components and `mkdocs --strict` each exit 0, at a load average of 15 (a quiet-enough machine for the
+harness's statuses, and the gate does not read load).
+
+**+1 unit test** covering all three arms: the container base's member, a free function (no class to
+ask), and a class whose base is not a container.
+
+**What leads the queue now**: `W0-253`'s eleven stale refs (a decision, not a fix), `W0-271`'s six
+(the pair-vector branch), and a fresh whole-kind ranking to find the next wide cause.
+
