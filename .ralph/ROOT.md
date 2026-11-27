@@ -6015,3 +6015,43 @@ lines - every accessor, the walk and both refusals - were uncovered until the te
 
 **+3 unit tests**: the range and its accessors, the walk to the next division, and the two refusals.
 
+## Round 140's close
+
+**The whole roottest kind measured again and ranked by cause - and the top code bucket measured to a
+ten-test win that one base-green test refuses.**
+
+The kind at `2bc7e539` (`--jobs 5`, a machine at load 4-5) is **1358 PASS / 445 FAIL / 125 DIFF / 233
+UNSUPPORTED / 10 SKIP / 2 TIMEOUT** of 2173 (`…/roottest`). The first whole figure since round 126's
+1366 - and the difference is not this round's, which changed nothing; it is what rounds 127-139 and
+another session's commits did between the two measurements. **The ranking by *reason* is the round's
+real product**, and it is why a whole run is worth its half hour:
+
+| tests | cause |
+|---|---|
+| 11 | `io/evolution/versions/AddVersion-*-*.ref` - the stale refs (`W0-253`), not a regression |
+| **10** | `test_classes.h:756: std::size with 0 arguments` - `libJsonTestClasses-build` and its nine dependants |
+| 7 | `needs the Python package jupyter` - an environment, not code |
+| **6** | `the branch 'TestVector…'` - the pair-vector branch, `W0-271` |
+| 5 | `meta/evolution/execBaseClass_v2.ref` |
+
+**The ten are one defect, and it was measured to a win.** `class TJsonEx1 : public std::vector<...>`
+calls `size()` in a method; C++ looks in the class and its bases **before** the namespace, while
+`named_call` fell through to `_special`'s `_size`, which refuses a zero-argument call. A guard that
+answers `getattr(self, 'size')()` for a name a **standard container base** gives the class made the
+build **and all nine dependants PASS** - `io/json` went from 10 UNSUPPORTED to 11 PASS - and **broke**
+`tests/test_pyroot_fitsparts.py::test_a_name_given_a_smart_pointer_is_a_cast_to_the_pointer`
+(`'tuple' object has no attribute 'GetNoElements'`). That test **passes at the base** - checked in a
+scratch worktree, so it is not a stale row - and it is round 95's lesson arriving again: **an arm that
+emits while inference is asking for a type corrupts the value emitted afterwards**, because
+`self.arguments(node)` writes into the macro being built and `named_call` is on both paths.
+
+So the change is **reverted whole**, and the obstacle is written down as `Q-140`: a **pure predicate**
+in `named_call` ("does this class derive from a standard container, and is this name one of its
+members?") plus the **emitting** half on the value path, with `fitsparts`'s smart-alias test as the
+acceptance check. Ten tests for one predicate is the best-priced item in the suite today.
+
+**0 harness PASS moved and none lost** at this round's tree, which is byte-identical to its base.
+
+**The gate at the round's own tree**: part 1 **14 197 passed, 0 failed**, part 2 44, `coverage report`
+**`TOTAL 127672 0 32062 0 100%`**; ruff, mypy, maintainability and components each exit 0.
+
