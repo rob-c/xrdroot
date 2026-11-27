@@ -1472,7 +1472,16 @@ def _colour_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
 
 #: The drawing objects whose engine keeps its members flat and whose layout this writer
 #: carries: they are written by that member dict, with a typed zero where a member is absent.
-MEMBERED = ("TLatex", "TText", "TBox", "TPaveText")
+MEMBERED = (
+    "TLatex",
+    "TText",
+    "TBox",
+    "TPaveText",
+    "TLine",
+    "TMarker",
+    "TEllipse",
+    "TArrow",
+)
 
 
 def _is_text(obj: Any) -> bool:

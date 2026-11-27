@@ -235,8 +235,18 @@ def test_an_empty_tobjarray_is_written_and_read_back_with_no_entries(tmp_path):
         assert list(handle["a"]) == []
 
 
-@pytest.mark.parametrize("name", ["TBox", "TPaveText"])
-def test_a_drawing_object_with_flat_members_is_written_by_them(tmp_path, name):
+@pytest.mark.parametrize(
+    ("name", "key"),
+    [
+        ("TBox", "fLineColor"),
+        ("TPaveText", "fLineColor"),
+        ("TLine", "fLineColor"),
+        ("TMarker", "fMarkerStyle"),
+        ("TEllipse", "fLineColor"),
+        ("TArrow", "fLineColor"),
+    ],
+)
+def test_a_drawing_object_with_flat_members_is_written_by_them(tmp_path, name, key):
     """``TBox`` and ``TPaveText`` keep their members themselves, like ``TLatex`` does."""
     import xrdroot
 
@@ -247,16 +257,16 @@ def test_a_drawing_object_with_flat_members_is_written_by_them(tmp_path, name):
         read = handle["o"]
     #: read back, a base's members are nested under the base's name - or flat, when the
     #: writer's hand-written path for that class took them
-    assert read.classname == name and _line_colour(read.members) == 1
+    assert read.classname == name and _find(read.members, key) == 1
 
 
-def _line_colour(held):
-    """``fLineColor`` wherever the read-back put it: a base's members nest under the base."""
-    if "fLineColor" in held:
-        return held["fLineColor"]
+def _find(held, key):
+    """One member wherever the read-back put it: a base's members nest under the base."""
+    if key in held:
+        return held[key]
     for value in held.values():
         if isinstance(value, dict):
-            found = _line_colour(value)
+            found = _find(value, key)
             if found is not None:
                 return found
     return None
