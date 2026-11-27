@@ -5822,3 +5822,14 @@ mypy, maintainability and components each exit 0, at a load average of 5-7.
 **+3 unit tests**: the pair branch's two leaves and their titles with the values the tree keeps, a
 default pair's zeros including a nested one, and a pointer collection's cells.
 
+### Round 135's CI, recorded rather than assumed - again
+
+The run for this round's push (45924823391) was **cancelled** by another session's push, and its four
+`pytest` steps carry the annotation *"The operation was canceled."* - concurrency, not a result. That
+is the **third round running** in which no run containing the round completed: rounds 133, 134's docs
+push and this one were each pre-empted. The evidence for round 135 is therefore the local gate at
+`a8693ff5` (**14 179 passed, 0 failed**, then 44, `TOTAL 127485 0 32032 0 100%`) plus the six other
+commands, and the next round that finds a quiet window should confirm CI rather than assume it. A
+`gh api .../check-runs/<job>/annotations` read is the cheapest way to tell a cancellation from a
+failure (see `docs/gotchas/a-construction-is-recognised-on-the-declaration-path-not-the.md`).
+
