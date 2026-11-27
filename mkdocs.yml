@@ -54,6 +54,7 @@ nav:
       - "A half-wired container branch reads back the last entry": gotchas/a-half-wired-container-branch-reads-back-the-last-entry-for.md
       - "What a std::set branch target needs": instructions/what-a-std-set-branch-target-needs-three-seams-not-one.md
       - "The class a streamer list names is written from ROOT's header": instructions/the-class-a-streamer-list-names-is-written-from-root-s-header-md.md
+      - "Rank a whole-kind run by reason, then check the fix at the base": instructions/rank-a-whole-kind-run-by-reason-then-check-the-fix-at-the-base.md
       - "A tree filled in memory refills its branch object": gotchas/a-tree-filled-in-memory-refills-the-object-its-branch-was.md
       - "TPython, std::any and std::filesystem": architecture/tpython-std-any-and-std-filesystem-are-three-pieces-of-one-test.md
       - "A vector<char> holds characters, int8 numbers": gotchas/a-std-vector-char-holds-characters-while-int8-holds-numbers.md
