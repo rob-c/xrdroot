@@ -5939,3 +5939,39 @@ mypy, maintainability and components each exit 0, at a load average of 9-15.
 
 **+2 unit tests** (a keyed container's n-th item, and an `ObjectAddress` stepped by a member's offset).
 
+## Round 138's close
+
+**No code: two walls priced, and both attempts reverted rather than half-shipped.**
+
+**`W0-271` - a branch of a `std::vector<std::pair<int,double>>`.** The refusal is *"elements carry sizes
+of their own"*, which is true of a collection of collections and **not** of a pair of two numbers, so
+the sentence is the first thing to fix. ROOT splits each pair into its members, so the shape is one
+**counted leaf per member** (`first[count]/I`, `second[count]/D`) plus the count leaf that ROOT keeps as
+the branch's `fLeafCount` - and this kit's `Leaf(counter=…)`/`_check_counter` already requires an
+integer leaf declared before it, which is exactly that shape. What could **not** be done here is reading
+ROOT's own layout off the oracle: `root -l -b -q 'x.C+'` dies with
+`sh: arm64-apple-darwin20.0.0-clang++: command not found` (the oracle's ACLiC has no compiler on this
+machine) and the interpreter path needs a dictionary for `TTree::Print`. The row records the question
+rather than a guess.
+
+**`W0-259` - the `00` family's three differences.** `TObjArray` was given ROOT's **room**: an `fSize`
+of 16 by default, printed as `size=` in `TCollection::Print`, with `GetSize()` answering the room and
+`AddAt` growing it to reach the slot it is given. It was measured, and it does **not** move the family
+(0 PASS / 2 FAIL / 1 DIFF of 3 - the three differences are `ACache::zcalc`, `Unversioned::fCached` and
+the header) - while **breaking two reflection tests**: `GetStreamerInfos()->GetSize() == 13` (ROOT's
+`fStreamerInfo` room, round 112's rule) and `GetStreamerInfo(1)`'s slot once the array is built with a
+room. Passing the thirteen slots at construction fixed the first and not the second, so the change was
+reverted whole. **The layouts array's room and the collection printer's room are one change**, and it
+wants the reflection area measured with it.
+
+**0 harness PASS moved and none lost**: `io/datamodelevolution/00` is 0 / 2 / 1 of 3, its figures since
+round 125; the `01` family is 22 / 14 / 2 / 6 from round 137.
+
+**The gate at this round's own tree** (`…/f1`'s tree): part 1 **14 191 passed, 0 failed**, part 2 44,
+`coverage report` **`TOTAL 127576 0 32056 0 100%`**; ruff, mypy, maintainability and components each
+exit 0, at a load average of 4-5.
+
+**What the next round should take**: `W0-271` is one feature with a name and a shape, and the room work
+of `W0-259` is one change across two areas - both are written down with their measurements rather than
+with a hypothesis.
+
