@@ -5975,3 +5975,43 @@ exit 0, at a load average of 4-5.
 of `W0-259` is one change across two areas - both are written down with their measurements rather than
 with a hypothesis.
 
+## Round 139's close
+
+**`TGeoPatternFinder` exists - and `roottest/root/io/webfile/CloseTWebFile` PASSES: roottest 1366 -> 1367.**
+
+The test differed from its ref by **one line**: this kit's
+`Warning in <TClass::Init>: no dictionary for class TGeoPatternFinder`. Round 126's `TArray` fix is the
+same shape and says what answers it - **a class the namespace provides has a dictionary** - so the
+round wrote the class rather than suppressing the warning.
+
+**What the class is, from ROOT's own header.** `TGeoPatternFinder` is the base of the axis pattern
+finders (`TGeoPatternX`/`Y`/`Z`) and holds the division itself: `fStart`, `fStep`, `fEnd`,
+`fNdivisions`, `fDivIndex` and the volume it applies to, with ROOT's arithmetic in `SetRange`
+(`fEnd = fStart + ndivisions * step`), `GetByteCount()` 36, `GetDivAxis()` 1, the two flags in
+`TObject`'s bits (`kPatternReflected` 14, `kPatternSpacedOut` 15), and `CdNext`'s walk over the next
+index. `FindNode` and `IsOnBoundary` answer as ROOT's base does (nothing, false), and the **two pure
+virtuals** - `CreateMatrix` and `MakeCopy` - are **refused in full sentences**, because only an axis
+finder knows which axis it divides. That is `pyroot/geom/patterns.py`, exported beside the geometry it
+belongs to.
+
+**Measured.** `io/webfile/CloseTWebFile` FAIL -> **PASS** (`…/w1` and the re-run `…/g-*`), and
+`io/geo` measured whole at the tip is **20 / 0 / 1 / 0** of 21 - unchanged, so the new class costs the
+geometry area nothing.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 194 passed, 1 failed**;
+part 2 44 passed and `coverage report` **`TOTAL 127659 0 32060 0 100%`**; ruff, mypy, maintainability
+(33 9xx functions), components and `mkdocs --strict` each exit 0.
+
+**The one failure is not this round's, and that was proved rather than assumed.**
+`tests/test_root_wtree.py::test_a_written_tree_describes_its_classes_exactly_as_the_donors_do` fails
+at the round's **base** in a fresh worktree (`…/base`), on `TTree::fAutoSave`'s title text
+(`Autosave tree after fAutoSave entries or -fAutoSave compressed bytes` against the longer sentence
+the donor now records) - another session's change to the tree's description. It is queued as
+`W0-272`, not patched here: the fix is to that description, not to this round.
+
+**The gate named the round's own work twice and both were fixed rather than excused**: the first test
+reached **ccn 14** and was split into three (every assertion kept), and the module's nineteen uncovered
+lines - every accessor, the walk and both refusals - were uncovered until the tests reached them.
+
+**+3 unit tests**: the range and its accessors, the walk to the next division, and the two refusals.
+
