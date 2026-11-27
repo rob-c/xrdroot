@@ -16,10 +16,35 @@ ROOT.TStreamerInfo().BuildFromFile(path)   # AttributeError: no such method
 f.Get("StreamerInfo")          # returns a null TObject, not the TList
 ```
 
-## The two routes that remain
+## The route that works
 
-1. **Read the list with a C++ macro through `gInterpreter`** (`ROOT.gInterpreter.ProcessLine` over `ReadStreamerInfo` and `GetListOfStreamerInfo` from C++), which avoids PyROOT's incomplete bindings.
-2. **Teach xrdroot to read the record it already writes** — `src/xrdroot/writer.py:979` (`_streamers`) emits it, `writer.py:1024` (`_entry_into`) writes one class's entry, and the reader has no counterpart. That has independent value: a reader that used a file's own descriptions could decode classes it has no catalogue entry for.
+`TFile::GetStreamerInfoList()`, called from a C++ block through `gInterpreter` — no PyROOT binding needed. It returns the file's `TList` of `TStreamerInfo`, each with its checksum, class version and elements:
+
+```python
+import ROOT
+ROOT.gInterpreter.ProcessLine(r'''
+{
+  TFile *f = TFile::Open("/tmp/mm.root");
+  TList *list = f->GetStreamerInfoList();
+  TIter next(list);
+  while (TStreamerInfo *si = (TStreamerInfo*)next())
+    printf("%s checksum=%d version=%d elements=%d\n", si->GetName(),
+           si->GetCheckSum(), si->GetClassVersion(), si->GetElements()->GetEntries());
+}
+''')
+```
+
+For a donor holding one `TMatrixD`:
+
+```text
+n=2
+TMatrixT<double> checksum=135074716 version=4 elements=2
+TMatrixTBase<double> checksum=-1961180639 version=5 elements=8
+```
+
+## The other route
+
+**Teach xrdroot to read the record it already writes** — `src/xrdroot/writer.py:979` (`_streamers`) emits it, `writer.py:1024` (`_entry_into`) writes one class's entry, and the reader has no counterpart. That has independent value: a reader that used a file's own descriptions could decode classes it has no catalogue entry for.
 
 ```mermaid
 flowchart TD
