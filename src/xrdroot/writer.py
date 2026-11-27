@@ -526,7 +526,7 @@ def _record(buf: WBuffer, classname: str, row: Any, used: dict[str, None]) -> No
     if classname in LISTS:
         _list(buf, classname, row, used)
         return
-    info = INFOS.get(classname)
+    info = layout_of(classname)
     if info is None:
         raise UnsupportedFeatureError(
             f"a {classname} inside what is being written is not a class this "
@@ -691,7 +691,8 @@ def _flat_base(row: dict[str, Any], name: str, value: Any) -> Any:
     """
     if value is not None:
         return value
-    return row if any(element[1] in row for element in INFOS[name][2]) else {}
+    known = layout_of(name)
+    return row if known is not None and any(e[1] in row for e in known[2]) else {}
 
 
 def _pairs(buf: WBuffer, value: Any) -> None:
@@ -1243,6 +1244,32 @@ def _objstring_payload(value: ObjString) -> tuple[str, bytes, tuple[str, ...]]:
     return "TObjString", bytes(buf.data), tuple(used)
 
 
+def _tarray_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """One of ROOT's array objects as a key: its ``TArray`` record, then the values.
+
+    A ``TArrayI`` and its siblings come from ``pyroot``, which this layer may not import, so
+    the object is recognised by the two things writing one needs: a class name this writer
+    has a layout for and values it can take.
+    """
+    classname = _tarray_name(value)
+    values = np.asarray(value)
+    buf = WBuffer()
+    buf.i32(len(values))
+    _numbers(buf, ARRAYS[classname].typecode, values)
+    return classname, bytes(buf.data), (classname,)
+
+
+def _tarray_name(obj: Any) -> str:
+    """The class name of one of ROOT's array objects, which some spell only as their type."""
+    named = getattr(obj, "ClassName", None)
+    return str(named()) if callable(named) else type(obj).__name__
+
+
+def _is_tarray(obj: Any) -> bool:
+    """Whether ``obj`` is one of ROOT's array objects, without importing ``pyroot``."""
+    return _tarray_name(obj) in ARRAY_CLASSES.values() and hasattr(obj, "__array__")
+
+
 def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
     """What one object writes as: its class, its bytes, the layouts it needs."""
     if isinstance(obj, ObjString):
@@ -1251,6 +1278,8 @@ def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
         return _record_payload(obj)
     if isinstance(obj, str):
         return _string_payload(obj)
+    if _is_tarray(obj):
+        return _tarray_payload(obj)
     if isinstance(obj, (array.array, np.ndarray)):
         return _array_payload(obj)
     if isinstance(obj, WRITABLE):

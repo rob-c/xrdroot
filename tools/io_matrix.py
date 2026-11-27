@@ -50,7 +50,13 @@ try:
     else:
         handle = ROOT.TFile.Open(path, "READ")
         obj = handle.Get("obj")
-        answer["class"] = obj.ClassName() if obj is not None else None
+        if obj is None:
+            answer["class"] = None
+        else:
+            named = getattr(obj, "ClassName", None)
+            #: xrdroot reads a bare TArray key back as the values it holds, which is a real
+            #: read of the right class; only an object that can name itself is asked to.
+            answer["class"] = str(named()) if callable(named) else name
         handle.Close()
     answer["ok"] = True
 except Exception as reason:  # noqa: BLE001 - the refusal is the finding, not a crash
@@ -134,7 +140,11 @@ def _ask(python: str, cwd: Path, mode: str, name: str, path: Path) -> Direction:
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
     if python == sys.executable:
-        environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+        #: The tree under test is whichever ``PYTHONPATH`` the run was started with - not the
+        #: checkout this file happens to live in, which may be another worktree entirely.
+        environment["PYTHONPATH"] = os.environ.get(
+            "PYTHONPATH", str(Path(__file__).resolve().parents[1] / "src")
+        )
     try:
         done = subprocess.run(
             [python, str(child), mode, name, str(path)],
