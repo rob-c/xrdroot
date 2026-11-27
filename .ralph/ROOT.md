@@ -5779,3 +5779,46 @@ of 3-9.
 a proxy holding nothing, a guard of a null collection (which pushes no scope), a second `_destruct`,
 and a class's proxy making its value class's objects.
 
+## Round 135's close
+
+**A branch of a `std::pair` splits into its two members, and a pair is made of zeros - so the family
+walks its whole tree-writing block.**
+
+Round 134 left it at `test1.cxx:120`:
+
+```cpp
+pair<int, double> *pr = 0;
+tree->Branch( "TestPair", &pr );        // no leaf list
+```
+
+Three pieces, each measured before it was believed:
+
+- **A pair is two members**, so the branch is ROOT's two leaves `first` and `second` with the branch's
+  own title (`_a_pair`, `_pair_leaf` in `pyroot/trees/tree.py`, over the `Member` addresses the
+  multi-leaf path already had).
+- **`TClass("pair<A,B>").New()` is a `Pair` of a zero of each member** - a number `0`, a string `""`,
+  a class `None`, a nested pair of its own - which is what `new pair<A,B>()` is and what ROOT's own
+  generator makes before it branches one.
+- **A collection of pointers allocates a cell per element**, because that block writes
+  `*((void **)proxy->At(i)) = 0` (and `= newObj`) through the address `At` gives.
+
+**What it bought.** The family now runs the whole **tree-writing** block - all nineteen `Branch` calls,
+including the pairs and the vectors of pointers - and stops in the **base-type collection fill**:
+`Generator.h:185`'s `proxy.At(i)[0] = genInt()` receives a number where it needs a cell. That is
+`W0-270`, and with it the family has walked five walls in five rounds.
+
+**0 harness PASS moved and none lost**: `io/datamodelevolution` is **22 / 20 / 2** of 44; guards
+`io/tree` 18/0/0/2 and `io/newstl` 19/11/2 unchanged.
+
+**The gate caught two things and both were fixed rather than excused**: `_zero_of`'s string, class and
+nested-pair arms and the pointer collection's cell were all uncovered until a test reached each, and
+the pair test itself pinned a **fidelity gap** it found rather than hiding it - this writer spells an
+`int32` leaf `i` where ROOT spells its `Int_t` `I`, which is `W0-270`'s second half.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 179 passed, 0 failed**
+(99.75 % by design); part 2 44 passed and `coverage report` **`TOTAL 127485 0 32032 0 100%`**; ruff,
+mypy, maintainability and components each exit 0, at a load average of 5-7.
+
+**+3 unit tests**: the pair branch's two leaves and their titles with the values the tree keeps, a
+default pair's zeros including a nested one, and a pointer collection's cells.
+
