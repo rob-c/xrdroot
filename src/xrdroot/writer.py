@@ -1277,7 +1277,32 @@ def _shaped_payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
         return _vector_payload(obj)
     if _is_matrix(obj):
         return _matrix_payload(obj)
+    if _is_random(obj):
+        return _random_payload(obj)
     return None
+
+
+def _is_random(obj: Any) -> bool:
+    """Whether this is one of ROOT's random engines, by name and by the state it keeps."""
+    engine = getattr(obj, "_xrd", obj)
+    return _tarray_name(obj) == "TRandom3" and callable(getattr(engine, "_engine_export", None))
+
+
+def _random_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """A ``TRandom3`` as ROOT writes one: its name, seed, and the 624-word Mersenne state."""
+    engine = getattr(value, "_xrd", value)
+    state = engine._engine_export()
+    row = {
+        "fName": str(getattr(value, "_name", getattr(engine, "_name", ""))),
+        "fTitle": str(getattr(value, "_title", getattr(engine, "_title", ""))),
+        "fSeed": int(getattr(engine, "_seed", 0)) % (1 << 32),
+        "fMt": [int(word) for word in state["fMt"]],
+        "fCount624": int(state["fCount624"]),
+    }
+    buf = WBuffer()
+    used: dict[str, None] = {"TRandom3": None}
+    _record(buf, "TRandom3", row, used)
+    return "TRandom3", bytes(buf.data), tuple(used)
 
 
 def _is_matrix(obj: Any) -> bool:

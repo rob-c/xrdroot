@@ -1323,3 +1323,24 @@ INFOS.update({
          (0, 0, 0, 0, 0), 'double*', (4, 'fNelems', 'TMatrixTBase<double>')),
     )),
 })
+
+#: The random engines, harvested from a donor written by ROOT 6.40.04 - one ``TRandom3``
+#: seeded at 7. Three classes are needed for the one: the engine, its ``TRandom`` base (which
+#: itself has ``TNamed`` and ``ROOT::Math::TRandomEngine`` bases) and the no-member interface.
+INFOS.update({
+    "ROOT::Math::TRandomEngine": (3688732995, 1, ()),
+    "TRandom": (235880363, 3, (
+        ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',
+         67, 0, 0, 0, (0, -541636036, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBase', 'ROOT::Math::TRandomEngine', '',
+         0, 0, 0, 0, (0, -606234301, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBasicType', 'fSeed', 'Random number generator seed',
+         13, 4, 0, 0, (0, 0, 0, 0, 0), 'unsigned int', ()),
+    )),
+    "TRandom3": (2185949371, 2, (
+        ('TStreamerBase', 'TRandom', 'Simple Random number generator (periodicity = 10**9)',
+         0, 0, 0, 0, (0, 235880363, 0, 0, 0), 'BASE', (3,)),
+        ('TStreamerBasicType', 'fMt', '', 33, 4, 624, 0, (624, 0, 0, 0, 0), 'unsigned int', ()),
+        ('TStreamerBasicType', 'fCount624', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+    )),
+})

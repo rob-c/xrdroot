@@ -82,3 +82,18 @@ def test_a_matrix_is_written_as_its_shape_and_values(tmp_path):
     base = read["TMatrixTBase<double>"]
     assert (base["fNrows"], base["fNcols"], base["fNelems"]) == (2, 2, 4)
     assert [float(v) for v in read["fElements"]] == [1.5, 0.0, 0.0, -2.5]
+
+
+def test_a_random_engine_is_written_with_its_mersenne_state(tmp_path):
+    """``TRandom3`` streams its name, seed and the 624-word state ROOT continues from."""
+    import xrdroot
+
+    path = tmp_path / "r.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["r"] = ROOT.TRandom3(7)
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["r"]
+    engine = read["TRandom"]
+    assert engine["TNamed"]["fName"] == "Random3"
+    assert len(read["fMt"]) == 624
+    assert 0 <= read["fCount624"] <= 624
