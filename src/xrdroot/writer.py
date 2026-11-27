@@ -1268,19 +1268,29 @@ def _tarray_name(obj: Any) -> str:
 def _shaped_payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
     """The payload of an object written by its members here, or ``None`` if it is not one.
 
-    An array and a vector are the two the writer carries a layout for without a ``pyroot``
-    object behind them, so they are recognised by their names and their accessors.
+    Split in two so that neither list of shapes outgrows the branch budget: what holds values
+    (text, arrays, vectors) and what draws (colours, graphs, matrices, engines).
     """
+    return _value_shaped(obj) or _drawing_shaped(obj)
+
+
+def _value_shaped(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
+    """A ``TString``, a ``TArray`` or a vector - the shapes that are their values."""
     if _is_tstring(obj):
         return _tstring_payload(obj)
-    if _is_colour(obj):
-        return _colour_payload(obj)
-    if _is_graph2d(obj):
-        return _graph2d_payload(obj)
     if _is_tarray(obj):
         return _tarray_payload(obj)
     if _is_vector(obj):
         return _vector_payload(obj)
+    return None
+
+
+def _drawing_shaped(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
+    """A colour, a ``TGraph2D``, a matrix or a random engine - the shapes that draw or run."""
+    if _is_colour(obj):
+        return _colour_payload(obj)
+    if _is_graph2d(obj):
+        return _graph2d_payload(obj)
     if _is_matrix(obj):
         return _matrix_payload(obj)
     if _is_random(obj):
