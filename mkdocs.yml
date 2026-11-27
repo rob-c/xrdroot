@@ -39,6 +39,7 @@ nav:
   - ROOT files: root.md
   - Components:
       - Overview: components/index.md
+      - "The component contract is the list of sub-projects": architecture/the-component-contract-is-the-list-of-xrdroots-sub-projects-md.md
       - C++ standard library: components/cppstd.md
       - C++ translator (pycxx): components/pycxx.md
       - ROOT's interpreter (pycint): components/pycint.md
