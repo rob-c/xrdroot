@@ -5896,3 +5896,46 @@ The gate was run at this round's own tip (`2d43dd67`, in `…/verify`): part 1 *
 row now quotes that figure instead. **A round's gate must be run at the round's own tree** - "the tree
 did not change" is a claim about a sha, and the sha had changed.
 
+## Round 137's close
+
+**A proxy's `At` answers the slot a program writes through - and the family reaches its sixth wall.**
+
+Round 136 measured four defects and reverted them, because two tests pin `At`'s **value** and ROOT's
+own answer had not been read. This round found the shape that satisfies both: an **`ItemRef` that
+compares equal to the value it points at**. C++ compares a pointer with a pointer; a program here
+compares what a runtime call answers with the value a reader expects (`proxy.At(0) == 4`), and an item
+reference answering for its value makes both true.
+
+**The three pieces, each measured.** `Allocate` asked for a Python `list` while the guard pushes the
+macro's own `vector<int>`, so nothing was ever allocated - `_refill` now knows a container's protocol
+(`clear` + `push_back`). `At` answers an `ItemRef` for a number's or a pointer's slot, the object for
+a class, and a **keyed** container's n-th item (`ASSOCIATIVE`). A **`pair`/`array`/`bitset` has no
+collection proxy** - ROOT's `GetCollectionProxy` answers null - which is what had the generator filling
+a `pair<int,double>` element by element as if it were a vector. And `byte_offset` **steps an
+`ObjectAddress`** as the object it holds, which is what `char_pointer(rcl.New())` hands on.
+
+**What it bought.** `io/datamodelevolution` goes **22 / 20 / 2 -> 22 / 14 / 2 / 6**: the six children of
+`01/test1` are its fixture dependants rather than failures, and the family walks the **whole base-type
+fill** - every `Allocate`, every write through `At` - to stop at `test1.cxx:123`:
+
+```cpp
+tree->Branch( "TestVectorP", &vP );     // std::vector<std::pair<int, double>>
+```
+
+That is `W0-271`: ROOT splits each pair into its members, and this writer refuses the collection as
+elements that "carry sizes of their own" - which is true of a nested container and not of a pair.
+
+**Nothing lost, and the guards were re-measured whole**: `io/tree` 18/0/0/2, `io/newstl` 19/11/2,
+**`io/stdpair` 44/0/0/0**.
+
+**The gate named two things in the round's own work and both were fixed rather than excused**: the
+proxy test reached **ccn 11** and was split in two (every assertion kept), and four branches - the
+pair comparison, the object branch of `At`, the keyed container and the C++ container arm of
+`_refill` - were uncovered until a test reached each.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 189 passed, 0 failed**
+(99.75 % by design); part 2 44 passed and `coverage report` **`TOTAL 127545 0 32052 0 100%`**; ruff,
+mypy, maintainability and components each exit 0, at a load average of 9-15.
+
+**+2 unit tests** (a keyed container's n-th item, and an `ObjectAddress` stepped by a member's offset).
+
