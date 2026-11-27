@@ -79,6 +79,7 @@ nav:
       - "A pair has no class entry, so its branch and its New both say nothing": gotchas/a-pair-has-no-class-entry-so-its-branch-and-its-new-both-say.md
       - "A proxy's At serves a reader its value and a writer an address": gotchas/a-proxy-s-at-serves-a-reader-its-value-and-a-writer-an-address.md
       - "An accessor read as a value and written as an address is an object": decisions/an-accessor-read-as-a-value-and-written-as-an-address-is-an.md
+      - "The oracle cannot compile a macro - use the interpreter": gotchas/the-oracle-cannot-compile-a-macro-use-the-interpreter-md.md
       - "A function's using ends with its block": gotchas/a-functions-using-ends-with-its-block-so-the-alias-table-is-per.md
       - "Working the gtest/pyunittest/other goal: one screen, one feature": instructions/working-the-gtest-pyunittest-other-goal-one-screen-one-feature.md
       - "Goal baseline: gtest, pyunittest, other": discoveries/goal-baseline-gtest-pyunittest-other-at-228-588-none-out-of.md
