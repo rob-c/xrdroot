@@ -187,6 +187,13 @@ class TArray(TObject):
     #: The values' type, as NumPy names it.
     DTYPE = np.dtype(np.float64)
 
+    #: The C++ name of the array a subclass is, which ROOT asks of every object it writes.
+    #: Spelled on the class because ``TObject.ClassName`` reaches for a dictionary some of
+    #: these do not have.
+    def ClassName(self) -> str:
+        """This array's ROOT class name: ``TArrayD`` for an array of doubles."""
+        return type(self).__name__
+
     def __init__(self, n: Any = 0, values: Any = None) -> None:
         super().__init__()
         size = len(n) if np.ndim(n) > 0 else int(n)
