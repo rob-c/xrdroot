@@ -1265,6 +1265,42 @@ def _tarray_name(obj: Any) -> str:
     return str(named()) if callable(named) else type(obj).__name__
 
 
+def _shaped_payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
+    """The payload of an object written by its members here, or ``None`` if it is not one.
+
+    An array and a vector are the two the writer carries a layout for without a ``pyroot``
+    object behind them, so they are recognised by their names and their accessors.
+    """
+    if _is_tarray(obj):
+        return _tarray_payload(obj)
+    if _is_vector(obj):
+        return _vector_payload(obj)
+    return None
+
+
+def _is_vector(obj: Any) -> bool:
+    """Whether this is one of ROOT's ``TVector3``/``TLorentzVector`` objects.
+
+    Recognised by the name and the accessors a row needs, since ``pyroot`` is above this layer.
+    """
+    return (
+        _tarray_name(obj) in ("TVector3", "TLorentzVector")
+        and callable(getattr(obj, "Px", None))
+        and callable(getattr(obj, "X", None))
+    )
+
+
+def _vector_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """A vector as ROOT writes one: three coordinates, and the energy for a four-vector."""
+    classname = _tarray_name(value)
+    three = {"fX": value.X(), "fY": value.Y(), "fZ": value.Z()}
+    row = three if classname == "TVector3" else {"fP": three, "fE": value.E()}
+    buf = WBuffer()
+    used: dict[str, None] = {classname: None}
+    _record(buf, classname, row, used)
+    return classname, bytes(buf.data), tuple(used)
+
+
 def _is_tarray(obj: Any) -> bool:
     """Whether ``obj`` is one of ROOT's array objects, without importing ``pyroot``."""
     return _tarray_name(obj) in ARRAY_CLASSES.values() and hasattr(obj, "__array__")
@@ -1278,8 +1314,9 @@ def _payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]]:
         return _record_payload(obj)
     if isinstance(obj, str):
         return _string_payload(obj)
-    if _is_tarray(obj):
-        return _tarray_payload(obj)
+    shaped = _shaped_payload(obj)
+    if shaped is not None:
+        return shaped
     if isinstance(obj, (array.array, np.ndarray)):
         return _array_payload(obj)
     if isinstance(obj, WRITABLE):

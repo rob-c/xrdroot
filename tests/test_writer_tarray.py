@@ -40,3 +40,28 @@ def test_a_plain_object_is_not_mistaken_for_an_array(tmp_path):
     with pytest.raises((FormatError, TypeError, UnsupportedFeatureError)):
         with xrdroot.create(str(tmp_path / "b.root")) as handle:
             handle["a"] = ROOT.TNamed("x", "a named thing")
+
+
+def test_a_three_vector_is_written_as_its_coordinates(tmp_path):
+    """ROOT's ``TVector3`` record is ``fX``, ``fY`` and ``fZ``, and nothing else."""
+    import xrdroot
+
+    path = tmp_path / "v.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["v"] = ROOT.TVector3(1.5, -2.5, 3.0)
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["v"]
+    assert (read["fX"], read["fY"], read["fZ"]) == (1.5, -2.5, 3.0)
+
+
+def test_a_lorentz_vector_is_written_as_a_three_vector_and_an_energy(tmp_path):
+    """``TLorentzVector`` streams ``fP`` (a ``TVector3``) and ``fE``."""
+    import xrdroot
+
+    path = tmp_path / "lv.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["p"] = ROOT.TLorentzVector(1.0, 2.0, 3.0, 4.0)
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["p"]
+    assert (read["fP"]["fX"], read["fP"]["fY"], read["fP"]["fZ"]) == (1.0, 2.0, 3.0)
+    assert read["fE"] == 4.0
