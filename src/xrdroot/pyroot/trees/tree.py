@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any, NoReturn
 
-from .addresses import address_of, members_of
+from .addresses import Member, address_of, members_of
 from .branches import TBranch, TBranchRef
 from .copying import clone
 from .leaflist import Leaf, parse
@@ -62,6 +62,20 @@ def _undeclared(address: Any, name: str) -> NoReturn:
         f"the branch {name!r} was given no leaf list, and what its address holds does "
         f"not say its type; give one, as in Branch({name!r}, x, '{name}/D')"
     )
+
+
+def _a_pair(address: Any) -> bool:
+    """Does this address hold a ``std::pair``, which a branch of no leaf list splits in two?"""
+    from ...cppstd.objects import Pair
+
+    return isinstance(getattr(address, "value", address), Pair)
+
+
+def _pair_leaf(branch: str, pair: Any, member: str) -> Leaf:
+    """One of a pair's two leaves: the member's own name and the code its type has."""
+    found = Member(pair, member).dtype
+    code = PLATFORM.get(found.char, found.char) if found is not None else "D"
+    return Leaf(member, str(code), 1, None, f"{member}/{code}")
 
 
 def _declared(address: Any, name: str) -> list[Leaf]:
@@ -208,6 +222,13 @@ class TTree(_Player):
             title = leaflist
             leaves = parse(title)
             addresses = self._addressed(address, leaves, what)
+        elif _a_pair(address):
+            # ``Branch("TestPair", &pr)``: a ``std::pair`` is two members, and ROOT splits it into
+            # the two leaves ``first`` and ``second`` rather than refusing the address.
+            title = name
+            pair = getattr(address, "value", address)
+            leaves = [_pair_leaf(name, pair, "first"), _pair_leaf(name, pair, "second")]
+            addresses = [Member(pair, "first"), Member(pair, "second")]
         else:
             title = name
             addresses = [address_of(address, what)]

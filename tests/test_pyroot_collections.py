@@ -758,6 +758,12 @@ def test_a_proxy_allocates_cells_and_a_guard_points_it_at_one_collection() -> No
     nothing._destruct()
     assert proxy.Size() == 0
     # a class's proxy makes its own objects - ROOT hands back the objects a collection holds
+    pointers = ROOT.TVirtualCollectionProxy(ROOT.TClass("vector<TNamed*>"))
+    pointed: list[object] = []
+    pointed_guard = ROOT.TVirtualCollectionProxy.TPushPop(pointers, pointed)
+    pointers.Allocate(1, False)
+    pointed_guard._destruct()
+    assert len(pointed) == 1 and pointed[0][0] is None  # an address's cell, empty until filled
     named = ROOT.TVirtualCollectionProxy(ROOT.TClass("vector<TNamed>"))
     objects: list[object] = []
     guard = ROOT.TVirtualCollectionProxy.TPushPop(named, objects)

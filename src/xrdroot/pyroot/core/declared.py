@@ -27,6 +27,7 @@ from weakref import WeakKeyDictionary
 import numpy as np
 
 from ...cppstd.containers import std
+from ...cppstd.objects import Pair
 from ...pycxx.runtime.namespace import DECLARED
 from ...pycxx.symbols import member_name
 from ...wclasses import TYPES
@@ -290,12 +291,33 @@ def new_value(classname: str) -> Any:
     if found.name in STL_KINDS:
         args = [arg.text() for arg in found.args]
         return getattr(std, found.name)[args[0] if len(args) == 1 else tuple(args)]()
+    if found.name == "pair" and len(found.args) == 2:
+        # ``std::pair`` is two members and no class: a default-made one holds a zero of each, which
+        # is what ``new pair<int,double>()`` is and what a branch of one needs to have a value.
+        return Pair(*(_zero_of(arg.text()) for arg in found.args))
     cls = find_class(found.name)
     if cls is None:
         from .reflection import _class_named
 
         cls = _class_named(found.name)
     return _new(cls) if cls is not None else None
+
+
+#: What a default-made value of a basic type is, for the members of a ``std::pair``.
+_ZEROS = {
+    "int": 0, "double": 0.0, "float": 0.0, "long": 0, "short": 0, "char": "\x00", "bool": False,
+}
+
+
+def _zero_of(spelled: str) -> Any:
+    """A zero of the type ``spelled``: a number's, text's, or an empty container's."""
+    name = spelled.strip()
+    if name in _ZEROS:
+        return _ZEROS[name]
+    if name.startswith("pair<") and name.endswith(">"):
+        inner = parse_type(name).args
+        return Pair(*(_zero_of(arg.text()) for arg in inner)) if len(inner) == 2 else None
+    return "" if name in ("std::string", "string", "TString") else None
 
 
 def _gather(name: str, cls: type, found: dict[str, Declaration]) -> None:

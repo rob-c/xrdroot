@@ -118,7 +118,7 @@ class TVirtualCollectionProxy(TObject):
             self._held.pop()
 
     def _items(self) -> list[Any]:
-        held = self._held[-1] if self._held else ()
+        held = _unwrapped(self._held[-1]) if self._held else ()
         return list(held.items() if hasattr(held, "items") else held)
 
     def Size(self) -> int:
@@ -139,7 +139,7 @@ class TVirtualCollectionProxy(TObject):
         """
         del force  # ROOT's flag asks for the arena's memory to be grown; a Python list grows itself
         made = [self._element() for _ in range(int(n))]
-        held = self._held[-1] if self._held else None
+        held = _unwrapped(self._held[-1]) if self._held else None
         if isinstance(held, list):
             held[:] = made
 
@@ -147,13 +147,18 @@ class TVirtualCollectionProxy(TObject):
         """One fresh element: a number's cell, or the class's own default object."""
         from ...cppstd.cells import Cell
 
+        value = self._parts()[1][0] if self._parts()[1] else "int"
+        if value.endswith("*"):
+            # a collection of pointers holds *addresses*: a cell per element, which
+            # ``*((void **)proxy->At(i)) = 0`` and ``= newObj`` both write through
+            return Cell(None, value.rstrip("*").strip())
         if self.GetType() == EDataType.kOther_t:
             # the *value* class, not the container's: ``New`` makes a container, and an element is
             # what the container holds
             from .reflection import TClass
 
-            return TClass(self._parts()[1][0]).New()
-        return Cell(0, self._parts()[1][0] if self._parts()[1] else "int")
+            return TClass(value).New()
+        return Cell(0, value)
 
     def Clear(self, opt: str = "") -> None:
         if self._held and hasattr(self._held[-1], "clear"):
@@ -161,6 +166,15 @@ class TVirtualCollectionProxy(TObject):
 
     def New(self) -> Any:
         return self._class.New() if self._class is not None else None
+
+
+def _unwrapped(held: Any) -> Any:
+    """The container a proxy was pointed at, looked through the cell ``&collection`` makes.
+
+    ``generate(vI)`` hands the proxy ``&vI``, a cell, and the collection is what the cell holds -
+    ROOT's own ``GetObject()``-style unwrapping at the boundary of a runtime call.
+    """
+    return getattr(held, "value", held)
 
 
 class _TPushPop:

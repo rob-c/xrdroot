@@ -399,3 +399,24 @@ def test_a_branch_without_a_leaf_list_takes_the_type_the_macro_declared(tmp_path
     got = _written(tmp_path, t)
     assert (got["f"].dtype, got["d"].dtype, got["i"].dtype) == (np.float32, np.float64, np.int32)
     assert (got["u"].dtype, got["l"].dtype, got["c"].dtype) == (np.uint32, np.int64, np.int8)
+
+
+def test_a_branch_of_a_pair_splits_into_its_two_members() -> None:
+    """``tree->Branch("TestPair", &pr)`` over a ``std::pair`` is ROOT's two leaves ``first`` and
+    ``second`` - roottest's ``io/datamodelevolution`` gives one no leaf list at all - and the tree
+    keeps the pair's own values.
+    """
+    import xrdroot.pyroot as ROOT
+    from xrdroot.cppstd.cells import Cell
+    from xrdroot.cppstd.objects import Pair
+
+    tree = ROOT.TTree("PairTree", "")
+    pair = Pair(7, 2.5)
+    tree.Branch("TestPair", Cell(pair, "pair<int,double>"))
+    leaves = tree.GetBranch("TestPair").GetListOfLeaves()
+    assert [leaves.At(i).GetName() for i in range(leaves.GetEntries())] == ["first", "second"]
+    # the codes are numpy's, which is what every leaf this writer makes says: an int32 is "i" here
+    # where ROOT spells its own Int_t "I" - a fidelity gap of the writer's, not of the pair (W0-270)
+    assert [leaves.At(i).GetTitle() for i in range(leaves.GetEntries())] == ["first/i", "second/d"]
+    tree.Fill()
+    assert pair.first == 7 and pair.second == 2.5

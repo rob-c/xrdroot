@@ -1981,3 +1981,15 @@ def test_a_derived_classs_offsets_begin_after_its_base() -> None:
     }
     assert base == {"a": 0, "b": 8}
 
+
+def test_a_default_made_pair_holds_a_zero_of_each_member() -> None:
+    """``new pair<A,B>()`` is a pair of zeros, and ROOT's own generator makes one before a branch of
+    it - the members' types are what says which zero, a nested pair included."""
+    from xrdroot.cppstd.objects import Pair
+
+    made = ROOT.TClass.GetClass("pair<int,double>").New()
+    assert made == Pair(0, 0.0)
+    assert ROOT.TClass.GetClass("pair<std::string,int>").New() == Pair("", 0)
+    assert ROOT.TClass.GetClass("pair<Some,double>").New() == Pair(None, 0.0)
+    assert ROOT.TClass.GetClass("pair<pair<int,int>,double>").New() == Pair(Pair(0, 0), 0.0)
+
