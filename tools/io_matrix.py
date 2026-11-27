@@ -50,7 +50,13 @@ try:
     else:
         handle = ROOT.TFile.Open(path, "READ")
         obj = handle.Get("obj")
-        answer["class"] = obj.ClassName() if obj is not None else None
+        if obj is None:
+            answer["class"] = None
+        else:
+            named = getattr(obj, "ClassName", None)
+            #: xrdroot reads a bare ``TArray`` back as the values it holds, which is a real
+            #: read of the right class; only an object that can name itself is asked to.
+            answer["class"] = str(named()) if callable(named) else name
         handle.Close()
     answer["ok"] = True
 except Exception as reason:  # noqa: BLE001 - the refusal is the finding, not a crash
