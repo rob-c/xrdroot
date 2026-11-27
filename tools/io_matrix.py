@@ -216,6 +216,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--oracle-prefix", help="a ROOT installation to compare against")
     parser.add_argument("--classes", help="comma-separated names; default is the base set")
     parser.add_argument("--out", help="where the files and the report go")
+    parser.add_argument(
+        "--tree", action="store_true", help="round-trip a TTree with every leaf shape instead"
+    )
     arguments = parser.parse_args(argv)
     names = (
         [name.strip() for name in arguments.classes.split(",") if name.strip()]
@@ -223,12 +226,147 @@ def main(argv: list[str] | None = None) -> int:
         else list(DEFAULT_CLASSES)
     )
     out = Path(arguments.out) if arguments.out else Path(tempfile.mkdtemp(prefix="io-matrix-"))
+    if arguments.tree:
+        finding = tree_round_trip(arguments.oracle_prefix, out)
+        print(json.dumps(finding, indent=1))
+        written = out / "io-matrix-tree.json"
+        written.write_text(json.dumps(finding, indent=1) + "\n")
+        print(f"report: {written}")
+        return 0 if finding["root_read_ok"] and finding["values_match"] else 1
     rows = measure(names, arguments.oracle_prefix, out)
     print(table(rows))
     written = out / "io-matrix.json"
     written.write_text(json.dumps(report(rows), indent=1) + "\n")
     print(f"report: {written}")
     return 0 if all(row.supported for row in rows) else 1
+
+
+
+
+#: What a tree round-trip writes, one column per leaf shape ROOT has: a number that is the
+#: same shape every entry, a run whose length changes, and text.
+TREE_COLUMNS = {
+    "n": int,
+    "x": float,
+    "flag": bool,
+    "hits": ("i", 4),
+    "run": ("f", None),
+    "tag": str,
+}
+TREE_ENTRIES = [
+    {"n": 1, "x": 0.5, "flag": True, "hits": [1, 2, 3, 4], "run": [1.0, 2.0], "tag": "a"},
+    {"n": 2, "x": 1.5, "flag": False, "hits": [5, 6, 7, 8], "run": [3.0], "tag": "bb"},
+    {"n": 3, "x": -2.25, "flag": True, "hits": [9, 0, 1, 2], "run": [], "tag": "ccc"},
+]
+
+#: ROOT's side of the tree round-trip: read our file and write what it understood back out.
+#: ``CloneTree`` is the reader's whole opinion of the layout - if a branch is wrong, the clone
+#: carries the wrong thing and the comparison at the end sees it.
+CLONE = r"""
+import json, sys
+import ROOT
+source, target = sys.argv[1], sys.argv[2]
+answer = {"ok": False, "entries": 0, "branches": [], "why": None}
+try:
+    handle = ROOT.TFile.Open(source, "READ")
+    tree = handle.Get("events")
+    answer["entries"] = int(tree.GetEntries())
+    answer["branches"] = [b.GetName() for b in tree.GetListOfBranches()]
+    out = ROOT.TFile.Open(target, "RECREATE")
+    clone = tree.CloneTree()
+    clone.Write()
+    out.Close()
+    handle.Close()
+    answer["ok"] = True
+except Exception as reason:
+    answer["why"] = f"{type(reason).__name__}: {reason}"
+print(json.dumps(answer))
+"""
+
+
+def _tree_written(path: Path) -> None:
+    """One tree with every leaf shape, filled with :data:`TREE_ENTRIES`."""
+    import xrdroot
+
+    with xrdroot.create(str(path)) as handle:
+        tree = handle.tree("events", TREE_COLUMNS)
+        for entry in TREE_ENTRIES:
+            tree.fill(**entry)
+
+
+def _one(value: object) -> object:
+    """One cell of a column, as a plain Python value: a run becomes a list."""
+    if hasattr(value, "item") and not isinstance(value, (list, str)):
+        try:
+            return value.item()
+        except (AttributeError, ValueError):
+            pass
+    if isinstance(value, (str, bytes)):
+        return value
+    if hasattr(value, "__iter__"):
+        return [_one(item) for item in value]
+    return value
+
+
+def _tree_read(path: Path) -> list[dict[str, object]]:
+    """The entries of a tree as xrdroot reads them back, for comparison."""
+    import xrdroot
+
+    with xrdroot.open_root(str(path)) as handle:
+        tree = handle["events"]
+        columns = next(iter(tree.iterate()), {})
+    count = len(columns.get("n", ()))
+    return [
+        {name: _one(columns[name][index]) for name in TREE_COLUMNS if name in columns}
+        for index in range(count)
+    ]
+
+
+def tree_round_trip(oracle_prefix: str | None, out: Path) -> dict[str, object]:
+    """Write, have ROOT transcribe it with ``CloneTree``, read the transcription back."""
+    out.mkdir(parents=True, exist_ok=True)
+    mine = out / "xrdroot-tree.root"
+    theirs = out / "root-clone.root"
+    _tree_written(mine)
+    child = out / "clone_child.py"
+    child.write_text(CLONE)
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    done = subprocess.run(
+        [_interpreter("root", oracle_prefix), str(child), str(mine), str(theirs)],
+        cwd=out,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=environment,
+    )
+    answer = json.loads([l for l in done.stdout.splitlines() if l.startswith("{")][-1])
+    got = _tree_read(theirs) if answer["ok"] else []
+    wanted = [{name: entry[name] for name in TREE_COLUMNS} for entry in TREE_ENTRIES]
+    same = len(got) == len(wanted) and all(
+        _same(row, want) for row, want in zip(got, wanted, strict=False)
+    )
+    return {
+        "root_read_ok": answer["ok"],
+        "root_why": answer["why"],
+        "entries": answer["entries"],
+        "branches": answer["branches"],
+        "values_match": same,
+        "read_back": got,
+    }
+
+
+def _same(got: dict[str, object], want: dict[str, object]) -> bool:
+    """Whether one entry read back holds what was written, column by column."""
+    return all(_cell(got.get(name), value) for name, value in want.items())
+
+
+def _cell(mined: object, value: object) -> bool:
+    """One value against one read back: a run compares element by element."""
+    if isinstance(value, list):
+        theirs = mined if isinstance(mined, list) else ([] if mined is None else [mined])
+        return [float(item) for item in theirs] == [float(item) for item in value]
+    return mined == value
 
 
 if __name__ == "__main__":
