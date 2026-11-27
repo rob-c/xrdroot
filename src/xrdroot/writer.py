@@ -1275,7 +1275,40 @@ def _shaped_payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
         return _tarray_payload(obj)
     if _is_vector(obj):
         return _vector_payload(obj)
+    if _is_matrix(obj):
+        return _matrix_payload(obj)
     return None
+
+
+def _is_matrix(obj: Any) -> bool:
+    """Whether this is one of ROOT's matrices, recognised by name and shape accessors."""
+    named = _tarray_name(obj)
+    return named in ("TMatrixD", "TMatrixF", "TMatrixT<double>", "TMatrixT<float>") and callable(
+        getattr(obj, "GetNrows", None)
+    )
+
+
+def _matrix_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """A matrix as ROOT writes one: the base's shape, then the values it points at."""
+    named = _tarray_name(value)
+    single = named in ("TMatrixF", "TMatrixT<float>")
+    classname = "TMatrixT<float>" if single else "TMatrixT<double>"
+    rows, cols = int(value.GetNrows()), int(value.GetNcols())
+    values = [float(item) for item in value.GetMatrixArray()]
+    row = {
+        "fNrows": rows,
+        "fNcols": cols,
+        "fRowLwb": 0,
+        "fColLwb": 0,
+        "fNelems": len(values),
+        "fNrowIndex": rows + 1,
+        "fTol": 0.0,
+        "fElements": values,
+    }
+    buf = WBuffer()
+    used: dict[str, None] = {classname: None}
+    _record(buf, classname, row, used)
+    return classname, bytes(buf.data), tuple(used)
 
 
 def _is_vector(obj: Any) -> bool:

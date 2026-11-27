@@ -65,3 +65,20 @@ def test_a_lorentz_vector_is_written_as_a_three_vector_and_an_energy(tmp_path):
         read = handle["p"]
     assert (read["fP"]["fX"], read["fP"]["fY"], read["fP"]["fZ"]) == (1.0, 2.0, 3.0)
     assert read["fE"] == 4.0
+
+
+def test_a_matrix_is_written_as_its_shape_and_values(tmp_path):
+    """ROOT's ``TMatrixT`` record is the base's shape, then a pointer counted by ``fNelems``."""
+    import xrdroot
+
+    path = tmp_path / "m.root"
+    matrix = ROOT.TMatrixD(2, 2)
+    matrix[0][0] = 1.5
+    matrix[1][1] = -2.5
+    with xrdroot.create(str(path)) as handle:
+        handle["m"] = matrix
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["m"]
+    base = read["TMatrixTBase<double>"]
+    assert (base["fNrows"], base["fNcols"], base["fNelems"]) == (2, 2, 4)
+    assert [float(v) for v in read["fElements"]] == [1.5, 0.0, 0.0, -2.5]

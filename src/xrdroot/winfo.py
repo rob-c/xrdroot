@@ -1298,3 +1298,28 @@ INFOS: dict[str, tuple[int, int, tuple[Element, ...]]] = {
          500, 24, 0, 0, (0, 0, 0, 0, 0), 'vector<string>', (1, 61)),
     )),
 }
+
+#: The matrix classes, harvested from a donor written by ROOT 6.40.04 - the donor holds one
+#: ``TMatrixD``, and the harvest tool (``tools/harvest_infos.py``) reports both classes and
+#: their elements. ``TMatrixD`` is the typedef of ``TMatrixT<double>``, which is the name
+#: ROOT puts in the file, so both are here: the base carries the shape, the derived one a
+#: pointer to the values counted by ``fNelems``.
+INFOS.update({
+    "TMatrixTBase<double>": (2333786657, 5, (
+        ('TStreamerBase', 'TObject', 'Basic ROOT object',
+         66, 0, 0, 0, (0, -1877229523, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBasicType', 'fNrows', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNcols', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fRowLwb', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fColLwb', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNelems', '', 6, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNrowIndex', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fTol', '', 8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+    "TMatrixT<double>": (135074716, 4, (
+        ('TStreamerBase', 'TMatrixTBase<double>', 'Matrix base class',
+         0, 0, 0, 0, (0, -1961180639, 0, 0, 0), 'BASE', (5,)),
+        ('TStreamerBasicPointer', 'fElements', 'Matrix elements', 48, 8, 0, 0,
+         (0, 0, 0, 0, 0), 'double*', (4, 'fNelems', 'TMatrixTBase<double>')),
+    )),
+})
