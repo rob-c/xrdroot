@@ -233,3 +233,30 @@ def test_an_empty_tobjarray_is_written_and_read_back_with_no_entries(tmp_path):
     assert path.stat().st_size > 0
     with xrdroot.open_root(str(path)) as handle:
         assert list(handle["a"]) == []
+
+
+@pytest.mark.parametrize("name", ["TBox", "TPaveText"])
+def test_a_drawing_object_with_flat_members_is_written_by_them(tmp_path, name):
+    """``TBox`` and ``TPaveText`` keep their members themselves, like ``TLatex`` does."""
+    import xrdroot
+
+    path = tmp_path / f"{name}.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["o"] = getattr(ROOT, name)()
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["o"]
+    #: read back, a base's members are nested under the base's name - or flat, when the
+    #: writer's hand-written path for that class took them
+    assert read.classname == name and _line_colour(read.members) == 1
+
+
+def _line_colour(held):
+    """``fLineColor`` wherever the read-back put it: a base's members nest under the base."""
+    if "fLineColor" in held:
+        return held["fLineColor"]
+    for value in held.values():
+        if isinstance(value, dict):
+            found = _line_colour(value)
+            if found is not None:
+                return found
+    return None

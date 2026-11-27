@@ -1470,9 +1470,14 @@ def _colour_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
     return "TColor", bytes(buf.data), tuple(used)
 
 
+#: The drawing objects whose engine keeps its members flat and whose layout this writer
+#: carries: they are written by that member dict, with a typed zero where a member is absent.
+MEMBERED = ("TLatex", "TText", "TBox", "TPaveText")
+
+
 def _is_text(obj: Any) -> bool:
-    """Whether this is ROOT's ``TLatex``, whose engine already holds its members."""
-    return _tarray_name(obj) in ("TLatex", "TText") and hasattr(obj, "members")
+    """Whether this is one of ROOT's drawing objects that keep their members themselves."""
+    return _tarray_name(obj) in MEMBERED and isinstance(getattr(obj, "members", None), dict)
 
 
 def _text_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
