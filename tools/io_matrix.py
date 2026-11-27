@@ -296,6 +296,71 @@ print(json.dumps(answer))
 """
 
 
+#: The other direction: ROOT writes the same tree, one branch per leaf shape, and we read it.
+ROOT_WRITES = r"""
+import json, sys
+import array
+import ROOT
+target = sys.argv[1]
+answer = {"ok": False, "why": None}
+rows = [
+    {"n": 1, "x": 0.5, "flag": True, "hits": [1, 2, 3, 4], "run": [1.0, 2.0], "tag": "a"},
+    {"n": 2, "x": 1.5, "flag": False, "hits": [5, 6, 7, 8], "run": [3.0], "tag": "bb"},
+    {"n": 3, "x": -2.25, "flag": True, "hits": [9, 0, 1, 2], "run": [], "tag": "ccc"},
+]
+try:
+    handle = ROOT.TFile.Open(target, "RECREATE")
+    tree = ROOT.TTree("events", "")
+    n = array.array("i", [0])
+    tree.Branch("n", n, "n/I")
+    x = array.array("d", [0.0])
+    tree.Branch("x", x, "x/D")
+    flag = array.array("i", [0])
+    tree.Branch("flag", flag, "flag/O")
+    hits = array.array("i", [0, 0, 0, 0])
+    tree.Branch("hits", hits, "hits[4]/I")
+    run = ROOT.std.vector("double")()
+    tree.Branch("run", run)
+    tag = ROOT.std.string()
+    tree.Branch("tag", tag)
+    for row in rows:
+        n[0] = row["n"]
+        x[0] = row["x"]
+        flag[0] = int(row["flag"])
+        for index, value in enumerate(row["hits"]):
+            hits[index] = value
+        run.clear()
+        for value in row["run"]:
+            run.push_back(value)
+        tag.replace(0, len(tag), row["tag"])
+        tree.Fill()
+    handle.Write()
+    handle.Close()
+    answer["ok"] = True
+except Exception as reason:
+    answer["why"] = f"{type(reason).__name__}: {reason}"
+print(json.dumps(answer))
+"""
+
+
+def _under_root(oracle_prefix: str | None, out: Path, script: str, *rest: str) -> dict:
+    """Run one ROOT-side script in its own process and take the JSON object it printed."""
+    child = out / ("root_child_" + str(len(script)) + ".py")
+    child.write_text(script)
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    done = subprocess.run(
+        [_interpreter("root", oracle_prefix), str(child), *rest],
+        cwd=out,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=environment,
+    )
+    lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
+    return json.loads(lines[-1]) if lines else {"ok": False, "why": done.stderr.strip()[-200:]}
+
+
 def _tree_written(path: Path) -> None:
     """One tree with every leaf shape, filled with :data:`TREE_ENTRIES`."""
     import xrdroot
@@ -365,6 +430,22 @@ def tree_round_trip(oracle_prefix: str | None, out: Path) -> dict[str, object]:
         "branches": answer["branches"],
         "values_match": same,
         "read_back": got,
+        **root_writes_the_same_tree(oracle_prefix, out),
+    }
+
+
+def root_writes_the_same_tree(oracle_prefix: str | None, out: Path) -> dict[str, object]:
+    """The other direction: ROOT writes the tree, and what we read back is compared with it."""
+    target = out / "root-tree.root"
+    wrote = _under_root(oracle_prefix, out, ROOT_WRITES, str(target))
+    back = _tree_read(target) if wrote["ok"] else []
+    wanted = [{name: entry[name] for name in TREE_COLUMNS} for entry in TREE_ENTRIES]
+    return {
+        "root_wrote_ok": wrote["ok"],
+        "root_wrote_why": wrote["why"],
+        "reverse_values_match": len(back) == len(wanted)
+        and all(_same(row, want) for row, want in zip(back, wanted, strict=False)),
+        "reverse_read_back": back,
     }
 
 
