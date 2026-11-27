@@ -6195,3 +6195,32 @@ INFOS.update({
         ('TStreamerBasicType', 'fAlpha', '', 5, 4, 0, 0, (0, 0, 0, 0, 0), 'float', ()),
     )),
 })
+
+#: A ``TGraph2D``, harvested from a donor written by ROOT 6.40.04. Its three attribute bases
+#: are already in the table; this is the graph's own record: counts, three pointers counted by
+#: ``fNpoints``, and the range it was drawn with.
+INFOS.update({
+    "TGraph2D": (2222220368, 1, (
+        ('TStreamerBase', 'TNamed', 'The basis for a named object (name, title)',
+         67, 0, 0, 0, (0, -541636036, 0, 0, 0), 'BASE', (1,)),
+        ('TStreamerBase', 'TAttLine', 'Line attributes',
+         0, 0, 0, 0, (0, -1811462839, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBase', 'TAttFill', 'Fill area attributes',
+         0, 0, 0, 0, (0, -2590822, 0, 0, 0), 'BASE', (2,)),
+        ('TStreamerBase', 'TAttMarker', 'Marker attributes',
+         0, 0, 0, 0, (0, -1956941220, 0, 0, 0), 'BASE', (3,)),
+        ('TStreamerBasicType', 'fNpoints', '', 6, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNpx', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fNpy', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicType', 'fMaxIter', '', 3, 4, 0, 0, (0, 0, 0, 0, 0), 'int', ()),
+        ('TStreamerBasicPointer', 'fX', '[fNpoints] X coordinates', 48, 8, 0, 0,
+         (0, 0, 0, 0, 0), 'double*', (4, 'fNpoints', 'TGraph2D')),
+        ('TStreamerBasicPointer', 'fY', '[fNpoints] Y coordinates', 48, 8, 0, 0,
+         (0, 0, 0, 0, 0), 'double*', (4, 'fNpoints', 'TGraph2D')),
+        ('TStreamerBasicPointer', 'fZ', '[fNpoints] Z coordinates', 48, 8, 0, 0,
+         (0, 0, 0, 0, 0), 'double*', (4, 'fNpoints', 'TGraph2D')),
+        ('TStreamerBasicType', 'fMinimum', '', 8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fMaximum', '', 8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+        ('TStreamerBasicType', 'fMargin', '', 8, 8, 0, 0, (0, 0, 0, 0, 0), 'double', ()),
+    )),
+})

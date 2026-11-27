@@ -168,3 +168,31 @@ def test_a_colours_hls_follows_from_its_channels(tmp_path, rgb, hue, light, satu
     assert read["fHue"] == pytest.approx(hue, abs=1e-6)
     assert read["fLight"] == pytest.approx(light, abs=1e-6)
     assert read["fSaturation"] == pytest.approx(saturation, abs=1e-6)
+
+
+def test_a_graph2d_is_written_through_its_pyroot_object(tmp_path):
+    """The wrapper answers the row through its accessors: counts, coordinates and attributes."""
+    import xrdroot
+
+    path = tmp_path / "g2w.root"
+    graph = ROOT.TGraph2D()
+    graph.SetPoint(0, 1.0, 2.0, 3.0)
+    with xrdroot.create(str(path)) as handle:
+        handle["g"] = graph
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["g"]
+    assert read["fNpoints"] == 1
+    assert read["fX"] == [1.0] and read["fZ"] == [3.0]
+
+
+def test_a_graph2d_is_written_through_its_engine_too(tmp_path):
+    """The engine carries its members already, and takes the same record."""
+    import xrdroot
+    from xrdroot.pyroot.core.records import unwrap
+
+    path = tmp_path / "g2e.root"
+    graph = ROOT.TGraph2D()
+    graph.SetPoint(0, 1.0, 2.0, 3.0)
+    with xrdroot.create(str(path)) as handle:
+        handle["g"] = unwrap(graph)
+    assert path.stat().st_size > 0

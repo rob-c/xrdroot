@@ -1275,6 +1275,8 @@ def _shaped_payload(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
         return _tstring_payload(obj)
     if _is_colour(obj):
         return _colour_payload(obj)
+    if _is_graph2d(obj):
+        return _graph2d_payload(obj)
     if _is_tarray(obj):
         return _tarray_payload(obj)
     if _is_vector(obj):
@@ -1338,6 +1340,52 @@ def _matrix_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
     used: dict[str, None] = {classname: None}
     _record(buf, classname, row, used)
     return classname, bytes(buf.data), tuple(used)
+
+
+def _is_graph2d(obj: Any) -> bool:
+    """Whether this is ROOT's ``TGraph2D`` - the pyroot object or the engine behind it."""
+    if _tarray_name(obj) in ("TGraph2D", "Graph2D"):
+        return True
+    return getattr(obj, "classname", None) == "TGraph2D" and hasattr(obj, "members")
+
+
+def _graph2d_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """A ``TGraph2D`` in one row, whichever of the two objects is handed in.
+
+    The engine already carries its ``members``; the pyroot object answers through its
+    accessors. Both are made into the same row - plain ``int`` and ``float``, so that the
+    record's ``struct`` packing takes them - because the file has one layout either way.
+    """
+    members = getattr(value, "members", None)
+    if members is not None:
+        return _object_payload(value)
+    count = int(value.GetN())
+    row: dict[str, Any] = {
+        "fName": str(value.GetName()),
+        "fTitle": str(value.GetTitle()),
+        "fLineColor": int(value.GetLineColor()),
+        "fLineStyle": int(value.GetLineStyle()),
+        "fLineWidth": int(value.GetLineWidth()),
+        "fFillColor": int(value.GetFillColor()),
+        "fFillStyle": int(value.GetFillStyle()),
+        "fMarkerColor": int(value.GetMarkerColor()),
+        "fMarkerStyle": int(value.GetMarkerStyle()),
+        "fMarkerSize": float(value.GetMarkerSize()),
+        "fNpoints": count,
+        "fNpx": int(value.GetNpx()),
+        "fNpy": int(value.GetNpy()),
+        "fMaxIter": int(getattr(value, "GetMaxIter", lambda: 100000)()),
+        "fX": [float(item) for item in value.GetX()],
+        "fY": [float(item) for item in value.GetY()],
+        "fZ": [float(item) for item in value.GetZ()],
+        "fMinimum": float(value.GetMinimum()),
+        "fMaximum": float(value.GetMaximum()),
+        "fMargin": float(value.GetMargin()),
+    }
+    buf = WBuffer()
+    used: dict[str, None] = {"TGraph2D": None}
+    _record(buf, "TGraph2D", row, used)
+    return "TGraph2D", bytes(buf.data), tuple(used)
 
 
 def _is_colour(obj: Any) -> bool:
