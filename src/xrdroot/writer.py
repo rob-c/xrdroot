@@ -1282,6 +1282,8 @@ def _value_shaped(obj: Any) -> tuple[str, bytes, tuple[str, ...]] | None:
         return _tarray_payload(obj)
     if _is_vector(obj):
         return _vector_payload(obj)
+    if _is_text(obj):
+        return _text_payload(obj)
     return None
 
 
@@ -1443,6 +1445,36 @@ def _colour_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
     used: dict[str, None] = {"TColor": None}
     _record(buf, "TColor", row, used)
     return "TColor", bytes(buf.data), tuple(used)
+
+
+def _is_text(obj: Any) -> bool:
+    """Whether this is ROOT's ``TLatex``, whose engine already holds its members."""
+    return _tarray_name(obj) in ("TLatex", "TText") and hasattr(obj, "members")
+
+
+def _text_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
+    """A ``TLatex``: its flat member dict, each number cast to what its element packs as.
+
+    The row is flat - a base's members sit beside the class's own - so the cast walks every
+    class in the description's closure. A member the object does not hold is written as a
+    typed zero, because the record has to carry every element the layout declares.
+    """
+    classname = _tarray_name(value)
+    row: dict[str, Any] = dict(value.members)
+    for owner in _closure({classname: None}):
+        #: The closure is built from classes that have a layout, so every one of them has one.
+        info = layout_of(owner)
+        assert info is not None
+        for _kind, name, _title, stype, _s, _a, _d, _m, _t, _x in info[2]:
+            if stype not in NUMBER_STYPES:
+                continue
+            integer = FORMS[stype] in "bBhHiIlLqQ"
+            held = row.get(name)
+            row[name] = int(held or 0) if integer else float(held or 0.0)
+    buf = WBuffer()
+    used: dict[str, None] = {classname: None}
+    _record(buf, classname, row, used)
+    return classname, bytes(buf.data), tuple(used)
 
 
 def _is_tstring(obj: Any) -> bool:

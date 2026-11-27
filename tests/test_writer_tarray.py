@@ -196,3 +196,28 @@ def test_a_graph2d_is_written_through_its_engine_too(tmp_path):
     with xrdroot.create(str(path)) as handle:
         handle["g"] = unwrap(graph)
     assert path.stat().st_size > 0
+
+
+def test_a_tlatex_is_written_with_the_members_its_text_carries(tmp_path):
+    """``TLatex``'s row is flat, and a member it does not hold is written as a typed zero."""
+    import xrdroot
+    from xrdroot.pyroot.core.records import unwrap
+
+    path = tmp_path / "tx.root"
+    label = ROOT.TLatex(0.1, 0.2, "hi")
+    with xrdroot.create(str(path)) as handle:
+        handle["t"] = unwrap(label)
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["t"]
+    assert read["fX"] == 0.1 and read["fY"] == 0.2
+    assert read["fLimitFactorSize"] == 0     # the object holds none: ROOT's fresh one is zero
+
+
+def test_a_tlatex_is_written_through_its_pyroot_object_too(tmp_path):
+    """The wrapper is unwrapped to the same engine, so both routes end in one record."""
+    import xrdroot
+
+    path = tmp_path / "txw.root"
+    with xrdroot.create(str(path)) as handle:
+        handle["t"] = ROOT.TLatex(0.0, 0.0, "x")
+    assert path.stat().st_size > 0
