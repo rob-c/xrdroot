@@ -31,6 +31,7 @@ from .matrices import (
     TGeoTranslation,
     gGeoIdentity,
 )
+from .patterns import TGeoPatternFinder
 from .polyshapes import TGeoCompositeShape, TGeoPcon, TGeoPgon, TGeoTessellated, TGeoXtru
 from .shapes import (
     TGeoArb8,
@@ -63,5 +64,5 @@ __all__ = [
     "TGeoGtra", "TGeoTube", "TGeoTubeSeg", "TGeoCtub", "TGeoCone", "TGeoConeSeg", "TGeoSphere",
     "TGeoTorus", "TGeoEltu", "TGeoParaboloid", "TGeoHype", "TGeoPcon", "TGeoPgon", "TGeoXtru",
     "TGeoTessellated", "TGeoCompositeShape",
-    "TGeoVolume", "TGeoVolumeAssembly", "TGeoNode", "TGeoNodeMatrix",
+    "TGeoVolume", "TGeoVolumeAssembly", "TGeoNode", "TGeoNodeMatrix", "TGeoPatternFinder",
 ]  # fmt: skip

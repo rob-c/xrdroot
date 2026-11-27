@@ -351,3 +351,59 @@ def test_a_streamed_record_is_written_as_the_bytes_it_was_read_with() -> None:
     expect((streamed.root_payload(0), (b"\x00\x01\x02", (), carried)),
            (streamed.root_payload(4096), (b"\x00\x01\x02", (), carried)),
            ((streamed.classname, streamed.title), ("TGeoManager", "a geometry")))
+
+
+def test_a_pattern_finder_holds_the_division_it_divides_with() -> None:
+    """ROOT's ``TGeoPatternFinder`` is the base of the axis patterns, and a geometry file's streamer
+    list names it - which is why a file read here has to answer for it. Its range is ROOT's own:
+    ``fEnd = fStart + ndivisions * step``."""
+    import xrdroot.pyroot as ROOT
+
+    finder = ROOT.TGeoPatternFinder()
+    finder.SetRange(1.0, 2.0, 5)
+    found = (finder.GetStart(), finder.GetStep(), finder.GetEnd(), finder.GetNdiv())
+    assert found == (1.0, 2.0, 11.0, 5)  # fEnd = fStart + ndivisions * step, ROOT's own
+    assert (finder.GetByteCount(), finder.GetDivAxis()) == (36, 1)  # ROOT's own defaults
+    finder.Reflect()
+    finder.SetSpacedOut(True)
+    assert finder.IsReflected() and finder.IsSpacedOut()
+    finder.SetDivIndex(3)
+    assert finder.GetDivIndex() == 3
+    assert finder.FindNode([0.0, 0.0, 0.0]) is None  # the base looks for nothing; an axis does
+    assert ROOT.TClass.GetClass("TGeoPatternFinder") is not None
+
+
+def test_a_pattern_finders_walk_moves_to_the_next_division() -> None:
+    """``CdNext`` makes the next division current and answers its node; past the end, or with no
+    volume to take a node from, there is none."""
+    import xrdroot.pyroot as ROOT
+
+    finder = ROOT.TGeoPatternFinder()
+    finder.SetNext(2)
+    assert finder.GetNext() == 2 and finder.GetCurrent() == 0
+    assert finder.CdNext() is None  # no volume, so no node
+    assert finder.GetCurrent() == 2
+    finder.SetNext(-1)
+    assert finder.CdNext() is None
+    volume = ROOT.TGeoVolume("PVol", ROOT.TGeoBBox(1, 1, 1))
+    finder.SetVolume(volume)
+    assert finder.GetVolume() is volume
+    assert finder.GetNodeOffset(0) is None  # the volume holds no node at that index
+    assert finder.IsOnBoundary([0.0, 0.0, 0.0]) is False
+    finder.cd(1)
+    finder.UpdateMatrix(1, None)
+
+
+def test_a_pattern_finders_two_pure_virtuals_are_refused_by_name() -> None:
+    """ROOT's base declares ``CreateMatrix`` and ``MakeCopy`` pure virtual: only the axis finder
+    that made a division knows which axis it divides, so the base says so instead of guessing."""
+    import pytest
+
+    import xrdroot.pyroot as ROOT
+    from xrdroot.errors import UnsupportedFeatureError
+
+    finder = ROOT.TGeoPatternFinder()
+    with pytest.raises(UnsupportedFeatureError, match="CreateMatrix is a pure virtual"):
+        finder.CreateMatrix()
+    with pytest.raises(UnsupportedFeatureError, match="MakeCopy is a pure virtual"):
+        finder.MakeCopy()
