@@ -6359,3 +6359,41 @@ not work out"), which is the right behaviour for a reader that cannot compute it
 **So `W0-276` is "implement `BetaShortestInterval`"**, not "fix the quantiles" - and the discovery doc
 on trunk now says so, with the three oracle numbers as evidence.
 
+## Round 151's close
+
+**The distributions covered from the isolated scope - and an unbounded loop found by testing them.**
+
+`tests/test_distributions_engine.py` is 24 tests over `function/distributions.py`, and the substance is
+a table: nineteen functions, each with its arguments and **the value ROOT 6.40.04's own `ROOT.Math`
+answered**, printed with `%.17g` in the oracle (`normal_cdf(1)` = 0.84134474606854293,
+`chisquared_quantile(0.3,4)` = 2.1946984214069833, `landau`-family and the rest). A reader that rounds
+differently shows up here rather than in a tutorial. On top of the table: the quantile-read-backwards
+property for chi-squared, F and Student, a density's support (a gamma below its start, a log-normal
+below zero), a Poisson's masses summing to one, and the standard normal's three landmarks.
+
+**The find is a hang, not a wrong number.** `invert` widens its bracket upwards with no limit:
+
+```python
+while cdf(high) < p:
+    low, high = high, high * 2.0 + 1.0
+```
+
+A cdf that never **reaches** `p` - mine was `lambda x: -1.0` - widens for ever. That case ran inside a
+pytest call and hung two runs for **eleven minutes** before I understood what I was looking at. Live
+cdfs rise to 1, so nothing in the suite meets it today; **`W0-277`** records it, and the test's own
+docstring now says no test feeds it one.
+
+**Measured**: `function/distributions.py` 78 -> **18 unexercised (78 %)**, isolation **493 -> 517
+passed** (exit 0), the scope **24 -> 25 files**, the component's own-scope total **1 275 -> 1 235**.
+ruff, mypy, maintainability and components **0 undeclared** all exit 0.
+
+**The gate is unmeasured for this commit, and the ledger says so**: the box sat at a load average of
+19.7 with another session's work, one attempt was killed at **62 %** by a call cap, and a background
+rerun was **SIGKILLed after 1 h 41 m**. A killed gate is a slow machine, not unimplemented code - and
+it is also not a green gate, so no figure is quoted here. The next quiet moment owes this commit a
+measurement at `…-202611280345/main`.
+
+**A process lesson, again**: I spent four edits whack-a-moling `E501` and one garbled rewrite on a
+200-line file. The rule in `docs/gotchas/a-docstring-patched-line-by-line-breaks-the-file-after-the-tests.md`
+holds - **write the file whole, short lines, once** - and I broke it here.
+
