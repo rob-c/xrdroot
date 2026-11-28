@@ -6428,3 +6428,38 @@ exactly the failure `docs/gotchas/a-docstring-patched-line-by-line-breaks-the-fi
 describes. The fix was to delete the duplicated opener, and the real lesson stands: **write the test file
 whole, short lines, once.**
 
+## Round 154's close
+
+**The CDF table covered from the isolated scope: 1 171 -> 1 113 unexercised statements, the scope at
+27 files / 602 tests.**
+
+`tests/test_sampling_engine.py` covers `TF1::GetRandom`'s machinery - the `ComputeCdfTable` cumulative
+integral, the parabola per step, `BinarySearch`, the rejection loop of `GetRandom(xmin, xmax)` - and the
+module turned out to be **arithmetic all the way down**: a draw is determined by the numbers a generator
+hands over, so a five-line stub generator gives exact expectations. `invert(0.5)` for `f(x) = x` is
+`sqrt(0.5)`; three generator values become the three quantiles they stand for; two steps give the
+cumulative `[0, 0.25, 1]`.
+
+**What the module refuses, and why that is right**: a range on a **logarithmic** table is refused in a
+full sentence, because ROOT's `GetRandom(xmin, xmax)` does not undo the logarithm its table was built
+in - it would hand back `log10(x)` wearing the name of `x`.
+
+**One path takes the real thing**: `_inside` asks the generator for draws in batches
+(`TRandom._sequential`), so it takes a real `TRandom3(12345)` and 200 draws that must all land inside
+0.2..0.4. That is a property assertion, not a value copied from a run.
+
+**Measured**: `function/sampling.py` 59 -> **1 unexercised (98 %)**, isolation **594 -> 602 passed**
+(exit 0), the scope **26 -> 27 files**, the component's own-scope total **1 171 -> 1 113**. **Gate green
+at this round's tree**: part 1 **14 401 passed, 0 failed**, part 2 44, `TOTAL 127776 0 32100 0 100 %`;
+ruff, mypy, maintainability, components **0 undeclared**; `mkdocs --strict` clean.
+
+**The two-layer recipe is now a page of its own**:
+`docs/instructions/a-maths-module-is-an-oracle-table-plus-invariants-across.md` - the oracle table for
+every function, plus the invariants that hold across families (tails summing to one, quantiles reading
+back, supports zero). That pair took `rootmath` to 91 % and `distributions` to 83 %; it is what the rest
+of the maths in this component should be covered with.
+
+**And the docstring gotcha bit me twice more this round** - line-index surgery on a prose block, twice,
+each time breaking the parse. The file was rewritten whole to fix it, which is the rule. Two rounds in a
+row now; the lesson is not sticking, and the only reliable habit is: **never index into a docstring.**
+
