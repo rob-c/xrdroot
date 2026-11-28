@@ -6302,3 +6302,38 @@ maintainability, components **0 undeclared**.
 file's docstrings by line surgery broke its quotes again, and the fix was the rule the doc records -
 **rewrite the file whole**, at 96 columns as you write it.
 
+## Round 149's close
+
+**The efficiency covered from the isolated scope, and a real divergence found: 1 324 -> 1 275
+unexercised statements, the scope at 24 files / 493 tests.**
+
+`tests/test_efficiency_engine.py` is ten tests over `efficiency.py`, made with
+`Efficiency.from_histograms` from two histograms booked in code. Four interval methods are checked
+**exactly** against ROOT 6.40.04 - Clopper-Pearson, normal, Wilson, Agresti-Coull - and the key to
+reading them is that **the oracle quotes the distance from the efficiency, not the bound**: for 3 of 10,
+`GetEfficiencyErrorLow` is 0.158328098893, so the lower bound is `0.3 - 0.158328098893 =
+0.141671901107`, which is what `intervals()` returns. Comparing the oracle's errors against our bounds
+directly would make every method look wrong.
+
+**The find**: the three **Bayesian** methods do **not** match ROOT at the default level. For 3 of 10 our
+Jeffreys interval is (0.179932259942, 0.457750627054) where ROOT's errors imply (0.16175, 0.43957).
+Nothing in the tests was bent to hide it: the test pins only the invariants a Bayesian interval must keep
+(ends inside [0, 1], low below high, a bin that neither all passed nor all failed held about its own
+efficiency), and **`W0-276`** tracks matching ROOT. The doc
+`docs/discoveries/tefficiency-s-four-frequentist-intervals-match-root-s-bayesian.md` records both the
+recipe for the oracle comparison and the gap.
+
+Also worth knowing, and measured: a bin where everything passed has ROOT **swap** its pair - 5/5 gives
+`GetEfficiencyErrorLow` 0.308024 and `GetEfficiencyErrorUp` **0.0**, a zero meaning "the efficiency is 1,
+only the lower bound is real".
+
+**Measured**: `efficiency.py` 87 -> **38 unexercised (82 %)**, isolation **483 -> 493 passed** (exit 0),
+the scope **23 -> 24 files**, the component's own-scope total **1 324 -> 1 275**. **Gate green at this
+round's tree**: part 1 **14 292 passed, 0 failed**, part 2 44, `TOTAL 127776 0 32100 0 100 %`; ruff,
+mypy, maintainability, components **0 undeclared**; `mkdocs --strict` clean with the new page in the
+nav.
+
+**The gotcha doc earned its place twice more**: three attempts to trim two long docstring lines by
+index broke the module docstring outright, and the only reliable route was - as the doc says - to
+**rewrite the file whole**. Line-index surgery on prose is the failure mode, not the fix.
+
