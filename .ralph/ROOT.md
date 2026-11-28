@@ -6515,3 +6515,47 @@ are equal but not the same object - the assertion now says so. And a bare `layer
 `pytest.raises` is ruff's `B018`; an `assert ... is not None` under the `raises` states the intent and
 passes the linter.
 
+## Round 157's close
+
+**The whole-object name engine covered from the isolated scope: 938 -> 767 unexercised statements, the
+biggest single slice of the programme, and the scope at 30 files / 636 tests.**
+
+`tests/test_formula_objects_engine.py` is fourteen tests over `formula/objects.py`, the engine behind
+a name like `event.fNtrack` or `fTracks.fPx` in a `TTreeFormula`. ROOT writes an object branch *whole*
+(`split=0`), so no member is a branch at all and every name is looked up **inside the object each
+entry holds** - which is why the engine takes plain dictionaries: one entry's object is a dict, a base
+class is a nested dict named by the class, a collection is a list of dicts, and nothing needs a file.
+
+What the tests pin, each read off the module's own rules:
+
+- **a getter and the member it reads are one name** - `spelled("GetNtrack")` is
+  `("GetNtrack", "fNtrack")` and `IsValid` gives `fIsValid`, the two conventions ROOT's classes use;
+- **a member is offered bare and through its object**, and a member *object* is a level of its own
+  (`fEvtHdr.fEvtNum` is a name, `fEvtNum` alone is not);
+- **a base class's members are the derived object's own** - `fUniqueID` from a nested `TObject`;
+- **a collection's members loop**, and because a collection was crossed the member is a name of its
+  own too (`fTracks.fPx` and `fPx`), which is how ROOT reads a tree that holds the collection whole;
+- **`GetMean` is arithmetic over two members**, offered only where the object holds *both* sums, and
+  `_mean` answers 0 rather than NaN when nothing was filled;
+- **a `TBits` is drawn a set bit at a time** and offers two names, itself and `TestBitNumber`, both
+  binned as whole numbers;
+- **a name a branch already has stays the branch's** (`taken`), and **a getter that names no member is
+  answered by what the rest of the name reads** - `GetTotal().fXaxis.fXmax` resolving to
+  `total.fXaxis.fXmax`, which is ROOT's "call the method and read the rest off what comes back".
+
+**Four guesses the objects corrected**, each now a measured assertion rather than a plan: a crossed
+collection's member has **one** dimension beyond the entry (not two), a **list of lists is not one
+level down** (a collection nested in a collection offers nothing), `objects()` lists the **base
+class** (`TObject`) before the branch's own name, and `whole_number` of a name it has no kind for
+falls back to `"O"` rather than raising.
+
+**Measured**: `formula/objects.py` 217 -> **63 unexercised (75 %)**, isolation **622 -> 636 passed**
+(exit 0), the scope **29 -> 30 files**, the component's own-scope total **938 -> 767** - 42 % below
+where it began at round 144. **Gate green at this round's tree**: part 1 **14 462 passed, 0 failed**,
+part 2 44, `TOTAL 128045 0 32144 0 100 %`; ruff, mypy, maintainability and components **0 undeclared**.
+
+**What the 63 left are**: `Whole.branch`/`member`'s arms for names reached through a *derived*
+method, `answered`'s walk across several objects, and `_learn`'s recursion into a member object's own
+members - each reachable with two or three more entries in the same fixtures, which is the next pass
+over this module rather than a new one.
+
