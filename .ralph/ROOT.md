@@ -6559,3 +6559,45 @@ method, `answered`'s walk across several objects, and `_learn`'s recursion into 
 members - each reachable with two or three more entries in the same fixtures, which is the next pass
 over this module rather than a new one.
 
+## Round 158's close
+
+**The fraction fit covered from the isolated scope: 767 -> 649 unexercised statements, and the largest
+0 % module in the component finished at 100 % line and branch.**
+
+`tests/test_fraction_fit_engine.py` is eleven tests over `fit/fraction.py`, ROOT's `TFractionFitter`.
+The engine takes **plain numbers** - a bin's contents, one row per template - so Barlow and Beeston's
+fit is testable without a histogram, a tree or a file, which is what keeps it inside the `hist`
+component's own isolation scope. What the tests pin:
+
+- **one parameter per template**, with `integral` (the data's total), `integrals` (each template's)
+  and `measured` (the same with ROOT's per-bin weights in it);
+- **a parameter is a fraction of the data's integral over the template's** - 0.25 of a template with
+  a 1000-count integral over 700 counts of data reads **0.175**, not 0.25;
+- a **weight** changes `measured` and leaves `integrals` alone, so the same parameter reads a
+  different fraction;
+- the **negative log-likelihood is lowest at the mixture the data was made of** (-10205.348054562444
+  against an equal split's -10203.54799874485), which is what a fit can find and a wrong answer
+  cannot;
+- **`predictions` smears the templates**: the first bin predicts 266.4 where the data holds 250, the
+  fractions' weighted sum of the smeared rows is the total, and a template empty in a bin stays 0;
+- **Minuit on the profile likelihood recovers 0.25/0.75** within errors of 0.0363/0.0478 - the size a
+  700-count sample gives - and names its parameters `frac0`, `frac1` as ROOT does;
+- **one template alone** leaves the other's fraction at zero and the goodness of fit at 0;
+- **`ComputeChisquareLambda`** reads **12.018** for the mixture: twice the log-likelihood ratio;
+- **`_ln` sums nothing for a zero value** rather than -∞, which is how a template empty in a bin is
+  fitted;
+- a negative log-likelihood's **error definition is 0.5**, so one standard deviation is an increase of
+  one half, and the step from equal fractions is ROOT's 0.01;
+- **Newton gives up after the turns it is allowed** - a bin handed one turn comes back at its first
+  step, not at the answer the full solve reaches.
+
+**Three guesses the objects corrected**, each now a measured assertion: `FitResult`'s field is
+`parameters`, not `values`; the fit state is not the fractions but the fractions' **inputs**; and the
+`fractions` scaling is `integral / measured`, which is why the numbers differ from the mixture's.
+
+**Measured**: `fit/fraction.py` **106 -> 0 unexercised, at 100 % line and branch**, isolation
+**636 -> 647 passed** (exit 0), the scope **30 -> 31 files**, the component's own-scope total
+**767 -> 649** over **38 modules**. **Gate green at this round's tree**: part 1 **14 473 passed, 0
+failed**, part 2 44, `TOTAL 128045 0 32144 0 100 %`; ruff, mypy, maintainability and components **0
+undeclared**.
+
