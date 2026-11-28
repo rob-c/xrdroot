@@ -6215,3 +6215,33 @@ because this round added tests only); ruff, mypy, maintainability, components **
 worktree - and that checkout is another session's live workspace (R127). The page was copied into the
 worktree and committed there; the primary checkout's other modifications were left alone.
 
+## Round 145's close
+
+**The statistics covered from the isolated scope: 1 566 -> 1 499 unexercised statements, the scope at
+21 files / 463 tests.**
+
+`tests/test_moments_engine.py` is thirteen tests over `moments.py`, every number **measured from a
+histogram built with `Fill` before it was asserted** - which is how four of my guesses were caught:
+`entries` is a property and not a call, `fill`'s weight is a keyword (`fill(v, weight=2.0)`, or two
+positional numbers are read as two axes), the global bin of a 4-by-3 plane starts at **7** (six cells in
+x, five in y) rather than 13, and `Integral(3, 1)` is *from bin 3 up* - 7.0, not the whole axis.
+
+**What the tests pin**: the running sums' mean and spread and their two errors (`sqrt(n)` and
+`sqrt(2n)`), an empty histogram's zeros and NaN, `GetEffectiveEntries` as `(sum w)**2 / sum w**2` (three
+fills of weight two are three entries), the skewness and kurtosis as ROOT has them (an evenly filled
+histogram reads 0 and **-1.3**, because the kurtosis is the fourth moment less three), `Integral`'s
+default range, its flow bins at 0 and `nbins + 1`, the **clamping** `TH1::DoIntegral` does, its error as
+the root of the variances with `width` scaling both, `FindBin`'s numbering and its array form, the
+axis refusal by name, `TH1::Interpolate`'s line and flat ends plus its NaN, `TH2::Interpolate`'s grid,
+and the extremes with the frame's limit answering instead of the bins.
+
+**Measured**: `moments.py` 69 -> **4 unexercised (96 %)**, isolation **450 -> 463 passed** (exit 0),
+the scope **20 -> 21 files**, the component's own-scope total **1 566 -> 1 499**. **Gate green at this
+round's tree**: part 1 **14 262 passed, 0 failed**, part 2 44, `TOTAL 127776 0 32100 0 100 %`; ruff,
+mypy, maintainability, components **0 undeclared**.
+
+**What the 4 left are, and why they stayed**: the **bins fallback** (`_from_bins`, lines 87-88) is
+reached only by a histogram whose contents were set without a fill, and this engine has **no public
+setter** for that - a test would have to reach into `_core`. That is a gap in the API rather than in the
+tests: `W0-275`.
+
