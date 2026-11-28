@@ -6,9 +6,12 @@ normal, Wilson and Agresti-Coull - against ROOT 6.40.04's own numbers, read off
 ``TEfficiency.GetEfficiencyErrorLow/Up`` in the oracle for the same counts. The oracle quotes the
 distance from the efficiency, so a bound is the efficiency less the low one, or plus the high one.
 
-The three Bayesian methods (Jeffreys, uniform, Bayesian) do **not** match ROOT's numbers yet: ours
-answers a wider interval at the default level, queued as `W0-276`. This test asserts only the
-invariants those must keep.
+The three Bayesian methods (Jeffreys, uniform, Bayesian) are computed as ROOT's own
+``BetaCentralInterval`` computes them: ``TEfficiency.Bayesian(10, 3, 0.682689492137, 0.5, 0.5,
+False, False)`` in the oracle answers 0.17993225994167145, which is what this engine gives. What
+``TEfficiency``'s *object* reports instead is the **shortest** interval, which this engine refuses
+in a sentence; implementing that interval is `W0-276`, so this test asserts only the invariants a
+Bayesian interval must keep.
 
 No file is opened, which is what lets this test sit inside the ``hist`` component's own scope.
 """

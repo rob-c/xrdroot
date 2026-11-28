@@ -6337,3 +6337,25 @@ nav.
 index broke the module docstring outright, and the only reliable route was - as the doc says - to
 **rewrite the file whole**. Line-index surgery on prose is the failure mode, not the fix.
 
+### Round 149's `W0-276`, diagnosed to the line
+
+`W0-276` was opened as "the Bayesian intervals do not match ROOT's". Measuring further **withdrew that
+reading and replaced it with a sharper one**: ROOT's own central-interval functions answer **our**
+number.
+
+```
+ROOT.TEfficiency.Bayesian(10, 3, 0.682689492137, 0.5, 0.5, False, False)   # 0.17993225994167145
+ROOT.TEfficiency.BetaCentralInterval(0.682689492137, 3.5, 7.5, False)       # 0.17993225994167145
+ROOT.Math.beta_quantile((1 - L) / 2, 3.5, 7.5)                             # 0.17993225994167145
+```
+
+and this engine's `Efficiency.intervals()` gives `0.179932259942` for the same bin. What differs is
+`TEfficiency`'s **object** path: with alpha = beta = 0.5 and that level it reports errors implying
+(0.161750, 0.439569), i.e. a **shifted** interval - the shortest one, from `TestBit(kShortestInterval)`
+going to `BetaShortestInterval`. `xrdroot` does not implement that interval and **refuses it in a full
+sentence** ("asks for the shortest Bayesian interval rather than the central one, which this reader does
+not work out"), which is the right behaviour for a reader that cannot compute it.
+
+**So `W0-276` is "implement `BetaShortestInterval`"**, not "fix the quantiles" - and the discovery doc
+on trunk now says so, with the three oracle numbers as evidence.
+
