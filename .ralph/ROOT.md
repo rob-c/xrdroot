@@ -6928,3 +6928,22 @@ took 4 m 17 s.
 shape's word **in place and without brackets round it**, so `x/gaus(0)` is `x/[p0]*exp(...)`:
 measured, `TF1("f","x/gaus(0)",0,1).GetExpFormula()` under the oracle prints exactly that, and
 `2*pol2` is bracketed because a series is.
+
+### Round 162's CI, and what could be read of it
+
+**Main moved five times while this round closed** - `cb5f6833` (this round) -> `1492777b` ->
+`5744cbea` -> `e1ab3812` -> ... - and every push cancels the previous run through the workflow's
+concurrency group, so **four consecutive runs containing this round were cancelled** before their
+`pytest` step finished. What *was* read is the part that matters: on run 46167952892 - the one for
+this round's own commit - the `histogram component tests` step, which is where
+`tests/test_shapes_engine.py` and `tests/test_special_shapes_engine.py` run, is **success on ubuntu
+3.12 and on macOS 3.12**, and `component contract`, `fresh component imports`, `pure C++ component
+tests`, `C++ translator component tests` and `core component tests` are all success too; only
+`pytest` was cancelled.
+
+The one **completed** run on a tip containing a recent round is `d1ad827a`'s (46166474184), and it
+is **still red on the same five `tests/test_writer_tarray.py` failures** another session's
+`src/xrdroot/pyroot/mathfit.py` causes - `np.trapz`, which NumPy 2 renamed, and `float()` of a
+one-element array - with `lint`, `docs`, `distribution` and `test (ubuntu-latest, 3.10)` green.
+**Fourth round running that the trunk's red is that one file.** Nothing in rounds 159-162 touches
+it.
