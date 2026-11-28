@@ -383,6 +383,19 @@ class TFoam:
         self._weight = 0.0
         self._calls = 0
 
+    def ClassName(self) -> str:
+        """``TObject::ClassName``: what ``gDirectory`` asks before it writes the foam."""
+        return self.classname
+
+    def GetName(self) -> str:
+        return self._name
+
+    def GetTitle(self) -> str:
+        return self._name
+
+    def SetName(self, name: _typing.Any) -> None:
+        self._name = str(name)
+
     def SetkDim(self, dim: int) -> None:
         """How many dimensions are sampled - ROOT's one mandatory setting."""
         self._dim = int(dim)
@@ -500,14 +513,15 @@ class TFoam:
         return float(len(drawn)), average, largest, spread
 
     def Write(self, name: _typing.Any = "") -> int:
-        """``Write``: ROOT puts the foam in the open file; xrdroot has no streamer for one."""
-        from ..errors import UnsupportedFeatureError
+        """``Write``: ROOT puts the foam in the open file, through ``gDirectory``.
 
-        raise UnsupportedFeatureError(
-            'TFoam::Write is not supported: xrdroot has no streamer for a TFoam, so a foam '
-            "cannot be read back out of a ROOT file; sample with MakeEvent/GetMCvect and "
-            "write the histogram the samples fill instead."
-        )
+        The route is the one ROOT takes - the current directory writes the object - so a
+        file opened before the foam is reachable here. What is still missing is the streamer:
+        the writer refuses a ``TFoam`` because its ``Streamer()`` is ROOT's own code.
+        """
+        from .core.directories import gDirectory
+
+        return int(gDirectory.WriteObject(self, str(name) or self._name))
 
     def GetnCalls(self) -> int:
         return self._calls

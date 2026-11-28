@@ -672,12 +672,14 @@ def test_a_foam_reports_the_integral_and_the_weight_moments_of_its_samples():
     assert freedom > 0.0 and 0.0 < average <= largest and spread >= 0.0
 
 
-def test_a_foam_refuses_to_be_written_into_a_root_file():
-    """``TFoam::Write`` has no streamer here, and the refusal has to say so in a sentence."""
+def test_a_foam_refuses_to_be_written_into_a_root_file(tmp_path):
+    """``TFoam::Write`` reaches ``gDirectory`` and stops at the writer, which says why."""
     from xrdroot.errors import UnsupportedFeatureError
 
-    with pytest.raises(UnsupportedFeatureError, match="no streamer for a TFoam"):
+    opened = ROOT.TFile(str(tmp_path / "foam.root"), "RECREATE")
+    with pytest.raises(UnsupportedFeatureError, match="not something this writer puts"):
         ROOT.TFoam("FoamX").Write("FoamX")
+    opened.Close()
 
 
 def test_a_foam_that_never_initialised_has_no_weights_to_report():
@@ -691,3 +693,12 @@ def test_a_foam_with_no_density_refuses_to_initialize():
     foam.SetkDim(1)
     with pytest.raises(ValueError, match="needs a TFoamIntegrand"):
         foam.Initialize()
+
+
+def test_a_foam_answers_the_object_questions_a_directory_asks():
+    """``ClassName``/``GetName``/``GetTitle`` and ``SetName`` are what ``gDirectory`` reads."""
+    foam = ROOT.TFoam("FoamX")
+    assert foam.ClassName() == "TFoam"
+    assert (foam.GetName(), foam.GetTitle()) == ("FoamX", "FoamX")
+    foam.SetName("Other")
+    assert foam.GetName() == "Other"
