@@ -6789,3 +6789,66 @@ group: this round's own run was cancelled with `lint`, `docs` and `distribution`
 `test` jobs mid-flight, and the first run that completed on a tip containing the round is the one
 whose figures are quoted above. `git merge-base --is-ancestor 1fc8993a origin/main` is what says the
 round is in the trunk.
+
+## Round 161's close
+
+**A graph's three text formats and the index a histogram refuses: 411 unexercised statements down
+to 339, and `graph.py` and `slicing.py` both finished at 100 % line and branch.**
+
+Two modules, both of which had already been *used* by earlier rounds without being *measured*: round
+81 made `TGraph::SaveAs` byte-identical to the oracle's ten files and round 148 covered what a UHI
+index reads - and in both cases the engine underneath was reached only through a harness run or a
+happy path, so every refusal and every corner was still unexercised.
+
+**`graph.py` 37 -> 0** (`tests/test_graph_text_engine.py`, 9 tests). The three text formats are
+four rules, and each looks like a bug until it is written down:
+
+- **the header is joined with tabs whatever the delimiter is** - a `.csv` of a graph starts with a
+  tab-separated line, because every spreadsheet that reads one has been handed a tab-separated
+  header - and the point's own two columns hold the **axes' titles** in place of `x` and `y`;
+- **a point comes before its bars only under `asroot`/`native`**; the default is a spreadsheet's
+  `x, ex, y, ey`, so each point's errors sit right after it;
+- **a number is C++'s `ostream`, which is `%g`**: `3` and not `3.0`, `0.000123457` and not
+  `0.00012345678`;
+- **reading one back has four rules of its own**: a line of fewer than two numbers is skipped (that
+  is how ROOT survives a file it wrote with `title`), a column a line lacks is left at zero, a
+  line's scan stops at the first word, and a file that cannot be opened is `None` - which the
+  caller answers with a graph of no points and ROOT's `Error` line, not a refusal.
+
+**`slicing.py` 35 -> 0** (`tests/test_slicing_grammar_engine.py`, 18 tests) is the other half of
+round 148's grammar: the index a reader writes **wrong**. `loc(1.5) + 1` is the next bin and
+`underflow`/`overflow` are `-1` and the number of bins; `rebin` wants a whole factor of one or more
+and `True` is not one; one `...` at most, never more items than axes, a dictionary by axis with a
+number that is no axis; a bin past the axis, a locator past the flow, a type that picks nothing; a
+slice's end may be `len` or a locator and a word is no end; a stride is no step; a sum of no bins
+and a rebinning that leaves no group are both refused with the counts that make them no group. Every
+refusal is a full sentence.
+
+**The corners only a particular histogram reaches**: an irregular axis keeps the edges a cut and a
+rebinning leave (`[0, 1, 3, 6, 10]` cut to its middle two is `[1, 3, 6]`, merged two at a time
+`[0, 3, 10]`), a profile keeps its per-bin weights beside its means through a cut, a weighted
+histogram keeps its squares (2² + 3² = 13), and setting bins has two shapes - a slice, which takes
+the flow when the value has exactly two more entries than bins and then resets the statistics, and
+one bin, which counts an entry and clears the running sums, as ROOT's `SetBinContent` does.
+
+**Four guesses the objects corrected**, each now a measured assertion: `loc(1.5) - 2` prints
+`loc(1.5) + -2` (the offset is an int, sign and all); the header of an untitled graph is `"# \t"`
+and not the columns' names; a slice cut at `loc(2.0)` keeps the first **two** bins, because 2.0 is
+in the third; and `Graph.x` is an array, not a method.
+
+**Measured**: `graph.py` **37 -> 0** and `slicing.py` **35 -> 0**, both at 100 % line and branch;
+isolation **729 -> 756 passed** (exit 0), the scope **36 -> 38 files**, the component's own-scope
+total **411 -> 339** over **31 modules**.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 598 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed; `coverage report` **`TOTAL 128152 0 32178 0
+100%`**. ruff over the whole tree (after it named one unused `numpy` import in the new file), mypy
+1 070 files, maintainability 34 335 functions in 1 868 files, components 0 undeclared, and
+`mkdocs build --strict` - each exit 0, the last after the round's new page went into the nav.
+
+**A note on the machine**: it opened at a load average of 6.6 and the gate ran at the same, so part 1
+took 3 m 16 s.
+
+**A gotcha, for the next reader**:
+`docs/gotchas/a-graph-s-text-file-has-four-reading-rules-and-its-header-is.md` - the four rules with
+the numbers above, and the two tables (`TEXT_DELIMITERS`, `TEXT_ORDERS`) that make them.
