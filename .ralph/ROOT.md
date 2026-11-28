@@ -6852,3 +6852,14 @@ took 3 m 16 s.
 **A gotcha, for the next reader**:
 `docs/gotchas/a-graph-s-text-file-has-four-reading-rules-and-its-header-is.md` - the four rules with
 the numbers above, and the two tables (`TEXT_DELIMITERS`, `TEXT_ORDERS`) that make them.
+
+### Round 161's CI, and whose red it is
+
+Run 46165557156 on this round's commit (`05db97d6`): `lint`, `docs` and `distribution` **success**;
+`test (ubuntu-latest, 3.10)` **success**; and 3.11, 3.12, 3.13 and macOS **failure**, with the
+**same five** `tests/test_writer_tarray.py` failures rounds 159 and 160 documented - another
+session's `src/xrdroot/pyroot/mathfit.py`, whose `np.trapz` (NumPy 2's `np.trapezoid`) and
+`float(one_element_array)` are the two traps the two-NumPys gotcha page names. Nothing in this round
+touches that file, and its own two test files are green on every platform through the job's
+`histogram component tests` step. **Third round running that the trunk is red for that one file**;
+the fix is a two-line change in someone else's scope.
