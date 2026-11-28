@@ -607,6 +607,8 @@ paths = [
     "tests/test_profile_engine.py",
     "tests/test_graph_surface_engine.py",
     "tests/test_formula_objects_engine.py",
+    "tests/test_formula_objects_read_engine.py",
+    "tests/test_function_members_engine.py",
     "tests/test_fraction_fit_engine.py",
     "tests/test_statistical_engine_isolation.py",
 ]
