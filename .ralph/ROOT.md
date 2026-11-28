@@ -6768,3 +6768,24 @@ is why a whole part 1 took 3 m 15 s.
 `docs/gotchas/a-tbits-is-drawn-a-set-bit-at-a-time-and-fsave-is-npx-plus-one.md` - the two members
 of ROOT's that are not arrays of one value per entry, with the numbers above and the unpacking each
 one needs.
+
+### Round 160's CI, and whose red it is
+
+The round's own files pass on **every platform**: the CI job's `histogram component tests` step is
+green on ubuntu 3.10-3.13 and macOS 3.12, which is where `tests/test_formula_objects_read_engine.py`
+and `tests/test_function_members_engine.py` run, and each `pytest` job reports **14 600 passed** with
+only the five failures below. `lint`, `docs` and `distribution` are green too.
+
+The `pytest` job is red on 3.11, 3.12, 3.13 and macOS and green on 3.10 - the NumPy-2 signature -
+and it is **still another session's `src/xrdroot/pyroot/mathfit.py`**: the same five tests in
+`tests/test_writer_tarray.py`, `TypeError: only 0-dimensional arrays can be converted to Python
+scalars` (the `float(one_element_array)` trap) and `AttributeError: module 'numpy' has no attribute
+'trapz'` (NumPy 2's `np.trapezoid`). Round 159 documented both on the two-NumPys gotcha page and
+they are still open; nothing in this round touches that file.
+
+**Main moved five times while this round closed** (`1fc8993a` -> `c9100cc9` -> `f184060f` ->
+`46163094617`'s tip), and each push cancels the previous run through the workflow's concurrency
+group: this round's own run was cancelled with `lint`, `docs` and `distribution` green and the five
+`test` jobs mid-flight, and the first run that completed on a tip containing the round is the one
+whose figures are quoted above. `git merge-base --is-ancestor 1fc8993a origin/main` is what says the
+round is in the trunk.
