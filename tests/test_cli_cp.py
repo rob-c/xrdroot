@@ -248,3 +248,82 @@ def test_cp_copies_into_a_directory_already_there_without_replace(capsys, made):
     assert run(capsys, "-r", "test.root:dir", "out.root") == (0, "", "")
     assert run(capsys, "-r", "test.root:dir/sub", "out.root:dir") == (0, "", "")
     assert names("out.root", "dir") == ["h0", "sub"]
+
+
+def test_a_plain_remote_pair_is_a_whole_file_copy_and_an_object_path_is_not():
+    """``cp root://host//f.root here.root`` means the bytes, not the objects inside."""
+    from xrdroot.cli.cp import _whole_file_copy
+
+    class Options:
+        def __init__(self, args):
+            self.args = args
+
+    remote = "root://eospublic.cern.ch//eos/root-eos/h1/dstarmb.root"
+    assert _whole_file_copy(Options([remote, "here.root"])) == (remote, "here.root")
+    assert _whole_file_copy(Options([remote + ":hist", "here.root"])) is None
+    assert _whole_file_copy(Options(["local.root", "here.root"])) is None
+    assert _whole_file_copy(Options([remote, "here.root", "third.root"])) is None
+
+
+def test_a_whole_file_copy_streams_the_bytes_into_the_destination(tmp_path, monkeypatch):
+    """``_streamed`` writes what the remote stream gives, and says 0 when it worked."""
+    import io as _io
+
+    import xrdclient
+
+    from xrdroot.cli.cp import _streamed
+
+    monkeypatch.setattr(xrdclient, "open", lambda _url: _io.BytesIO(b"rootpayload"))
+    dest = tmp_path / "copied.root"
+    assert _streamed("root://host//f.root", str(dest), None) == 0
+    assert dest.read_bytes() == b"rootpayload"
+
+
+def test_a_whole_file_copy_that_cannot_open_says_so(tmp_path, monkeypatch, capsys):
+    """A source that will not open is reported in ROOT's words, and the status is 1."""
+    import xrdclient
+
+    from xrdroot.cli.cp import _streamed
+
+    def refuse(_url):
+        raise OSError("no such file")
+
+    monkeypatch.setattr(xrdclient, "open", refuse)
+    assert _streamed("root://host//f.root", str(tmp_path / "x.root"), None) == 1
+    assert "can not be opened" in capsys.readouterr().err
+
+
+def test_a_copy_that_opens_but_fails_while_reading_is_reported(tmp_path, monkeypatch, capsys):
+    """A stream that breaks part way is the same refusal as one that will not open."""
+    import xrdclient
+
+    from xrdroot.cli.cp import _streamed
+
+    class Broken:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *why):
+            return False
+
+        def read(self, _size):
+            raise OSError("connection reset")
+
+    monkeypatch.setattr(xrdclient, "open", lambda _url: Broken())
+    assert _streamed("root://host//f.root", str(tmp_path / "y.root"), None) == 1
+    assert "can not be opened" in capsys.readouterr().err
+
+
+def test_the_command_streams_a_plain_remote_pair(tmp_path, monkeypatch):
+    """``xrdroot cp root://host//f.root here.root`` runs the streamed copy, not rootcp."""
+    import io as _io
+
+    import xrdclient
+
+    from xrdroot.cli import cp as cp_cli
+
+    monkeypatch.setattr(xrdclient, "open", lambda _url: _io.BytesIO(b"payload"))
+    dest = tmp_path / "streamed.root"
+    args = type("Args", (), {"argv": ["root://host//f.root", str(dest)]})()
+    assert cp_cli.run(args) == 0
+    assert dest.read_bytes() == b"payload"

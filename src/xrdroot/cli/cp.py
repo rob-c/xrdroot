@@ -171,6 +171,9 @@ def run(args: argparse.Namespace) -> int:
     options, status = _parsed(args.argv)
     if status is not None:
         return status
+    whole = _whole_file_copy(options)
+    if whole is not None:
+        return _streamed(whole[0], whole[1], options)
     job = _job(options)
     try:
         dest = _Destination(*split_source(options.args[-1]))
@@ -182,6 +185,41 @@ def run(args: argparse.Namespace) -> int:
     job.same_file = any(name == dest.filename for name, _ in job.sources)
     status = _opened(job, dest, options.has("recreate"), options.value("c"))
     return _copied_into(job, dest) if status is None else status
+
+
+def _whole_file_copy(options: Options) -> tuple[str, str] | None:
+    """``SOURCE DEST`` naming no object inside either: a file copied whole, as xrdcp does.
+
+    ``cp`` is ``rootcp`` - objects between ROOT files - but the first thing anyone types at a
+    remote dataset is ``cp root://host//path/file.root here.root``, meaning the bytes. Handing
+    that to the object copier rewrote 510 MB of nonsense from a 2.2 GB file, so a plain pair
+    of file names is streamed instead.
+    """
+    if len(options.args) != 2 or any(_names_an_object(text) for text in options.args):
+        return None
+    source, dest = options.args
+    return (source, dest) if source.startswith(("root://", "http://", "https://")) else None
+
+
+def _names_an_object(text: str) -> bool:
+    """Whether ``text`` is ``file.root:object`` - a colon past the URL's own scheme."""
+    without_scheme = text.split("//", 1)[-1] if "://" in text else text
+    return ":" in without_scheme
+
+
+def _streamed(source: str, dest: str, options: Options) -> int:
+    """The bytes of ``source`` written to ``dest``, whole, and its status."""
+    import shutil
+
+    from xrdclient import open as open_remote
+
+    try:
+        with open_remote(source) as inside, open(dest, "wb") as outside:
+            shutil.copyfileobj(inside, outside, 1 << 20)
+    except OSError as why:
+        sys.stderr.write(f"SysError in <TFile::TFile>: file {source} can not be opened: {why}\n")
+        return 1
+    return 0
 
 
 def _copied_into(job: _Copy, dest: _Destination) -> int:
