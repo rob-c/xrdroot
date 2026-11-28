@@ -634,3 +634,52 @@ def test_a_fitter_without_a_constant_answers_one_error_more_than_it_names():
     fitter.AddPoint(1.0, 2.0)
     fitter.Fit()
     assert len(fitter.GetErrors()) == len(fitter.GetParameters())
+
+
+def test_a_foam_takes_its_density_under_the_older_set_rho_name():
+    """ROOT's older ``SetRho(TFoamIntegrand*)`` passes the density, not a weight."""
+
+    class Flat(ROOT.TFoamIntegrand):
+        def Density(self, ndim, x):
+            return 1.0
+
+    foam = ROOT.TFoam()
+    foam.SetkDim(1)
+    foam.SetRho(Flat())
+    foam.Initialize(ROOT.TRandom3(2))
+    foam.MakeEvent()
+    assert foam.GetMCwt() > 0.0
+
+
+def test_a_foam_reports_the_integral_and_the_weight_moments_of_its_samples():
+    """``Finalize``/``GetIntegMC``/``GetWtParams`` are what foam_demo.C prints at the end."""
+
+    class Flat(ROOT.TFoamIntegrand):
+        def Density(self, ndim, x):
+            return 1.0
+
+    foam = ROOT.TFoam("FoamX")
+    foam.SetkDim(2)
+    foam.SetRho(Flat())
+    foam.SetPseRan(ROOT.TRandom3(4357))
+    foam.Initialize()
+    for _ in range(20):
+        foam.MakeEvent()
+    total, relative = foam.Finalize()
+    assert total > 0.0 and 0.0 <= relative < 1.0
+    assert foam.GetIntegMC() == (total, relative)
+    freedom, average, largest, spread = foam.GetWtParams()
+    assert freedom > 0.0 and 0.0 < average <= largest and spread >= 0.0
+
+
+def test_a_foam_refuses_to_be_written_into_a_root_file():
+    """``TFoam::Write`` has no streamer here, and the refusal has to say so in a sentence."""
+    from xrdroot.errors import UnsupportedFeatureError
+
+    with pytest.raises(UnsupportedFeatureError, match="no streamer for a TFoam"):
+        ROOT.TFoam("FoamX").Write("FoamX")
+
+
+def test_a_foam_that_never_initialised_has_no_weights_to_report():
+    """Before ``Initialize`` there are no samples, so the moments are all zero."""
+    assert ROOT.TFoam("FoamX").GetWtParams() == (0.0, 0.0, 0.0, 0.0)

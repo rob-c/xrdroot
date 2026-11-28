@@ -369,7 +369,9 @@ class TFoam:
     classname = "TFoam"
 
     def __init__(self, integrand: _typing.Any = None) -> None:
-        self._integrand = integrand
+        #: ROOT's constructor takes the foam's *name* (``new TFoam("FoamX")``), not a density
+        self._name = str(integrand) if isinstance(integrand, str) else ""
+        self._integrand = None if isinstance(integrand, str) else integrand
         self._dim = 1
         self._box: list[tuple[float, float]] = [(-1.0, 1.0)]
         self._cells = 1000
@@ -390,8 +392,16 @@ class TFoam:
     def SetnCells(self, cells: int) -> None:
         self._cells = int(cells)
 
-    def SetRho(self, rho: float) -> None:
-        self._rho = float(rho)
+    def SetRho(self, rho: _typing.Any) -> None:
+        """``SetRho`` takes the driving weight - or, in ROOT's older signature, the density.
+
+        ``foam_demo.C`` passes a ``TFoamIntegrand*`` here (``TFoamIntegrand *rho = new
+        TFDISTR()``), so an object means the integrand and a number means the weight.
+        """
+        if isinstance(rho, (int, float)):
+            self._rho = float(rho)
+        else:
+            self._integrand = rho
 
     def SetPseRan(self, random: _typing.Any) -> None:
         self._random = random
@@ -463,6 +473,37 @@ class TFoam:
 
     def GetMCwt(self) -> float:
         return self._weight
+
+    def Finalize(self, *into: _typing.Any) -> tuple[float, float]:
+        """The integral over the box and its relative error, from the last sampling round."""
+        total = float(np.sum(self._weights)) if self._weights is not None else 0.0
+        drawn = self._weights
+        error = 0.0 if drawn is None else float(np.sqrt(np.sum(np.square(drawn))))
+        return total, (error / total if total else 0.0)
+
+    def GetIntegMC(self, *into: _typing.Any) -> tuple[float, float]:
+        """``GetIntegMC``: the Monte-Carlo integral and its error, as ``Finalize`` gives them."""
+        return self.Finalize()
+
+    def GetWtParams(self, *into: _typing.Any) -> tuple[float, float, float, float]:
+        """The freedom, the mean weight, the largest weight and their spread."""
+        drawn = self._weights
+        if drawn is None or len(drawn) == 0:
+            return 0.0, 0.0, 0.0, 0.0
+        largest = float(drawn.max())
+        average = float(drawn.mean())
+        spread = float(drawn.std())
+        return float(len(drawn)), average, largest, spread
+
+    def Write(self, name: _typing.Any = "") -> int:
+        """``Write``: ROOT puts the foam in the open file; xrdroot has no streamer for one."""
+        from ..errors import UnsupportedFeatureError
+
+        raise UnsupportedFeatureError(
+            'TFoam::Write is not supported: xrdroot has no streamer for a TFoam, so a foam '
+            "cannot be read back out of a ROOT file; sample with MakeEvent/GetMCvect and "
+            "write the histogram the samples fill instead."
+        )
 
     def GetnCalls(self) -> int:
         return self._calls
