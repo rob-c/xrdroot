@@ -6676,3 +6676,21 @@ so the round's own numbers were taken first and the gate left to finish in the b
 `docs/instructions/a-plotting-protocol-adapter-is-tested-with-a-stand-in-that.md` - the
 adapter is tested with a stand-in for each promise, because the installed library keeps them
 all and the report then names the arms nobody ran.
+
+### Round 159's CI, and whose red it is
+
+The round's own files pass on **all five platforms**: the CI job's own `histogram component tests`
+step is green on ubuntu 3.10-3.13 and macOS 3.12, which is where `tests/test_hist_conversion_engine.py`,
+`test_hist_numbers_engine.py` and `test_profile_engine.py` run. `lint`, `docs` and `distribution`
+are green too.
+
+The `pytest` job is **red on four of five platforms, and it is not this round's**: five tests in
+`tests/test_writer_tarray.py` fail inside another session's `src/xrdroot/pyroot/mathfit.py` --
+`TypeError: only 0-dimensional arrays can be converted to Python scalars` at `mathfit.py:154`
+(`W0-`-class: the `float(one_element_array)` NumPy-2 trap this repository already documents) and
+`AttributeError: module 'numpy' has no attribute 'trapz'` for three `TF1Convolution` tests. NumPy 2 renamed
+`np.trapz` to `np.trapezoid`. Their session fixed the mypy half of the same file itself
+(`73f4698f`, "a TFoam with no density refuses Initialize, so mypy and the gate agree") while this
+round was measuring; the NumPy half is theirs to land. What this round could do about it is make
+the trap findable: the gotcha page on the two NumPys now carries a section on the names 2 removed,
+because a local 1.26 venv cannot prove anything about a name it still has.
