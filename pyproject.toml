@@ -598,6 +598,7 @@ paths = [
     "tests/test_graphmath_engine.py",
     "tests/test_slicing_engine.py",
     "tests/test_efficiency_engine.py",
+    "tests/test_distributions_engine.py",
     "tests/test_statistical_engine_isolation.py",
 ]
 support = ["tests/conftest.py", "tests/refmachine.py", "tests/rootrandom.py"]
