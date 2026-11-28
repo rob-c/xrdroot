@@ -60,6 +60,7 @@ nav:
       - "An unqualified call looks in the class first, and the guard is two parts": instructions/an-unqualified-call-looks-in-the-class-before-the-namespace-but.md
       - "A component's isolation scope is what the checker admits": instructions/a-component-s-isolation-scope-is-what-the-checker-admits-md.md
       - "A component module at 0 % coverage is made in code, or its protocol stubbed": instructions/a-component-module-at-zero-coverage-is-made-in-code-or-stubbed.md
+      - "Read a whole ROOT::Math family off the oracle": instructions/read-a-whole-root-math-family-off-the-oracle-into-a.md
       - "A tree filled in memory refills its branch object": gotchas/a-tree-filled-in-memory-refills-the-object-its-branch-was.md
       - "TPython, std::any and std::filesystem": architecture/tpython-std-any-and-std-filesystem-are-three-pieces-of-one-test.md
       - "A vector<char> holds characters, int8 numbers": gotchas/a-std-vector-char-holds-characters-while-int8-holds-numbers.md
