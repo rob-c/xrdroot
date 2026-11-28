@@ -6245,3 +6245,32 @@ reached only by a histogram whose contents were set without a fill, and this eng
 setter** for that - a test would have to reach into `_core`. That is a gap in the API rather than in the
 tests: `W0-275`.
 
+## Round 146's close
+
+**The graph's evaluation covered from the isolated scope: 1 499 -> 1 417 unexercised statements, the
+scope at 22 files / 474 tests.**
+
+`tests/test_graphmath_engine.py` is eleven tests over `graphmath.py`, from graphs made with `Graph.new`
+and `Graph.from_layers`. What they pin: `Eval`'s line on a point, between two, **and along the end line
+past the axes** (ROOT extrapolates: -2.0 at x=-1 and 8.0 at x=4 on `y = 2x`); the **walk** a graph whose
+x is not increasing takes, giving the same answers as a sorted one; `Integral` as ROOT's shoelace over
+the **closed** polygon, where a triangle reads 1 and a straight line reads **0** because its polygon is
+degenerate; the range clamp; `GetMean`/`GetRMS`; `Sort` carrying the error bars with their points; and
+the layered errors under ROOT's three summation modes with `GetErrorY` the root of the mean of the two
+sides' squares.
+
+**Two of my guesses were wrong, and the objects said so**: a NaN evaluated on a **walked** graph is the
+**first point's** `y` (20.0, not 0.0), and `GetErrorY` sums by the **graph's own mode**, which defaults
+to `kOnlyFirst` - so a two-layer graph answers `sqrt(0.05)`, not `sqrt(0.255)`, until its mode says
+otherwise.
+
+**Measured**: `graphmath.py` 87 -> **5 unexercised (94 %)**, isolation **463 -> 474 passed** (exit 0),
+the scope **21 -> 22 files**, the component's own-scope total **1 499 -> 1 417**. **Gate green at this
+round's tree**: part 1 **14 273 passed, 0 failed**, part 2 44, `TOTAL 127776 0 32100 0 100 %`; ruff,
+mypy, maintainability, components **0 undeclared**.
+
+**A self-inflicted cost worth recording**: four rounds of one-line text replacements on a docstring
+left duplicated fragment lines and twice broke the file's syntax (`unterminated string literal`,
+`Simple statements must be separated by newlines`). The fix each time was to **rewrite the whole file**
+rather than patch a line - a 200-line file is cheaper to write than to patch five times.
+
