@@ -6274,3 +6274,31 @@ left duplicated fragment lines and twice broke the file's syntax (`unterminated 
 `Simple statements must be separated by newlines`). The fix each time was to **rewrite the whole file**
 rather than patch a line - a 200-line file is cheaper to write than to patch five times.
 
+## Round 148's close
+
+**UHI indexing covered from the isolated scope: 1 417 -> 1 324 unexercised statements, the scope at
+23 files / 483 tests.**
+
+`tests/test_slicing_engine.py` is nine tests over `slicing.py` - the `h[...]` API - with histograms
+booked in code. What they pin: a bin by number (**from zero**, a negative one from the end) and by
+`loc`; `underflow`/`overflow` as the only route to a flow bin; a slice that **pours what it cut into the
+new flow** (`h[1:3]` gives contents `[2,0]` and flow `[2,2,0,2]`) while the entries stay at 6, which is
+ROOT's `Rebin`; `rebin(2)` merging pairs with the leftover group going to the overflow; `h[sum]` = 6.0
+including the flow against `h[0:6:sum]` = 4.0 without it; a row of a plane as ROOT's projection and its
+flow; the tuple and dictionary index forms; `h[...] = [1,2,3]` giving **six entries** because 6.40's
+`SetSliceContent` resets the statistics; and a **real `Profile`**'s summed axis refused in a full
+sentence while one of its bins still reads its mean.
+
+**Three guesses were wrong, and the objects said so**: `plane[1, :]` answers a **histogram**, not a
+list (my probe had silently wrapped it in `.values()`); a profile's `kind` cannot be assigned, it is the
+class's (`Profile(Histogram)` with `kind = "MEAN"` is how to get one); and `h[1]` is the **second** bin.
+
+**Measured**: `slicing.py` 128 -> **35 (83 %)**, isolation **474 -> 483 passed** (exit 0), the scope
+**22 -> 23 files**, the component's own-scope total **1 417 -> 1 324**. **Gate green at this round's
+tree**: part 1 **14 282 passed, 0 failed**, part 2 44, `TOTAL 127776 0 32100 0 100 %`; ruff, mypy,
+maintainability, components **0 undeclared**.
+
+**The gotcha doc written last round paid for itself in the same round**: two attempts to re-wrap this
+file's docstrings by line surgery broke its quotes again, and the fix was the rule the doc records -
+**rewrite the file whole**, at 96 columns as you write it.
+
