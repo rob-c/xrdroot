@@ -6863,3 +6863,68 @@ session's `src/xrdroot/pyroot/mathfit.py`, whose `np.trapz` (NumPy 2's `np.trape
 touches that file, and its own two test files are green on every platform through the job's
 `histogram component tests` step. **Third round running that the trunk is red for that one file**;
 the fix is a two-line change in someone else's scope.
+
+## Round 162's close
+
+**The shapes `TFormula` rewrites and the three written by hand: 339 unexercised statements down to
+286, and `function/shapes.py` and `function/special.py` both finished at 100 % line and branch.**
+
+Two modules of the same package, and both had been reached only through a *bare* shape: every
+existing test wrote `gaus` or `pol2` alone, so the whole argument grammar and the three functions of
+`special.py` that are written out by hand had never been called.
+
+**`function/shapes.py` 31 -> 0** (`tests/test_shapes_engine.py`, 15 tests). A shape's brackets are
+the one part of a formula a caller writes by hand, and they hold **three** things:
+
+- **where its parameters start**: `gaus(3)` is a Gaussian whose parameters are `[3]`, `[4]` and
+  `[5]` - how ROOT's own tests put a second Gaussian beside a first - so the formula has six
+  parameters and the first three belong to whatever came before;
+- **which variable it is in**: `pol1(y,0)` is `([p0]+[p1]*y)`, ROOT's way of fitting a projection
+  against its other axis;
+- **what its parameters are called**: `pol1(x,[A],[B])` keeps `A` and `B`, which is what
+  `GetParameter("A")` then asks for.
+
+A fourth kind of argument is refused in a sentence naming all three and ROOT's own note that a real
+C++ function is written with its scope. Around that: the Chebyshev series is `ROOT::Math::ChebyshevN`
+and **refused past `cheb10`**; a series given too few names is refused with both counts; `x[1]` and
+`x[2]` are `y` and `z` while `x[3]` is refused by name; an unclosed `[` and an unclosed shape `(`
+are each refused **at the character they opened at**; `[0]` and `[p0]` are **one** parameter; a
+formula that is one shape alone gets ROOT's `Constant`/`Mean`/`Sigma`; a formula read from a file
+**keeps the names it came with**; `a++b` is each term times a parameter of its own; and the
+`fNumber` a shape carries is ROOT's (100, 210, 400, 500, and 300 plus the degree for a series).
+
+**`function/special.py` 22 -> 0** (`tests/test_special_shapes_engine.py`, 6 tests) is the three
+shapes written out by hand rather than handed to a library, and **every number was read off the
+6.40.04 oracle with `%.17g`**: `TMath::Gaus` at the mean (1), one width out
+(0.60653065971263342) and two half-widths out (0.1353352832366127), its normalised form over
+`sqrt(2 pi) sigma` (0.3989422804014327), and the two details only ROOT's own answer shows - **zero
+past thirty-nine widths** and **`1e30` for a width of zero**; `TMath::BreitWigner`'s
+`gamma/((x-mean)^2 + gamma^2/4)/2pi` (0.63661977236758138 at the mean); and `ROOT::Math::ChebyshevN`
+summed by **Clenshaw's recurrence** (1, 2, 0.5, -3.5 and -3 for one to six coefficients at x = 0.5),
+over an array as well as a number.
+
+**Three guesses the objects corrected**, each now a measured assertion: `number("xyexpo")` is
+**210** and not 200 - the two-variable spelling sits ten past the one-variable one, and I had
+assumed the pair shared a number; a shape's argument list is read **only** by the bracket scanner,
+so `gaus(0` reports character **4** and nothing else in the text; and `expand(text, known)` leaves
+the **text** as the file wrote it (`[p0]`, `[p1]`, `[p2]`) while replacing only the names tuple -
+a file's words are not expanded again.
+
+**Measured**: `function/shapes.py` **31 -> 0** and `function/special.py` **22 -> 0**, both at 100 %
+line and branch; isolation **756 -> 777 passed** (exit 0), the scope **38 -> 40 files**, the
+component's own-scope total **339 -> 286** over **29 modules**.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 619 passed, 0 failed**
+(99.75 % by design, `W0-112`); part 2 44 passed; `coverage report` **`TOTAL 128152 0 32178 0
+100%`**. ruff over the whole tree, mypy 1 070 files, maintainability 34 356 functions in 1 870
+files, components 0 undeclared, and `mkdocs build --strict` - each exit 0, the last after the
+round's new page went into the nav.
+
+**A note on the machine**: it opened at a load average of 16.8 and the gate ran at 19.8, so part 1
+took 4 m 17 s.
+
+**A gotcha, for the next reader**:
+`docs/gotchas/a-shape-goes-into-a-formula-in-place-so-x-gaus-0-divides-only.md` - ROOT rewrites a
+shape's word **in place and without brackets round it**, so `x/gaus(0)` is `x/[p0]*exp(...)`:
+measured, `TF1("f","x/gaus(0)",0,1).GetExpFormula()` under the oracle prints exactly that, and
+`2*pol2` is bracketed because a series is.
