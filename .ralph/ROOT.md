@@ -6488,3 +6488,30 @@ trailing one, so `count("\n") == 2` is the right assertion for three bins. **A c
 a hand-made nested row (`{"TH1": {...}}`) is not a histogram a file would write - `_core`'s recursion is
 reachable only from a real streamed row, so that test was dropped rather than bent.
 
+## Round 156's close
+
+**A graph's own surface covered from the isolated scope: 955 -> 938 unexercised statements, the scope
+at 29 files / 622 tests.**
+
+`tests/test_graph_surface_engine.py` takes the parts of `Graph` a reader meets first, and the useful
+half is the **refusals**, each asserted as the full sentence it is rather than as an exception type: a
+graph written without its points (`a TGraph was written without its points`), one whose `fNpoints`
+outruns its arrays (`a TGraph of 3 points holds only 2 of them`), a bar count that is not one per point
+in either direction (`yerr has 2 bars for 3 points`, `xerr has 1 low and 1 high bars for 3 points`), x
+and y of different lengths (`4 x values and 3 y values are not points`), and a layered graph's y errors
+before its summation mode says how they add - which points the reader at `.layers`.
+
+The rest is behaviour a picture depends on: `len`/`g[i]`/iteration/`points()` as one set of four pairs,
+the class a bar count picks, the functions a fit hangs on a graph, `text()`'s character grid with its y
+labels and its x range, and the sentence a graph of no points answers instead of an empty grid.
+
+**Measured**: `graph.py` 71 -> **54 unexercised (77 %)**, isolation **612 -> 622 passed** (exit 0), the
+scope **28 -> 29 files**, the component's own-scope total **955 -> 938**. **Gate green at this round's
+tree**: part 1 **14 448 passed, 0 failed**, part 2 44, `TOTAL 128045 0 32144 0 100 %`; ruff, mypy,
+maintainability, components **0 undeclared**.
+
+**A guess the objects corrected**: `functions` builds the list from the member each time, so two reads
+are equal but not the same object - the assertion now says so. And a bare `layered.yerr` inside
+`pytest.raises` is ruff's `B018`; an `assert ... is not None` under the `raises` states the intent and
+passes the linter.
+
