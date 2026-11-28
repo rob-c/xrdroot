@@ -6694,3 +6694,77 @@ The `pytest` job is **red on four of five platforms, and it is not this round's*
 round was measuring; the NumPy half is theirs to land. What this round could do about it is make
 the trap findable: the gotcha page on the two NumPys now carries a section on the names 2 removed,
 because a local 1.26 venv cannot prove anything about a name it still has.
+
+## Round 160's close
+
+**What a whole-object member and a function read from a file answer: 536 unexercised statements
+down to 411, and two more modules finished at 100 % line and branch.**
+
+Rounds 155-159 covered `hist.py`, `profile.py`, `fit/fraction.py` and the *names* a whole-object
+branch offers. This round took the two largest modules left, and both of them were the **value**
+half of an engine whose names were already tested: what a name reads when an expression is
+evaluated over a batch, and what a `TF1` read out of a file answers.
+
+**`formula/objects.py` 63 -> 0** (`tests/test_formula_objects_read_engine.py`, 19 tests). A member
+is a column of one value per entry; a `char[N]` is the C string it holds, stopping at the first NUL
+as `strlen` does - which is why ROOT's own tree tests select on `fType == "type1"`; a fixed array
+and a member of a collection are a row per entry; and `GetMean` is arithmetic over the two sums it
+reads, with **zero** and not a NaN for a histogram nothing was filled into.
+
+**A `TBits` is drawn, and that is the round's best-measured rule.**
+`TSelectorDraw::ProcessFillObject` fills the number of each bit a `TBits` holds *set*, one fill a
+bit: `fNbits` 10 over `fAllBits` `[0b00000101, 0b00000010]` is the row `[0, 2, 9]` and not `101`
+and not a ten-value array. `TestBitNumber(n)` asks about one bit instead, so it reads a value per
+bit *position* - ten of them, `1` where the bit is set - which is the name ROOT's own macro
+selects on (`event.fTriggerBits.TestBitNumber(28)`). A `TBits` inside a collection is a row per
+entry and a row per element inside it.
+
+The refusals are part of the surface, and each has its own sentence: a batch whose objects
+disagree about holding the member, a path walked through a value that is no object, and a `TBits`
+one entry does not hold. And `owner` - what tells a member this reader cannot read from a name that
+is nothing at all - answers the deepest **object** a name leads into, which means `fH.fTsumw` leads
+to `fH`: a leaf's own name is no object.
+
+**`function/function.py` 43 -> 0** (`tests/test_function_members_engine.py`, 15 tests). A `TF1` read
+back from the members a file holds answers what the one that was written answered (36.787944 at
+x = 2 for `[N]*exp(-x/[tau])`). A **layout ROOT 5 wrote** - a `TF1` that *was* a `TFormula` and
+holds none - stays the dictionary it was read as, so the histogram hanging off it still reads; so
+does a `TFormula` with no `fClingParameters`. A `TFormula` is a function of its own: its parameters,
+its names, its value, and ROOT's default range `(0.0, 1.0)` because it has none of its own. A
+formula this kit cannot parse is **kept, not refused** - the function still reads and writes back
+as it came, and only evaluating it says why not, quoting the reason the parser gave.
+
+**`fSave` is the values *and the two ends*.** ROOT cannot write code, so a function defined by C++
+is written as `fNpx + 1` sampled values **followed by the two ends they span**: 103 doubles for the
+default `fNpx` of 100, the last two `(0.0, 4.0)` for a function over `[0, 4]`. Read as "one value
+per point" it gives a function that is right up to its last two - the kind of wrong a plot hides.
+So a function of code reads back from those values, while a `TF2`'s grid is refused by name, and a
+file that repeats its upper end saved its samples at a histogram's bin centres.
+
+**Five guesses the objects corrected**, each now a measured assertion: `read` of a two-dimensional
+list is the **pair of inner lists** for each entry and not the numbers flattened; a `TBits` through
+a collection is a list of lists of arrays; `owner` answers the deepest object, so a leaf leads to
+its parent; a `TFormula`'s range is `(0.0, 1.0)`; and `fSave` is `npx + 3` long, not `npx + 1`.
+
+**Measured**: `formula/objects.py` **63 -> 0** and `function/function.py` **43 -> 0**, both at
+100 % line and branch; isolation **695 -> 729 passed** (exit 0), the scope **34 -> 36 files**, the
+component's own-scope total **536 -> 411** over **33 modules**.
+
+**The gate, seven commands, each read for its own exit status - and the first run had one
+failure.** Part 1 read `1 failed, 14 569 passed` with
+`tests/test_tmva_learn_pytorch.py::test_the_real_pytorch_trains_the_users_model_to_tell_signal_from_background`
+the failure; that file run alone is **37 passed in 3.23 s**, so it is the parallel-run torch flake
+this loop has recorded before (round 120 saw the same test at a load average of 78, and it is the
+reason `W0-106`'s decomposition exists). The gate was **re-run whole** rather than the reading
+excused: part 1 **14 570 passed, 0 failed** (99.75 % by design, `W0-112`), part 2 44 passed, and
+`coverage report` **`TOTAL 128144 0 32178 0 100%`**. ruff over the whole tree, mypy 1 070 files,
+maintainability 34 301 functions in 1 866 files, components 0 undeclared, and
+`mkdocs build --strict` - each exit 0, the last after the round's new page went into the nav.
+
+**A note on the machine**: it opened at a load average of 6.5 and the gate ran at the same, which
+is why a whole part 1 took 3 m 15 s.
+
+**A gotcha, for the next reader**:
+`docs/gotchas/a-tbits-is-drawn-a-set-bit-at-a-time-and-fsave-is-npx-plus-one.md` - the two members
+of ROOT's that are not arrays of one value per entry, with the numbers above and the unpacking each
+one needs.
