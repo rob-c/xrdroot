@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 
 from .drawn import NDC_BIT, Drawn
 
-__all__ = ["TGaxis", "TLatex", "TMathText", "TText"]
+__all__ = ["TGaxis", "TLatex", "TMathText", "TAnnotation", "TText"]
 
 
 class TText(Drawn):
@@ -199,5 +199,36 @@ class TGaxis(Drawn):
             fX1=xmin, fY1=ymin, fX2=xmax, fY2=ymax, fWmin=wmin, fWmax=wmax,
             fNdiv=ndiv, fChopt=chopt, fGridLength=gridlength,
         )  # fmt: skip
+        made.Draw()
+        return made
+
+
+class TAnnotation(TLatex):
+    """ROOT's ``TAnnotation``: a ``TLatex`` that also carries the z of the point it names.
+
+    Its header (``TAnnotation.h``) shows why the shape matters: it derives from ``TLatex``, not
+    ``TText``, its constructor takes ``(x, y, z, text)``, and its one extra member is ``fZ``.
+    There is no margin - an earlier guess at ``SetMargin`` is not ROOT's API.
+    """
+
+    classname = "TAnnotation"
+    groups: ClassVar[tuple[str, ...]] = ("text",)
+    fields: ClassVar[dict[str, type]] = {"X": float, "Y": float, "Z": float}
+
+    def __init__(self, x: float = 0.0, y: float = 0.0, z: float = 0.0, text: str = "") -> None:
+        super().__init__(x, y, text)
+        self.members["fZ"] = float(z)
+
+    def SetZ(self, z: float) -> None:
+        self.members["fZ"] = float(z)
+
+    def GetZ(self) -> float:
+        return float(self.members["fZ"])
+
+    def DrawAnnotation(self, x: float, y: float, z: float, text: str) -> Any:
+        """``TAnnotation::DrawAnnotation``: a new annotation at a new point, drawn."""
+        made = TAnnotation(x, y, z, text)
+        own = {name: value for name, value in self.members.items() if name.startswith("fText")}
+        made.members.update(own)
         made.Draw()
         return made

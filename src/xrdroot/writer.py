@@ -1481,6 +1481,7 @@ MEMBERED = (
     "TMarker",
     "TEllipse",
     "TArrow",
+    "TAnnotation",
 )
 
 

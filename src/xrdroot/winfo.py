@@ -6593,3 +6593,37 @@ INFOS.update(
         ),
     }
 )
+INFOS.update(
+    {
+        "TAnnotation": (
+            4126864306,
+            1,
+            (
+                (
+                    'TStreamerBase',
+                    'TLatex',
+                    'The Latex-style text processor class',
+                    0,
+                    0,
+                    0,
+                    0,
+                    (0, -282308298, 0, 0, 0),
+                    'BASE',
+                    (2,),
+                ),
+                (
+                    'TStreamerBasicType',
+                    'fZ',
+                    'Z position of text',
+                    8,
+                    8,
+                    0,
+                    0,
+                    (0, 0, 0, 0, 0),
+                    'double',
+                    (),
+                ),
+            ),
+        ),
+    }
+)

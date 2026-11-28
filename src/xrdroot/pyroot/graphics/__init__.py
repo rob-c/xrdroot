@@ -24,6 +24,7 @@ from .compare import compare_images
 from .curly import TCurlyArc, TCurlyLine
 from .decorations import TFrame
 from .gradients import TColorGradient, TLinearGradient, TRadialGradient
+from .graphtime import TGraphTime
 from .legend import TLegend, TLegendEntry
 from .multierrors import TGraphMultiErrors
 from .output import close_books
@@ -44,7 +45,7 @@ from .shapes import (
     TWbox,
 )
 from .style import TStyle, get_style, gStyle, set_style
-from .text import TGaxis, TLatex, TMathText, TText
+from .text import TAnnotation, TGaxis, TLatex, TMathText, TText
 from .virtualx import TVirtualX, gVirtualX
 
 __all__ = [
@@ -55,7 +56,8 @@ __all__ = [
     # styles and colours
     "TStyle", "gStyle", "TColor", "TColorGradient", "TLinearGradient", "TRadialGradient",
     # text and paves
-    "TText", "TLatex", "TMathText", "TPave", "TPaveText", "TPavesText", "TPaveLabel", "TPaveStats",
+    "TGraphTime", "TText", "TLatex", "TAnnotation", "TMathText", "TPave", "TPaveText", "TPavesText",
+    "TPaveLabel", "TPaveStats",
     "TDiamond", "TCurlyLine", "TCurlyArc",
     "TLegend", "TLegendEntry", "TGaxis",
     # shapes

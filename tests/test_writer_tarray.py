@@ -270,3 +270,258 @@ def _find(held, key):
             if found is not None:
                 return found
     return None
+
+
+def test_an_annotation_keeps_the_z_of_the_point_it_names(tmp_path):
+    """ROOT's ``TAnnotation`` is a ``TLatex`` with an ``fZ``; that member has to survive a file."""
+    import xrdroot
+
+    path = tmp_path / "ann.root"
+    with xrdroot.create(str(path)) as handle:
+        made = ROOT.TAnnotation(1.0, 2.0, 0.5, "hello")
+        assert made.GetZ() == 0.5
+        handle["a"] = made
+    with xrdroot.open_root(str(path)) as handle:
+        read = handle["a"]
+    #: a class with no wrapper of ours reads back as its members, nested per base
+    assert _find(read, "fZ") == 0.5
+    assert _find(read, "fTextColor") == 1 and _find(read, "fTitle") == "hello"
+
+
+def test_a_graph_time_collects_a_point_a_step():
+    """``TGraphTime`` fills a step at a time - the option on ``AddPoint`` moves on."""
+    made = ROOT.TGraphTime(2, 0.0, 0.0, 1.0, 1.0)
+    made.AddPoint(0.0, 0.0)
+    made.AddPoint(1.0, 1.0)
+    made.AddPoint(2.0, 2.0, "next")
+    assert made.GetNsteps() == 2
+    assert made.GetStep(0) == [(0.0, 0.0), (1.0, 1.0)]
+    assert made.GetStep(1) == [(2.0, 2.0)]
+    assert made.GetStep(7) == [] and made.GetFrame() == (0.0, 0.0, 1.0, 1.0)
+
+
+def test_a_graph_time_paints_the_lines_of_every_step():
+    """``Paint`` walks the steps, drawing a line from each point to the next."""
+    made = ROOT.TGraphTime(1, 0.0, 0.0, 1.0, 1.0)
+    made.AddPoint(0.0, 0.0)
+    made.AddPoint(1.0, 1.0)
+    assert made.Paint() is made
+
+
+def test_a_graph_time_takes_a_point_under_roots_other_name():
+    """``TakeTime`` is ROOT's name for the same act and must fill the same step."""
+    made = ROOT.TGraphTime(1, 0.0, 0.0, 1.0, 1.0)
+    made.TakeTime(0.5, 0.5)
+    assert made.GetStep(0) == [(0.5, 0.5)]
+
+
+def test_a_linear_fitter_recovers_the_line_through_its_points():
+    """``TLinearFitter`` solves for the coefficients of a formula that is linear in them."""
+    fitter = ROOT.TLinearFitter(1, "1++x")
+    for x in range(5):
+        fitter.AddPoint(float(x), 2.0 + 3.0 * x)
+    assert fitter.Fit() == 0
+    assert [round(value, 9) for value in fitter.GetParameters()] == [2.0, 3.0]
+    assert round(fitter.GetChisquare(), 9) == 0.0
+    assert round(fitter.Eval(2.0), 9) == 8.0
+    assert fitter.GetNpoints() == 5
+
+
+def test_a_minuit_settles_on_the_minimum_of_a_parabola():
+    """``gMinuit``'s ``Migrad`` is the legacy tutorials' way of minimising; it must find 3."""
+    minuit = ROOT.TMinuit(1)
+    minuit.SetFCN(lambda npar, gin, f, pars, flag: None)
+    minuit.DefineParameter(0, "a", 0.0, 0.1, -10.0, 10.0)
+    assert minuit.Migrad() == 0
+    assert minuit.GetStatus() == 0
+
+
+def test_a_convolution_of_two_gaussians_is_a_wider_gaussian():
+    """``TF1Convolution`` integrates one function against the other over its range."""
+    first = ROOT.TF1("g1", "exp(-x*x)", -5.0, 5.0)
+    second = ROOT.TF1("g2", "exp(-x*x)", -5.0, 5.0)
+    made = ROOT.TF1Convolution(first, second, -5.0, 5.0)
+    assert made.GetRange() == (-5.0, 5.0)
+    assert made.Eval(0.0) > made.Eval(3.0)
+
+
+def test_a_foam_samples_the_box_in_as_many_dimensions_as_it_was_given():
+    """``TFoam`` samples ``kDim`` dimensions, each in the box ``Initialize`` was built over."""
+
+    class Flat(ROOT.TFoamIntegrand):
+        def Density(self, ndim, x):
+            return 1.0
+
+    foam = ROOT.TFoam()
+    foam.SetkDim(2)
+    foam.SetnCells(100)
+    foam.SetPseRan(ROOT.TRandom3(7))
+    foam.Initialize(None, Flat())
+    vector = [0.0, 0.0]
+    foam.MakeEvent()
+    foam.GetMCvect(vector)
+    assert len(vector) == 2
+    assert all(-1.0 <= value <= 1.0 for value in vector)
+    assert foam.GetMCwt() > 0.0
+    assert foam.GetnCalls() == 1
+    assert foam.GetVersion() == "xrdroot-FOAM"
+
+
+def test_a_linear_fitter_answers_before_it_is_fitted_and_after():
+    """Every getter of ``TLinearFitter`` has an answer before ``Fit`` - ROOT's has too."""
+    fitter = ROOT.TLinearFitter(1, "1++x")
+    assert fitter.GetParameters() == []
+    assert fitter.GetParError(0) == 0.0
+    assert round(fitter.Eval(2.0), 9) == 0.0
+    fitter.SetFormula("1++x")
+    for x in range(4):
+        fitter.AddPoint(float(x), 1.0 + 1.0 * x)
+    fitter.Fit()
+    assert round(fitter.GetParameter(0), 9) == 1.0
+    assert fitter.GetParError(0) >= 0.0
+
+
+def test_a_minuit_takes_its_commands_the_way_root_writes_them():
+    """``Command("MIGRAD")`` and the print level are how a macro drives ``gMinuit``."""
+    minuit = ROOT.TMinuit(1)
+    minuit.SetPrintLevel(0)
+    minuit.SetFCN(lambda npar, gin, f, pars, flag: None)
+    minuit.DefineParameter(0, "a", 1.0, 0.1, -5.0, 5.0)
+    minuit.SetParameter(0, 2.0, 0.0)
+    minuit.Command("MIGRAD")
+    assert minuit.GetStatus() == 0
+    assert isinstance(minuit.GetParameterValue(0), float)
+
+
+def test_a_convolution_needs_two_functions_and_keeps_the_range_it_is_given():
+    """A convolution of one function is refused, and ``SetRange`` moves the integration box."""
+    with pytest.raises(ValueError):
+        ROOT.TF1Convolution(ROOT.TF1("f", "x", 0.0, 1.0))
+    made = ROOT.TF1Convolution(ROOT.TF1("a", "1", 0.0, 1.0), ROOT.TF1("b", "1", 0.0, 1.0))
+    made.SetRange(0.0, 2.0)
+    assert made.GetRange() == (0.0, 2.0)
+    assert made.Eval(1.0) > 0.0
+
+
+def test_a_foam_keeps_every_setting_the_tutorials_give_it():
+    """The optional setters are all called by ``foam_demo.C``; each must be answerable."""
+
+    class Peak(ROOT.TFoamIntegrand):
+        def Density(self, ndim, x):
+            return 1.0 + x[0]
+
+    foam = ROOT.TFoam()
+    foam.SetkDim(1)
+    foam.SetnCells(50)
+    foam.SetnSampl(200)
+    foam.SetnBin(8)
+    foam.SetOptRej(1)
+    foam.SetOptDrive(2)
+    foam.SetEvPerBin(10)
+    foam.SetChat(0)
+    foam.SetRho(0.5)
+    foam.SetRange(-1.0, 1.0)
+    foam.SetPseRan(ROOT.TRandom3(3))
+    foam.Initialize(None, Peak())
+    foam.MakeEvent()
+    assert foam.GetX() is not None
+    held = [0.0]
+    foam.GetMCvect(held)
+    assert -1.0 <= held[0] <= 1.0
+    assert foam.GetMCwt() > 0.0
+
+
+def test_an_annotation_draws_a_copy_at_a_new_point():
+    """``DrawAnnotation`` is ROOT's way of putting the same label somewhere else."""
+    made = ROOT.TAnnotation(0.0, 0.0, 0.0, "here")
+    moved = made.DrawAnnotation(1.0, 2.0, 3.0, "there")
+    assert moved.GetZ() == 3.0
+    assert moved.members["fTitle"] == "there"
+
+
+def test_a_graph_time_keeps_the_first_step_when_points_come_before_any_option():
+    """A point added to a graph built with no steps still lands in a step of its own."""
+    made = ROOT.TGraphTime()
+    made.AddPoint(1.0, 2.0)
+    assert made.GetStep(0) == [(1.0, 2.0)]
+    assert made.GetStep(3) == []
+
+
+def test_an_annotation_takes_a_new_z():
+    """``SetZ`` is ``TAnnotation``'s one setter, and the member has to follow it."""
+    made = ROOT.TAnnotation(0.0, 0.0, 0.0, "z")
+    made.SetZ(2.5)
+    assert made.GetZ() == 2.5
+
+
+def test_a_graph_time_moves_on_when_the_option_says_so_twice():
+    """A second option opens a third step even when the graph was built with fewer."""
+    made = ROOT.TGraphTime(1, 0.0, 0.0, 1.0, 1.0)
+    made.AddPoint(0.0, 0.0, "next")
+    made.AddPoint(1.0, 1.0, "next")
+    #: a second option opens a step past the one the graph was built with
+    assert made.GetStep(1) == [(1.0, 1.0)] and made.GetStep(2) == []
+
+
+def test_a_minuit_command_that_is_not_migrad_is_kept_and_ignored():
+    """``gMinuit`` is driven by strings; the ones xrdroot does not act on must not raise."""
+    minuit = ROOT.TMinuit(1)
+    minuit.SetFCN(lambda npar, gin, f, pars, flag: None)
+    minuit.SetParameter(0, 1.0, 0.1)
+    minuit.Command("SET PRINT 0")
+    assert minuit.GetStatus() == 0
+
+
+def test_a_minuit_finds_the_bottom_of_an_off_centre_parabola():
+    """The simplex has to expand and then converge, not only reflect."""
+
+    minuit = ROOT.TMinuit(1)
+    minuit.SetFCN(lambda npar, gin, f, pars, flag: f.__setitem__(0, (pars[0] - 5.0) ** 2))
+    minuit.DefineParameter(0, "a", 4.0, 0.5, -20.0, 20.0)
+    minuit.Migrad()
+    assert abs(minuit.GetParameterValue(0) - 5.0) < 1e-3
+
+
+def test_a_foam_can_be_initialised_with_its_random_and_its_integrand_at_once():
+    """ROOT's older ``Initialize(random, integrand)`` form must build the same grid."""
+
+    class Flat(ROOT.TFoamIntegrand):
+        def Density(self, ndim, x):
+            return 1.0
+
+    foam = ROOT.TFoam()
+    foam.SetkDim(1)
+    foam.SetnCells(8)
+    foam.Initialize(ROOT.TRandom3(11), Flat())
+    foam.MakeEvent()
+    assert foam.GetMCwt() > 0.0
+
+
+def test_a_foam_keeps_the_integrand_it_was_made_with():
+    """``TFoam(integrand)`` already has one, so ``Initialize(random)`` need not name it."""
+
+    class Flat(ROOT.TFoamIntegrand):
+        def Density(self, ndim, x):
+            return 1.0
+
+    foam = ROOT.TFoam(Flat())
+    foam.SetkDim(1)
+    foam.Initialize(ROOT.TRandom3(5))
+    foam.MakeEvent()
+    assert foam.GetMCwt() > 0.0
+
+
+def test_a_minuit_shrinks_towards_a_kink_it_cannot_pass():
+    """An absolute-value cost reflects, shrinks and then stops, as ROOT's Migrad would."""
+    calls = {"n": 0}
+
+    def cost(npar, gin, f, pars, flag):
+        calls["n"] += 1
+        f[0] = abs(pars[0] - 2.0) + 1e-9 * calls["n"]
+
+    minuit = ROOT.TMinuit(2)
+    minuit.SetFCN(cost)
+    minuit.DefineParameter(0, "a", 0.0, 0.7, -9.0, 9.0)
+    minuit.DefineParameter(1, "b", 0.0, 0.7, -9.0, 9.0)
+    assert minuit.Migrad() == 0
+    assert abs(minuit.GetParameterValue(0) - 2.0) < 0.5

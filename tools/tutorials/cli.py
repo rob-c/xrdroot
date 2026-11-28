@@ -22,7 +22,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from . import api_coverage, ratchet, report
+from . import api_coverage, ratchet, report, unsupported
 from .catalog import catalog
 from .compare import Tolerance
 from .environment import cmake_variables, find_oracle, root_config, targets
@@ -95,6 +95,10 @@ def parser() -> argparse.ArgumentParser:
     )
     flaky.add_argument("--runs", "-n", type=int, default=5, help="ROOT runs to draw from (5)")
     flaky.add_argument("--index", type=Path, default=FLAKY, help="the record of varying tutorials")
+    refused = commands.add_parser(
+        "unsupported", help="group a run's refusals by cause, biggest first"
+    )
+    refused.add_argument("results", type=Path, help="a run's results.json")
     api = commands.add_parser("api-coverage", help="compare ROOT's public API by library")
     api.add_argument("--oracle-prefix", type=Path)
     api.add_argument("--root-python")
@@ -284,7 +288,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     commands = {"run": _run, "list": _list, "report": _report, "ratchet": _ratchet,
                 "baseline": _baseline, "record-flaky": _record_flaky,
-                "record-order": _record_order, "api-coverage": api_coverage.run}  # fmt: skip
+                "record-order": _record_order, "api-coverage": api_coverage.run,
+                "unsupported": unsupported.run}  # fmt: skip
     try:
         return commands[args.command](args)
     except (OSError, ValueError) as why:

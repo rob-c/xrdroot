@@ -37,6 +37,7 @@ EAGER = (
     "stringutils",
     "trees",
     "graphics",
+    "mathfit",
 )
 
 #: The modules gathered when a name one of them exports is first asked for: RooFit, RooStats,
