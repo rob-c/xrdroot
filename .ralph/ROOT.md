@@ -6174,3 +6174,44 @@ The close above deferred the gate on a load average of 41-55, where the two-comm
 of the deferral. **A deferred gate is worth one more attempt when the load falls**: the figure was
 obtainable twenty minutes later.
 
+## Round 144's close
+
+**Four `hist` modules covered from the isolated scope, without opening a file: the component's
+unexercised statements go 2 003 -> 1 566, and the scope reaches 19 files / 450 tests.**
+
+Round 143 established the shape with `sparse`: a module the component owns but its scope never runs is
+usually coverable **in place**, because the object can be made in code or the thing it reads is a small
+protocol. This round did four more, and every number was checked rather than guessed.
+
+- **`scatterplot` (101 -> 100 %).** `ScatterPlot.new` books the graph itself, so the frame's range
+  (0..4 widened by `fMargin` to -0.4..4.4), `TH1::kNoStats`, `TScatter2D`'s `fMinimum`/`fMaximum`, the
+  colour scale and its logarithm, `fMinMarkerSize`..`fMaxMarkerSize`, and a plot of no points are all
+  assertable. **A trap found by failing first**: the logarithm's low end is the `TINY` floor's
+  logarithm, not the colours' smallest, so a test with a 0 in the column sits at 0.999 - use positive
+  colours and the scale is the honest one.
+- **`function.ndtri` (35 -> 100 %).** Cephes's rational approximations, so **every expectation was read
+  off the oracle** (`ROOT.Math.normal_quantile`, `%.17g`). Two of my guesses were wrong and the oracle
+  said so: `ndtri(1e-30)` is **-11.464024688443613** (not -11.4452), and `normal_quantile(1 - 1e-30)`
+  is **inf** because that difference is 1.0 in double. The code agreed with ROOT on both.
+- **`formula.together` (25 -> 100 %).** The one loop `TTreeFormulaManager` runs. The masks are each
+  formula's own and the **caller ANDs them** (`treedraw._batch`'s `np.logical_and.reduce`), a
+  condition's own value is the boolean column - not a filter - a number per entry repeats along a
+  collection, two collections pair to the shorter, two entry counts are refused, and `entries`/`rows`/
+  `entry_numbers` describe a chunk. Each of those was measured from the engine before it was asserted.
+- **`formula.select` (186 -> 20, 86 %).** The engine's side of `Tree.arrays`, exercised against a
+  `Source`/`Branch` **stub of the protocol** - `len`, `keys`, `name -> branch`, and a branch's
+  `array`/`pick`/`leaf.title`/`is_jagged`/`length`/`typename`. **A finding**: a branch read by name is
+  what its `array` returns, and it is an **expression** over it that `_shaped` reshapes to the title's
+  sizes - proved by indexing `m[1][1]` of an `m[3][3]`, which cannot work unshaped. The 20 statements
+  left are the whole-object (`_members`) arms, which need a tree that holds an object: `W0-274`.
+
+**Measured**: isolation **425 -> 450 passed** (exit 0), the scope 16 -> **19 files**, the component's
+own-scope total **2 003 -> 1 901 -> 1 740 -> 1 566**. **The gate is green at this round's tree**: part 1
+**14 249 passed, 0 failed**, part 2 44, `TOTAL 127776 0 32100 0 100%` (the statement total is unchanged
+because this round added tests only); ruff, mypy, maintainability, components **0 undeclared**, and
+`mkdocs --strict` clean with the new page in the nav.
+
+**A hazard paid again**: `docs_record` writes into the **session's** checkout, not the round's
+worktree - and that checkout is another session's live workspace (R127). The page was copied into the
+worktree and committed there; the primary checkout's other modifications were left alone.
+
