@@ -6397,3 +6397,34 @@ measurement at `…-202611280345/main`.
 200-line file. The rule in `docs/gotchas/a-docstring-patched-line-by-line-breaks-the-file-after-the-tests.md`
 holds - **write the file whole, short lines, once** - and I broke it here.
 
+## Round 153's close
+
+**TMath's whole surface covered from the isolated scope: 1 235 -> 1 171 unexercised statements, the
+scope at 26 files / 594 tests.**
+
+`tests/test_rootmath_engine.py` is 77 tests, and the recipe is the one written down last round
+(`docs/instructions/read-a-whole-root-math-family-off-the-oracle-into-a.md`): **fifty-nine functions**,
+each with the value ROOT 6.40.04's own `ROOT.Math` printed with `%.17g`. It took two probe scripts and
+about three minutes to produce the whole table - `gaussian_cdf_c(1,2,0)` = 0.30853753872598694,
+`chisquared_quantile_c(0.3,4)` = 4.8784329665604087, `crystalball_function(1,1.5,3,1)` =
+0.60653065971263342, `cyl_bessel_i(1,2)` = 1.5906368546373291, and fifty-five more.
+
+Two properties ride on top of the table, and they are the reason it is worth having: **the fifteen
+lower/upper tail pairs must sum to one** (a `_cdf` and its `_cdf_c` drifting apart is a bug nobody
+would attribute to the maths) and **a quantile put through its own cdf is the chance asked for** with
+the upper one mirroring the lower.
+
+**What the object corrected**: `TMath::Pi` is a **call**, not a constant - `rm.Pi()` is `math.pi`,
+`rm.Pi` is a function object.
+
+**Measured**: `function/rootmath.py` 76 -> **12 unexercised (91 %)**, isolation **517 -> 594 passed**
+(exit 0), the scope **25 -> 26 files**, the component's own-scope total **1 235 -> 1 171**. **Gate green
+at this round's tree**: part 1 **14 393 passed, 0 failed**, part 2 44, `TOTAL 127776 0 32100 0 100 %`;
+ruff, mypy, maintainability, components **0 undeclared**.
+
+**And the doc earned its keep immediately - then I broke the rule once more.** Two `E501` fixes and one
+"shorten this line" pass inserted a second `"""` into the module docstring and broke the file's parse,
+exactly the failure `docs/gotchas/a-docstring-patched-line-by-line-breaks-the-file-after-the-tests.md`
+describes. The fix was to delete the duplicated opener, and the real lesson stands: **write the test file
+whole, short lines, once.**
+
