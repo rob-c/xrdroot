@@ -67,6 +67,7 @@ nav:
       - "TPython, std::any and std::filesystem": architecture/tpython-std-any-and-std-filesystem-are-three-pieces-of-one-test.md
       - "A vector<char> holds characters, int8 numbers": gotchas/a-std-vector-char-holds-characters-while-int8-holds-numbers.md
       - "A TBits is drawn a set bit at a time, and fSave is the values then the ends": gotchas/a-tbits-is-drawn-a-set-bit-at-a-time-and-fsave-is-npx-plus-one.md
+      - "A graph's text file has four reading rules": gotchas/a-graph-s-text-file-has-four-reading-rules-and-its-header-is.md
       - "Vary compiles its expression where it is given": gotchas/vary-compiles-its-expression-where-it-is-given.md
       - "A missing typedef reads as a missing ROOT class": discoveries/a-missing-typedef-reads-as-a-missing-root-class.md
       - "std::tie translates but needs a runtime target": discoveries/std-tie-translates-but-needs-a-runtime-target.md
