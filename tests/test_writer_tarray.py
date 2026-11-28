@@ -683,3 +683,11 @@ def test_a_foam_refuses_to_be_written_into_a_root_file():
 def test_a_foam_that_never_initialised_has_no_weights_to_report():
     """Before ``Initialize`` there are no samples, so the moments are all zero."""
     assert ROOT.TFoam("FoamX").GetWtParams() == (0.0, 0.0, 0.0, 0.0)
+
+
+def test_a_foam_with_no_density_refuses_to_initialize():
+    """Sampling needs something to sample: ``Initialize`` with no integrand says so."""
+    foam = ROOT.TFoam("FoamX")
+    foam.SetkDim(1)
+    with pytest.raises(ValueError, match="needs a TFoamIntegrand"):
+        foam.Initialize()

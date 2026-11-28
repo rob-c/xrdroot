@@ -438,8 +438,12 @@ class TFoam:
         axes = [np.linspace(lo, hi, bins + 1) for lo, hi in self._box]
         centres = [(axis[:-1] + axis[1:]) / 2.0 for axis in axes]
         weights = []
-        for corner in np.array(np.meshgrid(*centres, indexing="ij")).reshape(self._dim, -1).T:
-            weights.append(max(0.0, float(self._integrand.Density(self._dim, corner))))
+        if self._integrand is None:
+            raise ValueError("TFoam::Initialize needs a TFoamIntegrand to sample.")
+        density = self._integrand
+        corners = np.array(np.meshgrid(*centres, indexing="ij")).reshape(self._dim, -1).T
+        for corner in corners:
+            weights.append(max(0.0, float(density.Density(self._dim, corner))))
         total = np.asarray(weights, dtype=float)
         self._grid, self._weights = centres, total / total.sum() if total.sum() else None
 
