@@ -54,3 +54,12 @@ def test_root_writes_a_tree_of_every_leaf_shape_and_xrdroot_reads_it(tmp_path):
 def test_the_tools_module_is_runnable_without_a_root_installation_installed():
     """Importing the tool must not need ROOT: `--classes` works on xrdroot alone."""
     assert os.path.exists(Path(__file__).resolve().parents[1] / "tools" / "io_matrix.py")
+
+
+def test_a_dump_line_with_roots_own_print_around_it_is_still_read():
+    """ROOT prints ``Info in <...>`` to the dump's stream, so a line can hold both."""
+    from tools.harvest_infos import _json_in
+
+    assert _json_in('Info in <TFile::TFile>: {"class": "TFoam"}') == {"class": "TFoam"}
+    assert _json_in('{"class": "TFoam"}') == {"class": "TFoam"}
+    assert _json_in("no object here") is None

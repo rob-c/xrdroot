@@ -78,11 +78,28 @@ def dump(path: Path, root_prefix: Path) -> list[dict[str, object]]:
         )
     found = []
     for line in done.stdout.splitlines():
-        if line.startswith("{"):
-            found.append(json.loads(line))
+        parsed = _json_in(line)
+        if parsed is not None:
+            found.append(parsed)
     if not found:
         raise SystemExit(f"nothing read from {path}:\n{done.stderr[-2000:]}")
     return found
+
+
+def _json_in(line: str) -> dict[str, object] | None:
+    """The object ``line`` carries, or ``None`` - a class that prints as it is read interleaves.
+
+    ROOT writes its own ``Info in <...>`` lines to the same stream as the dump, so a line can
+    hold both; the outermost braces are what the dump wrote.
+    """
+    for attempt in (line, line[line.find("{") : line.rfind("}") + 1]):
+        try:
+            parsed = json.loads(attempt)
+        except ValueError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
 
 
 def report(files: list[Path], root_prefix: Path) -> dict[str, object]:
