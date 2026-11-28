@@ -9,9 +9,16 @@ one-dimensional functions, which ``TF1`` draws as a function of its own.
 
 from __future__ import annotations
 
+import re
 import typing as _typing
 
 import numpy as np
+
+#: ROOT's predefined hyperplane formulas: ``hyp5`` is a plane in five dimensions.
+_HYPERPLANE = re.compile(r"hyp([0-9]+)")
+
+#: A term naming a coordinate, as a hyperplane's formula writes them: ``x0``.
+_COORDINATE = re.compile(r"x([0-9]+)")
 
 __all__ = ["TF1Convolution", "TFoam", "TFoamIntegrand", "TLinearFitter", "TMinuit", "gMinuit"]
 
@@ -21,15 +28,26 @@ def _terms(formula: str) -> list[str]:
     return [term.strip() for term in str(formula).split("++") if term.strip()]
 
 
-def _design(terms: list[str], x: _typing.Any) -> np.ndarray:
-    """One column per term, evaluated at ``x``: ``1``, ``x``, ``x*x``, and so on."""
-    held = np.asarray(x, dtype=float)
+def _design(terms: list[str], rows: np.ndarray) -> np.ndarray:
+    """One column per term at every point: ``x0`` is a coordinate, ``x**2`` a power of the first.
+
+    ROOT writes a hyperplane's terms as ``x0``..``xN-1`` and a polynomial's as ``x``, ``x*x``;
+    both forms reach here, so a term naming a coordinate picks its column and anything else is
+    evaluated with ``x`` bound to the first.
+    """
+    held = np.asarray(rows, dtype=float)
+    if held.ndim == 1:
+        held = held.reshape(-1, 1)
     columns = []
     for term in terms:
-        if term == "1":
-            columns.append(np.ones_like(held))
+        named = _COORDINATE.fullmatch(term)
+        if named:
+            columns.append(held[:, int(named.group(1))])
+        elif term == "1":
+            columns.append(np.ones(len(held)))
         else:
-            columns.append(np.asarray(eval(term, {"__builtins__": {}}, {"x": held}), dtype=float))
+            columns.append(np.asarray(eval(term, {"__builtins__": {}}, {"x": held[:, 0]}),
+                                      dtype=float))
     return np.stack(columns, axis=-1)
 
 
@@ -42,39 +60,135 @@ class TLinearFitter:
         self._option = str(option)
         self._x: list[tuple[float, ...]] = []
         self._y: list[float] = []
+        self._e: list[float] = []
         self._params: np.ndarray | None = None
         self._errors: np.ndarray | None = None
         self._chi2 = 0.0
+        self._fixed: dict[int, float] = {}
 
     def SetFormula(self, formula: str) -> None:
-        """The terms to fit; ``++`` separates them, as ROOT writes them."""
+        """The terms to fit; ``++`` separates them, as ROOT writes them.
+
+        ROOT also accepts the name of a formula it has cached (``"hyp5"``); that form is
+        resolved when the terms are first needed, since the ``TF1`` may be made afterwards.
+        """
         self._formula = str(formula)
+
+    def _terms_now(self) -> list[str]:
+        """The terms to fit, with a cached formula's name turned into its parameters.
+
+        A cached ``TF1``'s parameters are the terms of a linear fit in order - ``[0] + [1]*x
+        + [2]*x*x ...`` - so its count is what ``GetNpar`` gives.
+        """
+        written = self._formula.strip()
+        if "++" in written or written in ("1", "x") or any(ch in written for ch in "+*/()."):
+            return _terms(self._formula)
+        hyper = _HYPERPLANE.fullmatch(self._formula.strip())
+        if hyper:
+            #: ``hyp5`` is a plane in five dimensions *with* its constant: ``[0] + [1]*x0 ...``
+            return ["1"] + [f"x{index}" for index in range(int(hyper.group(1)))]
+        from . import gROOT
+
+        held = gROOT.FindObject(self._formula)
+        if held is None or not hasattr(held, "GetNpar"):
+            from ..errors import UnsupportedFeatureError
+
+            raise UnsupportedFeatureError(
+                f'TLinearFitter::SetFormula("{self._formula}") is a formula xrdroot does not '
+                'know; write its terms as ROOT writes them ("1++x"), or make a TF1 with that '
+                "name first, as fitLinear2 does with ROOT's own hypN formulas."
+            )
+        return ["1"] + [f"x**{index}" for index in range(1, int(held.GetNpar()))]
 
     def AddPoint(self, *point: float) -> None:
         """One point: the coordinates, then the value to fit."""
         values = [float(v) for v in point]
         self._x.append(tuple(values[: self._ndim]))
         self._y.append(values[self._ndim])
+        self._e.append(float(values[self._ndim + 1]) if len(values) > self._ndim + 1 else 1.0)
 
-    def Eval(self, x: float) -> float:
-        """The fitted function at ``x`` - before a fit, at the parameters' starting guess."""
+    def FixParameter(self, index: int, value: float) -> None:
+        """Hold a coefficient at ``value``; the fit solves for the rest, as ROOT does."""
+        self._fixed[int(index)] = float(value)
+
+    def ReleaseParameter(self, index: int) -> None:
+        """Let a fixed coefficient float again."""
+        self._fixed.pop(int(index), None)
+
+    def AssignData(self, npoints: int, xncols: int, x: _typing.Any, y: _typing.Any,
+                   e: _typing.Any = None) -> None:
+        """Take the points from arrays instead of ``AddPoint``; ``x`` is npoints x xncols."""
+        flat = list(np.asarray(x, dtype=float).ravel())
+        values = list(np.asarray(y, dtype=float).ravel())
+        self._x = []
+        for row in range(int(npoints)):
+            start = row * int(xncols)
+            self._x.append(tuple(flat[start : start + int(xncols)]))
+        self._y = values[: int(npoints)]
+        self._e = ([] if e is None else list(np.asarray(e, dtype=float).ravel()[: int(npoints)]))
+
+    def StoreData(self, store: bool = True) -> None:
+        """ROOT keeps the points unless told not to; here they are always kept."""
+
+    def GetErrors(self, into: _typing.Any = None) -> list[float]:
+        """The parameter errors of the last fit, as ``GetParameters`` is for the values."""
+        errors = [] if self._errors is None else [float(v) for v in self._errors]
+        if errors and "1" not in self._terms_now():
+            errors.append(0.0)
+        if into is not None:
+            into.Use(len(errors), np.asarray(errors, dtype=float))
+        return errors
+
+    def Eval(self, x: float | None = None) -> float:
+        """The fitted function at ``x`` - before a fit, at the parameters' starting guess.
+
+        ROOT's ``Eval()`` with no argument fits the data that was assigned; that is what the
+        tutorials call, so it is what this does.
+        """
+        if x is None:
+            self.Fit()
+            return float(self._chi2)
         if self._params is None:
-            self._params = np.zeros(len(_terms(self._formula)))
-        return float(_design(_terms(self._formula), x) @ self._params)
+            self._params = np.zeros(len(self._terms_now()))
+        points = np.array([[x] * self._ndim], dtype=float)
+        return float(_design(self._terms_now(), points) @ self._params)
 
     def Fit(self, option: str = "") -> int:
         """Solve for the coefficients; the return is ROOT's ``0`` for a fit that converged."""
-        design = _design(_terms(self._formula), np.array([row[0] for row in self._x]))
+        design = _design(self._terms_now(), np.array(self._x, dtype=float))
         values = np.asarray(self._y, dtype=float)
-        self._params, *_ = np.linalg.lstsq(design, values, rcond=None)
-        residual = values - design @ self._params
+        held = np.zeros(design.shape[1])
+        for index, fixed in self._fixed.items():
+            held[index] = fixed
+        free = [index for index in range(design.shape[1]) if index not in self._fixed]
+        #: a point's error is a weight: ROOT's least squares is weighted by 1/sigma**2
+        weights = np.ones(len(values)) if not self._e else 1.0 / np.square(np.asarray(self._e))
+        root_w = np.sqrt(weights)
+        weighted = design * root_w[:, None]
+        if free:
+            solved, *_ = np.linalg.lstsq(
+                weighted[:, free], (values - design @ held) * root_w, rcond=None)
+            held[free] = solved
+        self._params = held
+        residual = (values - design @ self._params) * root_w
         self._chi2 = float(residual @ residual)
-        covariance = np.linalg.pinv(design.T @ design)
+        covariance = np.linalg.pinv(design.T @ (design * weights[:, None]))
         self._errors = np.sqrt(np.diag(covariance))
+        for index in self._fixed:
+            #: ROOT reports a fixed parameter with an error of one, not a covariance of zero
+            self._errors[index] = 1.0
         return 0
 
-    def GetParameters(self) -> list[float]:
-        return [] if self._params is None else [float(v) for v in self._params]
+    def GetParameters(self, into: _typing.Any = None) -> list[float]:
+        """The coefficients, and into a ``TVectorD`` when ROOT's tutorials hand one in."""
+        values = [] if self._params is None else [float(v) for v in self._params]
+        if values and "1" not in self._terms_now():
+            #: ROOT answers one more number than the formula names - the constant it keeps
+            values.append(0.0)
+        if into is not None:
+            #: ``Use(n, data)`` is how this ``TVectorD`` is sized and filled in one call
+            into.Use(len(values), np.asarray(values, dtype=float))
+        return values
 
     def GetParameter(self, index: int) -> float:
         return self.GetParameters()[index]
@@ -202,6 +316,20 @@ class TF1Convolution:
 
     def SetRange(self, xmin: float, xmax: float) -> None:
         self._range = (float(xmin), float(xmax))
+
+    def __call__(self, x: _typing.Any, par: _typing.Any = None) -> float:
+        """A convolution is handed to ``TF1`` as a function: ``f(x, par)`` in ROOT's shape."""
+        point = float(np.asarray(x, dtype=float).ravel()[0])
+        return self.Eval(point)
+
+    def GetNpar(self) -> int:
+        """The parameters of both functions together - what ``TF1("f", conv, ..., npar)`` takes."""
+        counts = [getattr(part, "GetNpar", lambda: 0)() for part in (self._first, self._second)]
+        return int(sum(counts))
+
+    def SetNofPointsFFT(self, points: int) -> None:
+        """How finely the FFT path samples; the integral here uses the same count."""
+        self._samples = max(16, int(points))
 
     def GetRange(self) -> tuple[float, float]:
         return self._range

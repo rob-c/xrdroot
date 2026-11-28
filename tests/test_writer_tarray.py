@@ -525,3 +525,112 @@ def test_a_minuit_shrinks_towards_a_kink_it_cannot_pass():
     minuit.DefineParameter(1, "b", 0.0, 0.7, -9.0, 9.0)
     assert minuit.Migrad() == 0
     assert abs(minuit.GetParameterValue(0) - 2.0) < 0.5
+
+
+def test_a_hyperplane_is_fitted_by_the_name_root_gives_it():
+    """``hyp5`` is ROOT's plane in five dimensions, constant first, and it must fit exactly."""
+    import random
+
+    random.seed(3)
+    rows = [[random.uniform(-9, 9) for _ in range(5)] for _ in range(40)]
+    truth = [4.0, 1.0, 2.0, 3.0, 0.2]
+    ys = [0.5 + sum(c * v for c, v in zip(truth, row, strict=False)) for row in rows]
+    fitter = ROOT.TLinearFitter(5, "hyp5")
+    fitter.AssignData(40, 5, [v for row in rows for v in row], ys)
+    assert fitter.Fit() == 0
+    assert [round(value, 6) for value in fitter.GetParameters()] == [0.5, 4.0, 1.0, 2.0, 3.0, 0.2]
+
+
+def test_a_weighted_point_moves_the_error_and_not_the_centre():
+    """A point's error is a weight: e = 0.01 must shrink the errors a hundredfold."""
+    plain = ROOT.TLinearFitter(1, "1++x")
+    weighted = ROOT.TLinearFitter(1, "1++x")
+    xs = [0.0, 1.0, 2.0, 3.0]
+    ys = [2.0, 5.0, 8.0, 11.0]
+    plain.AssignData(4, 1, xs, ys)
+    weighted.AssignData(4, 1, xs, ys, [0.01] * 4)
+    plain.Fit()
+    weighted.Fit()
+    assert round(weighted.GetParameters()[0], 9) == round(plain.GetParameters()[0], 9)
+    assert weighted.GetParError(0) < plain.GetParError(0)
+
+
+def test_a_fixed_parameter_is_held_at_its_value_with_root_s_error_of_one():
+    """``FixParameter`` pins a coefficient; ROOT reports the pinned one with an error of 1."""
+    fitter = ROOT.TLinearFitter(1, "1++x")
+    for x in (0.0, 1.0, 2.0):
+        fitter.AddPoint(x, 1.0 + 2.0 * x)
+    fitter.FixParameter(1, 5.0)
+    fitter.Fit()
+    assert round(fitter.GetParameters()[1], 9) == 5.0
+    assert fitter.GetParError(1) == 1.0
+    fitter.ReleaseParameter(1)
+    fitter.Fit()
+    assert round(fitter.GetParameters()[1], 9) == 2.0
+
+
+def test_a_convolution_answers_a_fit_as_a_function_of_one_variable():
+    """``TF1("f", conv, ...)`` needs the convolution's parameter count and its ``f(x, par)``."""
+    first = ROOT.TF1("a", "x", 0.0, 1.0)
+    second = ROOT.TF1("b", "x", 0.0, 1.0)
+    made = ROOT.TF1Convolution(first, second, 0.0, 1.0)
+    made.SetNofPointsFFT(64)
+    assert made.GetNpar() == first.GetNpar() + second.GetNpar()
+    held = ROOT.TF1("f", made, 0.0, 1.0, made.GetNpar())
+    assert held.Eval(0.5) == made.Eval(0.5)
+
+
+def test_a_fitter_reads_a_one_dimensional_column_and_a_named_formula_it_cannot_find():
+    """A single coordinate arrives flat; an unknown formula name is refused in a sentence."""
+    from xrdroot.errors import UnsupportedFeatureError
+
+    fitter = ROOT.TLinearFitter(1, "no_such_formula_here")
+    fitter.AssignData(3, 1, [0.0, 1.0, 2.0], [1.0, 2.0, 3.0])
+    with pytest.raises(UnsupportedFeatureError, match="write its terms"):
+        fitter.Fit()
+
+
+def test_a_fitter_of_a_named_root_function_takes_its_parameters_as_terms():
+    """``SetFormula("hyp3")`` resolves at the fit, so a cached function is found or ignored."""
+    ROOT.TF1("cached3", "[0]+[1]*x", 0.0, 1.0)
+    fitter = ROOT.TLinearFitter(1, "cached3")
+    fitter.AssignData(3, 1, [0.0, 1.0, 2.0], [2.0, 5.0, 8.0])
+    assert fitter.Fit() == 0
+    assert [round(value, 9) for value in fitter.GetParameters()] == [2.0, 3.0]
+
+
+def test_a_fitter_answers_eval_with_no_point_and_errors_into_a_vector():
+    """``Eval()`` fits what was assigned and returns the chi-square; the getters fill a vector."""
+    fitter = ROOT.TLinearFitter(1, "1++x")
+    fitter.AssignData(3, 1, [0.0, 1.0, 2.0], [1.0, 2.0, 3.0])
+    assert fitter.Eval() == fitter.GetChisquare()
+    params, errors = ROOT.TVectorD(), ROOT.TVectorD()
+    fitter.GetParameters(params)
+    fitter.GetErrors(errors)
+    assert params[0] == fitter.GetParameters()[0]
+    assert errors[0] == fitter.GetErrors()[0]
+
+
+def test_the_design_of_a_one_dimensional_column_and_a_fixed_out_fit():
+    """A flat column is one coordinate, and a fit with nothing free keeps what it was given."""
+    import numpy as np
+
+    from xrdroot.pyroot.mathfit import _design
+
+    assert _design(["1", "x"], np.array([1.0, 2.0])).shape == (2, 2)
+
+    fitter = ROOT.TLinearFitter(1, "1++x")
+    fitter.AddPoint(0.0, 1.0)
+    fitter.FixParameter(0, 7.0)
+    fitter.FixParameter(1, 8.0)
+    fitter.Fit()
+    assert fitter.GetParameters() == [7.0, 8.0]
+    assert fitter.GetParError(0) == 1.0
+
+
+def test_a_fitter_without_a_constant_answers_one_error_more_than_it_names():
+    """ROOT's errors carry a trailing constant when the formula has no constant term."""
+    fitter = ROOT.TLinearFitter(1, "x")
+    fitter.AddPoint(1.0, 2.0)
+    fitter.Fit()
+    assert len(fitter.GetErrors()) == len(fitter.GetParameters())
