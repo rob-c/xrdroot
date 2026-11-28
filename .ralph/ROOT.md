@@ -6601,3 +6601,78 @@ component's own isolation scope. What the tests pin:
 failed**, part 2 44, `TOTAL 128045 0 32144 0 100 %`; ruff, mypy, maintainability and components **0
 undeclared**.
 
+
+## Round 159's close
+
+**`TH1`'s own surface and a `TProfile`'s four errors covered from the isolated scope: 649
+unexercised statements down to 536, and two modules finished at 100 % line and branch.**
+
+The queue's next target was `hist.py`'s 83 statements, and they were not one feature but
+four: `Histogram.of`, the getters that delegate to `moments`, the members a hand-made row
+can hold, and the refusals `Histogram.new` makes. Three test files, 48 tests, no file
+opened.
+
+**`Histogram.of` is a real capability, not a convenience.** `writer.py:1566` asks
+`Histogram.recognises` and then `Histogram.of` for every object handed to a `TFile`, so
+"any histogram Python has" is what makes a `hist.Hist` or a `numpy.histogram` result
+writable into a ROOT file. The reading is three promises wide and the installed `hist` keeps
+all three the convenient way, so the test's object is a **stand-in** that breaks them one at
+a time: `values()` with no `flow` argument at all (the `TypeError` arm), a flowed array of
+the wrong width (thrown away, never reshaped), and a `kind` that is an enum member rather
+than the string. That is what the coverage report was pointing at - a test against the real
+library alone leaves three quarters of the adapter dead.
+
+**The numbers are the oracle's, read for the same seven fills.** A `TH1D` of four bins
+filled at 0.5, 0.5, 1.5, 2.5, 2.5, 2.5, 3.5 gives ROOT mean 1.9285714285714286, spread
+1.0497813183356477, skewness -0.18144368465060587, kurtosis -1.2613168724279833,
+`IntegralAndError(0, 5)` = 7 with error sqrt(7), `Interpolate(1.25)` = 1.25, and bins
+0, 2, 1, 3, 1, 0 with errors 0, 1.414, 1, 1.732, 1, 0 - every one of them what this engine
+answers, to the last bit where the arithmetic is exact and to `1e-12` where a square root's
+last two bits are the C library's. A `TProfile` of two bins gives ROOT the four error modes
+the engine has: 0.47140452079103184 on the mean, 0.81649658092772626 for the spread,
+0.28867513459481292 for a bin of one identical integer, and 1/sqrt(w) for Gaussian weights.
+
+**The empty histogram is worth a line of its own**: ROOT's `GetSkewness(11)`,
+`GetKurtosis(11)`, `GetMeanError` and `GetStdDevError` are **0** for a histogram with
+nothing in it, not infinite, so this engine's zeros were right and the test now says why.
+
+**Six guesses the objects corrected**, each now a measured assertion:
+
+- **`argmax` is ROOT's `GetMaximumBin` minus one.** ROOT counts bins from 1 (0 is the
+  underflow); `argmax` is an index into `values()`, which starts at the underflow. The same
+  seven fills read 3 and 2 in ROOT and 2 and 1 here.
+- **`SetStatOverflows` takes ROOT's enum**: `kIgnore` 0, `kConsider` 1, `kNeutral` 2, the
+  last being where a freshly booked histogram starts - read off `TH1.h`, not guessed.
+- **A profile row's core is nested two levels down** (`members["TH1D"]["TH1"]`), so the "this
+  profile kept no squares" arm is reached by emptying the *inner* `TH1`'s `fSumw2`; setting
+  it on the row the file named changes nothing.
+- **`hist`'s `Mean` storage names its view fields** `count`, `value` and
+  `_sum_of_deltas_squared`; `sum_of_weights` belongs to `WeightedMean`, which is the storage
+  a weighted profile gets.
+- **`Histogram.of` takes a three-part `(values, xedges, yedges)` tuple as a plane**, so the
+  "an edge is not one-dimensional" arm needs a two-dimensional edge, not a third part.
+- **`_value_squares` reads the core's `fSumw2`**, which for a `TProfile` is the sum of
+  `w*y*y` - the same member a histogram keeps the sum of `w*w` in. Two meanings, one slot.
+
+**Measured**: `hist.py` **83 -> 0** and `profile.py` **30 -> 0**, both at 100 % line and
+branch; isolation **647 -> 695 passed** (exit 0), the scope **31 -> 34 files**, the
+component's own-scope total **649 -> 536** over **35 modules**.
+
+**The gate, seven commands, each read for its own exit status.** Part 1 **14 535 passed, 0
+failed** (99.76 % by design, `W0-112`); part 2 44 passed; `coverage report`
+**`TOTAL 128144 0 32178 0 100%`**, measured at the tip the round was pushed on - `73f4698f`,
+another session's TFoam fix - after two earlier measurements at the tips this round was
+rebased through (`1751be3d`: 14 534 / `TOTAL 128140 0 32176 0 100%`; its own tree: 14 530 /
+`TOTAL 128119 0 32172 0 100%`), each green. ruff over the whole tree, mypy 1 070 files,
+maintainability 34 252 functions in 1 864 files, components 0 undeclared, and
+`mkdocs build --strict` - each exit 0, the last after the round's new page went into the
+nav.
+
+**A note on the machine**: it was opened at a load average of 12.7 and the gate ran at 23.6,
+so the round's own numbers were taken first and the gate left to finish in the background
+(`busybox_job`, `W0-103` for why a timing is not quotable under load). It took 5 m 41 s.
+
+**A gotcha, for the next reader**:
+`docs/instructions/a-plotting-protocol-adapter-is-tested-with-a-stand-in-that.md` - the
+adapter is tested with a stand-in for each promise, because the installed library keeps them
+all and the report then names the arms nobody ran.
