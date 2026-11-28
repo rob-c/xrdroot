@@ -413,7 +413,7 @@ hard = ["numpy"]
 modules = ["xrdroot.cli", "xrdroot.__main__", "xrdroot.apinamespace"]
 exact = ["xrdroot"]
 depends = ["@facade", "pycxx", "pycint", "cppyy"]
-hard = ["numpy"]
+hard = ["numpy", "xrdclient"]
 optional = ["IPython", "matplotlib"]
 
 # Exact source-reviewed dynamic sites. Each target is still checked against the
