@@ -6463,3 +6463,28 @@ of the maths in this component should be covered with.
 each time breaking the parse. The file was rewritten whole to fix it, which is the rule. Two rounds in a
 row now; the lesson is not sticking, and the only reliable habit is: **never index into a docstring.**
 
+## Round 155's close
+
+**`TH1`'s own surface covered from the isolated scope: 1 113 -> 955 unexercised statements, the scope
+at 28 files / 612 tests.**
+
+The biggest gain of these twelve rounds, because `hist.py` is the component's core. `tests/test_hist_surface_engine.py`
+takes the parts a reader meets first and that the scope had never touched: **`Axis`** indexed (`axis[0]`,
+a negative from the end, and an `IndexError` that names the axis and the count), iterated as its edge
+pairs, compared **by its edges** (with `NotImplemented` against a float), printed, and its `widths()` for
+an even and a variable axis; **`sum()`** with and without the flow; **`density()`** integrating to one
+over one axis and over a plane's cell volumes, with the **refusal** of a density of the flow bins, which
+have no width; **`text()`**'s character picture for a line (three rows, two newlines) and a plane, with
+three axes refused; the `repr`; and **`to_hist()`** carrying a weighted histogram's values and squares.
+
+**Measured**: `hist.py` 131 -> **83 unexercised (84 %)**, isolation **602 -> 612 passed** (exit 0), the
+scope **27 -> 28 files**, the component's own-scope total **1 113 -> 955**. **Gate green at this round's
+tree**: part 1 **14 438 passed, 0 failed**, part 2 44, `TOTAL 128045 0 32144 0 100 %` - the statement
+count rising from 127 776 because the new test file is itself code, which is why the project's floor is
+a percentage rather than a number.
+
+**A guess the object corrected**: `text()`'s picture is three rows joined by **two** newlines with no
+trailing one, so `count("\n") == 2` is the right assertion for three bins. **A case the object refused**:
+a hand-made nested row (`{"TH1": {...}}`) is not a histogram a file would write - `_core`'s recursion is
+reachable only from a real streamed row, so that test was dropped rather than bent.
+
