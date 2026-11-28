@@ -672,15 +672,18 @@ def test_a_foam_reports_the_integral_and_the_weight_moments_of_its_samples():
     assert freedom > 0.0 and 0.0 < average <= largest and spread >= 0.0
 
 
-def test_a_foam_refuses_to_be_written_into_a_root_file(tmp_path):
-    """``TFoam::Write`` reaches ``gDirectory`` and stops at the writer, which says why."""
-    from xrdroot.errors import UnsupportedFeatureError
-
-    opened = ROOT.TFile(str(tmp_path / "foam.root"), "RECREATE")
-    with pytest.raises(UnsupportedFeatureError, match="not something this writer puts"):
-        ROOT.TFoam("FoamX").Write("FoamX")
-    opened.Close()
-
+def test_a_foam_is_written_into_the_open_file_and_read_back(tmp_path):
+    """``TFoam::Write`` goes through ``gDirectory``; the file carries the foam's own members."""
+    path = tmp_path / "foam.root"
+    with xrdroot.create(str(path)) as handle:
+        foam = ROOT.TFoam("FoamX")
+        foam.SetkDim(2)
+        foam.SetnCells(50)
+        handle["FoamX"] = foam
+    with xrdroot.open_root(str(path)) as handle:
+        #: the reader names what the file holds; a foam's own members come back through
+        #: tools/io_matrix, which asks ROOT rather than the reader
+        assert "FoamX" in handle.classnames()
 
 def test_a_foam_that_never_initialised_has_no_weights_to_report():
     """Before ``Initialize`` there are no samples, so the moments are all zero."""
@@ -702,3 +705,28 @@ def test_a_foam_answers_the_object_questions_a_directory_asks():
     assert (foam.GetName(), foam.GetTitle()) == ("FoamX", "FoamX")
     foam.SetName("Other")
     assert foam.GetName() == "Other"
+
+
+def test_a_counted_array_falls_back_to_the_list_it_was_given_and_refuses_a_foreign_type():
+    """No counter in the title means the list decides; a type the writer cannot pack refuses."""
+    from xrdroot.errors import UnsupportedFeatureError
+    from xrdroot.writer import _number_array, _pointer_count
+
+    plain = ("TStreamerBasicPointer", "fA", "no counter here", 48, 8, 0, 0, (0,) * 5, "double*", ())
+    assert _pointer_count(plain, {}, [1.0, 2.0]) == 2
+    assert _pointer_count(plain, {}, None) == 0
+    foreign = (*plain[:8], "TString*", ())
+    with pytest.raises(UnsupportedFeatureError, match="does not lay out"):
+        _number_array(None, foreign, {}, [])
+
+
+def test_a_foam_writes_itself_through_the_current_directory(tmp_path):
+    """``FoamX->Write("FoamX")`` puts the foam in whatever file is open, as ROOT's does."""
+    path = tmp_path / "foam-write.root"
+    opened = ROOT.TFile(str(path), "RECREATE")
+    foam = ROOT.TFoam("FoamX")
+    foam.SetkDim(2)
+    assert foam.Write("FoamX") == 1
+    opened.Close()
+    with xrdroot.open_root(str(path)) as handle:
+        assert "FoamX" in handle.classnames()

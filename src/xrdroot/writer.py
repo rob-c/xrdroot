@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import array
 import datetime
+import re
 import struct
 import uuid
 from collections.abc import Callable, Iterator, Mapping
@@ -543,8 +544,64 @@ def _record(buf: WBuffer, classname: str, row: Any, used: dict[str, None]) -> No
     used[classname] = None
     index = buf.start(info[1])
     for kind, element in _steps_of(classname, info):
-        _written_element(buf, kind, element, row, used)
+        _written_element(buf, kind, element, row, used, classname)
     buf.end(index)
+
+
+#: An array of pointers - ROOT's ``kStreamer`` on a ``T**`` member: ``TFoamCell **fCells``.
+OBJECT_ARRAY_STYPE = 501
+
+#: A basic array whose length another member holds: ``double *fAlpha`` with ``[fDim]``.
+COUNTED_ARRAY_STYPE = 48
+
+#: An element a class describes but does not write out: ``vector<Long_t> fCellsAct``.
+ARTIFICIAL_STYPE = 300
+
+#: The classes whose array and artificial members the flat-member cast leaves alone.
+SKIPPED_IN_CAST = frozenset({"TFoam"})
+
+#: The classes that describe an element and do not write it, each proven by io_matrix.
+ARTIFICIAL_SKIPPED = frozenset({"TFoam"})
+
+#: The classes whose counted arrays are written from the row, each proven by io_matrix.
+COUNTED_ARRAYS = frozenset({"TFoam"})
+
+#: The member an element's title counts itself by: ``"[fDim] Internal parameters..."``.
+_COUNTED_BY = re.compile(r"\[([A-Za-z_][A-Za-z0-9_]*)\]")
+
+#: The C type a counted array holds, as the packing each of its numbers takes.
+TYPE_FORMS = {"double": "d", "float": "f", "int": "i", "long": "q", "long long": "q",
+              "short": "h", "char": "b", "unsigned int": "I", "bool": "?"}
+
+
+def _pointer_count(element: Element, row: dict[str, Any], value: Any) -> int:
+    """How many slots the array holds: the member its title names, else the list given."""
+    named = _COUNTED_BY.search(str(element[2]))
+    if named is not None and named.group(1) in row:
+        return int(row[named.group(1)])
+    return len(value) if isinstance(value, (list, tuple)) else 0
+
+
+def _number_array(buf: WBuffer, element: Element, row: dict[str, Any], value: Any) -> None:
+    """A counted array of numbers: ``fAlpha[fDim]``, ``fMCvect[fDim]``, ``fRvec[fRNmax]``."""
+    form = TYPE_FORMS.get(str(element[8]).rstrip("*").strip())
+    if form is None:
+        raise UnsupportedFeatureError(
+            f"{element[1]} is an array of {element[8]}, which this writer does not lay out"
+        )
+    held = list(value) if isinstance(value, (list, tuple)) else []
+    for index in range(_pointer_count(element, row, value)):
+        buf.raw(struct.pack(">" + form, held[index] if index < len(held) else 0.0))
+
+
+def _pointed_array(
+    buf: WBuffer, element: Element, row: dict[str, Any], value: Any, used: dict[str, None]
+) -> None:
+    """An array of pointers: each slot null, or an object that names its class."""
+    typename = str(element[8]).rstrip("*")
+    held = value if isinstance(value, (list, tuple)) else []
+    for index in range(_pointer_count(element, row, value)):
+        _pointed(buf, f"{typename}*", held[index] if index < len(held) else None, used)
 
 
 def _pointed(buf: WBuffer, typename: str, value: Any, used: dict[str, None]) -> None:
@@ -609,6 +666,8 @@ def _kind_of(element: Element) -> str:
         return "base"
     if name == "fFunctions":
         return "list"  # a histogram's, which ROOT locks - or an object when it is not one
+    if stype == OBJECT_ARRAY_STYPE:
+        return "object_array"
     if stype in OBJECT_STYPES:
         return "object"
     if stype in NUMBER_STYPES:
@@ -632,7 +691,12 @@ def _element(buf: WBuffer, element: Element, row: dict[str, Any], used: dict[str
 
 
 def _written_element(
-    buf: WBuffer, kind: str, element: Element, row: dict[str, Any], used: dict[str, None]
+    buf: WBuffer,
+    kind: str,
+    element: Element,
+    row: dict[str, Any],
+    used: dict[str, None],
+    classname: str = "",
 ) -> None:
     """One member of one class, written by the write its kind was decided to take."""
     name, stype, alen, typename, extras = element[1], element[3], element[5], element[8], element[9]
@@ -641,6 +705,8 @@ def _written_element(
         _base_element(buf, name, stype, value, used, row)
     elif kind == "list" and "fNcells" in row:  # a histogram's fFunctions, which ROOT locks
         _list(buf, "TList", value, used, BITS | USE_RWLOCK)
+    elif _array_element(stype, classname, element):
+        _array_written(buf, stype, element, row, value, used)
     elif kind == "object" or kind == "list":
         _object_element(buf, stype, typename, value, used)
     elif kind == "number":
@@ -651,6 +717,26 @@ def _written_element(
         raise UnsupportedFeatureError(
             f"{name} is of streamer type {stype}, which this writer does not lay out"
         )
+
+
+def _array_element(stype: int, classname: str, element: Element) -> bool:
+    """Whether this element is an array the writer lays out from the row, or one it skips."""
+    if stype == ARTIFICIAL_STYPE:
+        return classname in ARTIFICIAL_SKIPPED
+    if stype == OBJECT_ARRAY_STYPE:
+        return True
+    return stype == COUNTED_ARRAY_STYPE and classname in COUNTED_ARRAYS
+
+
+def _array_written(
+    buf: WBuffer, stype: int, element: Element, row: dict[str, Any], value: Any,
+    used: dict[str, None],
+) -> None:
+    """The array element's write: an array of pointers, a counted array, or nothing at all."""
+    if stype == OBJECT_ARRAY_STYPE:
+        _pointed_array(buf, element, row, value, used)
+    elif stype == COUNTED_ARRAY_STYPE:
+        _number_array(buf, element, row, value)
 
 
 def _stl_element(buf: WBuffer, name: str, typename: str, value: Any) -> None:
@@ -1482,6 +1568,7 @@ MEMBERED = (
     "TEllipse",
     "TArrow",
     "TAnnotation",
+    "TFoam",
 )
 
 
@@ -1504,6 +1591,8 @@ def _text_payload(value: Any) -> tuple[str, bytes, tuple[str, ...]]:
         info = layout_of(owner)
         assert info is not None
         for _kind, name, _title, stype, _s, _a, _d, _m, _t, _x in info[2]:
+            if stype in (COUNTED_ARRAY_STYPE, ARTIFICIAL_STYPE) and classname in SKIPPED_IN_CAST:
+                continue  # an array or an unwritten element: no single number to cast
             if stype not in NUMBER_STYPES:
                 continue
             integer = FORMS[stype] in "bBhHiIlLqQ"

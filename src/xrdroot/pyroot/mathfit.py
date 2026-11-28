@@ -371,6 +371,7 @@ class TFoam:
     def __init__(self, integrand: _typing.Any = None) -> None:
         #: ROOT's constructor takes the foam's *name* (``new TFoam("FoamX")``), not a density
         self._name = str(integrand) if isinstance(integrand, str) else ""
+        self.members: dict[str, _typing.Any] = {"fName": self._name}
         self._integrand = None if isinstance(integrand, str) else integrand
         self._dim = 1
         self._box: list[tuple[float, float]] = [(-1.0, 1.0)]
@@ -399,11 +400,16 @@ class TFoam:
     def SetkDim(self, dim: int) -> None:
         """How many dimensions are sampled - ROOT's one mandatory setting."""
         self._dim = int(dim)
+        self.members["fDim"] = self._dim
+        self.members["fMCvect"] = [0.0] * self._dim
+        self.members["fAlpha"] = [0.0] * self._dim
+        self.members["fRvec"] = [0.0] * (self._dim + 1)
         self._box = [(-1.0, 1.0)] * self._dim
         self._vector = np.zeros(self._dim)
 
     def SetnCells(self, cells: int) -> None:
         self._cells = int(cells)
+        self.members["fNCells"] = self._cells
 
     def SetRho(self, rho: _typing.Any) -> None:
         """``SetRho`` takes the driving weight - or, in ROOT's older signature, the density.
